@@ -387,6 +387,21 @@ def _server_detail(response: httpx.Response) -> str:
     return str(detail or "").strip()[:300]
 
 
+def _server_code(response: httpx.Response) -> str | None:
+    """服务端机器可读的 detail.code(如 ``asr_no_speech``);没有就 None。
+
+    hc-926:此前 HTTP 错误只保留了文案,调用方分不出「素材没有人声」这类正常结论
+    与真故障,只能一律报 tool_error。"""
+    try:
+        body = response.json()
+    except ValueError:  # JSONDecodeError / UnicodeDecodeError: no machine-readable code
+        return None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if not isinstance(detail, dict) or not detail.get("code"):
+        return None
+    return str(detail["code"]).strip() or None
+
+
 def _error_from_response(
     response: httpx.Response,
     source: str = SOURCE_ENV,
@@ -423,7 +438,7 @@ def _error_from_response(
     )
     if detail and status != 413 and not redact_outage_detail:
         message = f"{message}(详情: {detail})"
-    return GatewayError(message, status=status)
+    return GatewayError(message, status=status, code=_server_code(response))
 
 
 def _retry_after_seconds(response: httpx.Response, attempt: int) -> float:

@@ -74,6 +74,30 @@ def _missing_credential_message() -> str:
 # master budget + download/ffmpeg headroom; light calls keep the short default.
 _MEDIA_TRANSCRIBE_TIMEOUT_SECONDS = 2 * 60 * 60 + 10 * 60  # 2h10m
 
+# hc-926:平台 ASR 对纯环境声/音乐/静音素材的结论(云端 422 detail.code)。它描述的是
+# 素材,不是故障:报成 tool_error 会让逐段检查素材的剪辑任务连撞 same_tool_failure
+# 循环告警。两条腿(网关 / legacy)都把它和「200 但转写为空」统一成成功 + speech=false。
+_ASR_NO_SPEECH_CODE = "asr_no_speech"
+_NO_SPEECH_NOTE = (
+    "未检测到人声：这段音频只有环境声、音乐或静音，转写为空是素材本身的正常结果，不是工具故障。"
+    "不要对同一文件重试；剪辑时按无人声素材处理（保留现场声即可）。"
+)
+
+
+class _PlatformError(RuntimeError):
+    """legacy master 端点的 HTTP 错误;``code`` 是服务端 detail.code(可能为 None)。"""
+
+    def __init__(self, message: str, *, code: str | None = None):
+        super().__init__(message)
+        self.code = code
+
+
+def _speech_fields(transcript: str) -> dict[str, Any]:
+    """转写结果面的人声标记:有字为 speech=true;为空则 speech=false 并附说明。"""
+    if transcript:
+        return {"speech": True}
+    return {"speech": False, "speech_note": _NO_SPEECH_NOTE}
+
 
 def _post(path: str, payload: dict[str, Any], *, timeout: int = 600) -> dict[str, Any]:
     api_key = _agent_api_key()
@@ -98,7 +122,9 @@ def _post(path: str, payload: dict[str, Any], *, timeout: int = 600) -> dict[str
             detail = json.loads(raw).get("detail", raw)
         except json.JSONDecodeError:
             detail = raw
+        code = None
         if isinstance(detail, dict):
+            code = str(detail.get("code") or "").strip() or None
             message = detail.get("message") or detail.get("code") or raw
             # hc-254: surface the machine-readable honesty signal so the model
             # offers the honest options instead of self-installing whisper.
@@ -110,7 +136,7 @@ def _post(path: str, payload: dict[str, Any], *, timeout: int = 600) -> dict[str
                 )
         else:
             message = str(detail or raw)
-        raise RuntimeError(message) from exc
+        raise _PlatformError(message, code=code) from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"无法连接媒体服务: {exc.reason}") from exc
 
@@ -192,6 +218,8 @@ MEDIA_TRANSCRIBE_SCHEMA = {
         "转写已下载的 video_path 或社媒视频链接 url（抖音/小红书/快手/B站，可直接传用户的原始分享文本，一步下载并转写）。"
         "用户要视频文案/逐字稿/拆解脚本时用本工具，禁止用浏览器或其他平台替代，也不要自行安装或运行本地转写工具（如 whisper）。"
         "返回完整转写、transcript_path，以及豆包分句/字词级时间轴 segments。"
+        "素材没有人声（纯环境声/音乐/静音）时返回 ok=true、speech=false 和空 transcript，"
+        "这是正常结果，不要对同一文件重试。"
     ),
     "parameters": {
         "type": "object",
@@ -395,13 +423,18 @@ def _gateway_media_transcribe(
                 "请确认是视频分享链接，或先用 social_download 检查。"
             )
     except _gateway.GatewayError as exc:
-        return tool_error(f"视频转写失败: {exc}")
+        if exc.code != _ASR_NO_SPEECH_CODE:
+            return tool_error(f"视频转写失败: {exc}")
+        # 三个 ASR 出口(multipart / 直传三跳 / media_url)都经 request_json 落到这里:
+        # 没有人声是结论,走下面同一个结果面(speech=false),不计费也不报错。
+        response = {}
 
     transcript = str(response.get("text") or "").strip()
     title = str(meta.get("title") or "").strip()
     result: dict[str, Any] = {
         "ok": True,
         "transcript": transcript,
+        **_speech_fields(transcript),
         "video_path": str(local_path) if local_path is not None else None,
         "title": title or None,
         "author": meta.get("author"),
@@ -610,10 +643,15 @@ def _handle_media_transcribe(args: dict, **_kwargs) -> str:
     try:
         result = _post("/media/transcribe", payload, timeout=_MEDIA_TRANSCRIBE_TIMEOUT_SECONDS)
     except RuntimeError as exc:
-        return tool_error(f"视频转写失败: {exc}")
+        if getattr(exc, "code", None) != _ASR_NO_SPEECH_CODE:
+            return tool_error(f"视频转写失败: {exc}")
+        result = {"ok": True, "transcript": ""}
+        if video_path:
+            result["video_path"] = video_path
     # hc-341: pre-render the verbatim transcript so "完整文案/逐字稿/下载文案" is delivered
     # as the original speech, copied verbatim — the agent only emits the MEDIA line.
     transcript = str(result.get("transcript") or "").strip()
+    result.update(_speech_fields(transcript))
     if transcript and _doc_file_delivery_available():
         doc_path = render_verbatim_transcript_docx(transcript, str(result.get("title") or ""))
         if doc_path:
