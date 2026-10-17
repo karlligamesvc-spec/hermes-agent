@@ -8,7 +8,7 @@ import type { HermesNotification } from './notification-types'
 const host = vi.hoisted(() => ({
   handle: vi.fn(),
   fromWebContents: vi.fn(),
-  shown: [] as EventEmitter[]
+  shown: [] as (EventEmitter & { options: { title?: string } })[]
 }))
 
 vi.mock('electron', () => ({
@@ -17,6 +17,10 @@ vi.mock('electron', () => ({
   Notification: class extends EventEmitter {
     static isSupported() {
       return true
+    }
+
+    constructor(readonly options: { title?: string }) {
+      super()
     }
 
     show() {
@@ -40,12 +44,29 @@ beforeEach(() => {
   host.shown.length = 0
 })
 
+// hc-919 F1: the hc-844 merge took upstream's notification-ipc.ts verbatim, so an
+// untitled notification said 'Hermes' again (AGENTS.md rule #11, identity layer).
+it.each([undefined, ''])('titles an untitled notification with the host product name (title=%j)', title => {
+  host.fromWebContents.mockReturnValue(windowStub())
+  registerNativeNotifications({ appName: 'APEX', getMainWindow: () => null, focusWindow: vi.fn() })
+  const notify = host.handle.mock.calls[0][1] as (event: IpcMainInvokeEvent, payload: HermesNotification) => boolean
+
+  expect(notify({ sender: {} } as unknown as IpcMainInvokeEvent, { kind: 'turn-complete', title, body: 'done' })).toBe(
+    true
+  )
+  expect(host.shown[0].options.title).toBe('APEX')
+})
+
 it('returns native clicks and approval actions to the emitting window, not the primary', () => {
   const primary = windowStub()
   const source = windowStub()
   host.fromWebContents.mockReturnValue(source)
   const focusWindow = vi.fn()
-  registerNativeNotifications({ getMainWindow: () => primary as unknown as BrowserWindow, focusWindow })
+  registerNativeNotifications({
+    appName: 'APEX',
+    getMainWindow: () => primary as unknown as BrowserWindow,
+    focusWindow
+  })
   const notify = host.handle.mock.calls[0][1] as (event: IpcMainInvokeEvent, payload: HermesNotification) => boolean
 
   const payload = {
@@ -85,7 +106,11 @@ it('delivers plugin callbacks to their source and falls back only for navigation
   const source = windowStub()
   host.fromWebContents.mockReturnValue(source)
   const focusWindow = vi.fn()
-  registerNativeNotifications({ getMainWindow: () => primary as unknown as BrowserWindow, focusWindow })
+  registerNativeNotifications({
+    appName: 'APEX',
+    getMainWindow: () => primary as unknown as BrowserWindow,
+    focusWindow
+  })
   const notify = host.handle.mock.calls[0][1] as (event: IpcMainInvokeEvent, payload: HermesNotification) => boolean
   notify({ sender: source.webContents } as unknown as IpcMainInvokeEvent, {
     kind: 'plugin',
