@@ -7,6 +7,9 @@ import {
   GROUP_CHAT_MAX_CONTINUATIONS,
   GROUP_CHAT_MAX_MESSAGES,
   groupThreadOf,
+  groupThreadRedrivenSince,
+  groupWatermarkPastOwnEntry,
+  groupWatermarkPastShown,
   shouldCommitMemberTurn,
   updateGroupChat
 } from './group-chat'
@@ -105,6 +108,36 @@ function prepareGroupRoundMember(context: GroupRoundMemberContext, member: Group
   return { room, memberKey, markKey, prompt, deltaImages }
 }
 
+/** #93127: the turn may have finished AFTER a newer user send bumped the room
+ *  epoch. When that send was into THIS thread, its loop re-drives this member
+ *  with the full delta, so committing this stale result (watermark advance +
+ *  append) would double-deliver the same reply: drop it, BEFORE the watermark
+ *  advance and BEFORE the append. Anything else that moved the epoch (a send
+ *  into another thread, a stop, a gateway switch) or put a user entry in this
+ *  thread (a remote post, an answered question's echo) starts no drive here,
+ *  so the finished reply is the only copy and commits. Round and continuation
+ *  turns share this decision. */
+function memberTurnSuperseded(context: GroupRoundMemberContext, member: GroupMember) {
+  const roomNow: GroupChatRoom = $groupChats.get()[context.group] || {
+    log: [],
+    watermarks: {}
+  }
+
+  const redriven = groupThreadRedrivenSince(roomNow, context.thread, context.startEpoch)
+
+  if (shouldCommitMemberTurn(context.startEpoch, roomNow.epoch || 0, redriven)) {
+    return false
+  }
+
+  recordGroupActivity(context.group, {
+    kind: 'cancelled',
+    member: member.name,
+    thread: context.thread
+  })
+
+  return true
+}
+
 /** Each invocation owns its descriptor, so an old completion cannot clear a newer turn. */
 async function runVisibleMemberTurn(
   context: GroupRoundMemberContext,
@@ -128,7 +161,7 @@ export async function runGroupRoundMember(
   context: GroupRoundMemberContext,
   member: GroupMember
 ): Promise<boolean | null> {
-  const { thread, startEpoch, binding } = context
+  const { thread, binding } = context
   const prepared = prepareGroupRoundMember(context, member)
 
   if (!prepared) {
@@ -168,55 +201,22 @@ export async function runGroupRoundMember(
     reply = null // a failed turn is a pass, never a room error
   }
 
-  // #93127: the turn may have finished AFTER a newer user send bumped
-  // the room epoch. That newer send's loop re-drives this member with
-  // the full delta, so committing this stale result (watermark advance
-  // + append) would double-deliver the same reply. Drop it here —
-  // BEFORE the watermark advance and BEFORE the append. Only a newer
-  // USER entry in THIS thread makes the re-drive premise true: a
-  // cross-thread send bumps the epoch too, but its loop filters this
-  // thread out and would never regenerate the finished reply. The
-  // during-turn tail is anchored by entry id, not index — the history
-  // trim drops entries from the FRONT, so an index slice could
-  // overshoot after a mid-turn trim and silently commit a stale turn.
-  if (!binding.isLive()) {
+  if (!binding.isLive() || memberTurnSuperseded(context, member)) {
     return null
   }
 
-  const roomNow = $groupChats.get()[context.group] || {
-    log: []
-  }
+  const lastShown = room.log[room.log.length - 1]
 
-  const epochNow = roomNow.epoch || 0
-  const anchorId = room.log.length ? room.log[room.log.length - 1].id : null
-  const anchorIdx = anchorId === null ? -1 : roomNow.log.findIndex((e: GroupMessage) => e.id === anchorId)
-  // Anchor trimmed away ⇒ every pre-turn entry was dropped, so every
-  // surviving entry is newer — scanning the whole log stays exact.
-  const turnTail = anchorIdx >= 0 ? roomNow.log.slice(anchorIdx + 1) : roomNow.log
-
-  const newerUserEntryInThread = turnTail.some(
-    (e: GroupMessage) => e.from?.kind === 'user' && groupThreadOf(e) === thread
-  )
-
-  if (!shouldCommitMemberTurn(startEpoch, epochNow, newerUserEntryInThread)) {
-    recordGroupActivity(context.group, {
-      kind: 'cancelled',
-      member: member.name,
-      thread
-    })
-
-    return null
-  }
-
-  // The member has now seen everything up to the pre-reply log length.
+  // The member has now seen the log its prompt was built from, but not what
+  // landed while the turn ran.
   updateGroupChat(context.group, (r: GroupChatRoom) => {
-    r.watermarks[markKey] = r.log.length
+    r.watermarks[markKey] = groupWatermarkPastShown(r.log, lastShown, r.watermarks[markKey] || 0)
 
     return r
   })
 
   if (reply !== null && !isGroupPassText(reply)) {
-    appendGroupChatEntry(
+    const own = appendGroupChatEntry(
       context.group,
       {
         kind: 'member',
@@ -230,9 +230,11 @@ export async function runGroupRoundMember(
       reply,
       thread
     )
-    // Its own message counts as seen too.
+
+    // Its own message counts as seen too, unless an entry it was not shown
+    // landed in this thread before it.
     updateGroupChat(context.group, (r: GroupChatRoom) => {
-      r.watermarks[markKey] = r.log.length
+      r.watermarks[markKey] = groupWatermarkPastOwnEntry(r.log, own, thread, r.watermarks[markKey] || 0)
 
       return r
     })
@@ -247,7 +249,7 @@ async function runGroupContinuationMember(
   context: GroupRoundMemberContext,
   member: GroupMember
 ): Promise<boolean | null> {
-  const { members, thread, binding, isCurrent } = context
+  const { members, thread, binding } = context
 
   const room = $groupChats.get()[context.group] || {
     log: [],
@@ -304,18 +306,22 @@ async function runGroupContinuationMember(
     continuationReply = null
   }
 
-  if (!isCurrent()) {
+  if (!binding.isLive() || memberTurnSuperseded(context, member)) {
     return null
   }
 
+  // Same commit as a round turn: seen through the prompt's log, then past its
+  // own reply only when nothing unseen in this thread precedes it.
+  const lastShown = room.log[room.log.length - 1]
+
   updateGroupChat(context.group, (r: GroupChatRoom) => {
-    r.watermarks[markKey] = r.log.length
+    r.watermarks[markKey] = groupWatermarkPastShown(r.log, lastShown, r.watermarks[markKey] || 0)
 
     return r
   })
 
   if (continuationReply !== null && !isGroupPassText(continuationReply)) {
-    appendGroupChatEntry(
+    const own = appendGroupChatEntry(
       context.group,
       {
         kind: 'member',
@@ -329,8 +335,9 @@ async function runGroupContinuationMember(
       continuationReply,
       thread
     )
+
     updateGroupChat(context.group, (r: GroupChatRoom) => {
-      r.watermarks[markKey] = r.log.length
+      r.watermarks[markKey] = groupWatermarkPastOwnEntry(r.log, own, thread, r.watermarks[markKey] || 0)
 
       return r
     })
