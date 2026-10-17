@@ -86,8 +86,10 @@ test('a config rewritten after it was read is skipped, and the file mode survive
 
 test('every product-guard pass fills all profiles, and the boot pass precedes any backend', () => {
   const main = fs.readFileSync(path.join(import.meta.dirname, 'main.ts'), 'utf8')
+
   const guard = main.slice(main.indexOf('function guardConfigYamlProductBlocks(reason) {'),
     main.indexOf('function healConfigYamlProductBlocks'))
+
   const boot = main.indexOf("guardConfigYamlProductBlocks('boot')")
   const firstSpawn = main.indexOf('if (!backend.bootstrap) {', boot)
 

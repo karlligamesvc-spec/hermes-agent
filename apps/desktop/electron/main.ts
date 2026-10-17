@@ -21035,6 +21035,7 @@ async function refreshPlatformPluginsFromPlatform(reason) {
 // everywhere rather than only on a clean first install.
 function guardConfigYamlProductBlocks(reason) {
   keepSessionHistoryInEveryProfile(HERMES_HOME, rememberLog)
+
   // A pass that finds the file changed under it between read and write yields
   // rather than clobbering the other writer, and says so — recompute against
   // the new content and try again. The healers are add-only and idempotent, so

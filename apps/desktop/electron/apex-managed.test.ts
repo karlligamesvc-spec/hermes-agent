@@ -914,6 +914,7 @@ test('Desktop follows Hermes parent and child budgets without overwriting explic
   // preserves any value a user deliberately put on disk.
   const reconciled = ensureProductDefaultsYaml('model:\n  default: x\n').next
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
+
   const guardBody = main.slice(
     main.indexOf('function healConfigYamlProductBlocks'),
     main.indexOf('// Keep the guard live while the app runs')
