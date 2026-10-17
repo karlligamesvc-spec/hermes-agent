@@ -583,7 +583,7 @@ test('main.ts: a pending pin override forces the bootstrap re-run (steps 4-5 gat
   // an update is pending (apex-runtime-select.test.ts); main.ts must hand it the flag and obey it.
   assert.match(src, /updatePending: runtimeUpdatePending/)
   // Step 4 (an explicit or PATH `hermes`) must be skipped while an update is pending.
-  assert.match(src, /if \(externalRungs\.explicitCli \|\| externalRungs\.pathCli\)/)
+  assert.match(src, /pickExistingHermesCommand\(externalRungs, process\.env\.HERMES_DESKTOP_HERMES,/)
   // Step 5 (system python) must be skipped too.
   assert.match(src, /const python = externalRungs\.systemPython \? findSystemPython\(\) : null/)
 })

@@ -276,7 +276,7 @@ describe('main.ts wiring of the packaged engine pick', () => {
     )
 
     assert.equal(fields.get('isPackaged'), 'IS_PACKAGED')
-    assert.match(fields.get('bundledEngine') ?? '', /^IS_PACKAGED && packagedRuntimeShipped\(process\.resourcesPath\)$/)
+    assert.equal(fields.get('bundledEngine'), 'packagedRuntimeShipped(process.resourcesPath)')
     assert.match(fields.get('explicitCli') ?? '', /process\.env\.HERMES_DESKTOP_HERMES\b(?!_)/)
     assert.match(fields.get('ignoreExisting') ?? '', /process\.env\.HERMES_DESKTOP_IGNORE_EXISTING === '1'/)
     assert.equal(fields.get('updatePending'), 'runtimeUpdatePending')
@@ -286,24 +286,27 @@ describe('main.ts wiring of the packaged engine pick', () => {
     assert.ok(ts.isVariableDeclaration(assigned) && assigned.name.getText() === 'externalRungs')
   })
 
-  test('step 4 looks on PATH only under the pathCli rung, and resolves an explicit command only under explicitCli', () => {
-    const lookups = nodesIn(
+  test('step 4 takes its command from pickExistingHermesCommand under the rungs, and probes only that command', () => {
+    const picks = nodesIn(resolve, (node): node is ts.CallExpression => isCallTo(node, 'pickExistingHermesCommand'))
+
+    assert.equal(picks.length, 1)
+    assert.equal(picks[0].arguments[0]?.getText(), 'externalRungs')
+    assert.equal(picks[0].arguments[1]?.getText(), 'process.env.HERMES_DESKTOP_HERMES')
+    // No PATH lookup of its own: the pick does it only under pathCli (windows-hermes-path.test.ts).
+    assert.equal(contains(resolve, node => isCallTo(node, 'findOnPath')), false)
+
+    const picked = nodesIn(
       resolve,
-      (node): node is ts.CallExpression =>
-        isCallTo(node, 'findOnPath') && ts.isStringLiteral(node.arguments[0]) && node.arguments[0].text === 'hermes'
+      (node): node is ts.VariableDeclaration => ts.isVariableDeclaration(node) && node.name.getText() === 'hermesCommand'
     )
 
-    assert.equal(lookups.length, 1)
-    assert.ok(guardsOf(lookups[0]).some(guard => readsRung(guard, 'pathCli')), 'PATH lookup outside the pathCli rung')
+    assert.equal(picked.length, 1)
+    assert.equal(picked[0].initializer, picks[0])
 
-    const explicit = nodesIn(
-      resolve,
-      (node): node is ts.IfStatement =>
-        ts.isIfStatement(node) && ts.isIdentifier(node.expression) && node.expression.text === 'hermesOverride'
-    )
+    const probes = nodesIn(resolve, (node): node is ts.CallExpression => isCallTo(node, 'resolveExistingHermesCandidate'))
 
-    assert.equal(explicit.length, 1)
-    assert.ok(guardsOf(explicit[0]).some(guard => readsRung(guard, 'explicitCli')), 'explicit command outside its rung')
+    assert.equal(probes.length, 1)
+    assert.equal(probes[0].arguments[0]?.getText(), 'hermesCommand')
   })
 
   test('step 5 looks for a system Python only under the systemPython rung', () => {

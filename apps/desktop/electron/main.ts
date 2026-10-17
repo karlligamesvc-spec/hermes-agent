@@ -647,6 +647,7 @@ import {
   chooseUpdaterArgs,
   getVenvSitePackagesEntries,
   isWindowsVenvHermesShim,
+  pickExistingHermesCommand,
   resolveExistingHermesCandidate,
   resolveVenvHermesCommand
 } from './windows-hermes-path'
@@ -5384,7 +5385,7 @@ function resolveHermesBackend(backendArgs) {
   // other builds keep the whole ladder (resolveExternalRuntimeRungs).
   const externalRungs = resolveExternalRuntimeRungs({
     isPackaged: IS_PACKAGED,
-    bundledEngine: IS_PACKAGED && packagedRuntimeShipped(process.resourcesPath),
+    bundledEngine: packagedRuntimeShipped(process.resourcesPath),
     explicitCli: Boolean(process.env.HERMES_DESKTOP_HERMES),
     ignoreExisting: process.env.HERMES_DESKTOP_IGNORE_EXISTING === '1',
     updatePending: runtimeUpdatePending
@@ -5396,56 +5397,37 @@ function resolveHermesBackend(backendArgs) {
   //    don't want to take ownership of an install we didn't perform. A packaged
   //    build with its own engine only takes an explicit HERMES_DESKTOP_HERMES.
   //    HERMES_DESKTOP_IGNORE_EXISTING=1 forces the bootstrap path for testing.
-  if (externalRungs.explicitCli || externalRungs.pathCli) {
-    let hermesCommand = null
-    const hermesOverride = process.env.HERMES_DESKTOP_HERMES
+  const hermesCommand = pickExistingHermesCommand(externalRungs, process.env.HERMES_DESKTOP_HERMES, {
+    findOnPath,
+    isWindowsBinaryPathInWsl: command => isWindowsBinaryPathInWsl(command, { isWsl: IS_WSL }),
+    looksLikeDesktopAppBinary,
+    log: rememberLog
+  })
 
-    if (hermesOverride) {
-      const resolvedOverride = findOnPath(hermesOverride)
+  if (hermesCommand) {
+    const candidate = resolveExistingHermesCandidate(hermesCommand, backendArgs, {
+      isWindowsVenvHermesShim: command =>
+        isWindowsVenvHermesShim(command, {
+          isWindows: IS_WINDOWS,
+          resolvePath: (...segments) => path.resolve(...segments),
+          dirname: p => path.dirname(p),
+          basename: p => path.basename(p)
+        }),
+      unwrapWindowsVenvHermesCommand,
+      isCommandScript,
+      verifyHermesCli
+    })
 
-      if (resolvedOverride) {
-        hermesCommand = resolvedOverride
-      } else if (!isWindowsBinaryPathInWsl(hermesOverride, { isWsl: IS_WSL })) {
-        hermesCommand = hermesOverride
-      } else {
-        rememberLog(`Ignoring Windows Hermes override under WSL: ${hermesOverride}`)
-      }
-    } else {
-      hermesCommand = findOnPath('hermes')
+    if (candidate.backend) {
+      return candidate.backend
     }
 
-    if (hermesCommand) {
-      if (looksLikeDesktopAppBinary(hermesCommand)) {
-        rememberLog(`Ignoring desktop app executable on PATH while resolving Hermes CLI: ${hermesCommand}`)
-        hermesCommand = null
-      }
-    }
+    const reason =
+      candidate.rejection === 'runtime-import'
+        ? 'recognized venv shim failed the runtime import probe'
+        : '--version probe failed'
 
-    if (hermesCommand) {
-      const candidate = resolveExistingHermesCandidate(hermesCommand, backendArgs, {
-        isWindowsVenvHermesShim: command =>
-          isWindowsVenvHermesShim(command, {
-            isWindows: IS_WINDOWS,
-            resolvePath: (...segments) => path.resolve(...segments),
-            dirname: p => path.dirname(p),
-            basename: p => path.basename(p)
-          }),
-        unwrapWindowsVenvHermesCommand,
-        isCommandScript,
-        verifyHermesCli
-      })
-
-      if (candidate.backend) {
-        return candidate.backend
-      }
-
-      const reason =
-        candidate.rejection === 'runtime-import'
-          ? 'recognized venv shim failed the runtime import probe'
-          : '--version probe failed'
-
-      rememberLog(`Ignoring existing Hermes CLI at ${hermesCommand}: ${reason}; falling through to bootstrap.`)
-    }
+    rememberLog(`Ignoring existing Hermes CLI at ${hermesCommand}: ${reason}; falling through to bootstrap.`)
   }
 
   // 5. Last-ditch: pip-installed hermes_cli module via system Python.
