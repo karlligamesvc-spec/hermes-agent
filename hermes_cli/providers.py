@@ -152,6 +152,8 @@ _LABEL_OVERRIDES: dict[str, str] = {
     "nebius-token-factory": "Nebius Token Factory", "tencent-tokenplan": "Tencent TokenPlan", "lmstudio": "LM Studio",
     "custom": "Custom endpoint", "bedrock": "AWS Bedrock", "vertex": "Google Vertex AI", "ollama-cloud": "Ollama Cloud",
     "xai-oauth": "xAI Grok OAuth (SuperGrok / Premium+)",
+    # The commandcode overlay owns the ProviderDef even when models.dev omits it (offline, older cache).
+    "commandcode": "CommandCode",
 }
 
 
