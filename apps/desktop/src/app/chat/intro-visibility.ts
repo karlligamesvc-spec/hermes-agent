@@ -44,3 +44,18 @@ export function shouldShowChatComposer(input: {
 }): boolean {
   return input.available && (!input.businessStartVisible || input.objectRouteOpen)
 }
+
+/**
+ * Whether the chat surface takes native file and folder drops. The canonical
+ * composer's zone follows the chat bar. The business Start zero-state stages
+ * drops on its visible attachment draft, so it takes them only while the
+ * gateway is connected and no turn is running.
+ */
+export function shouldAcceptFileDrops(input: {
+  busy: boolean
+  businessStartVisible: boolean
+  chatBarVisible: boolean
+  gatewayOpen: boolean
+}): boolean {
+  return input.chatBarVisible || (input.businessStartVisible && input.gatewayOpen && !input.busy)
+}
