@@ -6,8 +6,9 @@ After every install or upgrade, APEX Desktop prepares the bundled engine: extrac
 verify against `.runtime/files.tsv`, move to the final path, fixup and verify again, probe, activate.
 On win-5090 (Ryzen 9 9950X3D, 128 GB, one NVMe SSD, Windows 11 23H2, Microsoft Defender real-time
 protection on) the first verify took 3m13s on the 0.17.57 first install and 3m23s on the 0.17.58
-upgrade (hc-906 acceptance logs). Engine setup took 3m45s in total, so users wait almost four
-minutes on "Preparing the APEX engine". The final-path verify took about 3 s.
+upgrade (hc-906 acceptance logs), out of 3m45s of engine setup. The final-path verify took about
+3 s. Those runs started the app through a scheduled task, which runs it at low I/O priority (see
+"Low I/O priority" below). Started normally, the same verify takes about 87 s on this host.
 
 ## Where the time goes
 
@@ -58,10 +59,30 @@ Other findings:
 - Largest-first ordering did not help at 16 in flight (26.7 s).
 - Skipping the read-back would not make the cost disappear. On a cold tree the engine's import probe
   took 10.9 s against 3.0 s warm, because Python opens files one at a time.
-- The in-app runs were about 2.3 times slower than this harness for the same step (193–203 s against
-  86–88 s). The cause was not identified; candidates are the process context of the unsigned app and
-  load from the console session. The harness compares like with like; the in-app number after this
-  change still needs a built candidate.
+
+## Low I/O priority
+
+The in-app runs above were about 2.3 times slower than this harness for the same step (193–203 s
+against 86–88 s). The hc-906 acceptance started APEX through a scheduled task (`apex-acc`, created
+with `schtasks`). Task Scheduler's default task priority, 7, starts the action at
+BELOW_NORMAL_PRIORITY_CLASS with IoPriorityLow and MEMORY_PRIORITY_LOW (Microsoft's Task Scheduler
+schema, Priority element), and on win-5090 a child spawned through Node keeps its parent's low I/O
+priority and priority class. The verifier at each priority, fresh tree each:
+
+| CPU priority class | I/O priority | Opens in flight | Cold verify |
+|---|---|---|---|
+| Normal | Normal | 4 | 87.1 s |
+| Below normal | Normal | 4 | 89.2 s |
+| Normal | Low | 4 | 192.7 s |
+| Below normal | Low | 4 | 187.4 s |
+| Below normal | Low | 16 (this change) | 195.2 s |
+
+Low I/O priority alone accounts for the gap. At low I/O priority the opens do not overlap, so this
+change does not help there. No Desktop launch path uses Task Scheduler or lowers its own priority:
+a user starting APEX from the Start menu, a shortcut, the installer or the updater gets the
+launcher's normal I/O priority (Explorer reads Normal on win-5090). An acceptance run that times
+first boot should start the app with task priority 4–6 or from Explorer; at the default 7 it
+measures about 190 s with or without this change.
 
 ## Change
 
@@ -124,6 +145,7 @@ Outside Desktop:
 | Hash from the archive stream while extracting, no read-back | Weaker: no longer reads back what is on disk, so a write fault or a same-size modification after extraction goes unseen. Needs an in-process extractor instead of `tar.exe`. Part of the cost moves to the first engine start (probe 10.9 s cold vs 3.0 s warm) | Not done |
 | Verify while `tar` is still extracting | Unchanged | Not done: extraction is 17–29 s, the most it could hide, for a streaming design |
 | Ship fewer files | Unchanged | Separate ticket: about 12,000 of 67,600 entries look unused at runtime (`tests/` 6,170, `apps/` 3,399, `contributors/` 2,000, `website/` 838, dev-only `node_modules`) |
+| Raise the verifier's I/O priority when Desktop itself was started at low priority | Unchanged | Not done: needs an undocumented NT call, overrides a priority the user or an admin chose, and no Desktop launch path starts at low priority |
 | Skip the verify, or add antivirus exclusions | Drops the check or changes a security setting | Rejected |
 
 ## Verification
@@ -143,7 +165,8 @@ Outside Desktop:
 ## Boundaries
 
 - Not run inside the packaged app. The in-app before/after needs a candidate whose engine includes
-  this verifier; run the bench above or compare the `[bundle-install] verify` timestamps.
+  this verifier, started at normal I/O priority (task priority 4–6, or from Explorer); compare the
+  `[bundle-install] verify` timestamps.
 - Low-core hardware was not measured. On this host Defender used 13–31 s of CPU during the 26 s
   verify at 16 in flight.
 - The pipe test runs on macOS and Linux; Windows has no `mkfifo`, so it is skipped there.
