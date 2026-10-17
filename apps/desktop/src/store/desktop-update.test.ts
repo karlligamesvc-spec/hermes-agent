@@ -518,6 +518,38 @@ describe('desktop update orchestration', () => {
     expect(window.hermesDesktop.runtime.applyUpdate).not.toHaveBeenCalled()
   })
 
+  it.each([
+    {
+      error: 'plan write failed',
+      path: 'shell required by the runtime',
+      runtime: {
+        ...RUNTIME_UPDATE,
+        desktopUpgradeRequired: { currentDesktopVersion: '0.17.12', minDesktopVersion: '0.18.0' },
+        updateAvailable: false
+      },
+      shell: SHELL_UPDATE
+    },
+    { error: 'failed_to_persist_update_plan', path: 'shell-only restart', runtime: null, shell: SHELL_UPDATE },
+    { error: 'plan write failed', path: 'busy runtime deferral', runtime: RUNTIME_UPDATE, shell: null }
+  ])('an unsaved continuation stops the $path before anything restarts', async ({ error, runtime, shell }) => {
+    const unsaved = vi.fn(async () => ({ ok: false, error: error === 'failed_to_persist_update_plan' ? undefined : error }))
+    const install = vi.fn(async () => ({ ok: true }))
+
+    $runtimeUpdateCheck.set(runtime)
+    $shellUpdate.set(shell)
+    window.hermesDesktop = {
+      runtime: { applyUpdate: vi.fn(async () => ({ ok: true, applied: false, deferred: true })) },
+      shellUpdate: { install },
+      updateCenter: { setRuntimeAfterShell: unsaved, setShellOnly: unsaved, transitionPlan: vi.fn(async () => ({ ok: true })) }
+    } as unknown as typeof window.hermesDesktop
+
+    await expect(applyDesktopUpdates({ reload: vi.fn() })).rejects.toThrow(error)
+
+    expect(unsaved).toHaveBeenCalledOnce()
+    expect(install).not.toHaveBeenCalled()
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: false, error })
+  })
+
   it('keeps the plan through a reload and failed activation, then completes from actual activation', async () => {
     const reload = vi.fn()
     const clearPlan = vi.fn(async () => ({ ok: true }))
