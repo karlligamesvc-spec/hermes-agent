@@ -61,6 +61,22 @@ function clampLimits(raw: Partial<PoolLimits>): PoolLimits {
   return clampPoolLimits(raw)
 }
 
+/** Apply a renderer patch on top of the limits in force. Settings saves one
+ *  knob at a time ({ maxBackends } OR { idleMs }), so clamping the bare patch
+ *  would silently reset the other knob to its default. Missing or
+ *  non-numeric fields keep the current value; the result is clamped. */
+export function mergePoolLimitsPatch(current: PoolLimits, patch: unknown): PoolLimits {
+  const raw = patch && typeof patch === 'object' ? (patch as Record<string, unknown>) : {}
+
+  const pick = (value: unknown, fallback: number) =>
+    typeof value === 'number' && Number.isFinite(value) ? value : fallback
+
+  return clampLimits({
+    maxBackends: pick(raw.maxBackends, current.maxBackends),
+    idleMs: pick(raw.idleMs, current.idleMs)
+  })
+}
+
 /** Parse + clamp a persisted JSON blob; anything unreadable falls back to
  *  defaults so a corrupted file can never wedge the pool. */
 export function parsePoolLimits(json: string | null | undefined): PoolLimits {
