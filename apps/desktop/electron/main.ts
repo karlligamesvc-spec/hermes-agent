@@ -5541,14 +5541,15 @@ let packagedRuntimeBootError: string | null = null
 let packagedRuntimeDeferred = false
 const deferredPackagedUpdate = createDeferredRuntimeUpdate({
   preflight: () => preflightRuntimeSwitch(),
-  install: async () => {
+  // A tracked start like every engine install (hc-919 C3): quit waits for it and never begins one.
+  install: () => localBackendLifecycle.start(async () => {
     ensurePackagedEngine.reset()
     const result = await ensurePackagedEngine()
     if (result.reason === 'busy') {return false}
     if (result.status === 'preserved') {throw new Error('Bundled upgrade was not activated')}
     clearRuntimePinOverride()
     return true
-  },
+  }),
   activated: () => {
     bootstrapFailure = null
     resetHermesConnection()
