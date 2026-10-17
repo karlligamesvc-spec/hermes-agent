@@ -9,6 +9,7 @@ import { promisify } from 'node:util'
 
 import { removeOwnedRuntimeTree, runtimeSmokeEnvironment, terminateOwnedSmokeProcess } from '../../../scripts/runtime-bundle-offline-smoke.mjs'
 import { bundledNodeExe, fixupArgv } from '../electron/apex-bundle-install.ts'
+import { BUNDLE_TOOL_THREADPOOL_SIZE } from '../electron/apex-bundle-tool.ts'
 import { checkForRuntimeUpdate } from '../electron/apex-runtime-latest.ts'
 import { buildDesktopBackendEnv } from '../electron/backend-env.ts'
 import { waitForDashboardPortAnnouncement } from '../electron/backend-ready.ts'
@@ -72,7 +73,8 @@ function consumer(home: string): PackagedRuntimeOptions {
     runTool: async (executable, argv) => {
       const root = argv[argv.indexOf('--root') + 1]
       assert.ok(argv.includes('--root') && path.isAbsolute(root), 'bundle tool must declare its actual root')
-      await exec(executable, argv, { cwd: workspace, env: environment(root, workspace), timeout: 180_000, maxBuffer: 1024 * 1024 })
+      // Same verify concurrency as Desktop's runBundledTool.
+      await exec(executable, argv, { cwd: workspace, env: { ...environment(root, workspace), UV_THREADPOOL_SIZE: BUNDLE_TOOL_THREADPOOL_SIZE }, timeout: 180_000, maxBuffer: 1024 * 1024 })
     },
     beforeSwitch: async verifiedRoot => {
       await retirePackagedGateways(path.join(home, 'hermes-agent'), verifiedRoot, home)

@@ -324,8 +324,10 @@ jobs:
           cd apps/desktop/release
           # latest-mac.yml must exist — without it the updater feed is dead.
           [ -f latest-mac.yml ] || { echo "latest-mac.yml missing in release/" >&2; exit 1; }
+          # Hosted US runner to COS Guangzhou: the per-file budget scales with the file
+          # (see upload-desktop-cos.py) instead of the fixed 30 minutes a 630 MB DMG outgrew.
           for f in *.dmg *.zip *.blockmap latest-mac.yml; do
             [ -e "$f" ] || continue
-            python3 ../../../scripts/release/upload-desktop-cos.py --file "$f" --key "$PREFIX/$f"
+            python3 ../../../scripts/release/upload-desktop-cos.py --file "$f" --key "$PREFIX/$f" --budget-from-size
             echo "COS publish OK: $PREFIX/$f"
           done
