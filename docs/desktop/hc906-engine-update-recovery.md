@@ -1,5 +1,49 @@
 # hc-906 引擎更新的安装路径与恢复
 
+## 2026-10-10：占用时保留可用引擎，空闲后自动继续
+
+此前引擎被其他进程占用时，安装器保留旧版本，但更新收尾仍按新目标判定，用户停在 `runtime_target_not_active`。本次将可恢复占用建模为 `runtime_update_busy`，不再当作安装完成或安装失败：
+
+- 自更新请求先核对桌面活动、后台网关活动和进程归属。工作进行中、活动证据缺失、其他存活 Desktop/CLI 持有引擎时，保留旧进程、引擎、版本记录和冻结目标，后台每 15 秒重新检查。renderer 计划每 30 秒重读本机状态，不循环刷新窗口。
+- 仅允许生命周期表登记且确为本 Desktop 后代的 worker 通过预检；孤儿清理仍使用既有 PID、创建时间、父进程和运行路径校验。其他存活 Desktop/CLI 必须退出后才继续；本次没有新增跨实例强制退出协议。
+- 消息网关必须先证明自己空闲，接收本次独有的 drain 请求并确认停止接收新任务，之后再走已有优雅退出、超时强制退出和子进程清理。未知归属和 PID 复用不作为终止对象。
+- 进入切换前再次核对前台活动，持有禁止新建 backend 的 fence，退出本次拥有的进程，然后进行不带豁免的严格占用扫描。完整安装校验、原子切换和旧版本保留仍是成功条件。
+- 已下载的原生壳安装也经过相同门禁；连续点击只产生一次交接。关闭隐式 `autoInstallOnAppQuit`，避免普通退出绕过异步门禁。原生交接抛错、异步报错或控制器释放时撤销 fence。
+- 内嵌引擎首启遇占用时继续用旧引擎启动，原生层自动重试；目标通过校验并真正激活后才刷新连接和完成持久化计划。校验失败仍明确失败，不改写成功记录，不无限重试。
+
+### 出口清单
+
+| 出口 | 处理 |
+|---|---|
+| 设置/状态栏/菜单的统一更新中心 | 持久化目标、占用等待与自动续跑 |
+| 原生 `hermes:shell-update:install`，含旧侧栏入口 | 同一安装门禁、去重、后台续跑 |
+| 内嵌引擎首启与 renderer 重载 | 旧引擎继续运行，原生延后激活 |
+| 独立 runtime 更新：包内 / 在线 bundle / 旧源码路径 | 返回明确 deferred；busy 不回退源码安装 |
+| runtime 侧栏胶囊、后台契约对齐 | 保存冻结目标并进入同一续跑计划 |
+| primary/profile/backend worker | 生命周期表清理；最终严格扫描 |
+| 消息网关与 profile 网关 | 身份校验、活动证明、drain 确认、退出 |
+| 远程连接、自定义 root、诊断包 | 原有隔离规则保留；没有扩展为远程强杀 |
+| 下载校验、升级失败回滚 | 原有机制保留；busy 不伪装为校验成功 |
+
+### 验证记录与边界
+
+在 `apps/desktop`：
+
+```sh
+npx vitest run electron/runtime-gateway-retirement.test.ts electron/packaged-runtime.test.ts electron/deferred-runtime-update.test.ts electron/local-backend-lifecycle.test.ts electron/backend-ownership.test.ts electron/shell-updater.test.ts electron/runtime-version.test.ts electron/desktop-update-plan.test.ts src/store/desktop-update.test.ts src/store/updates.test.ts
+npm run typecheck
+npm run lint -- --quiet
+npm run build
+```
+
+Mac 最终定向回归 219 项通过，typecheck、lint 和 build 通过。Windows 4060 Ti 使用独立检出和临时 home 跑原生测试：真实 worker 持有旧引擎时文件与 marker 不变，退出后真实小归档完成验证和切换；网关正常退出/卡住退出、PID 复用和其他归属保护均通过。网关加 shell 最终复测 41 项通过。测试未修改用户安装或数据。
+
+此前全量 Electron 为 3,204 项通过、25 项平台跳过，另两套因共享测试环境缺少 Electron 二进制无法导入；从已有缓存恢复依赖后两套通过。全量 UI 为 9,121 项通过、一项动态导入超时；该文件独立复测 9 项全部通过。不能将第一次全量运行写成全绿。
+
+反向验证：唯一锚点注入并核对落地后，移除 native busy 自动重试，`deferred-runtime-update.test.ts` 变红；移除启动时 `updateDeferred` 分支，真实持久化计划的 busy 启动用例变红。源文件均已恢复。
+
+这些 smoke 覆盖进程占用/网关退出/本地安装事务和持久化续跑，不证明真实 Squirrel/NSIS 自更新全流程、所有系统异常或新安装包已经发布。代码未更改版本号，仍须另行构建、成对发布和三平台读回。
+
 ## 2026-10-06：安装成功后的 shell-only 计划误报
 
 用户从0.17.46更新到0.17.47后，日志确认 r8 的 ba8e344e 引擎已验证并激活、网关就绪；但旧窗口保存的 shell-only 计划仍将当前4e8299引擎作为目标，renderer因此报 `runtime_target_not_active`。这不是引擎安装失败或进程占用。该用户本机在核对0.17.47 App、marker、源码stamp和bundle manifest一致后，将过期计划移动到受控backup并关闭误报；引擎与用户数据未修改。

@@ -18,6 +18,7 @@ import { checkHermesUpdate, getActionStatus, updateHermes } from '@/hermes'
 import { translateNow } from '@/i18n'
 import { persistString, storedString } from '@/lib/storage'
 import { $connectionsRegistry, refreshConnectionsRegistry } from '@/store/connections'
+import { queueDeferredRuntimeUpdate } from '@/store/desktop-update'
 import { reconnectGateway } from '@/store/gateway-reconnect'
 import { dismissNotification, notify } from '@/store/notifications'
 import { onboardingSurfaceActive } from '@/store/onboarding-presence'
@@ -220,6 +221,10 @@ export async function alignBackendContract(): Promise<void> {
 
   try {
     const result = await applyRuntimeUpdate()
+    if (result.deferred) {
+      await queueDeferredRuntimeUpdate(check)
+      return
+    }
 
     if (result.reloadRequired) {
       window.location.reload()
