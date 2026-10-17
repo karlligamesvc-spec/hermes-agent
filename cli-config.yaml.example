@@ -78,6 +78,9 @@ plugins:
     - apexnodes-social-tools
     - apexnodes-video-tools
     - apexnodes-image-tools
+    # ApexNodes 桌面直播录制(hc-918):网关只返回拉流地址,自带 ffmpeg 在本机录制,
+    # 文件不上传。工具在网关报告 live_recording 权益开通前自隐(默认关)。
+    - apexnodes-live-tools
     # ApexNodes 本地文档导出工具(hc-565):把结构化长回复渲染成 .xlsx/.pptx/.docx
     # 文件,经 MEDIA: 交付。纯本地(不走网关、无 vendor 调用);依赖随桌面装机自带
     # ([file-export] extra)。doc_file_write 在桌面(HERMES_DESKTOP=1)与非飞书 IM 入口显形。
