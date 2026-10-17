@@ -13,7 +13,7 @@ import { isRuntimeUpdateBusy } from './runtime-update-busy'
 // the deferrable RuntimeUpdateBusy; any other failure stays a failure.
 const execFile = vi.hoisted(() => vi.fn())
 
-vi.mock(import('node:child_process'), async importOriginal => ({ ...(await importOriginal()), execFile }))
+vi.mock('node:child_process', () => ({ execFile }))
 
 let activeRoot: string
 
