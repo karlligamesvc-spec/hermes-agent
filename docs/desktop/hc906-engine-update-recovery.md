@@ -1,5 +1,12 @@
 # hc-906 引擎更新的安装路径与恢复
 
+## 2026-10-17：变基到 main（Hermes v0.22.2 + Desktop 0.17.58）后的补充
+
+- main 的 hc-919（C3，上游 7b9808e43b）让每次引擎安装都是 `localBackendLifecycle` 登记的 start：退出会等它，也不会再开始新的安装。本功能的延后重试原先从定时器直接调用 `ensurePackagedEngine()`，绕过了这道 fence；现在同样经 `localBackendLifecycle.start` 进入。
+- main.ts 的接线（壳安装门禁、切换前预检、首启 busy 延后、离线 pin 保留、三条 apply 路径的 deferred、版本 IPC 标记、退出时注销重试、C3）由 `electron/main-update-deferral.test.ts` 按 AST 钉住；此前撤掉其中任何一处，全部测试仍是绿的。
+- 反向验证扩为全量出口表：变基后逐处注入，原有 13 处撤销后仍全绿的出口都已补测试；完整表格记录在 fork PR #386 描述中。
+- 检查过、无需改动：旧侧栏 `ShellUpdatePill` 在 main 上没有挂载（只剩它自己的测试），其“退出后才会安装”文案在 `autoInstallOnAppQuit` 关闭后不再成立，重新启用前必须改文案；壳状态里的 `deferred` 字段已发布但 renderer 不读取（renderer 用 IPC 返回值），撤销它不可观测。
+
 ## 2026-10-10：占用时保留可用引擎，空闲后自动继续
 
 此前引擎被其他进程占用时，安装器保留旧版本，但更新收尾仍按新目标判定，用户停在 `runtime_target_not_active`。本次将可恢复占用建模为 `runtime_update_busy`，不再当作安装完成或安装失败：

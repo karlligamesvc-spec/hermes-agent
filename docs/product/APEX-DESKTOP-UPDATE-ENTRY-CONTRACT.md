@@ -44,8 +44,10 @@ A requested install waits while the engine has active work or foreign owners.
 The existing engine remains available, the exact requested target stays frozen,
 and occupancy is not reported as `runtime_target_not_active`. The native shell
 install checks again every 15 seconds; packaged-engine boot recovery also retries
-natively. Runtime-only renderer plans persist across reload and recheck every
-30 seconds. Successful activation still requires actual source/marker proof.
+natively, as a tracked lifecycle start like every engine install (hc-919 C3), so
+quit waits for it and never begins one. Runtime-only renderer plans persist
+across reload and recheck every 30 seconds. Successful activation still requires
+actual source/marker proof.
 
 Tracked Desktop workers can be stopped only after preflight; messaging gateways
 must acknowledge drain with no active agents. Another live Desktop/CLI owner is
@@ -54,8 +56,13 @@ app quit cannot install implicitly around the gate. Duplicate install requests
 coalesce; failed native handoff releases its process-start fence.
 
 Additional smoke: `electron/deferred-runtime-update.test.ts`,
-`electron/runtime-gateway-retirement.test.ts`, `electron/packaged-runtime.test.ts`,
-`electron/shell-updater.test.ts` and `src/store/desktop-update.test.ts`.
+`electron/runtime-gateway-retirement.test.ts`,
+`electron/runtime-gateway-retirement-receipt.test.ts`,
+`electron/packaged-runtime.test.ts`, `electron/shell-updater.test.ts`,
+`electron/local-backend-lifecycle.test.ts`, `electron/runtime-version.test.ts`,
+`electron/main-update-deferral.test.ts` (main.ts wiring, AST),
+`src/store/desktop-update.test.ts`, `src/store/updates.test.ts` and
+`src/app/chat/sidebar/runtime-update-pill.test.tsx`.
 Real temporary workers and fixture archives exercise ownership and switching on
 Mac and Windows. This does not replace signed installer/update end-to-end release
 acceptance. Detailed exit inventory and negative tests are recorded in
