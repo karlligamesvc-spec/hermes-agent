@@ -224,3 +224,20 @@ Windows never reached that step; it failed earlier on a transient npm `ECONNRESE
   - Legacy section: before = genuine F8 `v2026.9.22-fork.f8d9cbeb` with actual imports; after =
     `installed`; reopen = `current`; 7 user files and the SQLite bytes unchanged; the old rollback
     tree preserved; an injected post-switch failure restored a usable F8.
+- **Windows promote retry**: with the genuine fixture, the Windows smoke ran past the legacy probe for the
+  first time on v0.22. On a GitHub runner, the promote of `versions/<key>.tmp` was then refused once with
+  `EPERM`. The same promote passed earlier in that run and in the full smoke on win-5090, so the cause is
+  a transient handle (an antivirus scan of freshly extracted files). `promoteStagingDir` now retries only
+  on win32 and only for EPERM/EBUSY/EACCES, with up to 10 attempts and backoff from 250 ms to 4 s (about
+  24 s in all). POSIX and other errors fail at once. Its three tests were red before the fix.
+- **Windows local proof (win-5090)**: the F8 fixture built natively; the full consumer smoke passed against
+  the `d3353487` runtime with `--legacy-source`.
+- **Paired candidate (run 39026303436, `publish=false`, `39d2040445`)**: all jobs green, including the
+  parity check `paired release identity OK: version=0.17.58 sha=39d2040445`.
+  - Artifacts: Mac arm64 (signed and notarized), Mac x64 (signed and notarized) and Windows x64
+    (unsigned NSIS).
+  - Nothing was published; all three feeds read back 0.17.57.
+  - Mac x64 needed two reruns for unrelated flakes. The first was an `npm ci` network timeout. The second
+    was Apple ticket propagation: the submission was Accepted, but three online `--check-notarization`
+    assessments 5 s and 15 s apart still failed. Per Kael's 2026-10-17 decision 6, a notarization
+    timeout is rerun rather than the upstream notarize retry being ported in 0.17.58.
