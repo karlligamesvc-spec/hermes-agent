@@ -5,6 +5,7 @@ import { PageLoader } from '@/components/page-loader'
 import { ErrorState } from '@/components/ui/error-state'
 import { useI18n } from '@/i18n'
 import { desktopFsCacheKey, readDesktopFileDataUrl } from '@/lib/desktop-fs'
+import { diagnosticFact } from '@/lib/diagnostic-fact'
 import { docxParagraphs } from '@/lib/docx-preview'
 import { $connection } from '@/store/session'
 
@@ -26,9 +27,15 @@ export function DocxFilePreview({ filePath, reloadKey }: { filePath: string; rel
     void readDesktopFileDataUrl(filePath).then(data => {
       const paragraphs = docxParagraphs(data)
 
-      if (active) {setState({ paragraphs })}
+      if (active) {
+        diagnosticFact(paragraphs.some(paragraph => paragraph.trim()) ? 'preview.docx_ready' : 'preview.docx_empty')
+        setState({ paragraphs })
+      }
     }).catch(error => {
-      if (active) {setState({ error: String(error instanceof Error ? error.message : error) })}
+      if (active) {
+        diagnosticFact('preview.docx_failed')
+        setState({ error: String(error instanceof Error ? error.message : error) })
+      }
     })
 
     return () => { active = false }

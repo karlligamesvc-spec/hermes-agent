@@ -3,6 +3,7 @@ import { defineFieldCopy } from '@/app/settings/field-copy'
 import { defineLocale } from './define-locale'
 
 export const zh = defineLocale({
+  apexDiagnostics: { title: '自动诊断与使用记录', description: '向 APEX 上报版本、任务步骤、耗时和错误分类，保留 30 天。不上传对话、思考、文件内容或原始日志。关闭后停止采集并清理待上传记录。', error: '设置保存失败，请重试。' },
   common: {
     apply: '应用',
     back: '返回',

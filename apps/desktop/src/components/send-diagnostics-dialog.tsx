@@ -21,15 +21,9 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { useI18n } from '@/i18n'
-import { ExternalLink as ExternalLinkAnchor, openExternalLink } from '@/lib/external-link'
-import { ExternalLink, Loader2Icon, Lock } from '@/lib/icons'
+import { ExternalLink as ExternalLinkAnchor } from '@/lib/external-link'
+import { Loader2Icon, Lock } from '@/lib/icons'
 import { $sendDiagnostics, confirmSendDiagnostics, dismissSendDiagnostics } from '@/store/send-diagnostics'
-
-const SUPPORT_LINKS = [
-  { key: 'github', url: 'https://github.com/NousResearch/hermes-agent/issues' },
-  { key: 'portal', url: 'https://portal.nousresearch.com/help' },
-  { key: 'discord', url: 'https://discord.gg/NousResearch' }
-] as const
 
 export function SendDiagnosticsHost() {
   const { t } = useI18n()
@@ -54,9 +48,11 @@ export function SendDiagnosticsHost() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Lock className="size-4 text-(--ui-text-tertiary)" />
-                {copy.title}
+                {t.apexDiagnostics.title}
               </DialogTitle>
-              <DialogDescription className="whitespace-pre-line text-left">{copy.privacyNotice}</DialogDescription>
+              <DialogDescription className="whitespace-pre-line text-left">
+                {t.apexDiagnostics.description}
+              </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button onClick={dismissSendDiagnostics} variant="ghost">
@@ -81,7 +77,7 @@ export function SendDiagnosticsHost() {
               <DialogDescription className="text-left">
                 {state.error}
                 {'\n'}
-                {copy.failedHint}
+                {t.apexDiagnostics.error}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -94,7 +90,7 @@ export function SendDiagnosticsHost() {
           <>
             <DialogHeader>
               <DialogTitle>{copy.doneTitle}</DialogTitle>
-              <DialogDescription className="text-left">{copy.doneDescription}</DialogDescription>
+              <DialogDescription className="text-left">APEX</DialogDescription>
             </DialogHeader>
             {(state.result?.viewUrl || state.result?.uploadId) && (
               <div
@@ -130,15 +126,6 @@ export function SendDiagnosticsHost() {
                 />
               </div>
             )}
-            <div className="text-[0.8rem] text-(--ui-text-secondary)">{copy.handoffLead}</div>
-            <div className="flex flex-wrap gap-1.5">
-              {SUPPORT_LINKS.map(link => (
-                <Button key={link.key} onClick={() => openExternalLink(link.url)} size="sm" variant="outline">
-                  <ExternalLink className="size-3" />
-                  {copy.links[link.key]}
-                </Button>
-              ))}
-            </div>
             <DialogFooter>
               <Button onClick={dismissSendDiagnostics} variant="ghost">
                 {copy.close}

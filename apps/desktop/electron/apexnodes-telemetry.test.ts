@@ -12,6 +12,7 @@ import {
   isTelemetryDisabled,
   normalizeDesktopPlatform,
   sendDesktopTelemetry,
+  setDiagnosticSink,
   STATUS_FAILURE,
   STATUS_START,
   STATUS_SUCCESS,
@@ -301,4 +302,23 @@ test('fireTelemetry: a rejecting Promise from sendFn never becomes an unhandled 
 test('fireTelemetry: a non-function sendFn (e.g. omitted) is a silent no-op', () => {
   assert.doesNotThrow(() => fireTelemetry(undefined, { stage: 'x' }))
   assert.doesNotThrow(() => fireTelemetry(null, { stage: 'x' }))
+})
+
+
+test('Desktop preference disables legacy anonymous beacons too', async () => {
+  let calls = 0
+  setDiagnosticSink(() => {}, () => false)
+
+  try {
+    const reply = await sendDesktopTelemetry({ platform: 'mac', stage: 'download', status: 'failure' }, {
+      _post: async () => { calls++;
+
+ return { ok: true } }
+    })
+
+    assert.equal(reply.skipped, 'disabled')
+    assert.equal(calls, 0)
+  } finally {
+    setDiagnosticSink(() => {})
+  }
 })

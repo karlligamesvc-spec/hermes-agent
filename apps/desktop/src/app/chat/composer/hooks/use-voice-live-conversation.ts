@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useI18n } from '@/i18n'
+import { diagnosticFact } from '@/lib/diagnostic-fact'
 import { QwenRealtimeSession } from '@/lib/qwen-realtime'
 import { sanitizeTextForSpeech } from '@/lib/speech-text'
 import { type LiveHistoryMessage, type LiveTranscriptFragment } from '@/lib/voice-live'
@@ -178,6 +179,8 @@ export function useVoiceLiveConversation({
     spokenResponseIdRef.current = null
     spokenLengthRef.current = 0
     speakingRef.current = false
+
+    if (session) {diagnosticFact('voice.closed')}
     session?.close()
     setMuted(false)
     setLevel(0)
@@ -206,6 +209,8 @@ export function useVoiceLiveConversation({
     }
 
     let fatalErrorReported = false
+    const connectStarted = performance.now()
+    let replyStarted: number | null = null
 
     const session = new QwenRealtimeSession({
       // Qwen's user fragment is a completed ASR item, not a partial delta.
@@ -234,6 +239,8 @@ export function useVoiceLiveConversation({
         setStatus('idle')
 
         if (reason !== 'close_requested') {
+          diagnosticFact('voice.disconnected')
+
           if (!fatalErrorReported) {
             notify({
               kind: 'warning',
@@ -260,6 +267,7 @@ export function useVoiceLiveConversation({
           return
         }
 
+        replyStarted = performance.now()
         setDelegation(delegationId)
         spokenResponseIdRef.current = null
         spokenLengthRef.current = 0
@@ -278,6 +286,7 @@ export function useVoiceLiveConversation({
           }
         })().catch(error => {
           if (sessionRef.current !== session || delegationRef.current !== delegationId) {return}
+          diagnosticFact('voice.delegation_failed')
           notifyError(error, voiceCopy.liveDelegationFailed)
           session.speak(delegationId, 'Sorry, I could not reach Hermes for that request.')
           session.finishDelegation?.(delegationId)
@@ -287,10 +296,17 @@ export function useVoiceLiveConversation({
       },
       onError: (message, fatal) => {
         if (sessionRef.current !== session) {return}
+
+        if (fatal && !fatalErrorReported) {diagnosticFact('voice.error')}
         fatalErrorReported ||= fatal
         notify({ kind: fatal ? 'error' : 'warning', message, title: voiceCopy.liveError })
       },
       onSpeakingChange: speaking => {
+        if (speaking && replyStarted !== null) {
+          diagnosticFact('voice.first_audio', Math.round(performance.now() - replyStarted))
+          replyStarted = null
+        }
+
         speakingRef.current = speaking
         setLevel(speaking ? 0.6 : 0)
         refreshStatus()
@@ -311,6 +327,7 @@ export function useVoiceLiveConversation({
         return
       }
 
+      diagnosticFact('voice.connected', Math.round(performance.now() - connectStarted))
       refreshStatus()
     } catch (error) {
       if (sessionRef.current === session) {
@@ -322,6 +339,8 @@ export function useVoiceLiveConversation({
       if (startEpochRef.current !== epoch) {
         return
       }
+
+      diagnosticFact('voice.connect_failed', Math.round(performance.now() - connectStarted))
 
       if (!fatalErrorReported) {notifyError(error, voiceCopy.couldNotStartSession)}
       setStatus('idle')

@@ -33,6 +33,7 @@ import {
 } from '@/store/connections'
 import { notify, notifyError, readableError } from '@/store/notifications'
 
+import { ApexDiagnosticsSettings } from './apex-diagnostics-settings'
 import { ConnectionsRegistrySection } from './connections-registry'
 import { CONTROL_TEXT } from './constants'
 import { ManagedUpdatesSection } from './managed-updates-section'
@@ -1613,6 +1614,7 @@ export function GatewaySettings({ embedded = false }: { embedded?: boolean } = {
 
       {embedded ? null : (
         <div className="mt-6 grid gap-1">
+          <ApexDiagnosticsSettings />
           <ToggleRow
             checked={keychainEncryption}
             description={g.keychainEncryptionDesc}

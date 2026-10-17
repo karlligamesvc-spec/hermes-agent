@@ -299,6 +299,7 @@ export const en: Translations = {
     dismiss: 'Dismiss'
   },
 
+  apexDiagnostics: { title: 'Automatic diagnostics and usage records', description: 'Send versions, task steps, timings and error categories to APEX; retained for 30 days. No conversations, reasoning, file contents or raw logs. Turning this off stops collection and clears pending records.', error: 'Could not save the setting. Please retry.' },
   sendDiagnostics: {
     title: 'Send diagnostics to Nous',
     privacyNotice:
