@@ -183,6 +183,8 @@ nativeTest('the actual idle scan excludes its owned probe but blocks a live borr
     assert.doesNotThrow(() => process.kill(ready.pid, 0), 'the idle scan must never kill the borrowed worker')
     assert.deepEqual((await assertPackagedRuntimeIdle(active, root, { ownedBackendPids: [ready.pid] }))?.holderPids, [], 'preflight exempts the exact owned backend that will be drained')
     await assert.rejects(assertPackagedRuntimeIdle(active, root, { ownedBackendPids: [process.pid] }), { code: 'runtime_update_busy' }, 'an arbitrary current-app child is not automatically an owned engine')
+    assert.deepEqual((await assertPackagedRuntimeIdle(active, root, { retiringGatewayPids: [ready.pid] }))?.holderPids, [], 'preflight exempts a messaging gateway the switch retires itself')
+    await assert.rejects(assertPackagedRuntimeIdle(active, root, { retiringGatewayPids: [process.pid] }), { code: 'runtime_update_busy' }, 'only the listed gateway is exempt')
     child.kill('SIGTERM')
     let timer: NodeJS.Timeout | undefined
 

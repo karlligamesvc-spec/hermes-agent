@@ -149,6 +149,27 @@ test('unverified ownership does not install or masquerade as a temporary conflic
   } finally { h.updater.dispose() }
 })
 
+test('a deferred install never hands off a different version downloaded meanwhile', async () => {
+  let busy = true
+
+  const h = harness({
+    beforeInstall: async () => {
+      if (busy) {throw new RuntimeUpdateBusy()}
+    },
+    installRetryMs: 10
+  })
+
+  try {
+    h.autoUpdater.emit('update-downloaded', { version: '0.17.57' })
+    assert.deepEqual(await h.ipcMain.invoke('hermes:shell-update:install'), { ok: true, deferred: true })
+    h.autoUpdater.emit('update-downloaded', { version: '0.17.58' })
+    busy = false
+    await waitUntil(() => h.updater.getState().phase === 'error')
+    assert.equal(h.updater.getState().error, 'shell_target_changed')
+    assert.deepEqual(h.autoUpdater.installCalls, [], 'the user asked for 0.17.57, not whatever is downloaded now')
+  } finally { h.updater.dispose() }
+})
+
 async function waitUntil(predicate, timeoutMs = 2000) {
   const deadline = Date.now() + timeoutMs
 

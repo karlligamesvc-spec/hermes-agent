@@ -122,6 +122,114 @@ describe('desktop update orchestration', () => {
     expect($desktopUpdateProgress.get()).toMatchObject({ active: false, error: null, completedStages: ['check'] })
   })
 
+  it('a busy apply on the automatic resume keeps the frozen plan and finishes on the retry', async () => {
+    vi.useFakeTimers()
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-apply-busy-'))
+    const file = path.join(home, 'plan.json')
+    writeDesktopUpdatePlan(file, updatePlan())
+    let activeKey = 'old'
+    const reload = vi.fn()
+
+    const applyUpdate = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, applied: false, deferred: true })
+      .mockImplementationOnce(async () => {
+        activeKey = 'new'
+
+        return { ok: true, applied: true, reloadRequired: false }
+      })
+
+    window.hermesDesktop = {
+      getVersion: async () => ({ appVersion: '0.18.0' }),
+      runtime: {
+        getVersion: async () => ({ ok: true, key: activeKey, version: 'v2026.8.8', treeMatchesMarker: true, updateDeferred: false }),
+        checkUpdate: async () => RUNTIME_UPDATE,
+        applyUpdate
+      },
+      updateCenter: {
+        getPlan: async () => readDesktopUpdatePlan(file),
+        transitionPlan: async (payload: Parameters<typeof transitionDesktopUpdatePlan>[1]) => ({
+          ok: true,
+          plan: transitionDesktopUpdatePlan(file, payload)
+        }),
+        clearPlan: async () => {
+          clearDesktopUpdatePlan(file)
+
+          return { ok: true }
+        }
+      }
+    } as unknown as typeof window.hermesDesktop
+
+    try {
+      await resumeDesktopUpdatePlan({ reload, automatic: true })
+      expect(applyUpdate).toHaveBeenCalledTimes(1)
+      expect(readDesktopUpdatePlan(file)).toMatchObject({ targetRuntimeKey: 'new', lastError: 'runtime_update_busy', phase: 'resuming' })
+      expect($desktopUpdateProgress.get()).toMatchObject({ active: false, error: null })
+
+      // The retry re-enters the same frozen plan despite its recorded attempt
+      // and the once-per-plan latch the automatic resume just set.
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(applyUpdate).toHaveBeenCalledTimes(2)
+      expect(readDesktopUpdatePlan(file)).toBeNull()
+      expect($desktopUpdateProgress.get()).toMatchObject({
+        active: false,
+        error: null,
+        completedStages: ['check', 'shell', 'runtime', 'restart']
+      })
+      expect(reload).not.toHaveBeenCalled()
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it('a deferred shell install leaves the update idle instead of stuck on restart', async () => {
+    $shellUpdate.set(SHELL_UPDATE)
+    const install = vi.fn(async () => ({ ok: true, deferred: true }))
+
+    window.hermesDesktop = {
+      shellUpdate: { install },
+      updateCenter: { setShellOnly: vi.fn(async () => ({ ok: true })), transitionPlan: vi.fn(async () => ({ ok: true })) }
+    } as unknown as typeof window.hermesDesktop
+
+    await applyDesktopUpdates({ reload: vi.fn() })
+
+    expect(install).toHaveBeenCalledTimes(1)
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: false, currentStage: null, error: null })
+  })
+
+  it('resuming a plan whose downloaded shell is not running yet asks for that shell again', async () => {
+    $shellUpdate.set(SHELL_UPDATE)
+    const install = vi.fn(async () => ({ ok: true, deferred: true }))
+
+    window.hermesDesktop = {
+      getVersion: vi.fn(async () => ({ appVersion: '0.17.14' })),
+      shellUpdate: { install },
+      updateCenter: { getPlan: vi.fn(async () => updatePlan()), transitionPlan: vi.fn(async () => ({ ok: true })) }
+    } as unknown as typeof window.hermesDesktop
+
+    await resumeDesktopUpdatePlan({ reload: vi.fn() })
+
+    expect(install).toHaveBeenCalledTimes(1)
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: false, error: null })
+  })
+
+  it('dismissing the update state cancels a pending deferred retry', async () => {
+    vi.useFakeTimers()
+    $runtimeUpdateCheck.set(RUNTIME_UPDATE)
+    const getPlan = vi.fn(async () => null)
+
+    window.hermesDesktop = {
+      runtime: { applyUpdate: async () => ({ ok: true, applied: false, deferred: true }) },
+      updateCenter: { getPlan, setRuntimeAfterShell: async () => ({ ok: true }), transitionPlan: async () => ({ ok: true }) }
+    } as unknown as typeof window.hermesDesktop
+
+    await applyDesktopUpdates({ reload: vi.fn() })
+    dismissDesktopUpdateError()
+    await vi.advanceTimersByTimeAsync(30_000)
+
+    expect(getPlan).not.toHaveBeenCalled()
+  })
+
   it.each([false, true])('bounds failed activation across a fresh renderer (activated=%s)', async activated => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-reload-loop-'))
     const file = path.join(home, 'plan.json')

@@ -207,6 +207,29 @@ test.each(['bundled', 'legacy-override', 'preserved', 'failed'] as const)(
   }
 )
 
+test.each([
+  [undefined, false],
+  [false, false],
+  [true, true]
+])('the version read reports a deferred engine update (reporter=%s)', async (deferred, expected) => {
+  const handlers = new Map<string, () => Promise<any>>()
+
+  const ipcMain = {
+    handle: (channel: string, listener: () => Promise<any>) => handlers.set(channel, listener)
+  } as unknown as Pick<IpcMain, 'handle'>
+
+  registerRuntimeVersionIpc(ipcMain, {
+    waitForRuntimePreparation: async () => {},
+    readMarker: () => previous,
+    readTreeCommit: () => previous.pinnedCommit,
+    minEngineVersion: () => null,
+    ...(deferred === undefined ? {} : { updateDeferred: () => deferred }),
+    log: () => {}
+  })
+
+  assert.equal((await handlers.get('hermes:runtime:version')!()).updateDeferred, expected)
+})
+
 test('version reads do not start preparation or join unrelated remote/custom/diagnostic starts', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-version-inert-'))
   const base = { isPackaged: true, diagnostic: false, remote: false, managedRestorePending: false }

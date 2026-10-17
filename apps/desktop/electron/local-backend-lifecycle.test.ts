@@ -44,6 +44,16 @@ test('update fences late starts, drains all owned children and permits restart a
   assert.throws(() => lifecycle.spawn(create), /quitting/)
 })
 
+test('the update preflight sees every owned child until it is released', () => {
+  const lifecycle = createLocalBackendLifecycle({ stopChild: () => {}, waitForExit: async () => {}, cancelSetup: () => {} })
+  const backend = lifecycle.spawn(() => ({ kind: 'backend' }))
+  const messaging = lifecycle.spawn(() => ({ kind: 'messaging' }))
+
+  assert.deepEqual(lifecycle.ownedChildren(), [backend, messaging])
+  lifecycle.release(backend)
+  assert.deepEqual(lifecycle.ownedChildren(), [messaging])
+})
+
 test.each([false, true])('an already-tracked start is joined before its bundle gate exists (failed=%s)', async fails => {
   const prepare = deferred()
   const entered = deferred()
