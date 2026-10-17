@@ -150,6 +150,7 @@ import {
   reconcileManagedRelayKey,
   renewedTokenFromHeaders,
   resolveApexEndpoints,
+  SEED_PRODUCT_DEFAULTS_BLOCK,
   seedPluginsBlockYaml,
   seedSkillsBlockYaml,
   seedWebGatewayBlockYaml,
@@ -570,6 +571,7 @@ import {
   type SecretStoragePolicy,
   writeSecretStoragePolicy
 } from './secret-storage-policy'
+import { keepSessionHistoryInEveryProfile } from './session-retention'
 import {
   buildInstanceWindowUrl,
   buildSessionWindowUrl,
@@ -18959,50 +18961,6 @@ const SEED_DISPLAY_BLOCK =
   '  language: zh\n' +
   '  show_reasoning: true\n'
 
-// APEX product defaults appended to every seed alongside SEED_DISPLAY_BLOCK.
-// The apex.generation_image_model extension is read by the APEX image tool;
-// the other keys exist in the runtime schema. Image-input/timezone match today's runtime
-// defaults; iteration budgets match Hermes' deep-work defaults:
-//   agent.image_input_mode: auto — image attachments go native only to
-//     vision-capable models, otherwise text pre-analysis (config.py agent block).
-//   agent.response_language: display — answers, progress and task lists follow
-//     the selected shell language (Simplified Chinese on a fresh APEX install).
-//   timezone: '' — empty means "server-local time" (config.py top-level
-//     timezone), which on a desktop IS the OS timezone, i.e. follow-the-OS.
-//   agent.max_turns: 500 — main agent per-turn tool-call budget.
-//   delegation.max_iterations: 250 — independent per-child budget.
-// Top-level keys here must not collide with the other seed
-// blocks (model:/custom_providers:/display:/skills:/plugins: — see
-// seedDefaultModelConfig). skills.creation_nudge_interval is emitted by
-// seedSkillsBlockYaml so the seed still has exactly one `skills:` mapping.
-const SEED_PRODUCT_DEFAULTS_BLOCK =
-  '# APEX product defaults: image attachments auto-routed by model vision;\n' +
-  'apex:\n' +
-  '  generation_image_model: gpt-image-2.5-flare\n' +
-  '  generation_video_model: doubao-seedance-2-0-mini-260615\n' +
-  '# Hermes-aligned deep-work budgets: main=500 / child=250; durable sessions;\n' +
-  '# manual approvals; periodic memory/Skill nudges and iron-proxy off;\n' +
-  '# full 2,000-line tool output; empty timezone =\n' +
-  '# follow the OS (server-local) clock.\n' +
-  'agent:\n' +
-  '  image_input_mode: auto\n' +
-  '  response_language: display\n' +
-  '  max_turns: 500\n' +
-  'delegation:\n' +
-  '  max_iterations: 250\n' +
-  'tool_output:\n' +
-  '  max_lines: 2000\n' +
-  'session_reset:\n' +
-  '  mode: none\n' +
-  'approvals:\n' +
-  '  mode: manual\n' +
-  'memory:\n' +
-  '  nudge_interval: 0\n' +
-  'proxy:\n' +
-  '  enabled: false\n' +
-  "timezone: ''\n" +
-  '_apex_budget_defaults_version: 2\n'
-
 // Curated domestic MoA preset (managed seed only — every slot routes through
 // the relay via the global `custom` endpoint, so BYOK installs without a relay
 // key can't run it). Orchestration rationale — anchored on the 2026-06-29
@@ -21076,6 +21034,7 @@ async function refreshPlatformPluginsFromPlatform(reason) {
 // before the gateway starts, which is what makes the product defaults hold
 // everywhere rather than only on a clean first install.
 function guardConfigYamlProductBlocks(reason) {
+  keepSessionHistoryInEveryProfile(HERMES_HOME, rememberLog)
   // A pass that finds the file changed under it between read and write yields
   // rather than clobbering the other writer, and says so — recompute against
   // the new content and try again. The healers are add-only and idempotent, so
