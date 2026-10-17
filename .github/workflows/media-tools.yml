@@ -5,7 +5,9 @@ on:
   workflow_dispatch:
   push:
     branches: [main, codex/hc-906-bundled-media-tools]
-    paths: ['scripts/media-tools/**', '.github/workflows/media-tools.yml']
+    paths: ['scripts/media-tools/**', 'apex_overlay/hypit*', 'apex_overlay/media_tools.py', '.github/workflows/media-tools.yml']
+  pull_request:
+    paths: ['scripts/media-tools/**', 'apex_overlay/hypit*', 'apex_overlay/media_tools.py', '.github/workflows/media-tools.yml']
 
 permissions:
   contents: read
@@ -32,6 +34,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
+      - name: Verify project argument and lock compatibility
+        run: node --test scripts/media-tools/hypit-project.test.mjs
       - name: Verify Hypit package and native installation
         run: python scripts/media-tools/hypit.py hypit-package
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

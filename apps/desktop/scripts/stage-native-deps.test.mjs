@@ -9,11 +9,37 @@ import {
   installGetWindowsNativeBinding,
   stageGetWindows,
   stageGetWindowsInto,
+  stageNodePty,
   stageNodePtyInto,
   classifyNativeBinary
 } from '../scripts/stage-native-deps.mjs'
 
 const { join } = path
+
+test('packaging replaces both native dependency exits with the requested architecture', () => {
+  const root = fs.mkdtempSync(join(os.tmpdir(), 'apex-native-exits-'))
+  try {
+    const source = join(root, 'source')
+    makeFakeNodePty(source, { prebuildPlatform: 'darwin', prebuildArch: 'arm64' })
+    makeFakeNode(join(source, 'prebuilds/darwin-x64/pty.node'), 'darwin')
+    const arm = fs.readFileSync(join(source, 'prebuilds/darwin-arm64/pty.node'))
+    const x64 = Buffer.concat([arm, Buffer.from('x64 fixture')])
+    fs.writeFileSync(join(source, 'prebuilds/darwin-x64/pty.node'), x64)
+    const appRoot = join(root, 'app')
+
+    for (const arch of ['arm64', 'x64']) {
+      stageNodePty({ platform: 'darwin', arch, srcRoot: source, appRoot })
+
+      for (const exit of ['dist/node_modules/node-pty', 'build/native-deps/node-pty']) {
+        const packageRoot = join(appRoot, exit)
+        assert.deepEqual(fs.readFileSync(join(packageRoot, `prebuilds/darwin-${arch}/pty.node`)), arch === 'arm64' ? arm : x64)
+        assert.equal(fs.existsSync(join(packageRoot, `prebuilds/darwin-${arch === 'arm64' ? 'x64' : 'arm64'}`)), false)
+      }
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
 
 // ─── fixtures ──────────────────────────────────────────────────────
 //

@@ -343,10 +343,16 @@ export function stageNodePtyInto(srcRoot, destRoot, { platform = process.platfor
   return destRoot
 }
 
-export function stageNodePty({ platform = process.platform, arch = process.arch } = {}) {
-  const srcRoot = resolveNodePtyRoot()
-  const destRoot = resolve(projectRoot, 'dist/node_modules/node-pty')
-  return stageNodePtyInto(srcRoot, destRoot, { platform, arch })
+export function stageNodePty({ platform = process.platform, arch = process.arch,
+  srcRoot = resolveNodePtyRoot(), appRoot = projectRoot } = {}) {
+  const destRoot = resolve(appRoot, 'dist/node_modules/node-pty')
+  stageNodePtyInto(srcRoot, destRoot, { platform, arch })
+  // Electron also loads the extraResources fallback. Replace it from the
+  // same validated target tree so a foreign-arch pack cannot retain host files.
+  const resourcesRoot = resolve(appRoot, 'build/native-deps/node-pty')
+  rmSync(resourcesRoot, { recursive: true, force: true })
+  cpSync(destRoot, resourcesRoot, { recursive: true })
+  return destRoot
 }
 
 // ─── get-windows (read_window_below tool) ────────────────────────────
