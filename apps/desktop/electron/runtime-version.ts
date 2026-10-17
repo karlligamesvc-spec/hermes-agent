@@ -32,9 +32,29 @@ export async function waitForPendingRuntimePreparation(
   await dependencies.waitForPackagedEngine()
 }
 
+interface RuntimeMarker {
+  pinnedCommit?: string | null
+  pinnedBranch?: string | null
+  version?: string | null
+}
+
+/** The installed marker already records this pin, and the pin's version has not moved since. */
+export function markerMatchesPin(
+  marker: RuntimeMarker | null | undefined,
+  pin: { key?: unknown; version?: string | null }
+): boolean {
+  const installedKey = (marker && (marker.pinnedCommit || marker.pinnedBranch)) || null
+
+  if (!installedKey || String(installedKey) !== String(pin.key)) {
+    return false
+  }
+
+  return !(marker && marker.version && pin.version && marker.version !== pin.version)
+}
+
 interface RuntimeVersionDependencies {
   waitForRuntimePreparation: () => Promise<void>
-  readMarker: () => { pinnedCommit?: string | null; pinnedBranch?: string | null; version?: string | null } | null
+  readMarker: () => RuntimeMarker | null
   readTreeCommit: () => string | null
   minEngineVersion: () => string | null
   updateDeferred?: () => boolean

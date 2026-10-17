@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { createDeferredRuntimeUpdate } from './deferred-runtime-update'
+import { createDeferredRuntimeUpdate, createPackagedEngineDeferral } from './deferred-runtime-update'
 import { RuntimeUpdateBusy } from './runtime-update-busy'
 
 afterEach(() => vi.useRealTimers())
@@ -55,4 +55,75 @@ test('quitting during preflight cancels deferred activation', async () => {
   await vi.advanceTimersByTimeAsync(1000)
   expect(install).not.toHaveBeenCalled()
   expect(activated).not.toHaveBeenCalled()
+})
+
+function packagedDeferral(results: { reason?: 'busy' | 'upgrade-failed'; status: 'current' | 'installed' | 'preserved' }[]) {
+  const order: string[] = []
+  const log = vi.fn()
+
+  const deferral = createPackagedEngineDeferral({
+    preflight: async () => void order.push('preflight'),
+    track: async run => {
+      order.push('track:start')
+
+      try {
+        return await run()
+      } finally {
+        order.push('track:end')
+      }
+    },
+    reinstall: async () => {
+      order.push('reinstall')
+
+      return { ...results.shift()!, runtimeCommit: 'target' }
+    },
+    clearPin: () => void order.push('clear-pin'),
+    activated: () => void order.push('activated'),
+    log,
+    retryMs: 100
+  })
+
+  return { deferral, log, order }
+}
+
+test('only a busy install with a usable engine is reported as deferred and retried', () => {
+  const { deferral } = packagedDeferral([])
+
+  expect(deferral.deferIfBusy(new RuntimeUpdateBusy(), () => true)).toBe(true)
+  expect(deferral.isDeferred()).toBe(true)
+  deferral.settle()
+  expect(deferral.isDeferred()).toBe(false)
+  expect(deferral.deferIfBusy(new RuntimeUpdateBusy(), () => false)).toBe(false)
+  expect(deferral.deferIfBusy(new Error('checksum mismatch'), () => true)).toBe(false)
+  expect(deferral.isDeferred()).toBe(false)
+  deferral.dispose()
+})
+
+test('the retry installs inside the tracked start, clears the pin there, then activates', async () => {
+  vi.useFakeTimers()
+  const { deferral, order } = packagedDeferral([{ status: 'installed' }])
+
+  deferral.deferIfBusy(new RuntimeUpdateBusy(), () => true)
+  await vi.advanceTimersByTimeAsync(100)
+
+  expect(order).toEqual(['preflight', 'track:start', 'reinstall', 'clear-pin', 'track:end', 'activated'])
+  deferral.dispose()
+})
+
+test('a retry that is still busy keeps the pin and tries again; a failed upgrade stops for good', async () => {
+  vi.useFakeTimers()
+
+  const { deferral, log, order } = packagedDeferral([
+    { reason: 'busy', status: 'preserved' },
+    { reason: 'upgrade-failed', status: 'preserved' }
+  ])
+
+  deferral.deferIfBusy(new RuntimeUpdateBusy(), () => true)
+  await vi.advanceTimersByTimeAsync(1_000)
+
+  expect(order.filter(step => step === 'reinstall')).toHaveLength(2)
+  expect(order).not.toContain('clear-pin')
+  expect(order).not.toContain('activated')
+  expect(log).toHaveBeenLastCalledWith(expect.stringContaining('Bundled upgrade was not activated'))
+  deferral.dispose()
 })

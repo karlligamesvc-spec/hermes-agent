@@ -1,3 +1,4 @@
+import type { PackagedRuntimeResult } from './packaged-runtime'
 import { isRuntimeUpdateBusy } from './runtime-update-busy'
 
 /** Retry only an occupancy conflict. Failed verification is never an auto-reload loop. */
@@ -41,4 +42,65 @@ export function createDeferredRuntimeUpdate(deps: {
   }
 
   return { schedule, dispose: () => { disposed = true; clearTimeout(timer); timer = undefined } }
+}
+
+/**
+ * At boot a busy packaged upgrade keeps the usable engine: report the deferral
+ * and retry in the background until the target activates. Only occupancy is
+ * retried; a preserved (failed) upgrade stops the retry.
+ */
+export function createPackagedEngineDeferral(deps: {
+  preflight: () => Promise<void>
+  /** Runs each retry's install as a tracked lifecycle start (hc-919 C3). */
+  track: <T>(run: () => Promise<T>) => Promise<T>
+  reinstall: () => Promise<PackagedRuntimeResult>
+  clearPin: () => void
+  activated: () => void
+  log: (message: string) => void
+  retryMs?: number
+}) {
+  let deferred = false
+
+  const retry = createDeferredRuntimeUpdate({
+    preflight: deps.preflight,
+    install: () =>
+      deps.track(async () => {
+        const result = await deps.reinstall()
+
+        if (result.reason === 'busy') {
+          return false
+        }
+
+        if (result.status === 'preserved') {
+          throw new Error('Bundled upgrade was not activated')
+        }
+
+        deps.clearPin()
+
+        return true
+      }),
+    activated: deps.activated,
+    log: deps.log,
+    retryMs: deps.retryMs
+  })
+
+  return {
+    isDeferred: () => deferred,
+    /** The install finished (installed or current): nothing is waiting. */
+    settle: () => {
+      deferred = false
+    },
+    /** True, and the retry armed, when only occupancy blocked the install and the old engine still works. */
+    deferIfBusy: (error: unknown, usable: () => boolean) => {
+      deferred = isRuntimeUpdateBusy(error) && usable()
+
+      if (deferred) {
+        deps.log('[bundled-engine] deferred while existing work finishes; keeping the current engine usable')
+        retry.schedule()
+      }
+
+      return deferred
+    },
+    dispose: retry.dispose
+  }
 }

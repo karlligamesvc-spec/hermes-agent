@@ -69,7 +69,8 @@ export async function queueDeferredRuntimeUpdate(runtime: DesktopRuntimeUpdateCh
     targetRuntimeKey: runtimeTargetKey(runtime), targetRuntimeVersion: runtimeTarget(runtime),
     targetShellVersion: options.targetShellVersion ?? null
   })
-  if (!saved?.ok) {throw new Error(saved?.error || 'failed_to_persist_update_plan')}
+
+  requirePlanSaved(saved)
   await deferRuntimeUpdate(options.reload ?? (() => window.location.reload()))
 }
 
@@ -162,6 +163,35 @@ function runtimeMatchesPlan(runtime: DesktopRuntimeVersion, plan: DesktopUpdateP
   return Boolean(target) && comparableVersion(current) === comparableVersion(target)
 }
 
+/** The checked runtime no longer offers the target this plan froze. */
+function runtimeTargetChanged(runtime: DesktopRuntimeUpdateCheck, plan: DesktopUpdatePlan): boolean {
+  return Boolean(
+    (plan.targetRuntimeKey &&
+      comparableVersion(runtimeTargetKey(runtime)) !== comparableVersion(plan.targetRuntimeKey)) ||
+      (plan.targetRuntimeVersion &&
+        comparableVersion(runtimeTarget(runtime)) !== comparableVersion(plan.targetRuntimeVersion))
+  )
+}
+
+/** A plan that already failed or ran is not resumed automatically again, unless it only waited for a busy engine. */
+function automaticRetrySpent(plan: DesktopUpdatePlan): boolean {
+  return plan.lastError !== 'runtime_update_busy' && (plan.attempts > 0 || plan.phase === 'failed')
+}
+
+/** The plan's frozen shell is downloaded but not running yet. */
+function plannedShellDownloaded(plan: DesktopUpdatePlan): boolean {
+  const shell = $shellUpdate.get()
+
+  return shellReady(shell) && comparableVersion(shell?.version) === comparableVersion(plan.targetShellVersion)
+}
+
+/** A continuation the main process could not persist stops the update before anything restarts. */
+function requirePlanSaved(result: { error?: string; ok: boolean } | null | undefined): void {
+  if (!result?.ok) {
+    throw new Error(result?.error || 'failed_to_persist_update_plan')
+  }
+}
+
 async function transitionPlanSafely(payload: {
   phase: 'failed' | 'ready-to-restart' | 'resuming'
   lastError?: string | null
@@ -248,9 +278,7 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
         targetShellVersion: shell?.version ?? null
       })
 
-      if (!result?.ok) {
-        throw new Error(result?.error || 'failed_to_persist_update_plan')
-      }
+      requirePlanSaved(result)
 
       setProgress({ currentStage: 'restart' })
       await installShellWhenIdle()
@@ -287,9 +315,7 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
         targetShellVersion: shell?.version ?? null
       })
 
-      if (!result?.ok) {
-        throw new Error(result?.error || 'failed_to_persist_update_plan')
-      }
+      requirePlanSaved(result)
 
       await installShellWhenIdle()
 
@@ -367,12 +393,14 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
       const runningDesktop = await window.hermesDesktop?.getVersion?.()
 
       if (!shellMeetsPlan(runningDesktop?.appVersion, plan.targetShellVersion)) {
-        const shell = $shellUpdate.get()
-        if (shellReady(shell) && comparableVersion(shell?.version) === comparableVersion(plan.targetShellVersion)) {
-          await installShellWhenIdle()
-          return
+        if (!plannedShellDownloaded(plan)) {
+          throw new Error('shell_target_not_running')
         }
-        throw new Error('shell_target_not_running')
+
+        // Ask for the downloaded target shell again; its install waits for idle.
+        await installShellWhenIdle()
+
+        return
       }
 
       const runningRuntime = await loadRuntimeVersion()
@@ -411,7 +439,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
         return
       }
 
-      if (options.automatic && plan.lastError !== 'runtime_update_busy' && (plan.attempts > 0 || plan.phase === 'failed')) {
+      if (options.automatic && automaticRetrySpent(plan)) {
         throw new Error(plan.lastError || 'runtime_target_not_active')
       }
 
@@ -425,12 +453,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
         throw new Error('updated_shell_still_incompatible')
       }
 
-      if (
-        (plan.targetRuntimeKey &&
-          comparableVersion(runtimeTargetKey(runtime)) !== comparableVersion(plan.targetRuntimeKey)) ||
-        (plan.targetRuntimeVersion &&
-          comparableVersion(runtimeTarget(runtime)) !== comparableVersion(plan.targetRuntimeVersion))
-      ) {
+      if (runtimeTargetChanged(runtime, plan)) {
         throw new Error('runtime_target_changed')
       }
 

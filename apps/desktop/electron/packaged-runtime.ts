@@ -130,6 +130,16 @@ export function readPackagedRuntime(resourcesPath: string, platform: NodeJS.Plat
   return { release, manifest, archivePath: path.join(resources, archiveName) }
 }
 
+/**
+ * How an installer-bundled (offline) update armed for `pinnedCommit` ended at boot. A busy engine
+ * keeps the frozen pin for the deferred retry; anything but the activated pin rolls it back.
+ */
+export function offlineBundledOutcome(result: PackagedRuntimeResult, pinnedCommit: string): 'activated' | 'deferred' | 'failed' {
+  if (result.reason === 'busy') {return 'deferred'}
+
+  return result.status === 'preserved' || result.runtimeCommit !== pinnedCommit ? 'failed' : 'activated'
+}
+
 /** The opt-in update can reuse the offline payload only for the exact requested source pin. */
 export function packagedRuntimeMatchesPin(resourcesPath: string, commit: string | null | undefined): boolean {
   if (!commit) {return false}

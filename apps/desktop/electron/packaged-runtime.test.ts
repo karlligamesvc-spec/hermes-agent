@@ -20,10 +20,12 @@ import {
   assertPackagedRuntimeIdle,
   createPackagedRuntimeGate,
   installPackagedRuntime,
+  offlineBundledOutcome,
   packagedRuntimeDecision,
   packagedRuntimeMatchesPin,
   type PackagedRuntimeOptions,
   type PackagedRuntimeRelease,
+  type PackagedRuntimeResult,
   readPackagedRuntime,
   shouldInstallPackagedRuntime
 } from './packaged-runtime'
@@ -743,4 +745,14 @@ test('bundled engine owns setup from cold verification through completion and fa
   assert.equal(events.some(event => event.type === 'complete'), false)
   await retry()
   assert.deepEqual(events.slice(-4).map(event => event.type), ['manifest', 'stage', 'stage', 'complete'])
+})
+
+test.each([
+  [{ reason: 'busy', runtimeCommit: 'old', status: 'preserved' }, 'deferred'],
+  [{ runtimeCommit: 'pin', status: 'installed' }, 'activated'],
+  [{ runtimeCommit: 'pin', status: 'current' }, 'activated'],
+  [{ runtimeCommit: 'other', status: 'installed' }, 'failed'],
+  [{ reason: 'upgrade-failed', runtimeCommit: 'pin', status: 'preserved' }, 'failed']
+])('an installer-bundled update ending %o is %s for its pin', (result, outcome) => {
+  assert.equal(offlineBundledOutcome(result as PackagedRuntimeResult, 'pin'), outcome)
 })
