@@ -241,3 +241,56 @@ Windows never reached that step; it failed earlier on a transient npm `ECONNRESE
     was Apple ticket propagation: the submission was Accepted, but three online `--check-notarization`
     assessments 5 s and 15 s apart still failed. Per Kael's 2026-10-17 decision 6, a notarization
     timeout is rerun rather than the upstream notarize retry being ported in 0.17.58.
+
+## Windows NSIS upgrade from public 0.17.57 (win-5090, 2026-10-17)
+
+Installers: the public `APEX-0.17.57-win-x64.exe` from the COS feed (sha512 matches its `latest.yml`) and the
+candidate `APEX-0.17.58-win-x64.exe` from run 39026303436 (733,545,019 bytes, the artifact's own sha512).
+Both were installed silently per user (`/S`). The app ran against an isolated `HERMES_HOME` and user-data
+dir with a local mock LLM, so none of the machine's own data was involved.
+
+- **0.17.57 baseline**: installer exit 0, `APEX.exe` 0.17.57.0, one HKCU uninstall entry, Start Menu and
+  Desktop `APEX.lnk`, engine `f043a490e0f8`. Seeded with two chats of 2 messages each, a cloned `tester`
+  profile and a non-default `approvals.mode: 'off'`.
+- **Upgrade in place** with the candidate: exit 0, `APEX.exe` 0.17.58.0, the same uninstall GUID now at
+  0.17.58, bundled runtime `d33534879169`.
+- **First upgraded boot**:
+  - It committed `versions/d33534879169` and activated `v2026.10.17-fork.d3353487`, keeping `f043a490e0f8`
+    beside it.
+  - Engine setup took 3m45s, 3m23s of it the per-file verify. 0.17.57's own first install spent 3m13s in the
+    same step, so this is not a regression.
+  - The config guard filled `sessions.auto_prune: false` in the default home and in `profiles/tester`.
+  - The backend served both profile homes.
+- **Data**:
+  - The four 0.17.57 messages are byte-identical: the sha256 over all rows equals the pre-upgrade value.
+  - `.env` and `SOUL.md` are unchanged.
+  - Each `config.yaml` differs from its pre-upgrade bytes only by the appended `sessions:` /
+    `auto_prune: false` block; removing the block reproduces the old sha256. `approvals.mode: 'off'` and every
+    other key are preserved. The block is LF inside a CRLF file, the known two-writer shape hc-643 handles.
+- **UI**:
+  - A user who is not signed in sees the sign-in screen on every launch. "使用自己的密钥" sets it aside for
+    that session only (`markManagedUnavailable`, unchanged since 0.17.57).
+  - After that, both sessions were listed and opened with their content.
+  - A new message in the first 0.17.57 session got the mock's reply in 3 s.
+  - The identity layer held: APEX logo and name, Chinese UI, and `v0.17.58`, gateway ready and full access in
+    the status bar.
+  - `errors.log` had only the expected mock-model context-length warning per boot, and `desktop.log` had no
+    errors.
+- **Uninstall** (`Uninstall APEX.exe /S /currentuser`):
+  - Exit 0. The install dir (823 files), the uninstall entry and both `APEX.lnk` shortcuts are gone, and no
+    `HKCU\Software\<app GUID>` key is left.
+  - The OneClickSetup `APEX Desktop.lnk` and `%LOCALAPPDATA%\APEX\ApexMedia` are byte-identical before and
+    after.
+  - No `%APPDATA%\APEX` or `~\.hermes` was created, and the isolated test data was not touched.
+- **Outside interference, not a product fault**:
+  - The window was closed three times from outside the app, at 21:28:14, 21:36:04 and 21:38:24 local time.
+    The last close came 7 s after the window reached the foreground, with no action from this session.
+  - Each was an ordinary window close: `window-state.json` flushed, then the backend stopped. Nothing in the
+    app closes its main window.
+  - A console-session watcher recorded live keyboard and mouse input while APEX was in the foreground, and
+    the foreground then moved to WeChat and the ChatGPT app.
+  - So the `tester` profile was not opened in the UI. Its config fill and backend hosting were verified from
+    disk and logs instead.
+- Still open for the release: the real-account sign-in (Kael), a real-model run, the `publish=true` paired
+  release through `desktop-release.yml` with the feed read-back, and Windows signing (the installer is still
+  unsigned).
