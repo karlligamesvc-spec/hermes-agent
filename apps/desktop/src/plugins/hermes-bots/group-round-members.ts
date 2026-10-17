@@ -6,7 +6,10 @@ import {
   GROUP_CHAT_HISTORY_LIMIT,
   GROUP_CHAT_MAX_CONTINUATIONS,
   GROUP_CHAT_MAX_MESSAGES,
+  groupChatEntryIndex,
   groupThreadOf,
+  groupWatermarkPastOwnEntry,
+  groupWatermarkPastShown,
   shouldCommitMemberTurn,
   updateGroupChat
 } from './group-chat'
@@ -188,8 +191,8 @@ export async function runGroupRoundMember(
   }
 
   const epochNow = roomNow.epoch || 0
-  const anchorId = room.log.length ? room.log[room.log.length - 1].id : null
-  const anchorIdx = anchorId === null ? -1 : roomNow.log.findIndex((e: GroupMessage) => e.id === anchorId)
+  const lastShown = room.log[room.log.length - 1]
+  const anchorIdx = groupChatEntryIndex(roomNow.log, lastShown)
   // Anchor trimmed away ⇒ every pre-turn entry was dropped, so every
   // surviving entry is newer — scanning the whole log stays exact.
   const turnTail = anchorIdx >= 0 ? roomNow.log.slice(anchorIdx + 1) : roomNow.log
@@ -208,15 +211,16 @@ export async function runGroupRoundMember(
     return null
   }
 
-  // The member has now seen everything up to the pre-reply log length.
+  // The member has now seen the log its prompt was built from, but not what
+  // landed while the turn ran.
   updateGroupChat(context.group, (r: GroupChatRoom) => {
-    r.watermarks[markKey] = r.log.length
+    r.watermarks[markKey] = groupWatermarkPastShown(r.log, lastShown, r.watermarks[markKey] || 0)
 
     return r
   })
 
   if (reply !== null && !isGroupPassText(reply)) {
-    appendGroupChatEntry(
+    const own = appendGroupChatEntry(
       context.group,
       {
         kind: 'member',
@@ -230,9 +234,11 @@ export async function runGroupRoundMember(
       reply,
       thread
     )
-    // Its own message counts as seen too.
+
+    // Its own message counts as seen too, unless an entry it was not shown
+    // landed in this thread before it.
     updateGroupChat(context.group, (r: GroupChatRoom) => {
-      r.watermarks[markKey] = r.log.length
+      r.watermarks[markKey] = groupWatermarkPastOwnEntry(r.log, own, thread, r.watermarks[markKey] || 0)
 
       return r
     })
@@ -308,14 +314,18 @@ async function runGroupContinuationMember(
     return null
   }
 
+  // Same commit as a round turn: seen through the prompt's log, then past its
+  // own reply only when nothing unseen in this thread precedes it.
+  const lastShown = room.log[room.log.length - 1]
+
   updateGroupChat(context.group, (r: GroupChatRoom) => {
-    r.watermarks[markKey] = r.log.length
+    r.watermarks[markKey] = groupWatermarkPastShown(r.log, lastShown, r.watermarks[markKey] || 0)
 
     return r
   })
 
   if (continuationReply !== null && !isGroupPassText(continuationReply)) {
-    appendGroupChatEntry(
+    const own = appendGroupChatEntry(
       context.group,
       {
         kind: 'member',
@@ -329,8 +339,9 @@ async function runGroupContinuationMember(
       continuationReply,
       thread
     )
+
     updateGroupChat(context.group, (r: GroupChatRoom) => {
-      r.watermarks[markKey] = r.log.length
+      r.watermarks[markKey] = groupWatermarkPastOwnEntry(r.log, own, thread, r.watermarks[markKey] || 0)
 
       return r
     })
