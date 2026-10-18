@@ -3,6 +3,8 @@
 // signed release builds, so a private copy of these drifted unnoticed when #386
 // changed the idle gate and gateway retirement. electron/runtime-smoke-contract.test.ts
 // keeps both consumers on this one copy and the anchor on the product line.
+import fs from 'node:fs'
+import path from 'node:path'
 
 /** The exact holder filter in assertPackagedRuntimeIdle that the Windows smoke reverses. */
 export const IDLE_PID_FILTER_ANCHOR = 'const holderPids = result.holders.filter((pid: number) => pid !== ownedProbePid && !options.retiringGatewayPids?.includes(pid))'
@@ -43,4 +45,43 @@ export function gatewayFixtureScript({ wedged }: { wedged: boolean }): string {
 /** gateway_state.json for the fixture's own PID record: serving, with `activeAgents` IM turns in flight. */
 export function gatewayRuntimeState(record: Record<string, unknown>, activeAgents: number) {
   return { ...record, gateway_state: 'running', active_agents: activeAgents }
+}
+
+/**
+ * Stamp a copied legacy engine tree for its own location, as the installer's fixup stamped the
+ * original: pyvenv.cfg `home` and the editable-install finders name `source`, so the copy would
+ * still run the source tree's interpreter and code. Windows shows it (its venv launcher starts the
+ * interpreter `home` names, outside the copy); macOS hides it (venv/bin/python is a relative link).
+ * Every spelling the fixup rewrites (raw, backslash-escaped, forward-slashed) moves with the tree.
+ */
+export function relocateCopiedLegacyTree(source: string, root: string) {
+  const forms = (value: string) => [value, value.split('\\').join('\\\\'), value.split('\\').join('/')]
+  const from = forms(source)
+  const to = forms(root)
+
+  const rewrite = (file: string) => {
+    const original = fs.readFileSync(file, 'utf8')
+    const text = from.reduce((current, form, index) => current.split(form).join(to[index]), original)
+
+    if (text !== original) {fs.writeFileSync(file, text)}
+
+    return text !== original
+  }
+
+  const venv = path.join(root, 'venv')
+
+  if (!rewrite(path.join(venv, 'pyvenv.cfg'))) {
+    throw new Error(`the copied venv does not name ${source}; nothing to relocate`)
+  }
+
+  const lib = path.join(venv, 'lib')
+  const sitePackages = [path.join(venv, 'Lib', 'site-packages'), ...(fs.existsSync(lib) ? fs.readdirSync(lib).map(name => path.join(lib, name, 'site-packages')) : [])]
+
+  const editable = [...new Set(sitePackages)].filter(dir => fs.existsSync(dir)).flatMap(dir =>
+    fs.readdirSync(dir).filter(name => name.startsWith('__editable__') && /\.(py|pth)$/.test(name)).map(name => path.join(dir, name)))
+
+  const rewritten = editable.filter(rewrite).map(file => path.relative(root, file))
+  fs.writeFileSync(path.join(root, '.runtime', 'fixup-state.json'), JSON.stringify({ current_root: root, stamped_at: new Date().toISOString() }, null, 2) + '\n')
+
+  return { rewritten }
 }
