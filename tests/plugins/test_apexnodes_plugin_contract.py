@@ -26,19 +26,24 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import io
 import json
 import sys
 import types
+import urllib.error
 from pathlib import Path
 
 import pytest
+
+from agent.display import _detect_tool_failure
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 
 # 与 cloud 侧 tests/test_hc563_plugin_tools_contract.py 内嵌的是同一个值。
-EXPECTED_CONTRACT_SHA256 = "fb502ead41570632b6378237fcf841e8d2ff19e093c44a510788695aab932926"
-EXPECTED_CONTRACT_VERSION = 6
+# v7(hc-926):media_transcribe 对无人声素材返回成功 + speech=false(no_speech_is_success)。
+EXPECTED_CONTRACT_SHA256 = "db3b13bd112c5cd85f647bdde75a57d846e0fd5e46a7bae496637ec197cac3d9"
+EXPECTED_CONTRACT_VERSION = 7
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -237,6 +242,11 @@ class LegacyHarness:
         before = len(self.calls)
         raw = REGISTRY[tool_name]["handler"](args)
         return json.loads(raw), self.calls[before:]
+
+    def invoke_raw(self, tool_name: str, args: dict) -> tuple[str, list[RecordedCall]]:
+        before = len(self.calls)
+        raw = REGISTRY[tool_name]["handler"](args)
+        return raw, self.calls[before:]
 
 
 class GatewayHarness:
@@ -507,6 +517,55 @@ def _check_no_foreign_paths_in_result(h, tool_name, spec):
     assert result["video_url"] == "https://cdn.example/o.mp4"
 
 
+class _GatewayHttpResponse:
+    """Enough of an httpx.Response for the real _error_from_response mapping."""
+
+    def __init__(self, status_code: int, body: dict):
+        self.status_code = status_code
+        self._body = body
+        self.text = json.dumps(body, ensure_ascii=False)
+
+    def json(self):
+        return self._body
+
+
+def _transcribe_http_error(h, path: str, status: int, body: dict) -> Exception:
+    """The error each leg's transport raises for an HTTP status on the transcribe call."""
+    if h.leg == "legacy":
+        raw = io.BytesIO(json.dumps(body, ensure_ascii=False).encode("utf-8"))
+        return urllib.error.HTTPError(LEGACY_BASE + path, status, "error", {}, raw)
+    # Gateway: the real HTTP → GatewayError mapping, not a hand-built exception.
+    return _gateway_module()._error_from_response(_GatewayHttpResponse(status, body), path=path)
+
+
+def _check_no_speech_is_success(h, tool_name, _spec):
+    no_speech = {"detail": {"code": "asr_no_speech", "message": "音频中未检测到人声（45000003）",
+                            "terminal_fallback_allowed": False}}
+
+    def answer_with(status: int, body: dict):
+        def canned(path: str):
+            if path.endswith("/transcribe"):
+                raise _transcribe_http_error(h, path, status, body)
+            return type(h)._canned(path)
+        return canned
+
+    h._canned = answer_with(422, no_speech)  # type: ignore[method-assign]
+    raw, calls = h.invoke_raw(tool_name, h.probe_args(tool_name))
+    result = json.loads(raw)
+    assert calls and calls[-1].path.endswith("/transcribe")
+    assert "error" not in result
+    assert (result["ok"], result["speech"], result["transcript"]) == (True, False, "")
+    assert result["speech_note"]
+    assert _detect_tool_failure(tool_name, raw) == (False, "")
+
+    h._canned = answer_with(422, {"detail": {"code": "unsupported_audio_format", "message": "格式不支持"}})  # type: ignore[method-assign]
+    assert "error" in h.invoke(tool_name, h.probe_args(tool_name))[0]
+
+    h._canned = type(h)._canned  # type: ignore[method-assign]
+    if h.leg == "gateway":  # the gateway's canned ASR answer carries text; legacy's is empty
+        assert h.invoke(tool_name, h.probe_args(tool_name))[0]["speech"] is True
+
+
 # name → callable;跑腿集合 = 契约行为声明的 legs(fork 双腿都在场)。
 BEHAVIOR_CHECKS = {
     "routed_intent_passthrough": _check_routed_intent_passthrough,
@@ -520,6 +579,7 @@ BEHAVIOR_CHECKS = {
     "prompt_required": _required_args_check({}),
     "instruction_decoration": _check_instruction_decoration,
     "aspect_ratio_defaults_landscape": _check_aspect_ratio_defaults_landscape,
+    "no_speech_is_success": _check_no_speech_is_success,
     "asr_upload_modes": _check_asr_upload_modes,
     "gateway_platform_fallback_douyin": _check_gateway_platform_fallback_douyin,
     "no_foreign_paths_in_result": _check_no_foreign_paths_in_result,
