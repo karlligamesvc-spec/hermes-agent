@@ -84,6 +84,16 @@ _NO_SPEECH_NOTE = (
 )
 
 
+# hc-929:豆包分句/字词级时间轴(segments)不进结果面正文。字词级时间轴每分钟人声约 2 万
+# 字符,整段内联会让长视频的结果越过运行时单条 100K 字符的落盘阈值(tools/budget_config.py),
+# 连 transcript 一起被换成 1.5K 预览;字幕/锚点本来就由脚本读时间轴。所以两条腿统一:全量写
+# <转写文件名>.segments.json,结果面只带 segments_path + segments_summary。
+_SEGMENTS_WRITE_FAILED_NOTE = (
+    "豆包时间轴文件没能写进本机缓存目录，本次结果没有 segments_path；"
+    "需要字幕时间轴时先排查磁盘空间或目录权限，再重新转写。"
+)
+
+
 class _PlatformError(RuntimeError):
     """legacy master 端点的 HTTP 错误;``code`` 是服务端 detail.code(可能为 None)。"""
 
@@ -97,6 +107,42 @@ def _speech_fields(transcript: str) -> dict[str, Any]:
     if transcript:
         return {"speech": True}
     return {"speech": False, "speech_note": _NO_SPEECH_NOTE}
+
+
+def _transcript_file_stem(title: str) -> str:
+    """转写旁路文件(全文 .txt、时间轴 .segments.json)共用的文件名前缀。"""
+    return f"{_safe_filename(title or '视频转写')}_转写_{uuid.uuid4().hex[:8]}"
+
+
+def _segments_result_fields(segments: Any, stem: str) -> dict[str, Any]:
+    """时间轴结果面(两条腿共用):全量写 ``<stem>.segments.json``,结果只带路径和摘要。
+
+    文件是 JSON 数组、一行一个分句:json.load 整体读,read_file 按分句翻页;每行保持服务端
+    原样(毫秒 start_time/end_time,字词级 words)。没有时间轴时 count=0 且没有路径,模型
+    据此分清「服务端没给」和「旧客户端丢了」(后者连 segments_summary 都没有)。
+    """
+    rows = [row for row in segments if isinstance(row, dict)] if isinstance(segments, list) else []
+    if not rows:
+        return {"segments_summary": {"count": 0}}
+    summary: dict[str, Any] = {
+        "count": len(rows),
+        "word_count": sum(len(row["words"]) for row in rows if isinstance(row.get("words"), list)),
+    }
+    starts = [row["start_time"] for row in rows if type(row.get("start_time")) in (int, float)]
+    ends = [row["end_time"] for row in rows if type(row.get("end_time")) in (int, float)]
+    if starts:
+        summary["first_start_ms"] = min(starts)
+    if ends:
+        summary["last_end_ms"] = max(ends)
+    fields: dict[str, Any] = {"segments_summary": summary}
+    try:
+        dest = _document_cache_dir() / f"{stem}.segments.json"
+        lines = ",\n".join(json.dumps(row, ensure_ascii=False) for row in rows)
+        dest.write_text(f"[\n{lines}\n]\n", encoding="utf-8")
+        fields["segments_path"] = str(dest)
+    except OSError:  # 缓存目录不可建/不可写;转写本身照常成功
+        fields["segments_note"] = _SEGMENTS_WRITE_FAILED_NOTE
+    return fields
 
 
 def _post(path: str, payload: dict[str, Any], *, timeout: int = 600) -> dict[str, Any]:
@@ -217,7 +263,9 @@ MEDIA_TRANSCRIBE_SCHEMA = {
     "description": (
         "转写已下载的 video_path 或社媒视频链接 url（抖音/小红书/快手/B站，可直接传用户的原始分享文本，一步下载并转写）。"
         "用户要视频文案/逐字稿/拆解脚本时用本工具，禁止用浏览器或其他平台替代，也不要自行安装或运行本地转写工具（如 whisper）。"
-        "返回完整转写、transcript_path，以及豆包分句/字词级时间轴 segments。"
+        "返回完整转写、transcript_path，以及豆包分句/字词级时间轴文件 segments_path"
+        "（JSON 分句数组，start_time/end_time 为毫秒，含字/词级 words；结果里只附 segments_summary 摘要，"
+        "做字幕时用脚本读这个文件）。"
         "素材没有人声（纯环境声/音乐/静音）时返回 ok=true、speech=false 和空 transcript，"
         "这是正常结果，不要对同一文件重试。"
     ),
@@ -230,7 +278,8 @@ MEDIA_TRANSCRIBE_SCHEMA = {
                 "type": "boolean",
                 "description": (
                     "Skip old transcript caches and run ASR again. Use only when a production needs "
-                    "word/utterance timing but an older cached response has no segments."
+                    "word/utterance timing but segments_summary.count is 0 (an older cached response "
+                    "without timing)."
                 ),
                 "default": False,
             },
@@ -442,9 +491,11 @@ def _gateway_media_transcribe(
     }
     if response.get("cost_cents") is not None:
         result["cost_cents"] = response.get("cost_cents")
-    transcript_path = _write_transcript_file(transcript, title)
+    stem = _transcript_file_stem(title)
+    transcript_path = _write_transcript_file(transcript, stem)
     if transcript_path:
         result["transcript_path"] = transcript_path
+    result.update(_segments_result_fields(response.get("segments"), stem))
     # hc-341: pre-render the verbatim transcript so "完整文案/逐字稿/下载文案" is delivered
     # as the original speech, copied verbatim — the agent only emits the MEDIA line.
     if transcript and _doc_file_delivery_available():
@@ -456,12 +507,12 @@ def _gateway_media_transcribe(
     return tool_result(**result)
 
 
-def _write_transcript_file(transcript: str, title: str) -> str | None:
+def _write_transcript_file(transcript: str, stem: str) -> str | None:
     """把转写全文落成本地 txt(保持迁移前 transcript_path 的结果面)。"""
     if not transcript:
         return None
     try:
-        dest = _document_cache_dir() / f"{_safe_filename(title or '视频转写')}_转写_{uuid.uuid4().hex[:8]}.txt"
+        dest = _document_cache_dir() / f"{stem}.txt"
         dest.write_text(transcript, encoding="utf-8")
         return str(dest)
     except Exception:
@@ -652,6 +703,9 @@ def _handle_media_transcribe(args: dict, **_kwargs) -> str:
     # as the original speech, copied verbatim — the agent only emits the MEDIA line.
     transcript = str(result.get("transcript") or "").strip()
     result.update(_speech_fields(transcript))
+    # master 把时间轴整段内联在响应里,与网关腿同样改交本机文件(transcript_path 仍是 master 的)。
+    stem = _transcript_file_stem(str(result.get("title") or ""))
+    result.update(_segments_result_fields(result.pop("segments", None), stem))
     if transcript and _doc_file_delivery_available():
         doc_path = render_verbatim_transcript_docx(transcript, str(result.get("title") or ""))
         if doc_path:

@@ -1,7 +1,7 @@
 {
  "contract_name": "apexnodes-plugin-tools-parity",
- "contract_version": 7,
- "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926",
+ "contract_version": 8,
+ "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929",
  "sync_policy": {
   "copies": [
    "hermes-cloud: tests/contracts/plugin_tools_contract.json (source of truth)",
@@ -140,6 +140,13 @@
       "gateway"
      ],
      "note": "hc-926: a clip with no speech is a result, not a tool failure. A transcribe call answered with 422 detail.code=asr_no_speech (Volcengine 45000003/20000003, chinaapi empty text) or with an empty transcript returns ok=true, transcript=\"\", speech=false and a speech_note, and carries no error key; a clip with speech carries speech=true. Any other 4xx (e.g. unsupported_audio_format, transcript_oracle_rejected) stays a tool error. Reason: checking many ambient-only clips in one editing task must not trip the runtime's same_tool_failure loop warning (APEX Desktop 0.17.58 vlog test)."
+    },
+    "segments_file_handoff": {
+     "legs": [
+      "legacy",
+      "gateway"
+     ],
+     "note": "hc-929: both transcribe endpoints return Doubao segments (utterances with nested word timing, milliseconds) inline; the tool result never carries them inline. The plugin writes the full array, unchanged, to <runtime HERMES_HOME>/cache/documents/<stem>.segments.json and returns segments_path plus segments_summary {count, word_count, first_start_ms, last_end_ms}. A response without segments returns segments_summary {count: 0} and no segments_path; a client older than this contract returns neither. Reason: word timing runs at about 20K chars per minute of speech, so an inline array pushes a long video's result past the runtime's 100K-char per-result spill threshold and replaces even the transcript with a 1.5K preview, while caption tools read timing from a file anyway. APEX Desktop 0.17.58's gateway leg dropped segments entirely."
     }
    }
   },
