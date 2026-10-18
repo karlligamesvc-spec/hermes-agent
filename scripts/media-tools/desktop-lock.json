@@ -4,119 +4,130 @@
     "mac-arm64": {
       "target": "mac-arm64",
       "version": "9.0.2",
-      "buildCommit": "cc084514c65629ad0e6489a46e2e97417d8f9c66",
-      "sha256": "96b4edd81a78404f54eefea049ce832d3739c8e5f2074b5ae2a5e51c0abbc0f0",
-      "bytes": 36530448,
+      "buildCommit": "aad6c6f9b820adb3cad9c204f0df5d294e5fe5b1",
+      "sha256": "3fc415c3a6a9a4a28854d9c8b4bcb6ffddad6c41be46d226e52d8b2a8cf716b1",
+      "bytes": 64168321,
       "license": "GPL-2.0-or-later",
       "correspondingSourceIncluded": true,
       "nativeChecks": [
         "h264-aac-encode",
         "ffprobe-streams-duration",
-        "png-frame"
+        "png-frame",
+        "drawtext-cjk",
+        "subtitles-cjk"
       ],
-      "profile": "FFmpeg core + libx264; no external libass/libx265/libvpx",
-      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/ffmpeg/9.0.2/96b4edd81a78404f54eefea049ce832d3739c8e5f2074b5ae2a5e51c0abbc0f0/ffmpeg-9.0.2-mac-arm64.zip"
+      "profile": "FFmpeg core + libx264 + FreeType/HarfBuzz/FriBidi/libunibreak/libass (drawtext, subtitles; system fonts via CoreText/DirectWrite); no fontconfig/libx265/libvpx",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/ffmpeg/9.0.2/3fc415c3a6a9a4a28854d9c8b4bcb6ffddad6c41be46d226e52d8b2a8cf716b1/ffmpeg-9.0.2-mac-arm64.zip"
     },
     "mac-x64": {
       "target": "mac-x64",
       "version": "9.0.2",
-      "buildCommit": "cc084514c65629ad0e6489a46e2e97417d8f9c66",
-      "sha256": "1430a550f4344e5ad2ef81eb0753e90a42de112e3c2fe06598e3175595d2683c",
-      "bytes": 37710843,
+      "buildCommit": "aad6c6f9b820adb3cad9c204f0df5d294e5fe5b1",
+      "sha256": "7a505895fcc335138c0007ed9a96b495925715f8b6cca9d8ba4b2a6d5051c46c",
+      "bytes": 65517675,
       "license": "GPL-2.0-or-later",
       "correspondingSourceIncluded": true,
       "nativeChecks": [
         "h264-aac-encode",
         "ffprobe-streams-duration",
-        "png-frame"
+        "png-frame",
+        "drawtext-cjk",
+        "subtitles-cjk"
       ],
-      "profile": "FFmpeg core + libx264; no external libass/libx265/libvpx",
-      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/ffmpeg/9.0.2/1430a550f4344e5ad2ef81eb0753e90a42de112e3c2fe06598e3175595d2683c/ffmpeg-9.0.2-mac-x64.zip"
+      "profile": "FFmpeg core + libx264 + FreeType/HarfBuzz/FriBidi/libunibreak/libass (drawtext, subtitles; system fonts via CoreText/DirectWrite); no fontconfig/libx265/libvpx",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/ffmpeg/9.0.2/7a505895fcc335138c0007ed9a96b495925715f8b6cca9d8ba4b2a6d5051c46c/ffmpeg-9.0.2-mac-x64.zip"
     },
     "win-x64": {
       "target": "win-x64",
       "version": "9.0.2",
-      "buildCommit": "cc084514c65629ad0e6489a46e2e97417d8f9c66",
-      "sha256": "2f2176a752afc17cd898132bd61d950b08e3200625cb2c31e90e8c547dd51beb",
-      "bytes": 41942130,
+      "buildCommit": "aad6c6f9b820adb3cad9c204f0df5d294e5fe5b1",
+      "sha256": "c0c03d9a1d9fed0e6d9aadbd5b8022d0960bcb00ab5739b3e0b0ba1c47e709fd",
+      "bytes": 69990587,
       "license": "GPL-2.0-or-later",
       "correspondingSourceIncluded": true,
       "nativeChecks": [
         "h264-aac-encode",
         "ffprobe-streams-duration",
-        "png-frame"
+        "png-frame",
+        "drawtext-cjk",
+        "subtitles-cjk"
       ],
-      "profile": "FFmpeg core + libx264; no external libass/libx265/libvpx",
-      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/ffmpeg/9.0.2/2f2176a752afc17cd898132bd61d950b08e3200625cb2c31e90e8c547dd51beb/ffmpeg-9.0.2-win-x64.zip"
+      "profile": "FFmpeg core + libx264 + FreeType/HarfBuzz/FriBidi/libunibreak/libass (drawtext, subtitles; system fonts via CoreText/DirectWrite); no fontconfig/libx265/libvpx",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/ffmpeg/9.0.2/c0c03d9a1d9fed0e6d9aadbd5b8022d0960bcb00ab5739b3e0b0ba1c47e709fd/ffmpeg-9.0.2-win-x64.zip"
     }
   },
   "hypit": {
-    "version": "0.2.17",
-    "sha256": "6f89a9a8441e5c520041be80bd3573209dc6aba915ea07f7c4622134fd1b2c77",
-    "bytes": 2756886,
-    "npmIntegrity": "sha512-iKeYJOJ2EV7cFRXh5jjBW7OTYrfH0IXGLaqd+Jz3EaVM/ytptqPLE5/E3K4leTN/Y3Z5ptP9w4Dit5K0zO/rNw==",
+    "version": "0.3.1",
+    "sha256": "5a8297ac6eb22bc2af756820fe2df2f95de4100a240fd23c87b53d0ef9554454",
+    "bytes": 349090,
+    "npmIntegrity": "sha512-FI54GPQRB9uXSTRmCt8fngzWH/YEEasOIuYhwsEh9G2v92L50N/TdcMiLgDT1KfRjt+C1/HXcG28Bai6HMEDQQ==",
     "license": "Hypit modified Apache-2.0; written commercial grant confirmed by owner",
     "node": ">=22.15.0",
     "nativeChecks": {
       "mac-arm64": {
-        "schema": 1,
-        "version": "0.2.17",
-        "integrity": "sha512-iKeYJOJ2EV7cFRXh5jjBW7OTYrfH0IXGLaqd+Jz3EaVM/ytptqPLE5/E3K4leTN/Y3Z5ptP9w4Dit5K0zO/rNw==",
-        "sha256": "6f89a9a8441e5c520041be80bd3573209dc6aba915ea07f7c4622134fd1b2c77",
+        "version": "0.3.1",
         "system": "Darwin",
         "machine": "arm64",
         "checks": [
           "npm-integrity",
           "license-preserved",
-          "npm-install",
-          "cli-version"
+          "public-cos-empty-cache-install",
+          "cli-version",
+          "apex-prepare",
+          "runtime-start",
+          "check-plan-build-get",
+          "full-video-decode",
+          "audio-non-silent",
+          "frame-screenshot-browser-interaction",
+          "runtime-shutdown"
         ],
-        "renderVerified": false,
-        "dependenciesMirrored": false
+        "renderVerified": true,
+        "dependenciesMirrored": true,
+        "execution": "Apple silicon native",
+        "evidence": "docs/desktop/hypit031-cos-acceptance.json"
       },
       "mac-x64": {
-        "schema": 1,
-        "version": "0.2.17",
-        "integrity": "sha512-iKeYJOJ2EV7cFRXh5jjBW7OTYrfH0IXGLaqd+Jz3EaVM/ytptqPLE5/E3K4leTN/Y3Z5ptP9w4Dit5K0zO/rNw==",
-        "sha256": "6f89a9a8441e5c520041be80bd3573209dc6aba915ea07f7c4622134fd1b2c77",
+        "version": "0.3.1",
         "system": "Darwin",
-        "machine": "x86_64",
+        "machine": "x64",
         "checks": [
           "npm-integrity",
           "license-preserved",
-          "npm-install",
-          "cli-version"
+          "public-cos-empty-cache-install",
+          "cli-version",
+          "apex-prepare",
+          "runtime-start",
+          "check-plan-build-get",
+          "full-video-decode",
+          "audio-non-silent",
+          "frame-screenshot-browser-interaction",
+          "runtime-shutdown"
         ],
-        "renderVerified": false,
-        "dependenciesMirrored": false
+        "renderVerified": true,
+        "dependenciesMirrored": true,
+        "execution": "Rosetta on Apple silicon",
+        "evidence": "docs/desktop/hypit031-cos-acceptance.json"
       },
       "win-x64": {
-        "schema": 1,
-        "version": "0.2.17",
-        "integrity": "sha512-iKeYJOJ2EV7cFRXh5jjBW7OTYrfH0IXGLaqd+Jz3EaVM/ytptqPLE5/E3K4leTN/Y3Z5ptP9w4Dit5K0zO/rNw==",
-        "sha256": "6f89a9a8441e5c520041be80bd3573209dc6aba915ea07f7c4622134fd1b2c77",
+        "version": "0.3.1",
         "system": "Windows",
         "machine": "AMD64",
-        "checks": [
-          "npm-integrity",
-          "license-preserved",
-          "npm-install",
-          "cli-version"
-        ],
+        "checks": [],
+        "status": "pending-native-acceptance",
         "renderVerified": false,
-        "dependenciesMirrored": false
+        "dependenciesMirrored": true
       }
     },
-    "dependenciesMirrored": false,
+    "dependenciesMirrored": true,
     "renderVerified": false,
-    "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/hypit/0.2.17/6f89a9a8441e5c520041be80bd3573209dc6aba915ea07f7c4622134fd1b2c77/hypit-0.2.17.tgz"
+    "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/npm/3e2755518ddb4448e9303383fb0d969d52a20e9694e5f102e4343f291dd90bdd/tarballs/5a8297ac6eb22bc2af756820fe2df2f95de4100a240fd23c87b53d0ef9554454.tgz"
   },
   "npm": {
-    "prefix": "media-tools/npm/25c7f0ed9376ed382f12629e5a6a6b167cc87f14f0aae7468012d166485ddf31",
-    "registry": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/npm/25c7f0ed9376ed382f12629e5a6a6b167cc87f14f0aae7468012d166485ddf31",
-    "lockSha256": "25c7f0ed9376ed382f12629e5a6a6b167cc87f14f0aae7468012d166485ddf31",
-    "versions": 269,
-    "packages": 202
+    "prefix": "media-tools/npm/3e2755518ddb4448e9303383fb0d969d52a20e9694e5f102e4343f291dd90bdd",
+    "registry": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/npm/3e2755518ddb4448e9303383fb0d969d52a20e9694e5f102e4343f291dd90bdd",
+    "lockSha256": "3e2755518ddb4448e9303383fb0d969d52a20e9694e5f102e4343f291dd90bdd",
+    "versions": 231,
+    "packages": 203
   },
   "browser": {
     "mac-arm64": {

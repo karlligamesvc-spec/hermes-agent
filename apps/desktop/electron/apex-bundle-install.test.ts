@@ -777,3 +777,64 @@ test('applyBundleUpdate: a D1 legacy migration reports as switch success (rides 
     rm(home)
   }
 })
+
+// hc-906: a Windows directory rename is refused while any handle inside is open; an antivirus scan of a
+// freshly extracted engine holds some briefly (seen on a GitHub Windows runner during the release smoke).
+const refusal = (code: string) => Object.assign(new Error(`${code}: operation not permitted, rename`), { code })
+
+test('a Windows promote refused by a briefly held handle is retried, then succeeds', async () => {
+  const calls: string[][] = []
+  const sleeps: number[] = []
+  const logs: string[] = []
+  let refusals = 2
+
+  await install.promoteStagingDir('versions/k.tmp', 'versions/k', {
+    platform: 'win32',
+    rename: (from: string, to: string) => {
+      calls.push([from, to])
+
+      if (refusals-- > 0) {throw refusal('EPERM')}
+    },
+    sleep: async (ms: number) => {sleeps.push(ms)},
+    log: (line: string) => logs.push(line)
+  })
+
+  assert.equal(calls.length, 3)
+  assert.deepEqual(calls[2], ['versions/k.tmp', 'versions/k'])
+  assert.deepEqual(sleeps, [250, 500])
+  assert.equal(logs.length, 2)
+})
+
+test('promote retries are bounded and only cover Windows handle refusals', async () => {
+  let attempts = 0
+  await assert.rejects(install.promoteStagingDir('a.tmp', 'a', {
+    platform: 'win32',
+    rename: () => {
+      attempts += 1
+      throw refusal('EBUSY')
+    },
+    sleep: async () => {}
+  }), /EBUSY/)
+  assert.equal(attempts, 10, 'a handle that never closes fails after a bounded number of tries')
+
+  for (const [platform, code] of [['win32', 'ENOENT'], ['darwin', 'EPERM'], ['linux', 'EBUSY']]) {
+    let calls = 0
+    await assert.rejects(install.promoteStagingDir('a.tmp', 'a', {
+      platform,
+      rename: () => {
+        calls += 1
+        throw refusal(code)
+      },
+      sleep: async () => {throw new Error('must not wait')}
+    }), new RegExp(code))
+    assert.equal(calls, 1, `${platform} ${code} must fail at once`)
+  }
+})
+
+test('staging promotes through the bounded retry rather than a bare rename', () => {
+  const source = fs.readFileSync(path.join(import.meta.dirname, 'apex-bundle-install.ts'), 'utf8')
+  const body = source.slice(source.indexOf('async function stageAndCommitBundle'), source.indexOf('// orchestration'))
+
+  assert.match(body, /await promoteStagingDir\(stagingDir, finalDir, \{ platform: o\.opts\?\.platform, log \}\)/)
+  assert.doesNotMatch(body, /fs\.renameSync\(stagingDir, finalDir\)/)
+})

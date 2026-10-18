@@ -258,6 +258,38 @@ function writeCommitMarkerAtomic(commitMarker) {
  * @param {(msg:string)=>void} [o.log]
  * @returns {Promise<{ok:true, versionDir:string, reused?:boolean}>}
  */
+// Windows refuses to rename a directory while any handle inside it is open (EPERM/EBUSY/EACCES). Right
+// after extracting, stamping and verifying tens of thousands of files, an antivirus scan routinely holds a
+// few for a moment (hc-906: seen on a GitHub Windows runner with the v0.22 bundle, while the same promote
+// passed earlier in that run and on a real machine). The promote is atomic and a refused rename leaves
+// the staging tree intact, so a bounded retry is safe. POSIX never refuses a rename for an open file, so
+// a failure there is real and surfaces at once.
+const PROMOTE_RETRY_CODES = new Set(['EPERM', 'EBUSY', 'EACCES'])
+const PROMOTE_ATTEMPTS = 10
+
+async function promoteStagingDir(from, to, {
+  platform = process.platform,
+  rename = fs.renameSync,
+  sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms)),
+  log = (_line: string) => {}
+}: any = {}) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      rename(from, to)
+
+      return
+    } catch (error: any) {
+      if (platform !== 'win32' || !PROMOTE_RETRY_CODES.has(error?.code) || attempt >= PROMOTE_ATTEMPTS) {
+        throw error
+      }
+
+      const delay = Math.min(250 * 2 ** (attempt - 1), 4_000)
+      log(`[bundle-install] promote refused (${error.code}); retry ${attempt}/${PROMOTE_ATTEMPTS - 1} in ${delay}ms`)
+      await sleep(delay)
+    }
+  }
+}
+
 async function stageAndCommitBundle(o) {
   const { hermesHome, key, archivePath, manifest, extract, runTool, log = () => {} } = o
   const paths = layout.bundlePaths(hermesHome)
@@ -320,7 +352,7 @@ async function stageAndCommitBundle(o) {
     // then stamp and verify once more at the FINAL path before writing the commit
     // marker. A crash leaves an unmarked tree that the reuse path repairs; the
     // switch step only runs after this function returns with the marker present.
-    fs.renameSync(stagingDir, finalDir)
+    await promoteStagingDir(stagingDir, finalDir, { platform: o.opts?.platform, log })
     promotedByThisAttempt = true
     log('[bundle-install] fixup (stamp for final path)')
     await runTool(bundledNodeExe(finalDir, manifest), fixupArgv(finalDir, manifest), 'fixup-final')
@@ -603,6 +635,7 @@ export {
   MANIFEST_SCHEMA,
   parseBundleManifest,
   parseSemver,
+  promoteStagingDir,
   stageAndCommitBundle,
   verifyArgv
 }

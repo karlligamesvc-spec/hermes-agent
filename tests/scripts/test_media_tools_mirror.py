@@ -13,10 +13,11 @@ from pathlib import Path
 
 import pytest
 
-SPEC = importlib.util.spec_from_file_location(
-    "media_publisher", Path(__file__).resolve().parents[2] / "scripts/media-tools/publish.py")
+MEDIA_TOOLS = Path(__file__).resolve().parents[2] / "scripts/media-tools"
+SPEC = importlib.util.spec_from_file_location("media_publisher", MEDIA_TOOLS / "publish.py")
 publisher = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(publisher)
+REAL_SOURCE_LOCK = json.loads((MEDIA_TOOLS / "source-lock.json").read_text(encoding="utf-8"))
 
 
 class Cos:
@@ -55,9 +56,10 @@ def artifacts(tmp_path):
     hypit_record = {"version": "0.2.17", "integrity": "sha512-" + base64.b64encode(
         hashlib.sha512(hypit).digest()).decode()}
     source = b"fixture corresponding source bytes"
-    lock = {"ffmpeg": {"version": "9.0.2", "sha256": hashlib.sha256(source).hexdigest()},
-            "x264": {"sha256": hashlib.sha256(source).hexdigest()},
-            "zlib": {"sha256": hashlib.sha256(source).hexdigest()}, "hypit": hypit_record}
+    # The real lock's names and URLs (archive suffixes follow them), fixture digests.
+    lock = {name: {**record, "sha256": hashlib.sha256(source).hexdigest()}
+            for name, record in REAL_SOURCE_LOCK.items() if isinstance(record, dict) and name != "hypit"}
+    lock["hypit"] = hypit_record
     for target, host in publisher.TARGETS.items():
         directory = tmp_path / f"media-{target}-verified"
         directory.mkdir()
@@ -65,13 +67,12 @@ def artifacts(tmp_path):
         binary_names = ["ffmpeg" + suffix, "ffprobe" + suffix]
         for name in binary_names:
             (directory / name).write_bytes(name.encode())
-        for name in ("LICENSE-FFmpeg.txt", "LICENSE-x264.txt", "LICENSE-zlib.txt", "ffmpeg-configure.log", "build.sh", "mirror.py"):
+        for name in (*publisher.SOURCE_LICENSES.values(), "ffmpeg-configure.log", "build.sh", "mirror.py"):
             (directory / name).write_text("fixture", encoding="utf-8")
         (directory / "ffmpeg-config.h").write_text("#define CONFIG_NONFREE 0\n", encoding="utf-8")
         (directory / "source-lock.json").write_text(json.dumps(lock), encoding="utf-8")
-        (directory / "ffmpeg.source.tar.xz").write_bytes(source)
-        (directory / "x264.source.tar.gz").write_bytes(source)
-        (directory / "zlib.source.tar.gz").write_bytes(source)
+        for name in publisher.SOURCE_LICENSES:
+            (directory / publisher.source_archive(name, lock[name])).write_bytes(source)
         (directory / "TARGET").write_text(target, encoding="utf-8")
         (directory / "BUILD_COMMIT").write_text("a" * 40, encoding="utf-8")
         (directory / "native-proof.json").write_text(json.dumps({
@@ -142,3 +143,43 @@ def test_failed_full_readback_does_not_advance_manifest(artifacts):
         publisher.publish(artifacts, cos, corrupt_readback)
     assert len(cos.writes) == 1
     assert "media-tools/stable.json" not in cos.objects
+
+
+# hc-926: the caption stack (FreeType/FriBidi/HarfBuzz/libunibreak/libass) is linked into the
+# GPL binaries, so its corresponding source and license are as mandatory as FFmpeg's.
+@pytest.mark.parametrize("member", [
+    "libass.source.tar.xz", "harfbuzz.source.tar.xz", "libunibreak.source.tar.gz",
+    "LICENSE-libunibreak.txt", "LICENSE-FreeType.txt",
+])
+def test_missing_caption_stack_source_or_license_prevents_all_writes(artifacts, member):
+    (artifacts / "media-win-x64-verified" / member).unlink()
+    cos = Cos()
+    with pytest.raises(ValueError, match="missing"):
+        publisher.publish(artifacts, cos, cos.read)
+    assert cos.writes == []
+
+
+def test_package_built_before_caption_checks_is_not_publishable(artifacts):
+    """A 9.0.2 package from the old recipe proved only encode/probe/frame."""
+    directory = artifacts / "media-mac-x64-verified"
+    proof = json.loads((directory / "native-proof.json").read_text(encoding="utf-8"))
+    proof["checks"] = ["h264-aac-encode", "ffprobe-streams-duration", "png-frame"]
+    (directory / "native-proof.json").write_text(json.dumps(proof), encoding="utf-8")
+    cos = Cos()
+    with pytest.raises(ValueError, match="Native proof"):
+        publisher.publish(artifacts, cos, cos.read)
+    assert cos.writes == []
+
+
+def test_desktop_lock_names_caption_verified_packages_from_one_build():
+    """hc-926: the runtime bundle stages exactly what desktop-lock names, so the lock must name
+    packages proved by the current native checks, from one build, under the publisher's immutable keys."""
+    lock = json.loads((MEDIA_TOOLS / "desktop-lock.json").read_text(encoding="utf-8"))["ffmpeg"]
+    assert sorted(lock) == sorted(publisher.TARGETS)
+    assert len({(entry["buildCommit"], entry["version"]) for entry in lock.values()}) == 1
+    for target, entry in lock.items():
+        assert entry["target"] == target
+        assert entry["nativeChecks"] == publisher.CHECKS
+        assert entry["profile"] == publisher.PROFILE
+        version, digest = entry["version"], entry["sha256"]
+        assert entry["url"] == f"{publisher.BASE}/media-tools/ffmpeg/{version}/{digest}/ffmpeg-{version}-{target}.zip"

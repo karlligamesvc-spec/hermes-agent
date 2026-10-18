@@ -133,8 +133,47 @@ function resolveBootstrapFailureFallback({ onDiskUsable, updatePending }: any = 
   return 'fatal'
 }
 
+/**
+ * AFTER the app's own runtime (steps 3 / 3.5) came up empty: which rungs that
+ * use a runtime this app did NOT install may resolveHermesBackend still walk?
+ *
+ *   explicitCli  — step 4 with HERMES_DESKTOP_HERMES (still `--version` probed)
+ *   pathCli      — step 4 with a `hermes` found on PATH
+ *   systemPython — step 5, a system Python that can import hermes_cli
+ *
+ * A packaged build that carries its own engine walks only explicitCli
+ * (2026-10-17, Kael). A discovered runtime is no stand-in there: `--version`
+ * is answered before hermes_cli imports its config, so the probe cannot see a
+ * broken venv; adopting writes no marker, so the bundled engine would never be
+ * installed or repaired; and even a healthy foreign CLI is not the engine this
+ * shell shipped with (no APEX overlay). Falling through lands on step 6, which
+ * installs or repairs the bundled engine. Builds without one (development, a
+ * package for an OS with no engine build) keep the historical ladder.
+ *
+ * @param {object} opts
+ * @param {boolean} opts.isPackaged      app.isPackaged (or the packaged test flag)
+ * @param {boolean} opts.bundledEngine   the package carries an engine for this machine
+ * @param {boolean} opts.explicitCli     HERMES_DESKTOP_HERMES is set
+ * @param {boolean} opts.ignoreExisting  HERMES_DESKTOP_IGNORE_EXISTING=1; skips step 4 only, as before
+ * @param {boolean} opts.updatePending   an opt-in pin override is pending (R5): walk nothing, so the
+ *   bootstrap re-run installs the requested version instead of the old one
+ * @returns {{ explicitCli: boolean, pathCli: boolean, systemPython: boolean }}
+ */
+function resolveExternalRuntimeRungs({ isPackaged, bundledEngine, explicitCli, ignoreExisting, updatePending }: any = {}) {
+  if (updatePending) {return { explicitCli: false, pathCli: false, systemPython: false }}
+
+  const discover = !(isPackaged && bundledEngine)
+
+  return {
+    explicitCli: Boolean(explicitCli) && !ignoreExisting,
+    pathCli: discover && !explicitCli && !ignoreExisting,
+    systemPython: discover
+  }
+}
+
 export {
   canUseOnDiskRuntime,
   resolveBootstrapFailureFallback,
+  resolveExternalRuntimeRungs,
   resolvePreBootstrapDecision
 }

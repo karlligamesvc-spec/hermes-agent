@@ -22,7 +22,19 @@ REGION = "ap-guangzhou"
 BASE = f"https://{BUCKET}.cos.{REGION}.myqcloud.com"
 TARGETS = {"mac-arm64": ("Darwin", "arm64"), "mac-x64": ("Darwin", "x86_64"),
            "win-x64": ("Windows", "AMD64")}
-CHECKS = ["h264-aac-encode", "ffprobe-streams-duration", "png-frame"]
+CHECKS = ["h264-aac-encode", "ffprobe-streams-duration", "png-frame", "drawtext-cjk", "subtitles-cjk"]
+# Every source linked into the binaries -> its license file in the package (hc-926 adds the
+# caption stack). Kept apart from mirror.py on purpose: the publisher checks the builder.
+SOURCE_LICENSES = {"ffmpeg": "LICENSE-FFmpeg.txt", "x264": "LICENSE-x264.txt", "zlib": "LICENSE-zlib.txt",
+                   "freetype": "LICENSE-FreeType.txt", "fribidi": "LICENSE-FriBidi.txt",
+                   "harfbuzz": "LICENSE-HarfBuzz.txt", "libunibreak": "LICENSE-libunibreak.txt",
+                   "libass": "LICENSE-libass.txt"}
+PROFILE = ("FFmpeg core + libx264 + FreeType/HarfBuzz/FriBidi/libunibreak/libass (drawtext, subtitles; "
+           "system fonts via CoreText/DirectWrite); no fontconfig/libx265/libvpx")
+
+
+def source_archive(name: str, record: dict) -> str:
+    return f"{name}.source.tar.{'xz' if record['url'].endswith('.xz') else 'gz'}"
 
 
 def digest(path: Path) -> str:
@@ -42,10 +54,10 @@ def prepare_ffmpeg(directory: Path, target: str, destination: Path) -> dict:
             or (proof["host"]["system"], proof["host"]["machine"]) != TARGETS[target]):
         raise ValueError("Native proof does not match target")
     suffix = ".exe" if target == "win-x64" else ""
-    required = ["ffmpeg" + suffix, "ffprobe" + suffix, "LICENSE-FFmpeg.txt", "LICENSE-x264.txt",
+    sources = [source_archive(name, lock[name]) for name in SOURCE_LICENSES]
+    required = ["ffmpeg" + suffix, "ffprobe" + suffix, *SOURCE_LICENSES.values(),
                 "ffmpeg-config.h", "ffmpeg-configure.log", "source-lock.json", "build.sh", "mirror.py",
-                "ffmpeg.source.tar.xz", "x264.source.tar.gz", "zlib.source.tar.gz", "LICENSE-zlib.txt",
-                "TARGET", "BUILD_COMMIT", "native-proof.json"]
+                *sources, "TARGET", "BUILD_COMMIT", "native-proof.json"]
     for name in required:
         path = directory / name
         if path.is_symlink() or not path.is_file() or not path.stat().st_size:
@@ -53,8 +65,8 @@ def prepare_ffmpeg(directory: Path, target: str, destination: Path) -> dict:
     for name in required[:2]:
         if digest(directory / name) != proof["files"][name]:
             raise ValueError("Binary changed after native smoke")
-    for name, suffix in (("ffmpeg", "xz"), ("x264", "gz"), ("zlib", "gz")):
-        if digest(directory / f"{name}.source.tar.{suffix}") != lock[name]["sha256"]:
+    for name, archive in zip(SOURCE_LICENSES, sources):
+        if digest(directory / archive) != lock[name]["sha256"]:
             raise ValueError("Corresponding source changed")
     config = (directory / "ffmpeg-config.h").read_text(encoding="utf-8-sig")
     if not re.search(r"^#define CONFIG_NONFREE 0$", config, re.MULTILINE):
@@ -70,8 +82,7 @@ def prepare_ffmpeg(directory: Path, target: str, destination: Path) -> dict:
     return {"target": target, "version": version, "buildCommit": commit, "path": archive,
             "sha256": digest(archive), "bytes": archive.stat().st_size,
             "license": "GPL-2.0-or-later", "correspondingSourceIncluded": True,
-            "nativeChecks": CHECKS,
-            "profile": "FFmpeg core + libx264; no external libass/libx265/libvpx"}
+            "nativeChecks": CHECKS, "profile": PROFILE}
 
 
 def prepare_hypit(root: Path, lock: dict) -> dict:

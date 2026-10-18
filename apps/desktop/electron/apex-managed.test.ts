@@ -57,6 +57,7 @@ import {
   REPROVISION_COOLDOWN_MS,
   resolveApexEndpoints,
   SEED_DISABLED_SKILLS,
+  SEED_PRODUCT_DEFAULTS_BLOCK,
   SEED_WEB_GATEWAY,
   seedPluginsBlockYaml,
   seedSkillsBlockYaml,
@@ -781,6 +782,7 @@ test('ensureProductDefaultsYaml fills the missing product keys on a config the s
     'memory.nudge_interval',
     'proxy.enabled',
     'session_reset.mode',
+    'sessions.auto_prune',
     'skills.creation_nudge_interval',
     'timezone',
     'tool_output.max_lines'
@@ -799,6 +801,7 @@ test('ensureProductDefaultsYaml fills the missing product keys on a config the s
   assert.match(r.next, /^delegation:\n {2}max_iterations: 250$/m)
   assert.match(r.next, /^tool_output:\n {2}max_lines: 2000$/m)
   assert.match(r.next, /^session_reset:\n {2}mode: none$/m)
+  assert.match(r.next, /^sessions:\n {2}auto_prune: false$/m)
   assert.match(r.next, /^approvals:\n {2}mode: manual$/m)
   assert.match(r.next, /^memory:\n {2}nudge_interval: 0$/m)
   assert.match(r.next, /^skills:\n {2}creation_nudge_interval: 0$/m)
@@ -829,6 +832,8 @@ test('ensureProductDefaultsYaml never overrules a value the user set', () => {
     '  max_lines: 800\n' +
     'session_reset:\n' +
     '  mode: daily\n' +
+    'sessions:\n' +
+    '  auto_prune: true\n' +
     'approvals:\n' +
     '  mode: smart\n' +
     'memory:\n' +
@@ -866,6 +871,7 @@ test('ensureProductDefaultsYaml fills only the gaps in a partially-set config', 
     'memory.nudge_interval',
     'proxy.enabled',
     'session_reset.mode',
+    'sessions.auto_prune',
     'skills.creation_nudge_interval',
     'tool_output.max_lines'
   ])
@@ -893,6 +899,7 @@ test('ensureProductDefaultsYaml is idempotent and leaves a fresh seed alone', ()
     'delegation:\n  max_iterations: 250\n' +
     'tool_output:\n  max_lines: 2000\n' +
     'session_reset:\n  mode: none\n' +
+    'sessions:\n  auto_prune: false\n' +
     'approvals:\n  mode: manual\n' +
     'memory:\n  nudge_interval: 0\n' +
     'skills:\n  creation_nudge_interval: 0\n' +
@@ -908,7 +915,6 @@ test('Desktop follows Hermes parent and child budgets without overwriting explic
   // preserves any value a user deliberately put on disk.
   const reconciled = ensureProductDefaultsYaml('model:\n  default: x\n').next
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
-  const seedBlocks = main.slice(main.indexOf('const SEED_DISPLAY_BLOCK'), main.indexOf('const SEED_MOA_BLOCK'))
 
   const guardBody = main.slice(
     main.indexOf('function healConfigYamlProductBlocks'),
@@ -919,9 +925,9 @@ test('Desktop follows Hermes parent and child budgets without overwriting explic
   assert.equal(APEX_PRODUCT_DEFAULTS['delegation.max_iterations'], 250)
   assert.match(reconciled, /^ {2}max_turns: 500$/m)
   assert.match(reconciled, /^ {2}max_iterations: 250$/m)
-  assert.ok(seedBlocks.includes("'  max_turns: 500\\n'"))
-  assert.ok(seedBlocks.includes("'  max_iterations: 250\\n'"))
-  assert.ok(seedBlocks.includes("'_apex_budget_defaults_version: 2\\n'"))
+  assert.match(SEED_PRODUCT_DEFAULTS_BLOCK, /^ {2}max_turns: 500$/m)
+  assert.match(SEED_PRODUCT_DEFAULTS_BLOCK, /^ {2}max_iterations: 250$/m)
+  assert.match(SEED_PRODUCT_DEFAULTS_BLOCK, /^_apex_budget_defaults_version: 2$/m)
   assert.ok(
     guardBody.indexOf('migrateApexBudgetDefaultsYaml(raw)') >= 0,
     'boot/watch product guard must run the one-time budget migration'
@@ -943,14 +949,12 @@ test('Desktop follows Hermes parent and child budgets without overwriting explic
 test('Desktop model-authored text follows the selected UI language by default', () => {
   const existingChineseInstall = ensureProductDefaultsYaml('display:\n  language: zh\n')
   const existingEnglishInstall = ensureProductDefaultsYaml('display:\n  language: en\n')
-  const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
-  const seedBlocks = main.slice(main.indexOf('const SEED_DISPLAY_BLOCK'), main.indexOf('const SEED_MOA_BLOCK'))
 
   assert.equal(APEX_PRODUCT_DEFAULTS['agent.response_language'], 'display')
   assert.match(existingChineseInstall.next, /^ {2}response_language: display$/m)
   assert.match(existingEnglishInstall.next, /^ {2}response_language: display$/m)
   assert.match(existingEnglishInstall.next, /^ {2}language: en$/m)
-  assert.ok(seedBlocks.includes("'  response_language: display\\n'"))
+  assert.match(SEED_PRODUCT_DEFAULTS_BLOCK, /^ {2}response_language: display$/m)
 })
 
 test('hc-837 migrates only the old APEX 90/50 defaults once per config', () => {
@@ -1014,6 +1018,24 @@ test('hc-687 Desktop defaults preserve deep-work output while closing optional b
   assert.match(reconciled.next, /^memory:\n {2}nudge_interval: 0$/m)
   assert.match(reconciled.next, /^skills:\n {2}creation_nudge_interval: 0$/m)
   assert.match(reconciled.next, /^proxy:\n {2}enabled: false$/m)
+})
+
+test('hc-906 v0.22 session auto-prune stays off unless the user turned it on', () => {
+  // Kael 2026-10-17: v0.22 defaults sessions.auto_prune to true, which deletes ended sessions idle
+  // for 90 days at startup. APEX keeps history until it ships archive/export, so a missing key is
+  // filled with false; an explicit user value stays the user's answer (add-only reconcile).
+  assert.equal(APEX_PRODUCT_DEFAULTS['sessions.auto_prune'], false)
+
+  const filled = ensureProductDefaultsYaml('model:\n  default: x\n').next
+  assert.match(filled, /^sessions:\n {2}auto_prune: false$/m)
+
+  const nested = ensureProductDefaultsYaml('sessions:\n  retention_days: 30\n').next
+  assert.match(nested, /^sessions:\n(?: {2}.*\n)* {2}auto_prune: false$/m)
+  assert.match(nested, /^ {2}retention_days: 30$/m)
+
+  const optedIn = ensureProductDefaultsYaml('sessions:\n  auto_prune: true\n')
+  assert.match(optedIn.next, /^ {2}auto_prune: true$/m)
+  assert.doesNotMatch(optedIn.next, /auto_prune: false/)
 })
 
 test('hc-687 live client-config preserves explicit product preferences while controlled keys still update', () => {
@@ -1120,6 +1142,7 @@ test('ensureProductDefaultsYaml refuses to write a child under an inline mapping
     'memory.nudge_interval',
     'proxy.enabled',
     'session_reset.mode',
+    'sessions.auto_prune',
     'skills.creation_nudge_interval',
     'timezone',
     'tool_output.max_lines'
@@ -1136,7 +1159,7 @@ test('APEX_PRODUCT_DEFAULTS stays in lockstep with the first-install seed blocks
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
 
   const seedBlocks =
-    main.slice(main.indexOf('const SEED_DISPLAY_BLOCK'), main.indexOf('const SEED_MOA_BLOCK')) +
+    main.slice(main.indexOf('const SEED_DISPLAY_BLOCK'), main.indexOf('const SEED_MOA_BLOCK')) + SEED_PRODUCT_DEFAULTS_BLOCK +
     seedSkillsBlockYaml()
 
   assert.ok(seedBlocks.length > 0, 'seed blocks not found in main.ts')

@@ -136,6 +136,12 @@ jobs:
           restore-keys: |
             test-durations-
 
+      - name: Keep the restored durations
+        # The runner writes this slice's fresh timings over the restored entries; the copy lets
+        # the step after the tests upload only what this slice measured.
+        run: |
+          if [ -f test_durations.json ]; then cp test_durations.json "$RUNNER_TEMP/restored_test_durations.json"; fi
+
       - name: Run tests (slice ${{ matrix.slice.index }}/${{ inputs.slice_count }})
         # Per-file isolation via scripts/run_tests.sh: each test file runs
         # in its own freshly-spawned `python -m pytest <file>` subprocess
@@ -156,6 +162,24 @@ jobs:
           OPENAI_API_KEY: ""
           NOUS_API_KEY: ""
 
+      - name: Keep only this slice's durations
+        # Every slice's test_durations.json also carries the restored (older) timings of the
+        # other slices' files, so merging whole copies let the last one overwrite the others'
+        # fresh timings. Upload only the entries this slice added or changed; save-durations
+        # lays them over the cache it restores (tests/ci/test_save_durations_merge.py).
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          temp = pathlib.Path(os.environ["RUNNER_TEMP"])
+          def load(path):
+              return json.loads(path.read_text(encoding="utf-8-sig")) if path.is_file() else {}
+          restored = load(temp / "restored_test_durations.json")
+          measured = load(pathlib.Path("test_durations.json"))
+          own = {name: secs for name, secs in measured.items() if restored.get(name) != secs}
+          (temp / "slice_durations.json").write_text(json.dumps(own, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          print(f"{len(own)} of {len(measured)} file durations are this slice's")
+          PY
+
       - name: Upload per-slice durations
         # Advisory artifact (feeds slice balancing) — a transient artifact-
         # service blip must not fail an otherwise-green test slice.
@@ -163,7 +187,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-durations-slice-${{ matrix.slice.index }}
-          path: test_durations.json
+          path: ${{ runner.temp }}/slice_durations.json
           retention-days: 1
 
       - name: Check the checkout is clean
@@ -177,32 +201,51 @@ jobs:
   # (including PRs) get balanced slicing.
   save-durations:
     needs: test
-    # Push to main only: a dispatched stable run tests another commit and must not write the cache.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.test.result == 'success'
+    # Every green run merges, PRs included, so a broken download or merge fails the PR instead of
+    # main; only a push to main saves (last step). A dispatched stable run (inputs.commit) skips the
+    # job: it would rerun main's copy of these steps, which PRs and main pushes already exercise.
+    if: inputs.commit == '' && needs.test.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Restore the latest duration cache
+        # The slices upload only the timings their run changed. Every other entry, such as a
+        # FLAKY file's last healthy duration (_clean_pass_durations), comes from this restore.
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: test_durations.json
+          key: test-durations-never-exact
+          restore-keys: |
+            test-durations-
+
       - name: Download all slice durations
+        # No merge-multiple: each artifact extracts into durations/<artifact name>/. With it,
+        # every slice's same-named file was extracted into one path at the same time: one
+        # slice's timings survived a green run, and interleaved writes left invalid JSON.
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: test-durations-slice-*
           path: durations
-          merge-multiple: true
 
       - name: Merge into single durations file
         run: |
-          python3 -c "
-          import json, glob, os
-          merged = {}
-          for f in glob.glob('durations/*test_durations.json'):
-            with open(f) as fh:
-              merged.update(json.load(fh))
-          with open('test_durations.json', 'w') as fh:
-            json.dump(merged, fh, indent=2, sort_keys=True)
-          print(f'Merged {len(merged)} file durations')
-          "
+          python3 - <<'PY'
+          import json, pathlib
+          cache = pathlib.Path("test_durations.json")
+          merged = json.loads(cache.read_text(encoding="utf-8-sig")) if cache.is_file() else {}
+          print(f"Restored {len(merged)} file durations")
+          for path in sorted(pathlib.Path("durations").glob("*/slice_durations.json")):
+              own = json.loads(path.read_text(encoding="utf-8-sig"))
+              merged.update(own)
+              print(f"{path.parent.name}: {len(own)} file durations")
+          cache.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          print(f"Merged {len(merged)} file durations")
+          PY
 
       - name: Save merged duration cache
+        # PRs read the cache, only main writes it: a PR run's cache is restorable only by reruns
+        # of that PR, and a stable run tests another commit.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: test_durations.json

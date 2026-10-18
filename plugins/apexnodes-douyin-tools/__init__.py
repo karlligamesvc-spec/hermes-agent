@@ -74,6 +74,76 @@ def _missing_credential_message() -> str:
 # master budget + download/ffmpeg headroom; light calls keep the short default.
 _MEDIA_TRANSCRIBE_TIMEOUT_SECONDS = 2 * 60 * 60 + 10 * 60  # 2h10m
 
+# hc-926:平台 ASR 对纯环境声/音乐/静音素材的结论(云端 422 detail.code)。它描述的是
+# 素材,不是故障:报成 tool_error 会让逐段检查素材的剪辑任务连撞 same_tool_failure
+# 循环告警。两条腿(网关 / legacy)都把它和「200 但转写为空」统一成成功 + speech=false。
+_ASR_NO_SPEECH_CODE = "asr_no_speech"
+_NO_SPEECH_NOTE = (
+    "未检测到人声：这段音频只有环境声、音乐或静音，转写为空是素材本身的正常结果，不是工具故障。"
+    "不要对同一文件重试；剪辑时按无人声素材处理（保留现场声即可）。"
+)
+
+
+# hc-929:豆包分句/字词级时间轴(segments)不进结果面正文。字词级时间轴每分钟人声约 2 万
+# 字符,整段内联会让长视频的结果越过运行时单条 100K 字符的落盘阈值(tools/budget_config.py),
+# 连 transcript 一起被换成 1.5K 预览;字幕/锚点本来就由脚本读时间轴。所以两条腿统一:全量写
+# <转写文件名>.segments.json,结果面只带 segments_path + segments_summary。
+_SEGMENTS_WRITE_FAILED_NOTE = (
+    "豆包时间轴文件没能写进本机缓存目录，本次结果没有 segments_path；"
+    "需要字幕时间轴时先排查磁盘空间或目录权限，再重新转写。"
+)
+
+
+class _PlatformError(RuntimeError):
+    """legacy master 端点的 HTTP 错误;``code`` 是服务端 detail.code(可能为 None)。"""
+
+    def __init__(self, message: str, *, code: str | None = None):
+        super().__init__(message)
+        self.code = code
+
+
+def _speech_fields(transcript: str) -> dict[str, Any]:
+    """转写结果面的人声标记:有字为 speech=true;为空则 speech=false 并附说明。"""
+    if transcript:
+        return {"speech": True}
+    return {"speech": False, "speech_note": _NO_SPEECH_NOTE}
+
+
+def _transcript_file_stem(title: str) -> str:
+    """转写旁路文件(全文 .txt、时间轴 .segments.json)共用的文件名前缀。"""
+    return f"{_safe_filename(title or '视频转写')}_转写_{uuid.uuid4().hex[:8]}"
+
+
+def _segments_result_fields(segments: Any, stem: str) -> dict[str, Any]:
+    """时间轴结果面(两条腿共用):全量写 ``<stem>.segments.json``,结果只带路径和摘要。
+
+    文件是 JSON 数组、一行一个分句:json.load 整体读,read_file 按分句翻页;每行保持服务端
+    原样(毫秒 start_time/end_time,字词级 words)。没有时间轴时 count=0 且没有路径,模型
+    据此分清「服务端没给」和「旧客户端丢了」(后者连 segments_summary 都没有)。
+    """
+    rows = [row for row in segments if isinstance(row, dict)] if isinstance(segments, list) else []
+    if not rows:
+        return {"segments_summary": {"count": 0}}
+    summary: dict[str, Any] = {
+        "count": len(rows),
+        "word_count": sum(len(row["words"]) for row in rows if isinstance(row.get("words"), list)),
+    }
+    starts = [row["start_time"] for row in rows if type(row.get("start_time")) in (int, float)]
+    ends = [row["end_time"] for row in rows if type(row.get("end_time")) in (int, float)]
+    if starts:
+        summary["first_start_ms"] = min(starts)
+    if ends:
+        summary["last_end_ms"] = max(ends)
+    fields: dict[str, Any] = {"segments_summary": summary}
+    try:
+        dest = _document_cache_dir() / f"{stem}.segments.json"
+        lines = ",\n".join(json.dumps(row, ensure_ascii=False) for row in rows)
+        dest.write_text(f"[\n{lines}\n]\n", encoding="utf-8")
+        fields["segments_path"] = str(dest)
+    except OSError:  # 缓存目录不可建/不可写;转写本身照常成功
+        fields["segments_note"] = _SEGMENTS_WRITE_FAILED_NOTE
+    return fields
+
 
 def _post(path: str, payload: dict[str, Any], *, timeout: int = 600) -> dict[str, Any]:
     api_key = _agent_api_key()
@@ -98,7 +168,9 @@ def _post(path: str, payload: dict[str, Any], *, timeout: int = 600) -> dict[str
             detail = json.loads(raw).get("detail", raw)
         except json.JSONDecodeError:
             detail = raw
+        code = None
         if isinstance(detail, dict):
+            code = str(detail.get("code") or "").strip() or None
             message = detail.get("message") or detail.get("code") or raw
             # hc-254: surface the machine-readable honesty signal so the model
             # offers the honest options instead of self-installing whisper.
@@ -110,7 +182,7 @@ def _post(path: str, payload: dict[str, Any], *, timeout: int = 600) -> dict[str
                 )
         else:
             message = str(detail or raw)
-        raise RuntimeError(message) from exc
+        raise _PlatformError(message, code=code) from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"无法连接媒体服务: {exc.reason}") from exc
 
@@ -167,8 +239,9 @@ def _check() -> bool:
 SOCIAL_DOWNLOAD_SCHEMA = {
     "name": "social_download",
     "description": (
-        "下载社媒视频（抖音/TikTok、小红书、快手、B站）到当前工作区的媒体空间。用户发来抖音/小红书/快手/B站分享链接/分享口令时，"
+        "下载社媒视频（抖音、小红书、快手、B站）到当前工作区的媒体空间。用户发来抖音/小红书/快手/B站分享链接/分享口令时，"
         "第一步必须优先使用本工具；不要用浏览器打开这些链接（反爬环境又慢又不可靠）。返回 video_path 和元数据。"
+        "其他平台（如 TikTok、视频号）的视频不支持下载，不要承诺；需要时请用户直接发送视频文件。"
     ),
     "parameters": {
         "type": "object",
@@ -191,7 +264,11 @@ MEDIA_TRANSCRIBE_SCHEMA = {
     "description": (
         "转写已下载的 video_path 或社媒视频链接 url（抖音/小红书/快手/B站，可直接传用户的原始分享文本，一步下载并转写）。"
         "用户要视频文案/逐字稿/拆解脚本时用本工具，禁止用浏览器或其他平台替代，也不要自行安装或运行本地转写工具（如 whisper）。"
-        "返回完整转写、transcript_path，以及豆包分句/字词级时间轴 segments。"
+        "返回完整转写、transcript_path，以及豆包分句/字词级时间轴文件 segments_path"
+        "（JSON 分句数组，start_time/end_time 为毫秒，含字/词级 words；结果里只附 segments_summary 摘要，"
+        "做字幕时用脚本读这个文件）。"
+        "素材没有人声（纯环境声/音乐/静音）时返回 ok=true、speech=false 和空 transcript，"
+        "这是正常结果，不要对同一文件重试。"
     ),
     "parameters": {
         "type": "object",
@@ -202,7 +279,8 @@ MEDIA_TRANSCRIBE_SCHEMA = {
                 "type": "boolean",
                 "description": (
                     "Skip old transcript caches and run ASR again. Use only when a production needs "
-                    "word/utterance timing but an older cached response has no segments."
+                    "word/utterance timing but segments_summary.count is 0 (an older cached response "
+                    "without timing)."
                 ),
                 "default": False,
             },
@@ -270,8 +348,8 @@ def _gateway_resolve_download(url: str, *, timeout: float = 600) -> tuple[dict[s
     platform = _gateway.detect_platform(url)
     if not platform:
         raise _gateway.GatewayError(
-            "无法从链接识别社媒平台（支持 抖音/小红书/快手/B站/TikTok/YouTube/Instagram/Twitter/公众号/视频号），"
-            "请发送原始分享链接或分享口令。"
+            "无法从链接识别社媒平台（当前可下载：抖音/小红书/快手/B站），"
+            "请发送原始分享链接或分享口令；其他平台的视频请直接发送视频文件。"
         )
     response = _gateway.request_json(
         "POST", f"/tools/v1/social/{platform}/download", {"url": url}, timeout=timeout
@@ -395,13 +473,18 @@ def _gateway_media_transcribe(
                 "请确认是视频分享链接，或先用 social_download 检查。"
             )
     except _gateway.GatewayError as exc:
-        return tool_error(f"视频转写失败: {exc}")
+        if exc.code != _ASR_NO_SPEECH_CODE:
+            return tool_error(f"视频转写失败: {exc}")
+        # 三个 ASR 出口(multipart / 直传三跳 / media_url)都经 request_json 落到这里:
+        # 没有人声是结论,走下面同一个结果面(speech=false),不计费也不报错。
+        response = {}
 
     transcript = str(response.get("text") or "").strip()
     title = str(meta.get("title") or "").strip()
     result: dict[str, Any] = {
         "ok": True,
         "transcript": transcript,
+        **_speech_fields(transcript),
         "video_path": str(local_path) if local_path is not None else None,
         "title": title or None,
         "author": meta.get("author"),
@@ -409,9 +492,11 @@ def _gateway_media_transcribe(
     }
     if response.get("cost_cents") is not None:
         result["cost_cents"] = response.get("cost_cents")
-    transcript_path = _write_transcript_file(transcript, title)
+    stem = _transcript_file_stem(title)
+    transcript_path = _write_transcript_file(transcript, stem)
     if transcript_path:
         result["transcript_path"] = transcript_path
+    result.update(_segments_result_fields(response.get("segments"), stem))
     # hc-341: pre-render the verbatim transcript so "完整文案/逐字稿/下载文案" is delivered
     # as the original speech, copied verbatim — the agent only emits the MEDIA line.
     if transcript and _doc_file_delivery_available():
@@ -423,12 +508,12 @@ def _gateway_media_transcribe(
     return tool_result(**result)
 
 
-def _write_transcript_file(transcript: str, title: str) -> str | None:
+def _write_transcript_file(transcript: str, stem: str) -> str | None:
     """把转写全文落成本地 txt(保持迁移前 transcript_path 的结果面)。"""
     if not transcript:
         return None
     try:
-        dest = _document_cache_dir() / f"{_safe_filename(title or '视频转写')}_转写_{uuid.uuid4().hex[:8]}.txt"
+        dest = _document_cache_dir() / f"{stem}.txt"
         dest.write_text(transcript, encoding="utf-8")
         return str(dest)
     except Exception:
@@ -610,10 +695,18 @@ def _handle_media_transcribe(args: dict, **_kwargs) -> str:
     try:
         result = _post("/media/transcribe", payload, timeout=_MEDIA_TRANSCRIBE_TIMEOUT_SECONDS)
     except RuntimeError as exc:
-        return tool_error(f"视频转写失败: {exc}")
+        if getattr(exc, "code", None) != _ASR_NO_SPEECH_CODE:
+            return tool_error(f"视频转写失败: {exc}")
+        result = {"ok": True, "transcript": ""}
+        if video_path:
+            result["video_path"] = video_path
     # hc-341: pre-render the verbatim transcript so "完整文案/逐字稿/下载文案" is delivered
     # as the original speech, copied verbatim — the agent only emits the MEDIA line.
     transcript = str(result.get("transcript") or "").strip()
+    result.update(_speech_fields(transcript))
+    # master 把时间轴整段内联在响应里,与网关腿同样改交本机文件(transcript_path 仍是 master 的)。
+    stem = _transcript_file_stem(str(result.get("title") or ""))
+    result.update(_segments_result_fields(result.pop("segments", None), stem))
     if transcript and _doc_file_delivery_available():
         doc_path = render_verbatim_transcript_docx(transcript, str(result.get("title") or ""))
         if doc_path:
@@ -646,7 +739,8 @@ def _handle_image_ocr(args: dict, **_kwargs) -> str:
 SOCIAL_BATCH_SUBMIT_SCHEMA = {
     "name": "social_batch_submit",
     "description": (
-        "批量下载并转写一批社媒视频（抖音/快手/B站/小红书=下载+转写，YouTube=官方字幕，TikTok复用抖音）。"
+        "批量下载并转写一批社媒视频（抖音/快手/B站/小红书=下载+转写，YouTube=官方字幕）。"
+        "其他平台（如 TikTok、视频号）没有转写通道，会如实标为未处理，不要承诺。"
         "适用于「把某作者点赞超10万的作品批量转写」「把这个抖音合集的视频都转成文字/表格」这类需求。"
         "传 urls（链接清单）或 creator_url（作者主页链接=枚举其全部作品，或某个抖音合集的分享链接=只枚举该合集；配 min_likes/top 自动筛选）。"
         "★这是异步任务：本工具只负责提交，返回 job_id；之后用 social_batch_status 轮询进度。"
@@ -669,7 +763,7 @@ SOCIAL_BATCH_SUBMIT_SCHEMA = {
                     "注意：合集请发该【合集】自己的分享链接，仅凭作者主页+合集名无法定位某个合集。"
                 ),
             },
-            "platform": {"type": "string", "description": "可选，creator_url 的平台（douyin/kuaishou/bilibili/xiaohongshu/youtube/tiktok）。"},
+            "platform": {"type": "string", "description": "可选，creator_url 的平台（douyin/kuaishou/bilibili/xiaohongshu/youtube）。"},
             "min_likes": {"type": "integer", "description": "可选，creator_url 时只保留点赞≥该值的作品（如 100000）。"},
             "top": {"type": "integer", "description": "可选，最多取前 N 条（按点赞排序）。"},
             "bitable_url": {"type": "string", "description": "可选，飞书多条交付时写入的目标多维表格 /base/ 链接。"},

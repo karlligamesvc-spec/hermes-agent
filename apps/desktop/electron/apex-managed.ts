@@ -197,10 +197,61 @@ const APEX_PRODUCT_DEFAULTS = {
   // hc-653 adds visibility, control and attribution.
   'memory.nudge_interval': 0,
   'skills.creation_nudge_interval': 0,
+  // hc-906 (Kael 2026-10-17): v0.22 turns sessions.auto_prune on by default, deleting ended
+  // sessions idle for 90 days at startup. APEX keeps history until it ships archive/export.
+  'sessions.auto_prune': false,
   // Optional v0.20 credential injection stays a deliberate future opt-in.
   'proxy.enabled': false,
   timezone: ''
 }
+
+// APEX product defaults appended to every seed alongside SEED_DISPLAY_BLOCK.
+// The apex.generation_image_model extension is read by the APEX image tool;
+// the other keys exist in the runtime schema. Image-input/timezone match today's runtime
+// defaults; iteration budgets match Hermes' deep-work defaults:
+//   agent.image_input_mode: auto — image attachments go native only to
+//     vision-capable models, otherwise text pre-analysis (config.py agent block).
+//   agent.response_language: display — answers, progress and task lists follow
+//     the selected shell language (Simplified Chinese on a fresh APEX install).
+//   timezone: '' — empty means "server-local time" (config.py top-level
+//     timezone), which on a desktop IS the OS timezone, i.e. follow-the-OS.
+//   agent.max_turns: 500 — main agent per-turn tool-call budget.
+//   delegation.max_iterations: 250 — independent per-child budget.
+//   sessions.auto_prune: false — keep history (hc-906; v0.22 defaults it on).
+// Top-level keys here must not collide with the other seed
+// blocks (model:/custom_providers:/display:/skills:/plugins: — see
+// seedDefaultModelConfig). skills.creation_nudge_interval is emitted by
+// seedSkillsBlockYaml so the seed still has exactly one `skills:` mapping.
+// (Moved from main.ts in hc-906 so the seed and its reconcile twin share one module.)
+const SEED_PRODUCT_DEFAULTS_BLOCK =
+  '# APEX product defaults: image attachments auto-routed by model vision;\n' +
+  'apex:\n' +
+  '  generation_image_model: gpt-image-2.5-flare\n' +
+  '  generation_video_model: doubao-seedance-2-0-mini-260615\n' +
+  '# Hermes-aligned deep-work budgets: main=500 / child=250; durable sessions\n' +
+  '# (no reset, no auto-prune); manual approvals; periodic memory/Skill nudges and iron-proxy off;\n' +
+  '# full 2,000-line tool output; empty timezone =\n' +
+  '# follow the OS (server-local) clock.\n' +
+  'agent:\n' +
+  '  image_input_mode: auto\n' +
+  '  response_language: display\n' +
+  '  max_turns: 500\n' +
+  'delegation:\n' +
+  '  max_iterations: 250\n' +
+  'tool_output:\n' +
+  '  max_lines: 2000\n' +
+  'session_reset:\n' +
+  '  mode: none\n' +
+  'sessions:\n' +
+  '  auto_prune: false\n' +
+  'approvals:\n' +
+  '  mode: manual\n' +
+  'memory:\n' +
+  '  nudge_interval: 0\n' +
+  'proxy:\n' +
+  '  enabled: false\n' +
+  "timezone: ''\n" +
+  '_apex_budget_defaults_version: 2\n'
 
 // One-time, per-config migration marker. Keeping this in config.yaml (rather
 // than process-global app state) makes the migration correct for every local
@@ -1880,6 +1931,7 @@ export {
   REPROVISION_COOLDOWN_MS,
   resolveApexEndpoints,
   SEED_DISABLED_SKILLS,
+  SEED_PRODUCT_DEFAULTS_BLOCK,
   SEED_WEB_GATEWAY,
   seedPluginsBlockYaml,
   seedSkillsBlockYaml,

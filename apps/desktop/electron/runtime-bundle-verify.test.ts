@@ -33,3 +33,21 @@ test('bounded verifier hashes complete files across buffer boundaries and reject
     await assert.rejects(verifyBundle(root), /files.tsv does not match/)
   } finally { fs.rmSync(root, { recursive: true, force: true }) }
 })
+
+test('with more entries than reads in flight, every entry is checked once and every mismatch is reported', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-verify-'))
+
+  try {
+    fs.mkdirSync(path.join(root, '.runtime'))
+    const names = Array.from({ length: 100 }, (_, i) => `f${String(i).padStart(3, '0')}`)
+
+    for (const name of names) {fs.writeFileSync(path.join(root, name), name)}
+    const index = names.map(name => `${name}\tfile\t${name.length}\t${sha(name)}`).join('\n') + '\n'
+    fs.writeFileSync(path.join(root, '.runtime/files.tsv'), index)
+    fs.writeFileSync(path.join(root, '.bundle-manifest.json'), JSON.stringify({ fixup: { mutates: [] }, files_index: { sha256: sha(index) } }))
+    assert.equal((await verifyBundle(root)).checked, 100)
+
+    for (const name of ['f000', 'f050', 'f099']) {fs.writeFileSync(path.join(root, name), name.toUpperCase())}
+    await assert.rejects(verifyBundle(root), /3 of 100 entries mismatched: f000, f050, f099$/)
+  } finally { fs.rmSync(root, { recursive: true, force: true }) }
+})

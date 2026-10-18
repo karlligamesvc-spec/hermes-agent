@@ -13,20 +13,46 @@ is checked independently on every build. x264's source commit and zlib's release
 archive are also hash pinned. Review upstream signatures/checksums before changing
 these entries; never replace a failed checksum with the hash of an unverified download.
 
+The caption stack was added on 2026-10-17 (hc-926; APEX Desktop 0.17.58 had no
+`drawtext` or `subtitles`, so an Agent drew captions as PNGs with Pillow): FreeType
+2.14.3, FriBidi 1.0.17, HarfBuzz 14.5.1, libunibreak 8.0 and libass 0.17.5. The FreeType
+archive hashed the same from savannah.gnu.org and the SourceForge mirror; the other four
+equal the SHA-256 digests GitHub records for their release assets.
+
 `.github/workflows/media-tools.yml` produces two native Mac builds and a Windows
 cross build, then executes Windows binaries on a native Windows runner. All three
 must encode one second of H.264/AAC, report exact streams/duration with ffprobe,
-and extract a valid PNG. The CLI profile contains FFmpeg core, libx264 and zlib;
-it does not contain external libass, libx265 or libvpx. No `--enable-nonfree` build
+extract a valid PNG, draw a Chinese caption with `drawtext` from an OS font file,
+render it with `subtitles` through an OS font family, and wrap a long Chinese line
+that has no spaces. The CLI profile contains FFmpeg core, libx264, zlib and the
+caption stack; it does not contain fontconfig, libx265 or libvpx. libass finds system
+fonts through CoreText (macOS) and DirectWrite (Windows), so no `fonts.conf` ships and
+no font cache directory has to be writable; `drawtext` therefore takes `fontfile=`, not
+a family name. On macOS, use a family that maps to a readable file (Hiragino Sans GB,
+STHeiti, Songti SC): CoreText maps "PingFang SC" to a reserved file FreeType cannot open,
+and libass then falls back. No `--enable-nonfree` build
 may be published. Intel's portable C build trades optimized assembly for simpler
 build prerequisites. Mac minimum deployment target is 12.0.
 
 Every FFmpeg ZIP contains both executables, the exact corresponding sources,
 licenses, configuration and build recipe, commit identity, and native test proof.
 These are standalone GPL CLI executables, not libraries linked into APEX. To
-rebuild, install Python 3.12, make, a compiler and pkg-config, then set
-`GITHUB_SHA` to the packaged `BUILD_COMMIT` and run `bash build.sh <target> <empty-dir>`.
-Windows cross builds additionally need MinGW-w64 and NASM on Linux.
+rebuild, install Python 3.12, make, a compiler, pkg-config, Meson >= 0.60 and Ninja,
+then set `GITHUB_SHA` to the packaged `BUILD_COMMIT` and run `bash build.sh <target> <empty-dir>`.
+Windows cross builds additionally need MinGW-w64 (gcc and g++) and NASM on Linux.
+`desktop-lock.json` names the caption-capable packages published on 2026-10-18
+(hc-926). Workflow run 39109743491 built commit `aad6c6f9b8`: Mac arm64 on `macos-14`,
+Mac x64 on a physical Intel `macos-15-intel`, and Windows cross-built on Ubuntu 24.04
+then executed on `windows-2025-vs2026`. All three passed the five native checks.
+The publisher validated all six artifacts before its first write and read every object
+back in full. Only then did it replace `media-tools/stable.json` (SHA-256 `a66045a4…`),
+which also moved that manifest's Hypit entry from 0.2.17 to 0.3.1, the version this lock
+already pins. Afterwards the live manifest, every ZIP and the Hypit tarball were
+downloaded again and matched byte for byte. The binaries inside equal the smoked ones,
+and the COS Mac arm64 ZIP passed the native smoke again on macOS 27. Each ZIP grew
+about 28 MB and each extracted package 30–31 MB, almost all of it corresponding source
+(the HarfBuzz tarball alone is 20 MB). The workflow was disabled again after that run;
+re-enable it only for a rebuild.
 
 ## Hypit
 

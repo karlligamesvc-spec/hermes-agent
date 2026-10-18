@@ -11,7 +11,7 @@ import { readSourceCommitStamp } from './bootstrap-runner'
 import { registerDesktopVersionIpc } from './desktop-version'
 import { createLocalBackendLifecycle } from './local-backend-lifecycle'
 import { createPackagedRuntimeGate } from './packaged-runtime'
-import { registerRuntimeVersionIpc, waitForPendingRuntimePreparation } from './runtime-version'
+import { markerMatchesPin, registerRuntimeVersionIpc, waitForPendingRuntimePreparation } from './runtime-version'
 
 function deferred() {
   let resolve!: () => void
@@ -206,6 +206,41 @@ test.each(['bundled', 'legacy-override', 'preserved', 'failed'] as const)(
     }
   }
 )
+
+test.each([
+  [undefined, false],
+  [false, false],
+  [true, true]
+])('the version read reports a deferred engine update (reporter=%s)', async (deferred, expected) => {
+  const handlers = new Map<string, () => Promise<any>>()
+
+  const ipcMain = {
+    handle: (channel: string, listener: () => Promise<any>) => handlers.set(channel, listener)
+  } as unknown as Pick<IpcMain, 'handle'>
+
+  registerRuntimeVersionIpc(ipcMain, {
+    waitForRuntimePreparation: async () => {},
+    readMarker: () => previous,
+    readTreeCommit: () => previous.pinnedCommit,
+    minEngineVersion: () => null,
+    ...(deferred === undefined ? {} : { updateDeferred: () => deferred }),
+    log: () => {}
+  })
+
+  assert.equal((await handlers.get('hermes:runtime:version')!()).updateDeferred, expected)
+})
+
+test.each([
+  [{ pinnedCommit: 'abc', version: 'v1' }, { key: 'abc', version: 'v1' }, true],
+  [{ pinnedCommit: 'abc', version: 'v1' }, { key: 'abc', version: 'v2' }, false],
+  [{ pinnedCommit: 'abc', version: null }, { key: 'abc', version: 'v2' }, true],
+  [{ pinnedCommit: 'abc', version: 'v1' }, { key: 'abc', version: null }, true],
+  [{ pinnedBranch: 'main', version: 'v1' }, { key: 'main', version: 'v1' }, true],
+  [{ pinnedCommit: 'abc', version: 'v1' }, { key: 'def', version: 'v1' }, false],
+  [null, { key: 'abc', version: 'v1' }, false]
+])('an apply is already current only on the same pin and version (%o, %o)', (marker, pin, current) => {
+  assert.equal(markerMatchesPin(marker, pin), current)
+})
 
 test('version reads do not start preparation or join unrelated remote/custom/diagnostic starts', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-version-inert-'))

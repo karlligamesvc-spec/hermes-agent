@@ -103,6 +103,7 @@ test('actual Mac publish shell uploads assets before feed and stops when the sha
   fs.writeFileSync(path.join(bin, 'pip3'), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
   fs.writeFileSync(path.join(bin, 'python3'), `#!/bin/sh
 printf '%s\\n' "$5" >> "$CALLS"
+printf '%s\\n' "$6" >> "$CALLS.flags"
 case "$5" in *dmg) [ "$FAIL_ASSET" = 1 ] && exit 1 ;; esac
 exit 0
 `, { mode: 0o755 })
@@ -111,6 +112,7 @@ exit 0
   try {
     for (const fails of [false, true]) {
       fs.rmSync(log, { force: true })
+      fs.rmSync(`${log}.flags`, { force: true })
       const result = spawnSync('bash', ['-eo', 'pipefail', '-c', script], {
         cwd: root,
         env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, CALLS: log, FAIL_ASSET: fails ? '1' : '0', COS_SECRET_ID: 'fixture-id', COS_SECRET_KEY: 'fixture-secret' },
@@ -120,8 +122,20 @@ exit 0
       assert.equal(result.status, fails ? 1 : 0, result.stderr)
       assert.equal(calls.at(-1), fails ? 'desktop/mac-arm64/APEX-0.17.50-mac-arm64.dmg' : 'desktop/mac-arm64/latest-mac.yml')
       assert.equal(calls.length, fails ? 1 : 4)
+      // The hosted US runner has no outer bound: every upload must size its own budget.
+      const flags = fs.readFileSync(`${log}.flags`, 'utf8').trim().split('\n')
+      assert.deepEqual(flags, calls.map(() => '--budget-from-size'))
     }
   } finally { fs.rmSync(root, { recursive: true, force: true }) }
+})
+
+test('Windows keeps the default uploader budget under its own outer bound', () => {
+  // Its Stop-Process ends only the uploader parent; a longer inner budget there would
+  // leave a transfer worker running behind the next outer attempt.
+  const publishStep = namedStep(fs.readFileSync(windowsWorkflowPath, 'utf8'), 'Publish installer + updater feed to Tencent COS')
+  assert.match(publishStep, /Invoke-BoundedProcess -FilePath \$python -TimeoutSeconds \$budget/)
+  assert.match(publishStep, /"scripts\/release\/upload-desktop-cos\.py", "--file", \$LocalPath, "--key", \$Key\)/)
+  assert.doesNotMatch(publishStep, /--budget-from-size/)
 })
 
 test('Gatekeeper rejection fails the signed macOS build', () => {
@@ -205,4 +219,28 @@ test('the production coordinator release identity check is valid Bash', () => {
   assert.equal(result.status, 0, result.stderr)
   assert.match(script, /PACKAGE_VERSION=/)
   assert.doesNotMatch(script, /node -p \\"/)
+})
+
+test('both platform workflows prove the legacy upgrade on a genuine F8 runtime built by F8 itself', () => {
+  // hc-906: v0.22's dependencies (CPython 3.14, no PyYAML) cannot run F8's source, so a legacy tree faked
+  // from F8 source plus the current bundle's dependencies fails the engine probe. Each workflow must build
+  // F8's own runtime first and hand that tree to the smoke.
+  const fixture = fs.readFileSync(path.resolve(__dirname, 'legacy-runtime-fixture.mjs'), 'utf8')
+  const smoke = fs.readFileSync(path.resolve(__dirname, 'bundled-runtime-consumer-smoke.mts'), 'utf8')
+  const f8 = fixture.match(/^export const F8 = '([0-9a-f]{40})'$/m)?.[1]
+  assert.ok(f8, 'the fixture names its F8 commit')
+  assert.equal(smoke.match(/^const F8 = '([0-9a-f]{40})'$/m)?.[1], f8, 'the fixture and the smoke must name the same F8')
+  assert.match(fixture, /^export const F8_UV_VERSION = '\d+\.\d+\.\d+'$/m, "F8's builder must not fetch the latest uv")
+
+  for (const file of [workflowPath, windowsWorkflowPath]) {
+    const source = fs.readFileSync(file, 'utf8')
+    const name = path.basename(file)
+    const build = source.indexOf('node scripts/legacy-runtime-fixture.mjs --work "$RUNNER_TEMP/legacy-f8"')
+    const smokeAt = source.indexOf('node --import tsx scripts/bundled-runtime-consumer-smoke.mts')
+    assert.ok(build > 0, `${name} must build the F8 legacy runtime`)
+    assert.ok(smokeAt > build, `${name} must build the F8 legacy runtime before the consumer smoke`)
+    assert.ok(source.lastIndexOf(`git fetch --no-tags --depth 1 origin ${f8}`, build) > 0, `${name} must fetch F8 before building it`)
+    assert.match(source.slice(smokeAt, source.indexOf('\n', smokeAt)), / --legacy-source "\$RUNNER_TEMP\/legacy-f8\/tree" /,
+      `${name} must hand the genuine F8 tree to the smoke`)
+  }
 })

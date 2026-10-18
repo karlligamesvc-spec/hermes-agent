@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "registry": {
+    "success": true,
+    "verifiedObjects": 435,
+    "fullBodyReadback": true,
+    "prefix": "media-tools/npm/3e2755518ddb4448e9303383fb0d969d52a20e9694e5f102e4343f291dd90bdd",
+    "registry": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/npm/3e2755518ddb4448e9303383fb0d969d52a20e9694e5f102e4343f291dd90bdd",
+    "lockSha256": "3e2755518ddb4448e9303383fb0d969d52a20e9694e5f102e4343f291dd90bdd",
+    "versions": 231,
+    "packages": 203,
+    "defaultManifestChanged": false,
+    "desktopFeedChanged": false,
+    "windowsNativeAcceptance": false
+  },
+  "sourceLockSha256": "3e2755518ddb4448e9303383fb0d969d52a20e9694e5f102e4343f291dd90bdd",
+  "mac": {
+    "arm64": {
+      "emptyCacheInstall": true,
+      "publicCosRegistry": true,
+      "installedLockEntries": 205,
+      "version": "0.3.1",
+      "wrapperSha256": "cae4846fc9e019b22a7991f9f8d2cd7f08817445dfa4c3578b2f7166e5b03155",
+      "fullLifecyclePassed": true,
+      "audioRms": 2041.1592886253798,
+      "videoSha256": "9f71e9dec3e1793f41ac559c144f36dff3bde9b17decb9b28697ad38dd9daa54",
+      "hardwareMode": "Apple silicon native"
+    },
+    "x64": {
+      "emptyCacheInstall": true,
+      "publicCosRegistry": true,
+      "installedLockEntries": 205,
+      "version": "0.3.1",
+      "wrapperSha256": "cae4846fc9e019b22a7991f9f8d2cd7f08817445dfa4c3578b2f7166e5b03155",
+      "fullLifecyclePassed": true,
+      "audioRms": 2043.81576791529,
+      "videoSha256": "f4c842e3f53deddd202863e16a9b278903c6ce321b02ce9950784b6f8743b557",
+      "hardwareMode": "x64 under Rosetta on Apple silicon"
+    }
+  },
+  "windowsNativeAcceptance": false,
+  "installedClientAcceptance": false,
+  "productionSkillDeployment": false,
+  "cloudSkillMergeCommit": "7dc1284c9a4d1ed19e32b27bbf2a9dee7598ade9"
+}

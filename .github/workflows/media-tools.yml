@@ -5,7 +5,9 @@ on:
   workflow_dispatch:
   push:
     branches: [main, codex/hc-906-bundled-media-tools]
-    paths: ['scripts/media-tools/**', '.github/workflows/media-tools.yml']
+    paths: ['scripts/media-tools/**', 'apex_overlay/hypit*', 'apex_overlay/media_tools.py', '.github/workflows/media-tools.yml']
+  pull_request:
+    paths: ['scripts/media-tools/**', 'apex_overlay/hypit*', 'apex_overlay/media_tools.py', '.github/workflows/media-tools.yml']
 
 permissions:
   contents: read
@@ -32,6 +34,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
+      - name: Verify project argument and lock compatibility
+        run: node --test scripts/media-tools/hypit-project.test.mjs
       - name: Verify Hypit package and native installation
         run: python scripts/media-tools/hypit.py hypit-package
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -63,10 +67,13 @@ jobs:
         run: |
           if [[ '${{ matrix.target }}' = win-x64 ]]; then
             sudo apt-get update -qq
-            sudo apt-get install -y gcc-mingw-w64-x86-64-posix make pkg-config nasm
+            # g++: HarfBuzz is C++ (hc-926 caption stack).
+            sudo apt-get install -y gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix make pkg-config nasm
           else
             command -v pkg-config || brew install pkgconf
           fi
+          # HarfBuzz builds only with Meson.
+          python -m pip install --quiet meson==1.12.1 ninja==1.13.2
       - name: Build locked source
         shell: bash
         run: bash scripts/media-tools/build.sh '${{ matrix.target }}' "$RUNNER_TEMP/media-build"
@@ -87,6 +94,7 @@ jobs:
           path: |
             ${{ runner.temp }}/media-build/*.log
             ${{ runner.temp }}/media-build/ffmpeg-build/ffbuild/config.log
+            ${{ runner.temp }}/media-build/harfbuzz-build/meson-logs/meson-log.txt
 
   windows-native:
     needs: build

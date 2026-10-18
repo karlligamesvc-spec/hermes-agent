@@ -51,10 +51,18 @@ test('desktop background child processes opt into hidden Windows consoles', () =
   requireHiddenChildOptions(source, 'const child = spawnOwnedBackend(backend.command, backend.args')
   requireHiddenChildOptions(source, 'hermesProcess = spawnOwnedBackend(backend.command, backend.args')
   requireHiddenChildOptions(source, "spawn(py, ['-m', 'hermes_cli.main', 'uninstall', '--gui-summary']")
-  // hc-537 tail (2026-07-15): the three sites the original sweep missed.
+  // hc-537 tail (2026-07-15): the three sites the original sweep missed. The
+  // bundle tool's spawn(exe, argv) moved to apex-bundle-tool.ts (hc-923) and is
+  // guarded below.
   requireHiddenChildOptions(source, 'spawn(tarExe')
-  requireHiddenChildOptions(source, 'spawn(exe, argv')
   requireHiddenChildOptions(source, "spawn(pythonExe, ['-m', 'agent.coding_agents.run_once']")
+})
+
+test('bundle fixup/verify runner hides Windows console children', () => {
+  const source = readElectronFile('apex-bundle-tool.ts')
+
+  assert.match(source, /import \{ hiddenWindowsChildOptions \} from '\.\/windows-child-options'/)
+  requireHiddenChildOptions(source, 'spawn(exe, argv')
 })
 
 test('intentional or interactive desktop child processes stay documented', () => {
