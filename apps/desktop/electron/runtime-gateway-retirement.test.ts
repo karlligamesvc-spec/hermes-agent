@@ -8,6 +8,7 @@ import { promisify } from 'node:util'
 
 import { test } from 'vitest'
 
+import { gatewayFixtureScript, gatewayRuntimeState } from './fixtures/runtime-smoke'
 import { RETIRE_GATEWAYS } from './runtime-gateway-retirement'
 
 const exec = promisify(execFile)
@@ -23,23 +24,7 @@ nativeTest.each([false, true])('real gateway shutdown preserves foreign identiti
   const env = { ...process.env, HERMES_HOME: home, PYTHONPATH: source, PYTHONDONTWRITEBYTECODE: '1' }
   fs.mkdirSync(path.join(root, 'gateway'), { recursive: true })
   const script = path.join(root, 'gateway', 'run.py')
-  const descendantCode = "import json,os,pathlib,psutil,signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); pathlib.Path(os.environ['HERMES_HOME'],'descendant.pid').write_text(json.dumps(dict(pid=os.getpid(),created=psutil.Process().create_time()))); time.sleep(120)"
-  fs.writeFileSync(script, [
-    'import json,os,pathlib,psutil,signal,subprocess,sys,time',
-    'from gateway.status import acquire_gateway_runtime_lock,write_pid_file',
-    'from utils import atomic_json_write',
-    'assert acquire_gateway_runtime_lock()',
-    'write_pid_file()',
-    "pathlib.Path(os.environ['HERMES_HOME'],'owner.pid').write_text(json.dumps(dict(pid=os.getpid(),created=psutil.Process().create_time())))",
-    `subprocess.Popen([sys.executable,'-c',${JSON.stringify(descendantCode)}])`,
-    "while not pathlib.Path(os.environ['HERMES_HOME'],'descendant.pid').exists(): time.sleep(.01)",
-    ...(wedged ? ['signal.signal(signal.SIGTERM,signal.SIG_IGN)'] : []),
-    "print('ready',flush=True)",
-    'while True:',
-    "    if pathlib.Path(os.environ['HERMES_HOME'],'.drain_request.json').exists():",
-    "        status=pathlib.Path(os.environ['HERMES_HOME'],'gateway_state.json'); state=json.loads(status.read_text()); state['gateway_state']='draining'; atomic_json_write(status,state)",
-    '    time.sleep(.05)'
-  ].join('\n'))
+  fs.writeFileSync(script, gatewayFixtureScript({ wedged }))
   const child = spawn(python, [script], { cwd: root, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
   const closed = once(child, 'close')
   let stderr = ''
@@ -76,10 +61,10 @@ nativeTest.each([false, true])('real gateway shutdown preserves foreign identiti
     // A live IM turn and missing activity evidence must survive the update.
     await assert.rejects(retire(process.pid), /APEX_RUNTIME_UPDATE_BUSY/)
     const statusFile = path.join(home, 'gateway_state.json')
-    fs.writeFileSync(statusFile, JSON.stringify({ ...record, gateway_state: 'running', active_agents: 1 }))
+    fs.writeFileSync(statusFile, JSON.stringify(gatewayRuntimeState(record, 1)))
     await assert.rejects(retire(process.pid), /APEX_RUNTIME_UPDATE_BUSY/)
     assert.equal(child.exitCode, null)
-    fs.writeFileSync(statusFile, JSON.stringify({ ...record, gateway_state: 'running', active_agents: 0 }))
+    fs.writeFileSync(statusFile, JSON.stringify(gatewayRuntimeState(record, 0)))
     const inspected = await exec(python, ['-c', RETIRE_GATEWAYS, root, home, String(process.pid), 'inspect'], { env, cwd: home, timeout: 20_000 })
     assert.ok(JSON.parse(inspected.stdout.trim()).includes(record.pid))
     assert.equal(child.exitCode, null, 'preflight cannot disconnect an idle gateway')
