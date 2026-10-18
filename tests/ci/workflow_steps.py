@@ -55,7 +55,8 @@ def _interpreter_dirs(root: Path) -> tuple[str, ...]:
     return str(interpreter), str(shims)
 
 
-def _run(step: dict, ctx: dict, cwd: Path | None = None, *, receipt: bool = False) -> tuple[dict, list]:
+def _run(step: dict, ctx: dict, cwd: Path | None = None, *, receipt: bool = False,
+         runner_temp: Path | None = None) -> tuple[dict, list]:
     required(step, ctx)
     assert step.get("shell", "bash") == "bash", "only safe Bash selection steps are replayed"
     with tempfile.TemporaryDirectory(prefix="workflow-replay-", ignore_cleanup_errors=True) as directory:
@@ -70,7 +71,7 @@ def _run(step: dict, ctx: dict, cwd: Path | None = None, *, receipt: bool = Fals
         env = {
             "PATH": os.pathsep.join((*_interpreter_dirs(root), os.defpath, str(Path(bash).parent),
                                      str(Path(git).parent))),
-            "HOME": directory, "RUNNER_TEMP": directory, "GITHUB_OUTPUT": str(output),
+            "HOME": directory, "RUNNER_TEMP": str(runner_temp or directory), "GITHUB_OUTPUT": str(output),
             "REPLAY_PYTHON": sys.executable, "REPLAY_CALLS": str(calls),
             **{k: gha.to_string(gha.render(v, ctx)) for k, v in step.get("env", {}).items()},
         }
@@ -105,8 +106,10 @@ def _run(step: dict, ctx: dict, cwd: Path | None = None, *, receipt: bool = Fals
                 [json.loads(line) for line in calls.read_text(encoding="utf-8-sig").splitlines()])
 
 
-def outputs(step: dict, ctx: dict, cwd: Path | None = None) -> dict:
-    return _run(step, ctx, cwd)[0]
+def outputs(step: dict, ctx: dict, cwd: Path | None = None, *, runner_temp: Path | None = None) -> dict:
+    """``runner_temp`` is the ``$RUNNER_TEMP`` the steps of one replayed job share; by default
+    each step gets its own, removed when the step ends."""
+    return _run(step, ctx, cwd, runner_temp=runner_temp)[0]
 
 
 def selected_files(step: dict, ctx: dict, repo: Path) -> set[str]:
