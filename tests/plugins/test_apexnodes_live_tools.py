@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import stat
+import subprocess
 import sys
 import textwrap
 import time
@@ -23,7 +25,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_DIR = REPO_ROOT / "plugins" / "apexnodes-live-tools"
 AUDIO_URL = "https://pull-flv.example.test/stage/stream-1.flv?only_audio=1&k=1"
 VIDEO_URL = "https://pull-flv.example.test/stage/stream-1_uhd.flv?k=1"
-LIVE = {"live": True, "platform": "douyin", "title": "测试直播", "anchor": "主播A", "audio_url": AUDIO_URL, "video_url": VIDEO_URL}
+LIVE_URL = "https://live.douyin.com/945843973757"
+PROFILE_URL = "https://www.douyin.com/user/MS4wLjABAAAAcreatorSecUid0000000000000000"
+LIVE = {
+    "live": True, "platform": "douyin", "title": "测试直播", "anchor": "主播A",
+    "audio_url": AUDIO_URL, "video_url": VIDEO_URL, "live_url": LIVE_URL,
+}
 OFFLINE = {"live": False, "platform": "douyin", "title": "测试直播", "anchor": "主播A", "audio_url": None, "video_url": None}
 
 FAKE_FFMPEG = textwrap.dedent(
@@ -127,10 +134,15 @@ def _start(plugin, **args):
     ("url", "platform"),
     [
         ("https://live.douyin.com/693877538059", "douyin"),
+        (PROFILE_URL, "douyin"),
+        ("复制打开抖音,看看【主播A的作品】 https://v.douyin.com/iRNBho6u/", "douyin"),
+        ("https://www.iesdouyin.com/share/user/MS4wLjABAAAAx", "douyin"),
+        ("https://webcast.amemv.com/douyin/webcast/reflow/7697000000000000001", "douyin"),
         ("https://www.tiktok.com/@seller/live", "tiktok"),
+        ("https://www.tiktok.com/@seller", "tiktok"),
         ("https://vt.tiktok.com/ZSjuyJnWQ/", "tiktok"),
-        ("https://v.douyin.com/abc/", None),
         ("https://live.kuaishou.com/u/x", None),
+        ("https://example.test/live", None),
     ],
 )
 def test_detect_live_platform(plugin, url, platform):
@@ -165,6 +177,20 @@ def test_build_ffmpeg_command(plugin, tmp_path, mode, codec_args, muxer, ext):
     assert command[command.index("-segment_time") + 1] == "600"
     assert command[-1] == str(tmp_path / f"part02-%03d.{ext}")
     assert plugin.build_ffmpeg_command("ffmpeg", AUDIO_URL, tmp_path, mode=mode, seconds=-5, part=1)[command.index("-t") + 1] == "1"
+
+
+@pytest.mark.parametrize(
+    ("mode", "remux", "ext"),
+    [("audio", ["-bsf:a", "aac_adtstoasc", "-movflags", "+faststart"], "m4a"), ("video", [], "ts")],
+)
+def test_build_merge_command_remuxes_audio_into_mp4(plugin, tmp_path, mode, remux, ext):
+    target = tmp_path / f"recording.{plugin.MERGED_EXT[mode]}"
+    command = plugin.build_merge_command("ffmpeg", tmp_path / "parts.txt", target, mode=mode)
+    assert command[command.index("-f") + 1] == "concat"
+    assert command[command.index("-i") + 1] == str(tmp_path / "parts.txt")
+    after_copy = command[command.index("-c") + 2 : command.index("-y")]
+    assert command[command.index("-c") + 1] == "copy" and after_copy == remux
+    assert command[-1] == str(target) and target.suffix == f".{ext}"
 
 
 @pytest.mark.parametrize(
@@ -256,9 +282,9 @@ def test_start_tool_visible_only_when_gateway_reports_live_enabled(plugin, monke
         ({"rights_confirmed": False}, "rights_confirmed=true"),
         ({"rights_confirmed": None}, "rights_confirmed=true"),
         ({"mode": "both"}, "mode"),
-        ({"url": "https://v.douyin.com/abc/"}, "live.douyin.com"),
+        ({"url": "https://live.kuaishou.com/u/x"}, "抖音"),
     ],
-    ids=["rights-false", "rights-missing", "bad-mode", "share-link-not-live-url"],
+    ids=["rights-false", "rights-missing", "bad-mode", "unsupported-platform"],
 )
 def test_start_gates_run_before_resolving(plugin, monkeypatch, fake_ffmpeg, args, needle):
     seen = _resolver(plugin, monkeypatch, [LIVE])
@@ -295,8 +321,10 @@ def test_user_stop_quits_ffmpeg_gracefully_and_merges_locally(plugin, monkeypatc
     assert _wait(lambda: plugin._RECORDINGS[rid].segments())
     stopped = json.loads(plugin._handle_stop({"recording_id": rid}))
     assert (stopped["state"], stopped["reason"]) == ("stopped", "user_stop")
+    assert stopped["merged_path"].endswith("recording.m4a")
     assert Path(stopped["merged_path"]).read_bytes() == b"seg:part01-%03d.aac"
     assert "media_transcribe" in stopped["next_step"]
+    assert "不要为了时间轴重复转写" in stopped["next_step"]
     calls = _calls(fake_ffmpeg)
     record = calls[0]["argv"]
     assert record[record.index("-i") + 1] == AUDIO_URL and "-vn" in record  # audio mode uses the audio-only stream
@@ -313,7 +341,76 @@ def test_stream_drop_re_resolves_then_finishes_when_streamer_goes_offline(plugin
     assert _wait(lambda: rec.state not in ("recording", "finishing"))
     assert (rec.state, rec.reason, rec.restarts, rec.part) == ("finished", "stream_ended", 2, 2)
     assert len(seen) == 3
+    assert rec.merged_path.endswith("recording.m4a")
     assert Path(rec.merged_path).read_bytes() == b"seg:part01-%03d.aacseg:part02-%03d.aac"
+
+
+def test_re_resolves_go_through_the_canonical_live_url(plugin, monkeypatch, fake_ffmpeg):
+    """A profile link costs two TikHub calls per resolve; after the first one the
+    watchdog must reuse the gateway's live_url (one call) for every re-resolve."""
+    monkeypatch.setenv("FAKE_FFMPEG_MODE", "exit")
+    seen = _resolver(plugin, monkeypatch, [LIVE, LIVE, OFFLINE])
+    rec = plugin._RECORDINGS[_start(plugin, url=PROFILE_URL)["recording_id"]]
+    assert _wait(lambda: rec.state not in ("recording", "finishing"))
+    assert seen == [("douyin", PROFILE_URL), ("douyin", LIVE_URL), ("douyin", LIVE_URL)]
+    assert rec.url == PROFILE_URL  # what the user gave is still what status reports
+
+
+def test_finished_recording_reports_frozen_elapsed_and_merge_failure(plugin, monkeypatch, fake_ffmpeg):
+    _resolver(plugin, monkeypatch, [LIVE])
+    rec = plugin._RECORDINGS[_start(plugin)["recording_id"]]
+    assert _wait(lambda: rec.segments())
+    monkeypatch.setattr(plugin, "_merge", lambda target: None)  # e.g. a corrupt last part
+    stopped = json.loads(plugin._handle_stop({"recording_id": rec.id}))
+    assert stopped["merged_path"] is None and stopped["segments"] == 1
+    assert "分段" in stopped["next_step"] and "directory" in stopped["next_step"]
+    # elapsed is measured to the end of the recording, not to "now" (pretend it ended 1000 s ago)
+    rec.started_at, rec.ended_at = rec.started_at - 1042, rec.started_at - 1000
+    assert json.loads(plugin._handle_status({"recording_id": rec.id}))["elapsed_seconds"] == 42
+    assert "duration_seconds" not in stopped
+
+
+def _real_media_tools():
+    ffmpeg, ffprobe = shutil.which("ffmpeg"), shutil.which("ffprobe")
+    return (ffmpeg, ffprobe) if ffmpeg and ffprobe else None
+
+
+def _probe(ffprobe: str, path: Path) -> float:
+    out = subprocess.run(
+        [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
+        capture_output=True, text=True, check=True,
+    )
+    return float(out.stdout.strip())
+
+
+@pytest.mark.skipif(_real_media_tools() is None, reason="ffmpeg/ffprobe not installed")
+def test_audio_merge_writes_an_m4a_whose_duration_is_exact(plugin, tmp_path):
+    """Live audio that starts quiet: ADTS readers estimate duration from the first
+    frames' bitrate (2026-10-18: 600 s recorded, ffprobe said 758 s). Two real ADTS
+    parts (6 s silence, 6 s noise) merged by the plugin must read back as 12 s."""
+    ffmpeg, ffprobe = _real_media_tools()
+    directory = tmp_path / "rec"
+    directory.mkdir()
+    for index, source in enumerate(("anullsrc=r=48000:cl=stereo:d=6", "anoisesrc=d=6:c=white:r=48000:a=0.8")):
+        subprocess.run(
+            [ffmpeg, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", source, "-c:a", "aac", "-q:a", "2",
+             "-f", "adts", str(directory / f"part01-{index:03d}.aac")],
+            check=True,
+        )
+    # Guard the guard: the same parts as one raw ADTS stream really are misread.
+    raw = directory / "raw.adts"
+    raw.write_bytes(b"".join(path.read_bytes() for path in sorted(directory.glob("part01-*.aac"))))
+    assert _probe(ffprobe, raw) > 24, "fixture no longer reproduces the ADTS duration estimate"
+    raw.unlink()
+    rec = plugin._Recording(
+        id="r1", platform="douyin", url=LIVE_URL, mode="audio", directory=directory, ffmpeg=ffmpeg,
+        title="", anchor="", started_at=time.time(), deadline=time.time() + 60,
+    )
+    plugin._finish(rec, "stopped", "user_stop")  # the real stop path: merge, then read the duration
+    summary = rec.summary()
+    assert summary["merged_path"] and summary["merged_path"].endswith("recording.m4a")
+    assert abs(_probe(ffprobe, Path(summary["merged_path"])) - 12.0) < 0.2
+    assert abs(summary["duration_seconds"] - 12.0) < 0.2
 
 
 def test_final_state_is_published_only_after_the_merge(plugin, monkeypatch, fake_ffmpeg):

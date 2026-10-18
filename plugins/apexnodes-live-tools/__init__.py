@@ -4,12 +4,17 @@ The cloud tools gateway resolves a live-room link to signed pull URLs
 (``POST /tools/v1/social/{platform}/live-resolve``: default-off ``live_recording``
 entitlement, the user's rights attestation required, URLs only). This plugin
 records on this machine with the bundled ffmpeg (``-c copy``, 10-minute
-segments) and never uploads the recording. When a recording ends the merged
-file is handed to the existing ``media_transcribe`` tool for the transcript.
+segments) and never uploads the recording. When a recording ends the parts are
+merged locally — audio into an ``.m4a`` container, because raw ADTS carries no
+duration (2026-10-18 test: ffprobe estimated 758 s for a 600 s recording and
+misled the Agent) — and the file is handed to the existing ``media_transcribe``
+tool for the transcript.
 
 Lifecycle: ``live_record_start`` spawns ffmpeg and a watchdog thread. When
-ffmpeg exits on its own the watchdog re-resolves the room: still live → a new
-part with a fresh URL (bounded restarts); offline → finished. The time limit
+ffmpeg exits on its own the watchdog re-resolves the room through the gateway's
+canonical ``live_url`` (a profile or share link would cost an extra lookup each
+time): still live → a new part with a fresh URL (bounded restarts); offline →
+finished. The time limit
 and a free-disk floor also end a recording. ``live_record_stop`` asks ffmpeg to
 quit with ``q`` on stdin (portable, unlike SIGINT on Windows) before escalating.
 TikTok pull URLs need the user's own overseas network, so the user's HTTP proxy
@@ -56,6 +61,10 @@ CHECK_TTL_SECONDS = 300.0
 MIN_FREE_BYTES = {"audio": 500 * 1024**2, "video": 5 * 1024**3}
 # (ffmpeg segment muxer, file extension): both formats survive a crash mid-segment.
 SEGMENT_FORMATS = {"audio": ("adts", "aac"), "video": ("mpegts", "ts")}
+# The merged file. ADTS has no duration field, so readers estimate it from the first
+# frames' bitrate (badly, for live audio that starts quiet); MP4 stores the exact
+# duration. MPEG-TS carries timestamps, so the video merge keeps its container.
+MERGED_EXT = {"audio": "m4a", "video": "ts"}
 
 # ── credential seam shared by every platform plugin (hc-604 audit) ────────────
 # Live recording only exists on the /tools/v1 gateway leg; these accessors keep the
@@ -88,15 +97,24 @@ RIGHTS_MESSAGE = (
     "只能录制用户本人或已获主播授权的直播间。请先问用户:是不是主播本人,或者是否已获得主播授权?"
     "得到明确确认后,再以 rights_confirmed=true 调用。"
 )
-TRANSCRIBE_HINT = "录制已结束。需要逐字稿时,用 media_transcribe(video_path=merged_path) 生成;录制文件只在本机。"
+TRANSCRIBE_HINT = (
+    "录制已结束,录制文件只在本机。duration_seconds 是录音的准确时长,以它为准。"
+    "需要逐字稿时,用 media_transcribe(video_path=merged_path) 转写一次:结果里没有 segments_path"
+    "(或 segments_summary.count 为 0)就是这次拿不到时间轴,不要为了时间轴重复转写"
+    "(重转也不会有时间轴,force_refresh 还会重新计费),节奏和时间分配按逐字稿篇幅估算并注明是估算。"
+)
+MERGE_FAILED_HINT = "分段没能合并成一个文件,原始分段仍在 directory 里,可以逐段转写。"
 
 
 # ── pure helpers (table-tested) ───────────────────────────────────────────────
 
 
 def detect_live_platform(url: str) -> str | None:
+    """Pick the gateway platform. Which Douyin/TikTok links resolve to a live room
+    (live room, profile, app share or short link) is decided by the gateway, which
+    rejects anything else before any vendor call or charge."""
     text = (url or "").lower()
-    if "live.douyin.com" in text:
+    if any(host in text for host in ("douyin.com", "iesdouyin.com", "amemv.com")):
         return "douyin"
     if "tiktok.com" in text:
         return "tiktok"
@@ -127,6 +145,14 @@ def build_ffmpeg_command(ffmpeg: str, source_url: str, out_dir: Path, *, mode: s
     return command
 
 
+def build_merge_command(ffmpeg: str, listing: Path, target: Path, *, mode: str) -> list[str]:
+    """Concatenate the parts with stream copy; audio is remuxed from ADTS into MP4."""
+    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(listing), "-c", "copy"]
+    if mode == "audio":
+        command += ["-bsf:a", "aac_adtstoasc", "-movflags", "+faststart"]
+    return command + ["-y", str(target)]
+
+
 def ffmpeg_env(platform: str, proxies: dict[str, str] | None = None) -> dict[str, str]:
     """The served profile's child env without credentials (ffmpeg needs none); for TikTok
     also the user's HTTP(S) proxy, because ffmpeg ignores the OS proxy settings."""
@@ -140,6 +166,11 @@ def ffmpeg_env(platform: str, proxies: dict[str, str] | None = None) -> dict[str
     if proxy.lower().startswith(("http://", "https://")):
         env["http_proxy"] = proxy
     return env
+
+
+def _no_window() -> dict[str, Any]:
+    """Windows: child processes must not flash a console window."""
+    return {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
 
 
 def _bundled_ffmpeg() -> str | None:
@@ -172,10 +203,13 @@ class _Recording:
     deadline: float
     state: str = "recording"  # recording | finishing (merging) | finished | stopped | failed
     reason: str = ""
+    resolve_url: str = ""  # the gateway's canonical live_url, used for re-resolves
     part: int = 1
     restarts: int = 0
     stop_requested: bool = False
+    ended_at: float | None = None
     merged_path: str | None = None
+    duration_seconds: float | None = None
     process: subprocess.Popen | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -193,14 +227,19 @@ class _Recording:
             "title": self.title,
             "anchor": self.anchor,
             "directory": str(self.directory),
-            "elapsed_seconds": int(time.time() - self.started_at),
+            "elapsed_seconds": int((self.ended_at or time.time()) - self.started_at),
             "segments": len(segments),
             "bytes": sum(path.stat().st_size for path in segments),
             "restarts": self.restarts,
             "merged_path": self.merged_path,
         }
+        if self.duration_seconds is not None:
+            out["duration_seconds"] = self.duration_seconds
         if self.state not in ("recording", "finishing"):
-            out["next_step"] = TRANSCRIBE_HINT if self.merged_path else "没有可用的录制文件。"
+            if self.merged_path:
+                out["next_step"] = TRANSCRIBE_HINT
+            else:
+                out["next_step"] = MERGE_FAILED_HINT if segments else "没有可用的录制文件。"
         return out
 
 
@@ -220,10 +259,9 @@ def _spawn(rec: _Recording, source_url: str) -> None:
     command = build_ffmpeg_command(
         rec.ffmpeg, source_url, rec.directory, mode=rec.mode, seconds=rec.deadline - time.time(), part=rec.part
     )
-    extra: dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
     with open(rec.directory / "ffmpeg.log", "ab") as log:
         rec.process = subprocess.Popen(
-            command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=log, env=ffmpeg_env(rec.platform), **extra
+            command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=log, env=ffmpeg_env(rec.platform), **_no_window()
         )
 
 
@@ -252,19 +290,41 @@ def _merge(rec: _Recording) -> str | None:
     segments = rec.segments()
     if not segments:
         return None
-    ext = SEGMENT_FORMATS[rec.mode][1]
-    target = rec.directory / f"recording.{ext}"
+    target = rec.directory / f"recording.{MERGED_EXT[rec.mode]}"
     listing = rec.directory / "parts.txt"
     listing.write_text("".join(f"file '{path.name}'\n" for path in segments), encoding="utf-8")
     result = subprocess.run(
-        [rec.ffmpeg, "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(listing), "-c", "copy", "-y", str(target)],
+        build_merge_command(rec.ffmpeg, listing, target, mode=rec.mode),
         cwd=rec.directory,
         stdin=subprocess.DEVNULL,
         capture_output=True,
         timeout=900,
         check=False,
+        **_no_window(),
     )
     return str(target) if result.returncode == 0 and target.is_file() and target.stat().st_size > 0 else None
+
+
+def _probe_duration(ffmpeg: str, path: str) -> float | None:
+    """The merged file's container duration (exact for .m4a; .ts from timestamps), via
+    the ffprobe shipped next to the bundled ffmpeg. None when it cannot be read."""
+    sibling = Path(ffmpeg).with_name("ffprobe.exe" if os.name == "nt" else "ffprobe")
+    ffprobe = str(sibling) if sibling.is_file() else shutil.which("ffprobe")
+    if not ffprobe:
+        return None
+    try:
+        result = subprocess.run(
+            [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", path],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+            **_no_window(),
+        )
+        return round(float(result.stdout.strip()), 1) if result.returncode == 0 else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
 
 
 def _write_state(rec: _Recording) -> None:
@@ -279,7 +339,10 @@ def _finish(rec: _Recording, state: str, reason: str) -> None:
         if rec.state != "recording":
             return
         rec.state = "finishing"
+        rec.ended_at = time.time()
     rec.merged_path = _merge(rec)
+    if rec.merged_path:
+        rec.duration_seconds = _probe_duration(rec.ffmpeg, rec.merged_path)
     rec.state, rec.reason = state, reason
     _write_state(rec)
 
@@ -320,9 +383,10 @@ def _watch_loop(rec: _Recording) -> None:
             return
         rec.restarts += 1
         try:
-            resolved = _resolve(rec.platform, rec.url)
+            resolved = _resolve(rec.platform, rec.resolve_url or rec.url)
         except _gateway.GatewayError:
             continue  # counted as a restart attempt; the next tick retries
+        rec.resolve_url = str(resolved.get("live_url") or rec.resolve_url or rec.url)
         if not resolved.get("live"):
             _finish(rec, "finished", "stream_ended")
             return
@@ -357,7 +421,7 @@ def _handle_start(args: dict, **_kwargs) -> str:
         return tool_error("mode 只能是 audio 或 video。")
     platform = detect_live_platform(url)
     if platform is None:
-        return tool_error("只支持抖音(live.douyin.com/数字)和 TikTok(tiktok.com/@账号/live)直播间链接。")
+        return tool_error("只支持抖音和 TikTok:直播间链接、主播主页链接或 App 分享的短链。")
     ffmpeg = _bundled_ffmpeg()
     if not ffmpeg:
         return tool_error("没有找到 APEX 自带的 ffmpeg,请修复或重新安装 APEX Desktop。")
@@ -383,7 +447,7 @@ def _handle_start(args: dict, **_kwargs) -> str:
     rec = _Recording(
         id=uuid.uuid4().hex[:12], platform=platform, url=url, mode=mode, directory=directory, ffmpeg=ffmpeg,
         title=str(resolved.get("title") or ""), anchor=str(resolved.get("anchor") or ""),
-        started_at=now, deadline=now + minutes * 60,
+        started_at=now, deadline=now + minutes * 60, resolve_url=str(resolved.get("live_url") or url),
     )
     _spawn(rec, source)
     with _REGISTRY_LOCK:
@@ -443,12 +507,18 @@ LIVE_RECORD_START_SCHEMA = {
     "description": (
         "在本机录制抖音或 TikTok 直播,默认只录音频。只能录用户本人或已获主播授权的直播间:调用前必须先问用户并得到明确确认,"
         "再把 rights_confirmed 设为 true。录制文件只保存在本机,不上传。录制在后台进行:用 live_record_status 查看进度,"
-        "用 live_record_stop 结束;结束后用 media_transcribe(video_path=merged_path) 生成逐字稿。"
+        "用 live_record_stop 结束;结束后用 media_transcribe(video_path=merged_path) 生成逐字稿(转写一次即可)。"
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "url": {"type": "string", "description": "直播间链接:抖音为电脑浏览器地址栏的 live.douyin.com/数字;TikTok 为 tiktok.com/@账号/live。"},
+            "url": {
+                "type": "string",
+                "description": (
+                    "用户给的链接原样传入即可:抖音直播间 live.douyin.com/数字、主播主页链接或 App 分享的 v.douyin.com 短链;"
+                    "TikTok 为 tiktok.com/@账号 或 tiktok.com/@账号/live。"
+                ),
+            },
             "rights_confirmed": {"type": "boolean", "description": "用户已明确确认自己是主播本人或已获主播授权。未确认时不要调用。"},
             "mode": {"type": "string", "enum": ["audio", "video"], "description": "audio(默认,体积小,用于逐字稿和话术分析)或 video(画面加声音,每小时可达数 GB)。"},
             "max_minutes": {"type": "integer", "description": f"最长录制分钟数,默认 {DEFAULT_MAX_MINUTES},上限 {MAX_MINUTES}。"},
@@ -467,7 +537,7 @@ LIVE_RECORD_STATUS_SCHEMA = {
 }
 LIVE_RECORD_STOP_SCHEMA = {
     "name": "live_record_stop",
-    "description": "结束一个本机直播录制并合并分段,返回 merged_path;需要逐字稿时再交给 media_transcribe。",
+    "description": "结束一个本机直播录制并合并分段,返回 merged_path(音频为 .m4a)和准确时长 duration_seconds;需要逐字稿时再交给 media_transcribe。",
     "parameters": {
         "type": "object",
         "properties": {"recording_id": {"type": "string", "description": "live_record_start 返回的 recording_id。"}},
