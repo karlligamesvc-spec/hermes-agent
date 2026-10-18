@@ -16,10 +16,14 @@ const GATEWAY_DESCENDANT_CODE = "import json,os,pathlib,psutil,signal,time; sign
  * A gateway that owns the runtime lock and a SIGTERM-ignoring descendant, and answers the
  * desktop update's drain request the way the real watcher does (gateway_state -> draining).
  * The caller writes gateway_state.json: its absence or active_agents > 0 must keep it alive.
+ * With APEX_FIXTURE_REDIRECTOR=<seconds> the process first acts as the Windows venv launcher
+ * does: it re-runs its own command line as a child, waits for it, lingers, then exits.
  */
 export function gatewayFixtureScript({ wedged }: { wedged: boolean }): string {
   return [
     'import json,os,pathlib,psutil,signal,subprocess,sys,time',
+    "if 'APEX_FIXTURE_REDIRECTOR' in os.environ:",
+    "    linger=float(os.environ.pop('APEX_FIXTURE_REDIRECTOR')); code=subprocess.call([sys.executable,*sys.argv]); time.sleep(linger); sys.exit(code)",
     'from gateway.status import acquire_gateway_runtime_lock,write_pid_file',
     'from utils import atomic_json_write',
     'assert acquire_gateway_runtime_lock()',
