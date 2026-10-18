@@ -21,6 +21,7 @@ import {
   chooseUpdaterArgs,
   getVenvSitePackagesEntries,
   isWindowsVenvHermesShim,
+  pickExistingHermesCommand,
   resolveExistingHermesCandidate,
   resolveVenvHermesCommand
 } from './windows-hermes-path'
@@ -195,6 +196,75 @@ test('existing-command chain still accepts a healthy generic non-venv CLI', () =
     kind: 'command',
     shell: false
   })
+})
+
+// ── pickExistingHermesCommand ─────────────────────────────────────────────
+// Step 4's command before any probe. The rungs come from resolveExternalRuntimeRungs:
+// a packaged build with its own engine gets no pathCli, so it never looks on PATH.
+
+const NO_RUNGS = { explicitCli: false, pathCli: false }
+const LOCAL_BIN = '/Users/a/.local/bin/hermes'
+
+function pick(
+  rungs: { explicitCli: boolean; pathCli: boolean },
+  explicit: string | undefined,
+  { onPath = { hermes: LOCAL_BIN } as Record<string, string>, wslWindowsBinary = false, desktopApp = '' } = {}
+) {
+  const lookups: string[] = []
+  const logs: string[] = []
+
+  const command = pickExistingHermesCommand(rungs, explicit, {
+    findOnPath: name => {
+      lookups.push(name)
+
+      return onPath[name] ?? null
+    },
+    isWindowsBinaryPathInWsl: candidate => wslWindowsBinary && candidate === explicit,
+    looksLikeDesktopAppBinary: candidate => candidate === desktopApp,
+    log: message => logs.push(message)
+  })
+
+  return { command, lookups, logs }
+}
+
+test('pickExistingHermesCommand: no rung, no PATH lookup (a packaged build with its own engine)', () => {
+  assert.deepEqual(pick(NO_RUNGS, undefined), { command: null, lookups: [], logs: [] })
+})
+
+test('pickExistingHermesCommand: the pathCli rung looks up `hermes` on PATH', () => {
+  assert.deepEqual(pick({ ...NO_RUNGS, pathCli: true }, undefined), { command: LOCAL_BIN, lookups: ['hermes'], logs: [] })
+})
+
+test('pickExistingHermesCommand: an explicit command replaces the PATH lookup', () => {
+  const explicit = pick({ ...NO_RUNGS, explicitCli: true }, 'hermes-nix', { onPath: { 'hermes-nix': '/nix/store/x/bin/hermes', hermes: LOCAL_BIN } })
+
+  assert.deepEqual(explicit, { command: '/nix/store/x/bin/hermes', lookups: ['hermes-nix'], logs: [] })
+})
+
+test('pickExistingHermesCommand: an explicit path that is not on PATH is used as given', () => {
+  assert.deepEqual(pick({ ...NO_RUNGS, explicitCli: true }, '/opt/hermes/bin/hermes', { onPath: {} }), {
+    command: '/opt/hermes/bin/hermes',
+    lookups: ['/opt/hermes/bin/hermes'],
+    logs: []
+  })
+})
+
+test('pickExistingHermesCommand: HERMES_DESKTOP_HERMES outside its rung is ignored (IGNORE_EXISTING, pending update)', () => {
+  assert.deepEqual(pick(NO_RUNGS, '/opt/hermes/bin/hermes'), { command: null, lookups: [], logs: [] })
+})
+
+test('pickExistingHermesCommand: a Windows binary named from WSL is refused', () => {
+  const refused = pick({ ...NO_RUNGS, explicitCli: true }, '/mnt/c/Users/a/hermes.exe', { onPath: {}, wslWindowsBinary: true })
+
+  assert.equal(refused.command, null)
+  assert.deepEqual(refused.logs, ['Ignoring Windows Hermes override under WSL: /mnt/c/Users/a/hermes.exe'])
+})
+
+test('pickExistingHermesCommand: this app’s own executable found on PATH is refused', () => {
+  const refused = pick({ ...NO_RUNGS, pathCli: true }, undefined, { desktopApp: LOCAL_BIN })
+
+  assert.equal(refused.command, null)
+  assert.deepEqual(refused.logs, [`Ignoring desktop app executable on PATH while resolving Hermes CLI: ${LOCAL_BIN}`])
 })
 
 // ── getVenvSitePackagesEntries ─────────────────────────────────────────────

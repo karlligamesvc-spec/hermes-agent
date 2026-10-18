@@ -26,6 +26,7 @@ import {
   type PackagedRuntimeOptions,
   type PackagedRuntimeRelease,
   type PackagedRuntimeResult,
+  packagedRuntimeShipped,
   readPackagedRuntime,
   shouldInstallPackagedRuntime
 } from './packaged-runtime'
@@ -606,6 +607,14 @@ test('every local caller joins one install and a failed install can be retried',
 
   assert.equal(await notStarted.waitForPending(), null)
   assert.equal(menuCalls, 0, 'opening a menu must not initiate installation')
+})
+
+// resolveHermesBackend keeps a packaged build off PATH and system runtimes only
+// when this predicate says the package really carries an engine for the machine.
+nativeTest('packagedRuntimeShipped: only a package with a valid engine for this machine counts', () => {
+  assert.equal(packagedRuntimeShipped(resources), true)
+  assert.equal(packagedRuntimeShipped(resources, 'linux', 'x64'), false, 'no engine is built for Linux packages')
+  assert.equal(packagedRuntimeShipped(path.join(fixture, 'no-such-resources')), false)
 })
 
 test('only canonical packaged local ownership may install; development, trial, borrowed or explicit pins cannot', () => {

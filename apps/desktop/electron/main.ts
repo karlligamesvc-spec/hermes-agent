@@ -177,6 +177,7 @@ import {
 import {
   canUseOnDiskRuntime,
   resolveBootstrapFailureFallback,
+  resolveExternalRuntimeRungs,
   resolvePreBootstrapDecision
 } from './apex-runtime-select'
 import { loadScenarioCatalog } from './apex-scenario-catalog'
@@ -479,7 +480,7 @@ import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
 import { LEGACY_OAUTH_PARTITION, resolveOauthPartition } from './oauth-partition'
 import { mintGatewayWsTicket as mintOauthGatewayWsTicket, requestWithOauthFallback } from './oauth-rest-request'
 import { wireOauthSessionResponse } from './oauth-session-response'
-import { armPackagedRuntimeUpdate, createPackagedRuntimeGate, installPackagedRuntime, offlineBundledOutcome, packagedRuntimeMatchesPin, shouldInstallPackagedRuntime } from './packaged-runtime'
+import { armPackagedRuntimeUpdate, createPackagedRuntimeGate, installPackagedRuntime, offlineBundledOutcome, packagedRuntimeMatchesPin, packagedRuntimeShipped, shouldInstallPackagedRuntime } from './packaged-runtime'
 import { createParentStartMarkerResolver, parentWatchdogEnv } from './parent-process-identity'
 import { registerPetOverlayIpc } from './pet-overlay-ipc'
 import {
@@ -649,6 +650,7 @@ import {
   chooseUpdaterArgs,
   getVenvSitePackagesEntries,
   isWindowsVenvHermesShim,
+  pickExistingHermesCommand,
   resolveExistingHermesCandidate,
   resolveVenvHermesCommand
 } from './windows-hermes-path'
@@ -5380,67 +5382,62 @@ function resolveHermesBackend(backendArgs) {
     rememberLog('[runtime-update] pin override pending; forcing bootstrap re-run (skipping existing-install reuse)')
   }
 
+  // Steps 4-5 use a runtime this app did not install. A packaged build that
+  // carries its own engine walks only an explicit HERMES_DESKTOP_HERMES, so a
+  // fresh or broken home reaches step 6, which installs or repairs that engine;
+  // other builds keep the whole ladder (resolveExternalRuntimeRungs).
+  const externalRungs = resolveExternalRuntimeRungs({
+    isPackaged: IS_PACKAGED,
+    bundledEngine: packagedRuntimeShipped(process.resourcesPath),
+    explicitCli: Boolean(process.env.HERMES_DESKTOP_HERMES),
+    ignoreExisting: process.env.HERMES_DESKTOP_IGNORE_EXISTING === '1',
+    updatePending: runtimeUpdatePending
+  })
+
   // 4. Existing `hermes` on PATH -- installed via install.ps1 / install.sh from
   //    a previous tool-only setup, or pip-installed system-wide. Use it but
   //    do NOT write a bootstrap marker; the user did this themselves and we
-  //    don't want to take ownership of an install we didn't perform.
+  //    don't want to take ownership of an install we didn't perform. A packaged
+  //    build with its own engine only takes an explicit HERMES_DESKTOP_HERMES.
   //    HERMES_DESKTOP_IGNORE_EXISTING=1 forces the bootstrap path for testing.
-  if (!runtimeUpdatePending && process.env.HERMES_DESKTOP_IGNORE_EXISTING !== '1') {
-    let hermesCommand = null
-    const hermesOverride = process.env.HERMES_DESKTOP_HERMES
+  const hermesCommand = pickExistingHermesCommand(externalRungs, process.env.HERMES_DESKTOP_HERMES, {
+    findOnPath,
+    isWindowsBinaryPathInWsl: command => isWindowsBinaryPathInWsl(command, { isWsl: IS_WSL }),
+    looksLikeDesktopAppBinary,
+    log: rememberLog
+  })
 
-    if (hermesOverride) {
-      const resolvedOverride = findOnPath(hermesOverride)
+  if (hermesCommand) {
+    const candidate = resolveExistingHermesCandidate(hermesCommand, backendArgs, {
+      isWindowsVenvHermesShim: command =>
+        isWindowsVenvHermesShim(command, {
+          isWindows: IS_WINDOWS,
+          resolvePath: (...segments) => path.resolve(...segments),
+          dirname: p => path.dirname(p),
+          basename: p => path.basename(p)
+        }),
+      unwrapWindowsVenvHermesCommand,
+      isCommandScript,
+      verifyHermesCli
+    })
 
-      if (resolvedOverride) {
-        hermesCommand = resolvedOverride
-      } else if (!isWindowsBinaryPathInWsl(hermesOverride, { isWsl: IS_WSL })) {
-        hermesCommand = hermesOverride
-      } else {
-        rememberLog(`Ignoring Windows Hermes override under WSL: ${hermesOverride}`)
-      }
-    } else {
-      hermesCommand = findOnPath('hermes')
+    if (candidate.backend) {
+      return candidate.backend
     }
 
-    if (hermesCommand) {
-      if (looksLikeDesktopAppBinary(hermesCommand)) {
-        rememberLog(`Ignoring desktop app executable on PATH while resolving Hermes CLI: ${hermesCommand}`)
-        hermesCommand = null
-      }
-    }
+    const reason =
+      candidate.rejection === 'runtime-import'
+        ? 'recognized venv shim failed the runtime import probe'
+        : '--version probe failed'
 
-    if (hermesCommand) {
-      const candidate = resolveExistingHermesCandidate(hermesCommand, backendArgs, {
-        isWindowsVenvHermesShim: command =>
-          isWindowsVenvHermesShim(command, {
-            isWindows: IS_WINDOWS,
-            resolvePath: (...segments) => path.resolve(...segments),
-            dirname: p => path.dirname(p),
-            basename: p => path.basename(p)
-          }),
-        unwrapWindowsVenvHermesCommand,
-        isCommandScript,
-        verifyHermesCli
-      })
-
-      if (candidate.backend) {
-        return candidate.backend
-      }
-
-      const reason =
-        candidate.rejection === 'runtime-import'
-          ? 'recognized venv shim failed the runtime import probe'
-          : '--version probe failed'
-
-      rememberLog(`Ignoring existing Hermes CLI at ${hermesCommand}: ${reason}; falling through to bootstrap.`)
-    }
+    rememberLog(`Ignoring existing Hermes CLI at ${hermesCommand}: ${reason}; falling through to bootstrap.`)
   }
 
   // 5. Last-ditch: pip-installed hermes_cli module via system Python.
   //    Same rationale as #4 -- the user installed this; we use it but don't
-  //    take ownership. Also skipped while a runtime update is pending (step 4).
-  const python = runtimeUpdatePending ? null : findSystemPython()
+  //    take ownership. Skipped while a runtime update is pending (step 4) and
+  //    in a packaged build that carries its own engine.
+  const python = externalRungs.systemPython ? findSystemPython() : null
 
   if (python) {
     // Same smoke-test rationale as step 4: a system Python in the

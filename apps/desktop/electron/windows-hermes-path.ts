@@ -334,3 +334,48 @@ export function resolveExistingHermesCandidate(
 
   return { backend: null, rejection: 'version' }
 }
+
+export interface ExistingHermesCommandDeps {
+  findOnPath: (command: string) => string | null
+  isWindowsBinaryPathInWsl: (command: string) => boolean
+  looksLikeDesktopAppBinary: (command: string) => boolean
+  log: (message: string) => void
+}
+
+/**
+ * Step 4's command, before any probe: an explicit HERMES_DESKTOP_HERMES under
+ * the explicitCli rung, else the `hermes` on PATH under the pathCli rung, else
+ * none (resolveExternalRuntimeRungs decides the rungs; a packaged build with
+ * its own engine gets no pathCli). The explicit command replaces the PATH
+ * lookup, it never falls back to it. A Windows binary named from WSL, or this
+ * app's own executable found on PATH, is refused.
+ */
+export function pickExistingHermesCommand(
+  rungs: { explicitCli: boolean; pathCli: boolean },
+  explicit: string | undefined,
+  deps: ExistingHermesCommandDeps
+): string | null {
+  let command: string | null = null
+
+  if (rungs.explicitCli && explicit) {
+    const resolved = deps.findOnPath(explicit)
+
+    if (resolved) {
+      command = resolved
+    } else if (!deps.isWindowsBinaryPathInWsl(explicit)) {
+      command = explicit
+    } else {
+      deps.log(`Ignoring Windows Hermes override under WSL: ${explicit}`)
+    }
+  } else if (rungs.pathCli) {
+    command = deps.findOnPath('hermes')
+  }
+
+  if (command && deps.looksLikeDesktopAppBinary(command)) {
+    deps.log(`Ignoring desktop app executable on PATH while resolving Hermes CLI: ${command}`)
+
+    return null
+  }
+
+  return command
+}
