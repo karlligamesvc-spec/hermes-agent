@@ -169,3 +169,17 @@ def test_package_built_before_caption_checks_is_not_publishable(artifacts):
     with pytest.raises(ValueError, match="Native proof"):
         publisher.publish(artifacts, cos, cos.read)
     assert cos.writes == []
+
+
+def test_desktop_lock_names_caption_verified_packages_from_one_build():
+    """hc-926: the runtime bundle stages exactly what desktop-lock names, so the lock must name
+    packages proved by the current native checks, from one build, under the publisher's immutable keys."""
+    lock = json.loads((MEDIA_TOOLS / "desktop-lock.json").read_text(encoding="utf-8"))["ffmpeg"]
+    assert sorted(lock) == sorted(publisher.TARGETS)
+    assert len({(entry["buildCommit"], entry["version"]) for entry in lock.values()}) == 1
+    for target, entry in lock.items():
+        assert entry["target"] == target
+        assert entry["nativeChecks"] == publisher.CHECKS
+        assert entry["profile"] == publisher.PROFILE
+        version, digest = entry["version"], entry["sha256"]
+        assert entry["url"] == f"{publisher.BASE}/media-tools/ffmpeg/{version}/{digest}/ffmpeg-{version}-{target}.zip"

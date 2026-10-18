@@ -25,6 +25,12 @@ vi.mock('@/store/runtime-update', async () => {
   }
 })
 
+const queueDeferredRuntimeUpdateMock = vi.fn()
+
+vi.mock('@/store/desktop-update', () => ({
+  queueDeferredRuntimeUpdate: (...args: unknown[]) => queueDeferredRuntimeUpdateMock(...args)
+}))
+
 import { $runtimeUpdateApplying, $runtimeUpdateCheck } from '@/store/runtime-update'
 // 壳更新 store 用真模块:没有 hermesDesktop 桥时它是惰性的,atom 直接可写。
 import { $shellUpdate } from '@/store/shell-update'
@@ -128,6 +134,19 @@ describe('RuntimeUpdatePill', () => {
     // Stale offer (already current) → the pill silently re-checks so it can
     // drop the capsule instead of re-offering a no-op update.
     await waitFor(() => expect(checkRuntimeUpdateMock).toHaveBeenCalledTimes(1))
+  })
+
+  it('hands a busy engine to the durable deferred plan instead of re-offering or failing', async () => {
+    applyRuntimeUpdateMock.mockResolvedValue({ applied: false, deferred: true, ok: true })
+    queueDeferredRuntimeUpdateMock.mockClear()
+    $runtimeUpdateCheck.set(UPDATE_AVAILABLE)
+    render(<RuntimeUpdatePill />)
+
+    fireEvent.click(screen.getByRole('button'))
+
+    await waitFor(() => expect(queueDeferredRuntimeUpdateMock).toHaveBeenCalledExactlyOnceWith(UPDATE_AVAILABLE))
+    expect(checkRuntimeUpdateMock).not.toHaveBeenCalled()
+    expect(screen.queryByText('Update failed, rolled back')).toBeNull()
   })
 
   it('disables the pill and shows progress copy while applying', () => {

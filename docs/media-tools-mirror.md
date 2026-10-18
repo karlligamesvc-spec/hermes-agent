@@ -40,8 +40,19 @@ These are standalone GPL CLI executables, not libraries linked into APEX. To
 rebuild, install Python 3.12, make, a compiler, pkg-config, Meson >= 0.60 and Ninja,
 then set `GITHUB_SHA` to the packaged `BUILD_COMMIT` and run `bash build.sh <target> <empty-dir>`.
 Windows cross builds additionally need MinGW-w64 (gcc and g++) and NASM on Linux.
-`desktop-lock.json` keeps naming the published caption-less 9.0.2 packages until a
-verified run of this recipe is published and the lock is updated.
+`desktop-lock.json` names the caption-capable packages published on 2026-10-18
+(hc-926). Workflow run 39109743491 built commit `aad6c6f9b8`: Mac arm64 on `macos-14`,
+Mac x64 on a physical Intel `macos-15-intel`, and Windows cross-built on Ubuntu 24.04
+then executed on `windows-2025-vs2026`. All three passed the five native checks.
+The publisher validated all six artifacts before its first write and read every object
+back in full. Only then did it replace `media-tools/stable.json` (SHA-256 `a66045a4…`),
+which also moved that manifest's Hypit entry from 0.2.17 to 0.3.1, the version this lock
+already pins. Afterwards the live manifest, every ZIP and the Hypit tarball were
+downloaded again and matched byte for byte. The binaries inside equal the smoked ones,
+and the COS Mac arm64 ZIP passed the native smoke again on macOS 27. Each ZIP grew
+about 28 MB and each extracted package 30–31 MB, almost all of it corresponding source
+(the HarfBuzz tarball alone is 20 MB). The workflow was disabled again after that run;
+re-enable it only for a rebuild.
 
 ## Hypit
 

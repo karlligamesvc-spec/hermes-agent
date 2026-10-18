@@ -74,6 +74,7 @@ import { downloadWithResume } from './apex-bundle-download'
 import { applyBundleUpdate as applyRuntimeBundleUpdate } from './apex-bundle-install'
 import { isVersionedRuntimeRoot } from './apex-bundle-layout'
 import * as bundleMigrate from './apex-bundle-migrate'
+import { runBundledTool } from './apex-bundle-tool'
 import {
   fetchClientConfig,
   normalizeStoredClientConfig,
@@ -176,6 +177,7 @@ import {
 import {
   canUseOnDiskRuntime,
   resolveBootstrapFailureFallback,
+  resolveExternalRuntimeRungs,
   resolvePreBootstrapDecision
 } from './apex-runtime-select'
 import { loadScenarioCatalog } from './apex-scenario-catalog'
@@ -234,7 +236,7 @@ import { createBackendConnectionState } from './backend-connection-state'
 import { BackendDialClaims } from './backend-dial-claim'
 import { buildDesktopBackendEnv, buildDesktopBackendPath, bundledRuntimePathEntries, hermesManagedNodePathEntries, normalizeHermesHomeRoot } from './backend-env'
 import { isReauthRequiredError, waitForHermesReady } from './backend-health'
-import { backendCommandMatches, createBackendOwnership, createBackendShutdownCoordinator, parseBackendOwnershipDetailed } from './backend-ownership'
+import { backendCommandMatches, createBackendOwnership, createBackendShutdownCoordinator } from './backend-ownership'
 import { canImportHermesCli, probeHermesRuntimeIntegrity, verifyHermesCli } from './backend-probes'
 import { waitForDashboardPortAnnouncement } from './backend-ready'
 import { recycleOwnedBackend } from './backend-recycle'
@@ -330,6 +332,7 @@ import type { RosterProfileMetadata } from './connection-registry'
 import { contextMenuPointFor, installContextMenuBridge } from './context-menu-bridge'
 import { describeCrashReason, installCrashForensics } from './crash-forensics'
 import { adoptServedDashboardToken } from './dashboard-token'
+import { createPackagedEngineDeferral } from './deferred-runtime-update'
 import {
   createDesktopDeepLinkRouter,
   type DesktopDeepLinkSource,
@@ -477,7 +480,7 @@ import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
 import { LEGACY_OAUTH_PARTITION, resolveOauthPartition } from './oauth-partition'
 import { mintGatewayWsTicket as mintOauthGatewayWsTicket, requestWithOauthFallback } from './oauth-rest-request'
 import { wireOauthSessionResponse } from './oauth-session-response'
-import { armPackagedRuntimeUpdate, assertPackagedRuntimeIdle, createPackagedRuntimeGate, installPackagedRuntime, packagedRuntimeMatchesPin, shouldInstallPackagedRuntime } from './packaged-runtime'
+import { armPackagedRuntimeUpdate, createPackagedRuntimeGate, installPackagedRuntime, offlineBundledOutcome, packagedRuntimeMatchesPin, packagedRuntimeShipped, shouldInstallPackagedRuntime } from './packaged-runtime'
 import { createParentStartMarkerResolver, parentWatchdogEnv } from './parent-process-identity'
 import { registerPetOverlayIpc } from './pet-overlay-ipc'
 import {
@@ -556,9 +559,10 @@ import { missingRendererAssets } from './renderer-bundle'
 import { loadRendererLoadErrorPage } from './renderer-load-error-page'
 import { attachRendererConsoleCapture, formatRendererBoundaryReport } from './renderer-log'
 import { fetchRosterSourceData } from './roster-source-fetch'
-import { retirePackagedGateways } from './runtime-gateway-retirement'
-import { applyRuntimeUpdateToLatest } from './runtime-update-apply'
-import { registerRuntimeVersionIpc, waitForPendingRuntimePreparation } from './runtime-version'
+import { createRuntimeSwitchGate } from './runtime-switch-gate'
+import { applyRuntimeUpdateToLatest, isUpdateArtifactReachable } from './runtime-update-apply'
+import { deferredRuntimeApply, isRuntimeUpdateBusy, preflightApply } from './runtime-update-busy'
+import { markerMatchesPin, registerRuntimeVersionIpc, waitForPendingRuntimePreparation } from './runtime-version'
 import {
   classifyStoredSecret,
   readSecretStoragePolicy,
@@ -646,6 +650,7 @@ import {
   chooseUpdaterArgs,
   getVenvSitePackagesEntries,
   isWindowsVenvHermesShim,
+  pickExistingHermesCommand,
   resolveExistingHermesCandidate,
   resolveVenvHermesCommand
 } from './windows-hermes-path'
@@ -5377,67 +5382,62 @@ function resolveHermesBackend(backendArgs) {
     rememberLog('[runtime-update] pin override pending; forcing bootstrap re-run (skipping existing-install reuse)')
   }
 
+  // Steps 4-5 use a runtime this app did not install. A packaged build that
+  // carries its own engine walks only an explicit HERMES_DESKTOP_HERMES, so a
+  // fresh or broken home reaches step 6, which installs or repairs that engine;
+  // other builds keep the whole ladder (resolveExternalRuntimeRungs).
+  const externalRungs = resolveExternalRuntimeRungs({
+    isPackaged: IS_PACKAGED,
+    bundledEngine: packagedRuntimeShipped(process.resourcesPath),
+    explicitCli: Boolean(process.env.HERMES_DESKTOP_HERMES),
+    ignoreExisting: process.env.HERMES_DESKTOP_IGNORE_EXISTING === '1',
+    updatePending: runtimeUpdatePending
+  })
+
   // 4. Existing `hermes` on PATH -- installed via install.ps1 / install.sh from
   //    a previous tool-only setup, or pip-installed system-wide. Use it but
   //    do NOT write a bootstrap marker; the user did this themselves and we
-  //    don't want to take ownership of an install we didn't perform.
+  //    don't want to take ownership of an install we didn't perform. A packaged
+  //    build with its own engine only takes an explicit HERMES_DESKTOP_HERMES.
   //    HERMES_DESKTOP_IGNORE_EXISTING=1 forces the bootstrap path for testing.
-  if (!runtimeUpdatePending && process.env.HERMES_DESKTOP_IGNORE_EXISTING !== '1') {
-    let hermesCommand = null
-    const hermesOverride = process.env.HERMES_DESKTOP_HERMES
+  const hermesCommand = pickExistingHermesCommand(externalRungs, process.env.HERMES_DESKTOP_HERMES, {
+    findOnPath,
+    isWindowsBinaryPathInWsl: command => isWindowsBinaryPathInWsl(command, { isWsl: IS_WSL }),
+    looksLikeDesktopAppBinary,
+    log: rememberLog
+  })
 
-    if (hermesOverride) {
-      const resolvedOverride = findOnPath(hermesOverride)
+  if (hermesCommand) {
+    const candidate = resolveExistingHermesCandidate(hermesCommand, backendArgs, {
+      isWindowsVenvHermesShim: command =>
+        isWindowsVenvHermesShim(command, {
+          isWindows: IS_WINDOWS,
+          resolvePath: (...segments) => path.resolve(...segments),
+          dirname: p => path.dirname(p),
+          basename: p => path.basename(p)
+        }),
+      unwrapWindowsVenvHermesCommand,
+      isCommandScript,
+      verifyHermesCli
+    })
 
-      if (resolvedOverride) {
-        hermesCommand = resolvedOverride
-      } else if (!isWindowsBinaryPathInWsl(hermesOverride, { isWsl: IS_WSL })) {
-        hermesCommand = hermesOverride
-      } else {
-        rememberLog(`Ignoring Windows Hermes override under WSL: ${hermesOverride}`)
-      }
-    } else {
-      hermesCommand = findOnPath('hermes')
+    if (candidate.backend) {
+      return candidate.backend
     }
 
-    if (hermesCommand) {
-      if (looksLikeDesktopAppBinary(hermesCommand)) {
-        rememberLog(`Ignoring desktop app executable on PATH while resolving Hermes CLI: ${hermesCommand}`)
-        hermesCommand = null
-      }
-    }
+    const reason =
+      candidate.rejection === 'runtime-import'
+        ? 'recognized venv shim failed the runtime import probe'
+        : '--version probe failed'
 
-    if (hermesCommand) {
-      const candidate = resolveExistingHermesCandidate(hermesCommand, backendArgs, {
-        isWindowsVenvHermesShim: command =>
-          isWindowsVenvHermesShim(command, {
-            isWindows: IS_WINDOWS,
-            resolvePath: (...segments) => path.resolve(...segments),
-            dirname: p => path.dirname(p),
-            basename: p => path.basename(p)
-          }),
-        unwrapWindowsVenvHermesCommand,
-        isCommandScript,
-        verifyHermesCli
-      })
-
-      if (candidate.backend) {
-        return candidate.backend
-      }
-
-      const reason =
-        candidate.rejection === 'runtime-import'
-          ? 'recognized venv shim failed the runtime import probe'
-          : '--version probe failed'
-
-      rememberLog(`Ignoring existing Hermes CLI at ${hermesCommand}: ${reason}; falling through to bootstrap.`)
-    }
+    rememberLog(`Ignoring existing Hermes CLI at ${hermesCommand}: ${reason}; falling through to bootstrap.`)
   }
 
   // 5. Last-ditch: pip-installed hermes_cli module via system Python.
   //    Same rationale as #4 -- the user installed this; we use it but don't
-  //    take ownership. Also skipped while a runtime update is pending (step 4).
-  const python = runtimeUpdatePending ? null : findSystemPython()
+  //    take ownership. Skipped while a runtime update is pending (step 4) and
+  //    in a packaged build that carries its own engine.
+  const python = externalRungs.systemPython ? findSystemPython() : null
 
   if (python) {
     // Same smoke-test rationale as step 4: a system Python in the
@@ -5489,38 +5489,44 @@ function resolveHermesBackend(backendArgs) {
   }
 }
 
-async function prepareRuntimeSwitch(verifiedRoot: string) {
-  const fence = localBackendLifecycle.fenceForUpdate()
-
-  try {
-    await fence.drain()
-    const retired = await retirePackagedGateways(ACTIVE_HERMES_ROOT, verifiedRoot, HERMES_HOME)
-    await stopMessagingGateway()
-
-    if (retired.length) {rememberLog(`[bundled-engine] retired owned messaging gateways: ${retired.join(', ')}`)}
-    // The ownership reaper already validates both parent and child identity.
-    // A remaining live/unknown record may belong to another Desktop; never kill it.
-    await reapOrphanedBackendsOnce()
-    const ownership = parseBackendOwnershipDetailed(fileExists(DESKTOP_BACKEND_OWNERSHIP_PATH) ? fs.readFileSync(DESKTOP_BACKEND_OWNERSHIP_PATH, 'utf8') : null)
-
-    if (ownership.corrupt) {throw new Error('Could not verify previous Desktop engine ownership. Retry after closing its local workers.')}
-
-    for (const entry of ownership.entries) {
-      if (await backendIdentityMatches(entry) !== false) {
-        throw new Error('A previous Desktop engine worker is still live or unverified. Close it and retry.')
-      }
-    }
-
-    await assertPackagedRuntimeIdle(ACTIVE_HERMES_ROOT, verifiedRoot)
-
-    return fence
-  } catch (error) {
-    fence.release()
-    throw error
-  }
-}
+const runtimeSwitch = createRuntimeSwitchGate({
+  activeRoot: ACTIVE_HERMES_ROOT,
+  hermesHome: HERMES_HOME,
+  activeWork: () => ({ reporters: activeWorkByWebContents.size, running: mergeActiveWork(activeWorkByWebContents.values()).count }),
+  lifecycle: localBackendLifecycle,
+  reapOrphanedBackends: reapOrphanedBackendsOnce,
+  stopMessagingGateway,
+  readOwnership: () => (fileExists(DESKTOP_BACKEND_OWNERSHIP_PATH) ? fs.readFileSync(DESKTOP_BACKEND_OWNERSHIP_PATH, 'utf8') : null),
+  identityMatches: backendIdentityMatches,
+  log: rememberLog
+})
 
 let packagedRuntimeBootError: string | null = null
+
+const packagedDeferral = createPackagedEngineDeferral({
+  preflight: runtimeSwitch.preflight,
+  // hc-919 C3: each retry installs as a tracked start, so quit waits for it and never begins one.
+  track: localBackendLifecycle.start,
+  reinstall: () => {
+    ensurePackagedEngine.reset()
+
+    return ensurePackagedEngine()
+  },
+  clearPin: clearRuntimePinOverride,
+  activated: () => {
+    bootstrapFailure = null
+    resetHermesConnection()
+
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.reload()
+      }
+    }
+  },
+  log: rememberLog
+})
+
+app.once('will-quit', () => packagedDeferral.dispose())
 
 const ensurePackagedEngine = createPackagedRuntimeGate(async () => {
   let updateFence: ReturnType<typeof localBackendLifecycle.fenceForUpdate> | undefined
@@ -5537,16 +5543,23 @@ const ensurePackagedEngine = createPackagedRuntimeGate(async () => {
       }),
       assertCurrent: () => localBackendLifecycle.assertCanStart(),
       beforeSwitch: async verifiedRoot => {
-        updateFence = await prepareRuntimeSwitch(verifiedRoot)
+        updateFence = await runtimeSwitch.prepare(verifiedRoot)
       },
       writeMarker: release => writeBootstrapMarker({ pinnedCommit: release.runtime_commit, pinnedBranch: null, version: release.runtime_version }),
       log: rememberLog
     }, isActiveRuntimeUsable())
 
     packagedRuntimeBootError = null
+    packagedDeferral.settle()
 
     return result
   } catch (error: any) {
+    if (packagedDeferral.deferIfBusy(error, isActiveRuntimeUsable)) {
+      packagedRuntimeBootError = null
+
+      return { status: 'preserved' as const, reason: 'busy' as const, runtimeCommit: readSourceCommitStamp(ACTIVE_HERMES_ROOT) }
+    }
+
     packagedRuntimeBootError = error?.message || String(error)
     rememberLog(`[bundled-engine] automatic install failed: ${packagedRuntimeBootError}`)
 
@@ -5602,14 +5615,14 @@ async function runEnsureRuntime(backend) {
     await advanceBootProgress('runtime.bundle', 'Preparing the APEX engine', 30)
     const prepared = await ensurePackagedEngine()
 
-    if (offlineUpdate) {
-      if (prepared.status === 'preserved' || prepared.runtimeCommit !== runtimeOverride.commit) {
-        rollbackRuntimePinOverride('offline bundled update failed')
-        throw new Error('安装包内的引擎更新失败，已保留原引擎。请重试。')
-      }
+    const offline = offlineUpdate ? offlineBundledOutcome(prepared, runtimeOverride.commit) : null
 
-      clearRuntimePinOverride()
+    if (offline === 'failed') {
+      rollbackRuntimePinOverride('offline bundled update failed')
+      throw new Error('安装包内的引擎更新失败，已保留原引擎。请重试。')
     }
+
+    if (offline === 'activated') {clearRuntimePinOverride()}
     localBackendLifecycle.assertCanStart()
     const cliArgs = backend.kind === 'bootstrap-needed' ? backend.args : backend.args.slice(2)
     backend = createActiveBackend(cliArgs)
@@ -18389,6 +18402,7 @@ function initShellUpdater() {
     ipcMain,
     isPackaged: app.isPackaged && updatesAllowed,
     log: rememberLog,
+    beforeInstall: () => runtimeSwitch.prepare(ACTIVE_HERMES_ROOT),
     // hc-532 (gate 3): thread the shell version so the shell-update beacons
     // carry app_version (createShellUpdater defaults it to null when omitted).
     appVersion: app.getVersion(),
@@ -18662,71 +18676,6 @@ async function resolveBootstrapStamp(bakedStamp) {
   return merged
 }
 
-// Best-effort reachability probe for an update artifact (the COS source tarball)
-// BEFORE we retarget the install pin and re-run bootstrap. This is the
-// don't-brick guard: install.sh's CN path deletes INSTALL_DIR if the new tarball
-// extract fails, so confirming the object actually exists first keeps a working
-// install from being torn down for a 404. Resolves true on a 2xx/3xx HEAD,
-// false on 4xx/5xx or a network error. Never throws. A missing URL resolves
-// true (the non-CN git-clone path doesn't use COS and verifies via git itself).
-function isUpdateArtifactReachable(url, { timeoutMs = 8000 }: any = {}) {
-  return new Promise(resolve => {
-    const clean = String(url || '').trim()
-
-    if (!clean) {
-      resolve(true)
-
-      return
-    }
-
-    let parsed
-
-    try {
-      parsed = new URL(clean)
-    } catch {
-      resolve(false)
-
-      return
-    }
-
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      resolve(false)
-
-      return
-    }
-
-    const client = parsed.protocol === 'https:' ? https : http
-    let settled = false
-
-    const done = value => {
-      if (settled) {
-        return
-      }
-
-      settled = true
-      resolve(value)
-    }
-
-    const req = client.request(parsed, { method: 'HEAD' }, res => {
-      const code = res.statusCode || 0
-      res.resume() // drain
-      done(code >= 200 && code < 400)
-    })
-
-    req.on('error', () => done(false))
-    req.setTimeout(timeoutMs, () => {
-      try {
-        req.destroy()
-      } catch {
-        void 0
-      }
-
-      done(false)
-    })
-    req.end()
-  })
-}
-
 // Roll an opt-in update back after a failed re-bootstrap: restore the marker the
 // update was replacing (so the next launch boots the OLD, known-good runtime
 // that is still on disk) and drop the override so we don't re-attempt the broken
@@ -18797,28 +18746,6 @@ function extractBundleArchive(archivePath, destDir) {
     })
     child.on('error', reject)
     child.on('close', code => (code === 0 ? resolve() : reject(new Error(`tar exited ${code}: ${stderr.slice(-400)}`))))
-  })
-}
-
-// Run the BUNDLED node against the BUNDLED tool copy (fixup / verify). The
-// bundle ships scripts/build-runtime-bundle.mjs + its own node, so there is no
-// external fixup binary to keep in lockstep (manifest.fixup drives the argv).
-function runBundledTool(exe, argv, label, onOutput?: (line: string) => void) {
-  return new Promise<void>((resolve, reject) => {
-    const child = spawn(exe, argv, hiddenWindowsChildOptions({ stdio: ['ignore', 'pipe', 'pipe'] }))
-    let tail = ''
-
-    const cap = d => {
-      tail = (tail + String(d)).slice(-2000)
-      onOutput?.(String(d))
-    }
-
-    child.stdout.on('data', cap)
-    child.stderr.on('data', cap)
-    child.on('error', reject)
-    child.on('close', code =>
-      code === 0 ? resolve() : reject(new Error(`bundle ${label} exited ${code}: ${tail.slice(-400)}`))
-    )
   })
 }
 
@@ -18907,7 +18834,7 @@ async function applyRuntimeBundleUpdateFlow(pin): Promise<any> {
       download: bundleRuntimeDownload,
       extract: extractBundleArchive,
       runTool: runBundledTool,
-      beforeSwitch: async verifiedRoot => { updateFence = await prepareRuntimeSwitch(verifiedRoot) },
+      beforeSwitch: async verifiedRoot => { updateFence = await runtimeSwitch.prepare(verifiedRoot) },
       onProgress: broadcastRuntimeUpdateProgress,
       log: msg => rememberLog(msg)
     })
@@ -22297,6 +22224,7 @@ registerRuntimeVersionIpc(ipcMain, {
   readMarker: readBootstrapMarker,
   readTreeCommit: () => readSourceCommitStamp(ACTIVE_HERMES_ROOT),
   minEngineVersion: readDeclaredMinEngineVersion,
+  updateDeferred: packagedDeferral.isDeferred,
   log: rememberLog
 })
 
@@ -22353,14 +22281,9 @@ async function applyResolvedRuntimeUpdate(pin) {
   // 2. Skip if already on this pin (compare against the installed marker key).
   await waitForRuntimePreparation()
   const marker = readBootstrapMarker()
-  const installedKey = (marker && (marker.pinnedCommit || marker.pinnedBranch)) || null
 
-  if (installedKey && String(installedKey) === String(pin.key)) {
-    const versionMoved = Boolean(marker && marker.version && pin.version && marker.version !== pin.version)
-
-    if (!versionMoved) {
-      return { ok: true, applied: false, alreadyCurrent: true, latest: { version: pin.version, key: pin.key } }
-    }
+  if (markerMatchesPin(marker, pin)) {
+    return { ok: true, applied: false, alreadyCurrent: true, latest: { version: pin.version, key: pin.key } }
   }
 
   // 2a. hc-475 (F4): shell↔runtime compatibility gate — the SINGLE hard refuse
@@ -22392,6 +22315,9 @@ async function applyResolvedRuntimeUpdate(pin) {
   // offline preparation pass without invoking npm or the source installer.
   if (IS_PACKAGED && !IS_DIAGNOSTIC_TRIAL && !process.env.HERMES_DESKTOP_HERMES_ROOT) {
     try {
+      if (packagedRuntimeMatchesPin(process.resourcesPath, pin.commit)) {
+        await runtimeSwitch.preflight()
+      }
       if (armPackagedRuntimeUpdate({ resourcesPath: process.resourcesPath, commit: pin.commit, branch: pin.branch,
         version: pin.version, previousMarker: marker || null, persistOverride: writeRuntimePinOverride })) {
         ensurePackagedEngine.reset()
@@ -22401,7 +22327,7 @@ async function applyResolvedRuntimeUpdate(pin) {
         return { ok: true, applied: true, via: 'packaged', reloadRequired: true, latest: { version: pin.version, key: pin.key } }
       }
     } catch (error: any) {
-      return { ok: false, error: error.message || String(error) }
+      return isRuntimeUpdateBusy(error) ? deferredRuntimeApply(pin) : { ok: false, error: error.message || String(error) }
     }
   }
 
@@ -22439,6 +22365,10 @@ async function applyResolvedRuntimeUpdate(pin) {
         reloadRequired: true,
         latest: { version: pin.version, key: pin.key, compatibilityNotes: pin.compatibilityNotes }
       }
+    }
+
+    if (result.code === 'runtime_update_busy') {
+      return deferredRuntimeApply(pin)
     }
 
     if (result.code === 'min_desktop_version') {
@@ -22479,6 +22409,12 @@ async function applyResolvedRuntimeUpdate(pin) {
 
   // 3. Don't-brick pre-flight: confirm the new source tarball actually exists
   //    before we retarget. (No URL -> non-CN git path, which verifies itself.)
+  const deferred = await preflightApply(pin, runtimeSwitch.preflight)
+
+  if (deferred) {
+    return deferred
+  }
+
   const reachable = await isUpdateArtifactReachable(pin.cosTarballUrl)
 
   if (!reachable) {

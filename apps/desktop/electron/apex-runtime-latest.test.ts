@@ -579,10 +579,13 @@ function mainSource() {
 test('main.ts: a pending pin override forces the bootstrap re-run (steps 4-5 gated)', () => {
   const src = mainSource()
   assert.match(src, /const runtimeUpdatePending = readRuntimePinOverride\(\) !== null/)
-  // Step 4 (existing `hermes` on PATH) must be skipped while an update is pending.
-  assert.match(src, /if \(!runtimeUpdatePending && process\.env\.HERMES_DESKTOP_IGNORE_EXISTING !== '1'\)/)
+  // Steps 4-5 walk only the rungs resolveExternalRuntimeRungs offers, and it offers none while
+  // an update is pending (apex-runtime-select.test.ts); main.ts must hand it the flag and obey it.
+  assert.match(src, /updatePending: runtimeUpdatePending/)
+  // Step 4 (an explicit or PATH `hermes`) must be skipped while an update is pending.
+  assert.match(src, /pickExistingHermesCommand\(externalRungs, process\.env\.HERMES_DESKTOP_HERMES,/)
   // Step 5 (system python) must be skipped too.
-  assert.match(src, /const python = runtimeUpdatePending \? null : findSystemPython\(\)/)
+  assert.match(src, /const python = externalRungs\.systemPython \? findSystemPython\(\) : null/)
 })
 
 test('main.ts: failed AND cancelled bootstrap roll the opt-in update back', () => {

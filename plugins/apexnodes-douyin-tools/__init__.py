@@ -263,8 +263,9 @@ def _check() -> bool:
 SOCIAL_DOWNLOAD_SCHEMA = {
     "name": "social_download",
     "description": (
-        "下载社媒视频（抖音/TikTok、小红书、快手、B站）到当前工作区的媒体空间。用户发来抖音/小红书/快手/B站分享链接/分享口令时，"
+        "下载社媒视频（抖音、小红书、快手、B站）到当前工作区的媒体空间。用户发来抖音/小红书/快手/B站分享链接/分享口令时，"
         "第一步必须优先使用本工具；不要用浏览器打开这些链接（反爬环境又慢又不可靠）。返回 video_path 和元数据。"
+        "其他平台（如 TikTok、视频号）的视频不支持下载，不要承诺；需要时请用户直接发送视频文件。"
     ),
     "parameters": {
         "type": "object",
@@ -373,8 +374,8 @@ def _gateway_resolve_download(url: str, *, timeout: float = 600) -> tuple[dict[s
     platform = _gateway.detect_platform(url)
     if not platform:
         raise _gateway.GatewayError(
-            "无法从链接识别社媒平台（支持 抖音/小红书/快手/B站/TikTok/YouTube/Instagram/Twitter/公众号/视频号），"
-            "请发送原始分享链接或分享口令。"
+            "无法从链接识别社媒平台（当前可下载：抖音/小红书/快手/B站），"
+            "请发送原始分享链接或分享口令；其他平台的视频请直接发送视频文件。"
         )
     response = _gateway.request_json(
         "POST", f"/tools/v1/social/{platform}/download", {"url": url}, timeout=timeout
@@ -768,7 +769,8 @@ def _handle_image_ocr(args: dict, **_kwargs) -> str:
 SOCIAL_BATCH_SUBMIT_SCHEMA = {
     "name": "social_batch_submit",
     "description": (
-        "批量下载并转写一批社媒视频（抖音/快手/B站/小红书=下载+转写，YouTube=官方字幕，TikTok复用抖音）。"
+        "批量下载并转写一批社媒视频（抖音/快手/B站/小红书=下载+转写，YouTube=官方字幕）。"
+        "其他平台（如 TikTok、视频号）没有转写通道，会如实标为未处理，不要承诺。"
         "适用于「把某作者点赞超10万的作品批量转写」「把这个抖音合集的视频都转成文字/表格」这类需求。"
         "传 urls（链接清单）或 creator_url（作者主页链接=枚举其全部作品，或某个抖音合集的分享链接=只枚举该合集；配 min_likes/top 自动筛选）。"
         "★这是异步任务：本工具只负责提交，返回 job_id；之后用 social_batch_status 轮询进度。"
@@ -791,7 +793,7 @@ SOCIAL_BATCH_SUBMIT_SCHEMA = {
                     "注意：合集请发该【合集】自己的分享链接，仅凭作者主页+合集名无法定位某个合集。"
                 ),
             },
-            "platform": {"type": "string", "description": "可选，creator_url 的平台（douyin/kuaishou/bilibili/xiaohongshu/youtube/tiktok）。"},
+            "platform": {"type": "string", "description": "可选，creator_url 的平台（douyin/kuaishou/bilibili/xiaohongshu/youtube）。"},
             "min_likes": {"type": "integer", "description": "可选，creator_url 时只保留点赞≥该值的作品（如 100000）。"},
             "top": {"type": "integer", "description": "可选，最多取前 N 条（按点赞排序）。"},
             "bitable_url": {"type": "string", "description": "可选，飞书多条交付时写入的目标多维表格 /base/ 链接。"},
