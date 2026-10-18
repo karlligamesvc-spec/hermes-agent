@@ -221,11 +221,12 @@ class _Ctx:
 
 
 def test_url_guidance_matches_what_the_gateway_can_resolve(plugin):
-    """2026-10-18 probe: a live creator's profile carried no live-room id and app share
-    links resolve to an internal room id, so the schema steers to live.douyin.com/数字."""
+    """2026-10-18 probes: the gateway (apex-nodes #1004) resolves live-room, profile and
+    app live-share links; it asks for live.douyin.com/数字 only when it finds no room."""
     text = plugin.LIVE_RECORD_START_SCHEMA["parameters"]["properties"]["url"]["description"]
-    assert "live.douyin.com/数字" in text
-    assert "主播主页链接多半查不到直播间号" in text and "App 里的直播分享链接不支持" in text
+    assert "live.douyin.com/数字、主播主页链接、App 直播分享链接" in text
+    assert "查不到直播间时" in text and "复制 live.douyin.com/数字 链接再试" in text
+    assert "不支持" not in text and "多半查不到" not in text
 
 
 def test_registers_three_tools_with_rights_required(plugin):

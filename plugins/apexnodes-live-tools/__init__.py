@@ -421,7 +421,7 @@ def _handle_start(args: dict, **_kwargs) -> str:
         return tool_error("mode 只能是 audio 或 video。")
     platform = detect_live_platform(url)
     if platform is None:
-        return tool_error("只支持抖音和 TikTok 直播间。抖音请用电脑浏览器打开直播间,复制 live.douyin.com/数字 形式的链接。")
+        return tool_error("只支持抖音和 TikTok 直播间。抖音可以用直播间链接 live.douyin.com/数字、主播主页链接或 App 直播分享链接。")
     ffmpeg = _bundled_ffmpeg()
     if not ffmpeg:
         return tool_error("没有找到 APEX 自带的 ffmpeg,请修复或重新安装 APEX Desktop。")
@@ -515,9 +515,9 @@ LIVE_RECORD_START_SCHEMA = {
             "url": {
                 "type": "string",
                 "description": (
-                    "抖音最可靠的是直播间链接 live.douyin.com/数字(落到直播间的 v.douyin.com 短链也行);"
-                    "主播主页链接多半查不到直播间号,App 里的直播分享链接不支持,网关会返回提示,"
-                    "这时请用户在电脑浏览器打开直播间,复制 live.douyin.com/数字 链接再试。"
+                    "用户给的链接原样传入:抖音的直播间链接 live.douyin.com/数字、主播主页链接、App 直播分享链接"
+                    "(以及落到它们的 v.douyin.com 短链)都可以,主页链接要多查一两次。网关查不到直播间时"
+                    "(例如主播当前没有在直播)会返回提示,这时请用户在电脑浏览器打开直播间,复制 live.douyin.com/数字 链接再试。"
                     "TikTok 为 tiktok.com/@账号 或 tiktok.com/@账号/live。"
                 ),
             },
