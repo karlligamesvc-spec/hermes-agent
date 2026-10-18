@@ -1109,3 +1109,119 @@ class TestDesktopManagedKeyResolution:
         gateway_module = _gateway_module()
         assert gateway_module.agent_api_key() == "env-key"
         assert gateway_module.gateway_base() == GATEWAY_BASE
+
+
+# ---------------------------------------------------------------------------
+# hc-930:作品背景声音 `music` 原样透传(网关腿 + 回退腿)
+# ---------------------------------------------------------------------------
+
+# 云腿 social_response_trim.music_summary 的真实产物(抖音版权曲,2026-10-18 probe)。
+# 插件不解析它,只负责原样带给 agent——这里钉住「已经正确的那一侧」(硬规则 #12)。
+# 注意:真实的 tools.registry.tool_result(data=None, **kwargs) 会把结果里的 `data`
+# 键绑到位置参数上,所以 social_* 数据类工具交给 agent 的只是裁剪后的 vendor 面
+# (`{"item": {...}}`),agent 读的是 item.music,不是 data.data.item.music。
+_HC930_MUSIC = {
+    "id": "7022294012816001054",
+    "title": "Warm (热播版)",
+    "author": "示例搬运工",
+    "availability_note": "该声音由于版权原因在当前地区不可用",
+    "original_sound": False,
+    "duration_seconds": 208,
+}
+
+
+class TestBackgroundSoundPassThrough:
+    def test_gateway_social_download_keeps_music(
+        self, desktop_env, fake_httpx, douyin_mod, monkeypatch, tmp_path
+    ):
+        gateway_module = _gateway_module()
+        fake_httpx.responses.append(
+            FakeResponse(
+                200,
+                {
+                    "data": {
+                        "title": "示例视频",
+                        "download_url": "https://cdn.example/v.mp4",
+                        "download_headers": {},
+                        "music": dict(_HC930_MUSIC),
+                    },
+                    "cost_cents": 4,
+                },
+            )
+        )
+        downloaded = tmp_path / "v.mp4"
+        downloaded.write_bytes(b"fake-video")
+        monkeypatch.setattr(gateway_module, "download_media", lambda *a, **k: downloaded)
+        result = _parse(
+            douyin_mod._handle_social_download({"url": "https://v.douyin.com/xyz/"})
+        )
+        assert result["video_path"] == str(downloaded)
+        assert result["music"] == _HC930_MUSIC
+
+    def test_gateway_social_content_keeps_item_music(
+        self, desktop_env, fake_httpx, social_mod
+    ):
+        fake_httpx.responses.append(
+            FakeResponse(
+                200,
+                {
+                    "data": {
+                        "ok": True,
+                        "platform": "douyin",
+                        "capability": "content",
+                        "data": {"item": {"id": "7579252924296581851", "music": dict(_HC930_MUSIC)}},
+                    },
+                    "cost_cents": 4,
+                },
+            )
+        )
+        result = _parse(
+            social_mod._handler("content")(
+                {"platform": "douyin", "url": "https://v.douyin.com/xyz/"}
+            )
+        )
+        assert result["item"]["music"] == _HC930_MUSIC
+
+    @pytest.fixture
+    def legacy_env(self, monkeypatch, desktop_env):
+        monkeypatch.setenv("TOOLS_GATEWAY_DISABLED", "1")
+        monkeypatch.setenv("HERMES_PLATFORM_API_BASE", "http://master.test/api/v1")
+        monkeypatch.setenv("API_SERVER_KEY", "legacy-key")
+
+    @pytest.mark.parametrize(
+        ("handler", "args", "endpoint", "body", "read"),
+        [
+            (
+                "download",
+                {"url": "https://v.douyin.com/abc/"},
+                "/media/social-download",
+                {"ok": True, "title": "t", "music": dict(_HC930_MUSIC)},
+                lambda result: result["music"],
+            ),
+            (
+                "content",
+                {"platform": "douyin", "url": "https://v.douyin.com/abc/"},
+                "/data/social/content",
+                {"ok": True, "data": {"item": {"id": "1", "music": dict(_HC930_MUSIC)}}},
+                lambda result: result["item"]["music"],
+            ),
+        ],
+    )
+    def test_fallback_leg_keeps_music(
+        self, legacy_env, monkeypatch, fake_httpx, douyin_mod, social_mod,
+        handler, args, endpoint, body, read,
+    ):
+        calls = []
+
+        def _fake(request, timeout=None):
+            calls.append(request)
+            return _FakeUrlopenResponse(body)
+
+        monkeypatch.setattr("urllib.request.urlopen", _fake)
+        if handler == "download":
+            result = _parse(douyin_mod._handle_social_download(args))
+        else:
+            result = _parse(social_mod._handler("content")(args))
+        assert calls[0].full_url == f"http://master.test/api/v1{endpoint}"
+        assert read(result) == _HC930_MUSIC
+        assert not fake_httpx.requests
