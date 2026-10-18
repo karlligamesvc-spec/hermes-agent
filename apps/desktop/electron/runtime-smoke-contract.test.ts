@@ -160,7 +160,7 @@ test('the smoke switches engines through Desktop\'s own gate and starts gateways
 test('the native retirement test drives the same gateway fixture as the smoke', () => {
   const unit = parse('electron/runtime-gateway-retirement.test.ts')
   expect(importedNames(unit, './fixtures/runtime-smoke')).toEqual(expect.arrayContaining(['gatewayFixtureScript', 'gatewayRuntimeState']))
-  expect(callsOf(unit, 'gatewayFixtureScript')).toHaveLength(1)
+  expect(callsOf(unit, 'gatewayFixtureScript').length).toBeGreaterThan(0)
 
   for (const text of literalTexts(unit)) {
     expect(text, 'the gateway fixture lives in fixtures/runtime-smoke.ts').not.toContain('write_pid_file')

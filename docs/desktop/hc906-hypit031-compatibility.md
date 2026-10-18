@@ -294,3 +294,20 @@ dir with a local mock LLM, so none of the machine's own data was involved.
 - Still open for the release: the real-account sign-in (Kael), a real-model run, the `publish=true` paired
   release through `desktop-release.yml` with the feed read-back, and Windows signing (the installer is still
   unsigned).
+
+## Desktop 0.17.58 published (2026-10-17)
+
+- **Sign-in and Mac upgrade:** Kael signed in with a real account on an isolated Mac copy of the candidate, and the managed model replied. A separate Mac Studio session also passed the in-place upgrade from public 0.17.57: the old messages were byte-identical, and the configs gained only the `sessions.auto_prune` block.
+- **First publish attempt (run 39046539561, `392e32ecc3`), cancelled:**
+  - Mac arm64 built, signed and notarized, then failed in "Publish installer + updater feed to COS". From the hosted US runner, the 630 MB DMG moved to COS Guangzhou at about 0.22 MB/s, and the fixed 3 x 600 s uploader budget reached 335 MB (exit 75).
+  - The run was cancelled before Windows could advance its feed alone (hard rule #15). All three feeds stayed at 0.17.57, and no 0.17.58 object reached COS.
+- **Fix, #401 (`0e201f2176`, merged as `35e8ef5ee8`):** `upload-desktop-cos.py` gained an opt-in `--budget-from-size`, used only by the Mac step. It allows 128 KiB/s plus 600 s per file, capped at 90 minutes. Windows keeps the default, because its outer `Stop-Process` ends only the uploader parent.
+- **Published run, 39053941028 (`35e8ef5ee8`):**
+  - Windows published at 18:22 UTC (21 minutes) and Mac arm64 at 18:24 (22 minutes, under the new budget).
+  - Mac x64 hit the Apple notarization propagation flake ("failed after 3 assessments (exit 3)") and passed on a `--failed` rerun of the same commit, per Kael's decision 6.
+  - The parity job reported `paired release identity OK: version=0.17.58 sha=35e8ef5ee8` and "cross-platform production feeds are synchronized at 0.17.58".
+- **Read-back:** every file listed in the three manifests was downloaded and checked.
+  - All five files matched their manifest size and sha512: Mac arm64 zip and DMG, Mac x64 zip and DMG, Windows exe.
+  - Both Mac apps report 0.17.58, install stamp `35e8ef5ee8`, the right architecture, a valid `codesign`, and `spctl` "accepted, Notarized Developer ID".
+  - The DMG containers themselves are unsigned (the candidate's were too; DMG signing was never configured). The Windows installer remains unsigned.
+- **Not covered:** Windows signing, and real-model runs beyond the sign-in check.

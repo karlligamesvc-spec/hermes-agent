@@ -25,6 +25,19 @@ def under_root(value):
         return False
     return any(os.path.normcase(os.path.abspath(value)) == os.path.normcase(root) or
         os.path.normcase(os.path.abspath(value)).startswith(os.path.normcase(root) + os.sep) for root in roots)
+def is_redirector(process):
+    argv = process.cmdline()
+    return looks_like_gateway_runtime_command_line(' '.join(argv)) and any(under_root(p) for p in [process.exe(), *argv])
+def gone(process):
+    try:
+        return not process.is_running() or process.status() == psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return True
+def wait_gone(processes, seconds):
+    deadline = time.monotonic() + seconds
+    while not all(gone(p) for p in processes) and time.monotonic() < deadline:
+        time.sleep(.05)
+    return [p for p in processes if not gone(p)]
 
 homes = [home]
 profiles = home / 'profiles'
@@ -45,13 +58,15 @@ for target in homes:
         process = psutil.Process(pid)
         # Preserve a gateway owned by another still-running app/CLI instance.
         parent = process.parent()
-        # Windows venv uses a redirector between Electron and the Python worker.
+        # Windows venv uses a redirector between Electron and the Python worker. It holds the
+        # engine like its worker does, so it is exempt while inspecting and waited out on retirement.
+        redirectors = []
         for _ in range(2):
             if parent is None or parent.pid in (1, desktop_pid):
                 break
-            argv = parent.cmdline()
-            if not looks_like_gateway_runtime_command_line(' '.join(argv)) or not any(under_root(p) for p in [parent.exe(), *argv]):
+            if not is_redirector(parent):
                 break
+            redirectors.append(parent)
             parent = parent.parent()
         if parent is not None and parent.pid not in (1, desktop_pid):
             continue
@@ -66,7 +81,7 @@ for target in homes:
                 or state.get('active_agents') != 0 or state.get('gateway_state') != 'running'):
             raise RuntimeError('APEX_RUNTIME_UPDATE_BUSY')
         if inspect_only:
-            retired.extend([pid, *[child.pid for child in process.children(recursive=True)]])
+            retired.extend([pid, *[child.pid for child in process.children(recursive=True)], *[r.pid for r in redirectors]])
             continue
         # Revalidates PID, creation time, canonical command and home record at
         # every signal; marks intentional shutdown and also reaps owned children.
@@ -106,7 +121,17 @@ for target in homes:
                 pass
         if descendants and psutil.wait_procs(descendants, timeout=5)[1]:
             raise RuntimeError('Gateway descendants did not exit: PID ' + str(pid))
-        retired.append(stopped)
+        # A redirector exits with its worker. One that outlives it is ended only while it still is
+        # the same process (PID + creation time) running a gateway command under the engine.
+        for redirector in wait_gone(redirectors, 5):
+            try:
+                if is_redirector(redirector):
+                    redirector.kill()
+            except psutil.NoSuchProcess:
+                pass
+        if wait_gone(redirectors, 5):
+            raise RuntimeError('Gateway redirector did not exit: PID ' + str(pid))
+        retired.extend([stopped, *[r.pid for r in redirectors]])
     except (psutil.NoSuchProcess, FileNotFoundError):
         continue
 print(json.dumps(retired))
