@@ -300,6 +300,13 @@ export async function probePackagedRuntime(root: string, release: PackagedRuntim
   }
 }
 
+interface HolderDetail {
+  name: string
+  ppid: number
+  exe: string
+  argv: string[]
+}
+
 /** Shared runtime workers must leave before the canonical path can change. Never kills borrowed workers. */
 export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot: string, options: { ownedBackendPids?: number[]; retiringGatewayPids?: number[] } = {}) {
   if (!fs.existsSync(activeRoot)) {return null}
@@ -314,6 +321,7 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
     ' candidate=os.path.normcase(os.path.abspath(value))',
     ' return any(candidate == root or candidate.startswith(root+os.sep) for root in roots)',
     'holders=[]',
+    'details={}',
     'desktop=int(sys.argv[2])',
     'owned=set(json.loads(sys.argv[3]))',
     'owned.discard(desktop)',
@@ -322,14 +330,17 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
     ' try:',
     '  parents={parent.pid for parent in p.parents()} if owned else set()',
     '  if desktop in parents and (p.pid in owned or parents.intersection(owned)): continue',
-    '  if under(p.exe()) or under(p.cwd()) or any(under(arg) for arg in p.cmdline()): holders.append(p.pid)',
+    '  if not (under(p.exe()) or under(p.cwd()) or any(under(arg) for arg in p.cmdline())): continue',
+    '  holders.append(p.pid)',
     ' except psutil.NoSuchProcess: continue',
     ' except psutil.AccessDenied: continue',
-    'print(json.dumps({"holders":holders,"workerPid":os.getpid()}))'
+    ' try: details[str(p.pid)]={"name":p.name(),"ppid":p.ppid(),"exe":p.exe(),"argv":[arg[:160] for arg in p.cmdline()[:6]]}',
+    ' except psutil.Error: pass',
+    'print(json.dumps({"holders":holders,"details":details,"workerPid":os.getpid()}))'
   ].join('\n')
 
   try {
-    const pending = exec(python, ['-c', code, activeRoot, String(process.pid), JSON.stringify(options.ownedBackendPids ?? [])], { cwd: home, env: probeEnv(verifiedRoot, home), windowsHide: true, timeout: 20_000, maxBuffer: 32 * 1024 })
+    const pending = exec(python, ['-c', code, activeRoot, String(process.pid), JSON.stringify(options.ownedBackendPids ?? [])], { cwd: home, env: probeEnv(verifiedRoot, home), windowsHide: true, timeout: 20_000, maxBuffer: 256 * 1024 })
     const ownedProbePid = pending.child.pid
     const { stdout } = await pending
     const result = JSON.parse(stdout)
@@ -342,7 +353,9 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
     // Windows venv Python has a live redirector parent carrying our activeRoot argument.
     // Exclude only the exact process Node launched for this scan, never other ancestors/workers.
     const holderPids = result.holders.filter((pid: number) => pid !== ownedProbePid && !options.retiringGatewayPids?.includes(pid))
-    const idleProof = { ownedProbePid, workerPid: result.workerPid as number, rawHolderPids: result.holders as number[], holderPids: holderPids as number[] }
+    // What each blocker is (name, parent, executable, leading argv), so a busy switch names its holder.
+    const holders: Record<number, HolderDetail | undefined> = Object.fromEntries(holderPids.map((pid: number) => [pid, result.details?.[String(pid)]]))
+    const idleProof = { ownedProbePid, workerPid: result.workerPid as number, rawHolderPids: result.holders as number[], holderPids: holderPids as number[], holders }
 
     if (holderPids.length) {
       throw Object.assign(new RuntimeUpdateBusy(`Waiting for engine workers: ${holderPids.join(', ')}`), { idleProof })

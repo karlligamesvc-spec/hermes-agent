@@ -15,7 +15,7 @@ import { checkForRuntimeUpdate } from '../electron/apex-runtime-latest.ts'
 import { buildDesktopBackendEnv } from '../electron/backend-env.ts'
 import { waitForDashboardPortAnnouncement } from '../electron/backend-ready.ts'
 import { ModelMutationMetadataStore } from '../electron/desktop-model-mutations.ts'
-import { gatewayFixtureScript, gatewayRuntimeState, IDLE_PID_FILTER_ANCHOR, IDLE_PID_FILTER_REVERSED } from '../electron/fixtures/runtime-smoke.ts'
+import { gatewayFixtureScript, gatewayRuntimeState, IDLE_PID_FILTER_ANCHOR, IDLE_PID_FILTER_REVERSED, relocateCopiedLegacyTree } from '../electron/fixtures/runtime-smoke.ts'
 import { retirePackagedGateways } from '../electron/runtime-gateway-retirement.ts'
 import { createRuntimeSwitchGate } from '../electron/runtime-switch-gate.ts'
 import { isRuntimeUpdateBusy } from '../electron/runtime-update-busy.ts'
@@ -149,8 +149,18 @@ async function seedOld(home: string, dependencies: string) {
   if (legacySource) {
     // Never copy .env/config/session/user files from a historical user tree.
     const forbidden = new Set(['.env', 'config.yaml', 'config.yml', 'sessions', 'memory', 'seed_memory', 'seed_memory.json', 'workspace', '.hermes-bootstrap-complete'])
-    fs.cpSync(legacySource, root, { recursive: true, filter: source => !forbidden.has(path.relative(legacySource, source).split(path.sep)[0]) })
+    // Links stay as installed: Node would otherwise point the copy's relative venv/bin/python at the source tree.
+    fs.cpSync(legacySource, root, { recursive: true, verbatimSymlinks: true, filter: source => !forbidden.has(path.relative(legacySource, source).split(path.sep)[0]) })
     assert.equal(fs.readFileSync(path.join(root, '.hermes-source-commit'), 'utf8').trim(), F8)
+    // A user's F8 tree was stamped for where it lives; so is this copy, or it runs the source tree.
+    relocateCopiedLegacyTree(legacySource, root)
+    const { stdout: located } = await exec(python(root), ['-I', '-c', 'import json,sys,hermes_cli; print(json.dumps([sys.base_prefix, sys.prefix, hermes_cli.__file__]))'], { cwd: workspace, timeout: 30_000 })
+    const own = fs.realpathSync.native(root)
+
+    for (const location of JSON.parse(located) as string[]) {
+      const resolved = fs.realpathSync.native(location)
+      assert.ok(resolved === own || resolved.startsWith(own + path.sep), `the copied F8 engine must run from its own tree: ${location}`)
+    }
   } else {
     await exec('git', ['cat-file', '-e', `${F8}^{commit}`], { cwd: repository, env: process.env })
     const archive = path.join(workspace, 'genuine-f8-source.tar')
@@ -567,6 +577,9 @@ try {
   proof.success = true
 } catch (error) {
   proof.error = error instanceof Error ? error.message : String(error)
+  // A busy refusal names its holders below the depth Node prints for an uncaught error.
+  const busyProof = (error as { idleProof?: unknown } | null)?.idleProof
+  if (busyProof) {console.error(`busy proof: ${JSON.stringify(busyProof)}`)}
   throw error
 } finally {
   try {
