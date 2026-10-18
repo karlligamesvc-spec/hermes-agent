@@ -28,6 +28,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import sys
 import types
 import urllib.error
@@ -42,8 +43,9 @@ CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 
 # 与 cloud 侧 tests/test_hc563_plugin_tools_contract.py 内嵌的是同一个值。
 # v7(hc-926):media_transcribe 对无人声素材返回成功 + speech=false(no_speech_is_success)。
-EXPECTED_CONTRACT_SHA256 = "db3b13bd112c5cd85f647bdde75a57d846e0fd5e46a7bae496637ec197cac3d9"
-EXPECTED_CONTRACT_VERSION = 7
+# v8(hc-929):media_transcribe 两条腿都把豆包时间轴落文件,结果面只给 segments_path + 摘要。
+EXPECTED_CONTRACT_SHA256 = "4de70e252140706843401abe586eb766ba30af58d03e12d205fe9a6384e2859c"
+EXPECTED_CONTRACT_VERSION = 8
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -566,6 +568,40 @@ def _check_no_speech_is_success(h, tool_name, _spec):
         assert h.invoke(tool_name, h.probe_args(tool_name))[0]["speech"] is True
 
 
+_TIMED_SEGMENTS = [
+    {"text": "大家好", "start_time": 320, "end_time": 1180,
+     "words": [{"text": "大家", "start_time": 320, "end_time": 800}, {"text": "好", "start_time": 800, "end_time": 1180}]},
+    {"text": "开始吧", "start_time": 1500, "end_time": 2600, "words": []},
+]
+
+
+def _check_segments_file_handoff(h, tool_name, _spec):
+    def answer_with(segments):
+        def canned(path: str):
+            if not path.endswith("/transcribe"):
+                return type(h)._canned(path)
+            if h.leg == "legacy":  # master /media/transcribe body
+                return {"ok": True, "transcript": "大家好开始吧", "title": "", "segments": segments}
+            return {"ok": True, "text": "大家好开始吧", "duration_seconds": 2.6, "segments": segments}
+        return canned
+
+    h._canned = answer_with(_TIMED_SEGMENTS)  # type: ignore[method-assign]
+    raw, calls = h.invoke_raw(tool_name, h.probe_args(tool_name))
+    result = json.loads(raw)
+    assert calls and calls[-1].path.endswith("/transcribe")
+    assert "segments" not in result, "timing must not ride inline in the result"
+    assert result["segments_summary"] == {"count": 2, "word_count": 2, "first_start_ms": 320, "last_end_ms": 2600}
+    segments_path = Path(result["segments_path"])
+    assert segments_path.parent == Path(os.environ["HERMES_HOME"]) / "cache" / "documents"
+    assert json.loads(segments_path.read_text(encoding="utf-8")) == _TIMED_SEGMENTS
+
+    for absent in (None, []):
+        h._canned = answer_with(absent)  # type: ignore[method-assign]
+        result = h.invoke(tool_name, h.probe_args(tool_name))[0]
+        assert result["segments_summary"] == {"count": 0}
+        assert "segments_path" not in result and "segments" not in result
+
+
 # name → callable;跑腿集合 = 契约行为声明的 legs(fork 双腿都在场)。
 BEHAVIOR_CHECKS = {
     "routed_intent_passthrough": _check_routed_intent_passthrough,
@@ -580,6 +616,7 @@ BEHAVIOR_CHECKS = {
     "instruction_decoration": _check_instruction_decoration,
     "aspect_ratio_defaults_landscape": _check_aspect_ratio_defaults_landscape,
     "no_speech_is_success": _check_no_speech_is_success,
+    "segments_file_handoff": _check_segments_file_handoff,
     "asr_upload_modes": _check_asr_upload_modes,
     "gateway_platform_fallback_douyin": _check_gateway_platform_fallback_douyin,
     "no_foreign_paths_in_result": _check_no_foreign_paths_in_result,
