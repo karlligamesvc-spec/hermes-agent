@@ -220,6 +220,14 @@ class _Ctx:
         self.tools[kwargs["name"]] = kwargs
 
 
+def test_url_guidance_matches_what_the_gateway_can_resolve(plugin):
+    """2026-10-18 probe: a live creator's profile carried no live-room id and app share
+    links resolve to an internal room id, so the schema steers to live.douyin.com/数字."""
+    text = plugin.LIVE_RECORD_START_SCHEMA["parameters"]["properties"]["url"]["description"]
+    assert "live.douyin.com/数字" in text
+    assert "主播主页链接多半查不到直播间号" in text and "App 里的直播分享链接不支持" in text
+
+
 def test_registers_three_tools_with_rights_required(plugin):
     ctx = _Ctx()
     plugin.register(ctx)
@@ -282,7 +290,7 @@ def test_start_tool_visible_only_when_gateway_reports_live_enabled(plugin, monke
         ({"rights_confirmed": False}, "rights_confirmed=true"),
         ({"rights_confirmed": None}, "rights_confirmed=true"),
         ({"mode": "both"}, "mode"),
-        ({"url": "https://live.kuaishou.com/u/x"}, "抖音"),
+        ({"url": "https://live.kuaishou.com/u/x"}, "live.douyin.com/数字"),
     ],
     ids=["rights-false", "rights-missing", "bad-mode", "unsupported-platform"],
 )
