@@ -32,6 +32,8 @@ def _use_gateway() -> bool:
 
 # The Scheduler holds the request open while it submits→polls→downloads the
 # render, so the proxy must wait longer than the server-side poll budget.
+# hc-941: register() reports it as execution_timeout, or the runtime's shared
+# 420 s tool deadline cuts the call while the server is still rendering.
 _VIDEO_REQUEST_TIMEOUT = 660
 
 
@@ -235,4 +237,5 @@ def register(ctx):
         requires_env=[],
         description=GENERATE_VIDEO_SCHEMA["description"],
         emoji="🎬",
+        execution_timeout=_VIDEO_REQUEST_TIMEOUT,
     )

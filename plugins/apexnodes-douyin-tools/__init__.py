@@ -73,6 +73,12 @@ def _missing_credential_message() -> str:
 # scared the user with a failure mid-way). Align the transcribe timeout with the
 # master budget + download/ffmpeg headroom; light calls keep the short default.
 _MEDIA_TRANSCRIBE_TIMEOUT_SECONDS = 2 * 60 * 60 + 10 * 60  # 2h10m
+# hc-941:其余单请求出口(social_download 的链接解析、image_ocr、legacy _post 默认)的等待上限。
+# 运行时外层执行器默认把一次工具调用掐在 420s(agent/tool_executor.py),短于插件自己愿意等
+# 的时间:0.17.58 实测 103 秒的抖音视频首次转写跑满 420s 被掐断,重试才成功。所以 register()
+# 把这两个预算作为 execution_timeout 报给运行时。social_batch_submit / social_batch_status
+# 只等 120s / 60s,低于默认值,不需要登记。
+_PLATFORM_REQUEST_TIMEOUT_SECONDS = 600
 
 # hc-926:平台 ASR 对纯环境声/音乐/静音素材的结论(云端 422 detail.code)。它描述的是
 # 素材,不是故障:报成 tool_error 会让逐段检查素材的剪辑任务连撞 same_tool_failure
@@ -145,7 +151,9 @@ def _segments_result_fields(segments: Any, stem: str) -> dict[str, Any]:
     return fields
 
 
-def _post(path: str, payload: dict[str, Any], *, timeout: int = 600) -> dict[str, Any]:
+def _post(
+    path: str, payload: dict[str, Any], *, timeout: int = _PLATFORM_REQUEST_TIMEOUT_SECONDS
+) -> dict[str, Any]:
     api_key = _agent_api_key()
     if not api_key:
         raise RuntimeError(_missing_credential_message())
@@ -343,7 +351,9 @@ def _check_image() -> bool:
 
 # ── 网关模式的媒体编排(PD §8:网关只出直链/元数据,媒体本端自取;ASR 上传仅音轨) ──
 
-def _gateway_resolve_download(url: str, *, timeout: float = 600) -> tuple[dict[str, Any], str]:
+def _gateway_resolve_download(
+    url: str, *, timeout: float = _PLATFORM_REQUEST_TIMEOUT_SECONDS
+) -> tuple[dict[str, Any], str]:
     """经网关解析分享链接:返回 (含元数据的结果 dict, 直链 media_url——可为空)。"""
     platform = _gateway.detect_platform(url)
     if not platform:
@@ -529,7 +539,8 @@ def _gateway_image_ocr(payload: dict[str, Any]) -> str:
     platform = _gateway.detect_platform(probe_text) or "douyin"
     try:
         response = _gateway.request_json(
-            "POST", f"/tools/v1/social/{platform}/image-ocr", payload, timeout=600
+            "POST", f"/tools/v1/social/{platform}/image-ocr", payload,
+            timeout=_PLATFORM_REQUEST_TIMEOUT_SECONDS,
         )
     except _gateway.GatewayError as exc:
         return tool_error(f"图片 OCR 失败: {exc}")
@@ -931,6 +942,7 @@ def register(ctx):
         requires_env=[],
         description=SOCIAL_DOWNLOAD_SCHEMA["description"],
         emoji="⬇️",
+        execution_timeout=_PLATFORM_REQUEST_TIMEOUT_SECONDS,
     )
     ctx.register_tool(
         name="media_transcribe",
@@ -941,6 +953,7 @@ def register(ctx):
         requires_env=[],
         description=MEDIA_TRANSCRIBE_SCHEMA["description"],
         emoji="📝",
+        execution_timeout=_MEDIA_TRANSCRIBE_TIMEOUT_SECONDS,
     )
     ctx.register_tool(
         name="image_ocr",
@@ -951,6 +964,7 @@ def register(ctx):
         requires_env=[],
         description=IMAGE_OCR_SCHEMA["description"],
         emoji="🖼️",
+        execution_timeout=_PLATFORM_REQUEST_TIMEOUT_SECONDS,
     )
     ctx.register_tool(
         name="social_batch_submit",
