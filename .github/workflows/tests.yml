@@ -201,8 +201,10 @@ jobs:
   # (including PRs) get balanced slicing.
   save-durations:
     needs: test
-    # Push to main only: a dispatched stable run tests another commit and must not write the cache.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.test.result == 'success'
+    # Every green run merges, PRs included, so a broken download or merge fails the PR instead of
+    # main; only a push to main saves (last step). A dispatched stable run (inputs.commit) skips the
+    # job: it would rerun main's copy of these steps, which PRs and main pushes already exercise.
+    if: inputs.commit == '' && needs.test.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -241,6 +243,9 @@ jobs:
           PY
 
       - name: Save merged duration cache
+        # PRs read the cache, only main writes it: a PR run's cache is restorable only by reruns
+        # of that PR, and a stable run tests another commit.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: test_durations.json

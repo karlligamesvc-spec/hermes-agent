@@ -1,16 +1,18 @@
 """Every slice's fresh durations reach the next run's cache (.github/workflows/tests.yml).
 
 Each test slice restores the duration cache, the runner writes the slice's fresh timings over the
-restored entries (scripts/run_tests_parallel.py), and the main-only save-durations job merges the
-slices into the next cache. Two faults there turned fork main red or threw timings away:
+restored entries (scripts/run_tests_parallel.py), and the save-durations job merges the slices;
+only a push to main saves the merge as the next cache. Two faults there turned fork main red or
+threw timings away, while PR CI, which then skipped the whole job, stayed green:
 
 - download-artifact with merge-multiple extracted every slice's same-named file into one path at
   the same time: one slice survived a green run, and interleaved writes left invalid JSON;
 - every slice's file also carries the restored (older) timings of the other slices' files, so
   merging whole copies let the last slice overwrite the other slices' fresh timings.
 
-The test replays the real steps for two slices: bash steps run as written, the runner's own
-_save_durations writes each slice's file, and only the cache and the artifacts are models.
+The tests replay the real steps for two slices: bash steps run as written, the runner's own
+_save_durations writes each slice's file, and only the cache and the artifacts are models. A pull
+request replays the same download and merge, so a break there fails the PR before it reaches main.
 """
 
 from __future__ import annotations
@@ -37,6 +39,13 @@ RUNS = {
     2: {"tests/test_b.py": 18.25, "tests/test_new_2.py": 2.5, "tests/test_flaky.py": 95.0},
 }
 FLAKY = {"tests/test_flaky.py"}
+# PREVIOUS with every slice's fresh timings laid over it.
+MERGED = {"tests/test_a.py": 11.5, "tests/test_b.py": 18.25, "tests/test_flaky.py": 30.0,
+          "tests/test_gone.py": 5.0, "tests/test_new_1.py": 1.25, "tests/test_new_2.py": 2.5}
+# The github context of each run that reaches save-durations. A stable run also sets inputs.commit.
+PUSH = {"event_name": "push", "ref": "refs/heads/main"}
+PULL_REQUEST = {"event_name": "pull_request", "ref": "refs/pull/7/merge"}
+STABLE = {"event_name": "workflow_dispatch", "ref": "refs/heads/main"}
 
 
 @cache
@@ -100,11 +109,20 @@ def _download(w: dict, artifacts: dict, workspace: Path) -> list[str]:
     return collisions
 
 
-def _ctx(temp: Path, **extra) -> dict:
-    """A green push to main, the only run that saves the cache."""
-    return {"github": {"event_name": "push", "ref": "refs/heads/main", "run_id": "1002"},
-            "inputs": {"slice_count": len(RUNS), "commit": ""}, "needs": {"test": {"result": "success"}},
+def _ctx(temp: Path, event: dict, commit: str = "", **extra) -> dict:
+    """A green run of ``event``; ``commit`` is the commit a stable run tests."""
+    return {"github": {**event, "run_id": "1002"},
+            "inputs": {"slice_count": len(RUNS), "commit": commit}, "needs": {"test": {"result": "success"}},
             "runner": {"temp": str(temp)}, **extra}
+
+
+def _workflow() -> dict:
+    yaml = pytest.importorskip("hermes_yaml")
+    return yaml.safe_load((_REPO / ".github/workflows/tests.yml").read_text(encoding="utf-8-sig"))
+
+
+def _step(steps: list[dict], action: str) -> dict:
+    return next(step for step in steps if step.get("uses", "").startswith(f"actions/{action}@"))
 
 
 def _with(step: dict, ctx: dict) -> dict:
@@ -121,12 +139,12 @@ def _run_tests(checkout: Path, run: dict[str, float]) -> None:
         runner._save_durations(clean, checkout)
 
 
-def _test_slice(workflow: dict, index: int, cache: _Cache, artifacts: dict, tmp: Path) -> None:
+def _test_slice(workflow: dict, index: int, cache: _Cache, artifacts: dict, tmp: Path, event: dict) -> None:
     """One `test` matrix job, from its duration-cache restore to its artifact upload."""
     checkout, temp = tmp / f"slice-{index}", tmp / f"slice-{index}-temp"
     checkout.mkdir()
     temp.mkdir()
-    ctx = _ctx(temp, matrix={"slice": {"index": index, "files": ":".join(RUNS[index])}})
+    ctx = _ctx(temp, event, matrix={"slice": {"index": index, "files": ":".join(RUNS[index])}})
     steps = workflow["jobs"]["test"]["steps"]
     first = next(i for i, step in enumerate(steps) if step.get("uses", "").startswith("actions/cache/restore@"))
     last = next(i for i, step in enumerate(steps) if step.get("uses", "").startswith("actions/upload-artifact@"))
@@ -144,17 +162,21 @@ def _test_slice(workflow: dict, index: int, cache: _Cache, artifacts: dict, tmp:
             raise AssertionError(f"unmodelled step between the duration restore and upload: {step.get('name')}")
 
 
-def _save_durations(workflow: dict, cache: _Cache, artifacts: dict, tmp: Path) -> list[str]:
+def _save_durations(workflow: dict, cache: _Cache, artifacts: dict, tmp: Path,
+                    event: dict) -> tuple[list[str], list[str]]:
+    """The save-durations job of a green ``event`` run: the download's collisions, then the skipped steps."""
     job = workflow["jobs"]["save-durations"]
     workspace, temp = tmp / "save-durations", tmp / "save-durations-temp"
     workspace.mkdir()
     temp.mkdir()
-    ctx = _ctx(temp)
-    assert gha.condition(job["if"], ctx), "save-durations must run on a green push to main"
-    collisions = []
+    ctx = _ctx(temp, event)
+    assert gha.condition(job["if"], ctx), f"save-durations must run on a green {event['event_name']} run"
+    collisions, skipped = [], []
     for step in job["steps"]:
         uses = step.get("uses", "")
-        if uses.startswith("actions/cache/restore@"):
+        if not gha.condition(step.get("if"), ctx):
+            skipped.append(step["name"])
+        elif uses.startswith("actions/cache/restore@"):
             cache.restore(_with(step, ctx), workspace)
         elif uses.startswith("actions/download-artifact@"):
             collisions += _download(_with(step, ctx), artifacts, workspace)
@@ -164,33 +186,53 @@ def _save_durations(workflow: dict, cache: _Cache, artifacts: dict, tmp: Path) -
             workflow_steps.outputs(step, ctx, workspace, runner_temp=temp)
         else:
             raise AssertionError(f"unmodelled save-durations step: {step.get('name')}")
-    return collisions
+    return collisions, skipped
 
 
 @pytest.mark.parametrize(("previous", "expected"), [
-    (PREVIOUS, {"tests/test_a.py": 11.5, "tests/test_b.py": 18.25, "tests/test_flaky.py": 30.0,
-                "tests/test_gone.py": 5.0, "tests/test_new_1.py": 1.25, "tests/test_new_2.py": 2.5}),
+    (PREVIOUS, MERGED),
     (None, {"tests/test_a.py": 11.5, "tests/test_b.py": 18.25, "tests/test_new_1.py": 1.25,
             "tests/test_new_2.py": 2.5}),
 ], ids=["previous-cache", "first-cache"])
 def test_next_run_restores_every_slices_fresh_durations(tmp_path, previous, expected):
-    yaml = pytest.importorskip("hermes_yaml")
-    workflow = yaml.safe_load((_REPO / ".github/workflows/tests.yml").read_text(encoding="utf-8-sig"))
+    workflow = _workflow()
     cache, artifacts = _Cache(), {}
     if previous is not None:
         cache.saved.append(("test-durations-1001", "test_durations.json", json.dumps(previous).encode()))
 
     for index in RUNS:
-        _test_slice(workflow, index, cache, artifacts, tmp_path)
+        _test_slice(workflow, index, cache, artifacts, tmp_path, PUSH)
     assert sorted(artifacts) == ["test-durations-slice-1", "test-durations-slice-2"]
-    assert _save_durations(workflow, cache, artifacts, tmp_path) == []
+    assert _save_durations(workflow, cache, artifacts, tmp_path, PUSH) == ([], [])
 
     next_run = tmp_path / "next-run"
     next_run.mkdir()
-    restore = next(step for step in workflow["jobs"]["test"]["steps"]
-                   if step.get("uses", "").startswith("actions/cache/restore@"))
-    cache.restore(_with(restore, _ctx(next_run)), next_run)
+    restore = _step(workflow["jobs"]["test"]["steps"], "cache/restore")
+    cache.restore(_with(restore, _ctx(next_run, PUSH)), next_run)
     assert json.loads((next_run / "test_durations.json").read_text(encoding="utf-8")) == expected
+
+
+def test_pull_request_merges_every_slice_but_never_saves(tmp_path):
+    """PR CI runs the same download and merge, so a break there fails the PR instead of main."""
+    workflow = _workflow()
+    cache, artifacts = _Cache(), {}
+    cache.saved.append(("test-durations-1001", "test_durations.json", json.dumps(PREVIOUS).encode()))
+
+    for index in RUNS:
+        _test_slice(workflow, index, cache, artifacts, tmp_path, PULL_REQUEST)
+    collisions, skipped = _save_durations(workflow, cache, artifacts, tmp_path, PULL_REQUEST)
+    assert collisions == []
+    assert json.loads((tmp_path / "save-durations/test_durations.json").read_text(encoding="utf-8")) == MERGED
+    assert skipped == [_step(workflow["jobs"]["save-durations"]["steps"], "cache/save")["name"]]
+    assert [key for key, _, _ in cache.saved] == ["test-durations-1001"]
+
+
+def test_dispatched_stable_run_never_saves(tmp_path):
+    """A stable run tests another commit: it skips the job, and the save gate alone keeps it out too."""
+    job = _workflow()["jobs"]["save-durations"]
+    ctx = _ctx(tmp_path, STABLE, commit="1234567890abcdef1234567890abcdef12345678")
+    assert not gha.condition(job["if"], ctx), "a dispatched stable run must skip save-durations"
+    assert not gha.condition(_step(job["steps"], "cache/save").get("if"), ctx), "the save gate admits a stable run"
 
 
 def test_download_model_reports_what_merge_multiple_overwrites(tmp_path):
