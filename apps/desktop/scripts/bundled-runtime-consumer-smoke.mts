@@ -14,7 +14,9 @@ import { checkForRuntimeUpdate } from '../electron/apex-runtime-latest.ts'
 import { buildDesktopBackendEnv } from '../electron/backend-env.ts'
 import { waitForDashboardPortAnnouncement } from '../electron/backend-ready.ts'
 import { ModelMutationMetadataStore } from '../electron/desktop-model-mutations.ts'
+import { gatewayFixtureScript, gatewayRuntimeState, IDLE_PID_FILTER_ANCHOR, IDLE_PID_FILTER_REVERSED } from '../electron/fixtures/runtime-smoke.ts'
 import { retirePackagedGateways } from '../electron/runtime-gateway-retirement.ts'
+import { isRuntimeUpdateBusy } from '../electron/runtime-update-busy.ts'
 import { readPreparedDesktopUpdatePlan, writeDesktopUpdatePlan } from '../electron/desktop-update-plan.ts'
 import {
   assertPackagedRuntimeIdle,
@@ -199,11 +201,10 @@ async function verifyRuntimeIdleGate(verifiedRoot: string) {
     assert.ok(noWorker.rawHolderPids.includes(noWorker.ownedProbePid), 'the actual scanner redirector must reproduce the old false holder')
     const sourcePath = fileURLToPath(new URL('../electron/packaged-runtime.ts', import.meta.url))
     const original = fs.readFileSync(sourcePath)
-    const anchor = 'const holderPids = result.holders.filter((pid: number) => pid !== ownedProbePid)'
     const body = original.toString('utf8')
-    assert.equal(body.split(anchor).length - 1, 1, 'private reversal must target the unique actual idle PID filter')
+    assert.equal(body.split(IDLE_PID_FILTER_ANCHOR).length - 1, 1, 'private reversal must target the unique actual idle PID filter')
     const copy = path.join(path.dirname(sourcePath), `packaged-runtime.idle-reverse-${randomUUID()}.ts`)
-    const reversed = body.replace(anchor, 'const holderPids = result.holders')
+    const reversed = body.replace(IDLE_PID_FILTER_ANCHOR, IDLE_PID_FILTER_REVERSED)
     fs.writeFileSync(copy, reversed, { flag: 'wx' })
     assert.equal(fs.readFileSync(copy, 'utf8'), reversed, 'private fault must be the actual imported bytes')
 
@@ -271,7 +272,7 @@ catch(error) { console.log(JSON.stringify({name:error.name,code:error.code,idleP
     fixturePid = ready.pid
     await assert.rejects(assertPackagedRuntimeIdle(active, verifiedRoot), error => {
       const failure = error as Error & { idleProof?: typeof noWorker }
-      assert.match(failure.message, /previous engine is still running/)
+      assert.ok(isRuntimeUpdateBusy(failure), `a borrowed worker must defer the switch, not fail it: ${failure.message}`)
       assert.ok(failure.idleProof?.holderPids.includes(ready.pid), 'only the scanner PID can be excluded; the real borrowed worker must block')
       blocked = failure.idleProof
 
@@ -313,16 +314,7 @@ async function verifyGatewayRetirement(root: string) {
   const script = path.join(workspace, 'gateway-fixture', 'gateway', 'run.py')
   fs.mkdirSync(home, { recursive: true })
   fs.mkdirSync(path.dirname(script), { recursive: true })
-  const descendantCode = "import json,os,pathlib,psutil,signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); pathlib.Path(os.environ['HERMES_HOME'],'descendant.pid').write_text(json.dumps(dict(pid=os.getpid(),created=psutil.Process().create_time()))); time.sleep(120)"
-  fs.writeFileSync(script, [
-    'import os,pathlib,signal,subprocess,sys,time',
-    'from gateway.status import acquire_gateway_runtime_lock,write_pid_file',
-    'assert acquire_gateway_runtime_lock()', 'write_pid_file()',
-    `subprocess.Popen([sys.executable,'-c',${JSON.stringify(descendantCode)}])`,
-    "while not pathlib.Path(os.environ['HERMES_HOME'],'descendant.pid').exists(): time.sleep(.01)",
-    'signal.signal(signal.SIGTERM,signal.SIG_IGN)', "print('ready',flush=True)",
-    'while True: time.sleep(1)'
-  ].join('\n'))
+  fs.writeFileSync(script, gatewayFixtureScript({ wedged: true }))
   const child = spawn(python(root), [script], { cwd: root, env: environment(root, home), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
   const closed = new Promise<void>(resolve => child.once('close', () => resolve()))
   let output = ''
@@ -334,15 +326,23 @@ async function verifyGatewayRetirement(root: string) {
       child.once('exit', () => { clearTimeout(timer); reject(new Error(`Gateway fixture exited: ${output}`)) })
       child.stdout!.once('data', () => { clearTimeout(timer); resolve() })
     })
-    const pid = JSON.parse(fs.readFileSync(path.join(home, 'gateway.pid'), 'utf8')).pid
+    const record = JSON.parse(fs.readFileSync(path.join(home, 'gateway.pid'), 'utf8'))
+    const pid = record.pid
+    const statusFile = path.join(home, 'gateway_state.json')
+    // No activity evidence, or an IM turn in flight, defers the update and leaves the gateway serving.
+    await assert.rejects(retirePackagedGateways(root, root, home), isRuntimeUpdateBusy)
+    fs.writeFileSync(statusFile, JSON.stringify(gatewayRuntimeState(record, 1)))
+    await assert.rejects(retirePackagedGateways(root, root, home), isRuntimeUpdateBusy)
+    assert.equal(child.exitCode, null, 'a busy gateway must survive the update')
+    fs.writeFileSync(statusFile, JSON.stringify(gatewayRuntimeState(record, 0)))
     const retired = await retirePackagedGateways(root, root, home)
-    assert.deepEqual(retired, [pid], 'the actual packaged Python must retire the verified wedged gateway')
+    assert.deepEqual(retired, [pid], 'the actual packaged Python must drain and retire the verified wedged gateway')
     await closed
     assert.deepEqual(await retirePackagedGateways(root, root, home), [])
     const descendant = JSON.parse(fs.readFileSync(path.join(home, 'descendant.pid'), 'utf8')).pid
     await exec(python(root), ['-c', 'import psutil,sys; p=int(sys.argv[1]); assert not psutil.pid_exists(p) or psutil.Process(p).status()==psutil.STATUS_ZOMBIE', String(descendant)], { env: environment(root, home), cwd: workspace, timeout: 5000 })
 
-    return { pid, retired, descendant, actualBundledPython: python(root), forcedExit: true, descendantExited: true, repeatedRetirement: 'empty' }
+    return { pid, busyDeferred: ['no-activity-evidence', 'active-im-turn'], retired, descendant, actualBundledPython: python(root), forcedExit: true, descendantExited: true, repeatedRetirement: 'empty' }
   } finally {
     await terminateOwnedSmokeProcess(child, closed)
     const descendantFile = path.join(home, 'descendant.pid')
