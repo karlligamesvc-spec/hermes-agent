@@ -350,8 +350,10 @@ async function verifyGatewayRetirement(root: string) {
     await assert.rejects(retirePackagedGateways(root, root, home), isRuntimeUpdateBusy)
     assert.equal(child.exitCode, null, 'a busy gateway must survive the update')
     fs.writeFileSync(statusFile, JSON.stringify(gatewayRuntimeState(record, 0)))
+    // On Windows child.pid is the venv launcher in front of the worker; it retires with it.
+    const redirectors = child.pid === pid ? [] : [child.pid!]
     const retired = await retirePackagedGateways(root, root, home)
-    assert.deepEqual(retired, [pid], 'the actual packaged Python must drain and retire the verified wedged gateway')
+    assert.deepEqual(retired, [pid, ...redirectors], 'the actual packaged Python must drain and retire the verified wedged gateway and its launcher')
     await closed
     assert.deepEqual(await retirePackagedGateways(root, root, home), [])
     const descendant = JSON.parse(fs.readFileSync(path.join(home, 'descendant.pid'), 'utf8')).pid
