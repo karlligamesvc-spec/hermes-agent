@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.electron.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "incremental": false,
+    "allowImportingTsExtensions": true,
+    "allowJs": true,
+    "checkJs": false,
+    "rootDir": "../.."
+  },
+  "include": ["scripts/bundled-runtime-consumer-smoke.mts"]
+}

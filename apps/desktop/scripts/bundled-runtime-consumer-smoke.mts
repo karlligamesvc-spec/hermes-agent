@@ -10,12 +10,14 @@ import { promisify } from 'node:util'
 import { removeOwnedRuntimeTree, runtimeSmokeEnvironment, terminateOwnedSmokeProcess } from '../../../scripts/runtime-bundle-offline-smoke.mjs'
 import { bundledNodeExe, fixupArgv } from '../electron/apex-bundle-install.ts'
 import { BUNDLE_TOOL_THREADPOOL_SIZE } from '../electron/apex-bundle-tool.ts'
+import { buildGatewayRunArgs } from '../electron/apex-gateway.ts'
 import { checkForRuntimeUpdate } from '../electron/apex-runtime-latest.ts'
 import { buildDesktopBackendEnv } from '../electron/backend-env.ts'
 import { waitForDashboardPortAnnouncement } from '../electron/backend-ready.ts'
 import { ModelMutationMetadataStore } from '../electron/desktop-model-mutations.ts'
 import { gatewayFixtureScript, gatewayRuntimeState, IDLE_PID_FILTER_ANCHOR, IDLE_PID_FILTER_REVERSED } from '../electron/fixtures/runtime-smoke.ts'
 import { retirePackagedGateways } from '../electron/runtime-gateway-retirement.ts'
+import { createRuntimeSwitchGate } from '../electron/runtime-switch-gate.ts'
 import { isRuntimeUpdateBusy } from '../electron/runtime-update-busy.ts'
 import { readPreparedDesktopUpdatePlan, writeDesktopUpdatePlan } from '../electron/desktop-update-plan.ts'
 import {
@@ -68,7 +70,20 @@ const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
 const proof: Record<string, unknown> = { schemaVersion: 1, platform: process.platform, arch: process.arch, desktopVersion, release, fresh: null, legacy: null, success: false }
 let cleanupFailure: unknown
 
-function consumer(home: string): PackagedRuntimeOptions {
+// Desktop's own switch gate (main.ts runtimeSwitch.prepare): inspect, fence, drain and retire the
+// engine's gateways, then a strict idle scan. The smoke owns no backends, windows or ownership file.
+function switchGate(home: string, gateLog: string[]) {
+  return createRuntimeSwitchGate({
+    activeRoot: path.join(home, 'hermes-agent'), hermesHome: home,
+    activeWork: () => ({ reporters: 0, running: 0 }),
+    lifecycle: { fenceForUpdate: () => ({ drain: async () => {}, release: () => {} }), ownedChildren: () => [] },
+    reapOrphanedBackends: async () => {}, stopMessagingGateway: async () => {},
+    readOwnership: () => null, identityMatches: async () => false,
+    log: message => { gateLog.push(message) }
+  })
+}
+
+function consumer(home: string, gateLog: string[] = []): PackagedRuntimeOptions {
   return {
     resourcesPath, hermesHome: home, desktopVersion,
     extract: async (archive, destination) => { await exec(tar, ['-xzf', archive, '-C', destination], { timeout: 180_000 }) },
@@ -79,8 +94,8 @@ function consumer(home: string): PackagedRuntimeOptions {
       await exec(executable, argv, { cwd: workspace, env: { ...environment(root, workspace), UV_THREADPOOL_SIZE: BUNDLE_TOOL_THREADPOOL_SIZE }, timeout: 180_000, maxBuffer: 1024 * 1024 })
     },
     beforeSwitch: async verifiedRoot => {
-      await retirePackagedGateways(path.join(home, 'hermes-agent'), verifiedRoot, home)
-      await assertPackagedRuntimeIdle(path.join(home, 'hermes-agent'), verifiedRoot)
+      const fence = await switchGate(home, gateLog).prepare(verifiedRoot)
+      fence.release()
     },
     writeMarker: descriptor => {
       const marker = path.join(home, 'hermes-agent', '.hermes-bootstrap-complete')
@@ -353,6 +368,110 @@ async function verifyGatewayRetirement(root: string) {
   }
 }
 
+function readJson(file: string) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return undefined }
+}
+
+async function waitFor<T>(probe: () => T | undefined, timeoutMs: number, describe: () => string): Promise<T> {
+  const deadline = Date.now() + timeoutMs
+
+  for (;;) {
+    const value = probe()
+
+    if (value !== undefined) {return value}
+    if (Date.now() > deadline) {throw new Error(describe())}
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+}
+
+// #386 on the path users take: an F8 home whose own gateway is running, upgraded through
+// Desktop's switch gate. A second F8 home, because a live gateway legitimately writes its
+// home and the main legacy proof asserts that installation leaves that home's bytes unchanged.
+async function verifyLegacyGatewayUpgrade(active: string) {
+  const home = path.join(workspace, 'legacy-gateway-home')
+  const old = await seedOld(home, active)
+  fs.writeFileSync(path.join(home, 'config.yaml'), 'display:\n  language: zh\n')
+  const marker = path.join(old.root, '.hermes-bootstrap-complete')
+  const markerBytes = fs.readFileSync(marker)
+  const gateLog: string[] = []
+  const confirmed = { ...consumer(home, gateLog), confirmedRuntimeCommit: release.runtime_commit }
+  const f8Unchanged = () => fs.readFileSync(path.join(home, 'hermes-agent', '.hermes-source-commit'), 'utf8').trim() === F8 && fs.readFileSync(marker).equals(markerBytes)
+  // Resuming tolerates a gateway the switch already removed, so a wrong retirement reports itself.
+  const psutil = (action: 'resume' | 'suspend', pid: number) =>
+    exec(python(active), ['-c', `import psutil,sys; p=int(sys.argv[1]); ${action === 'resume' ? 'psutil.pid_exists(p) and ' : ''}psutil.Process(p).${action}()`, String(pid)], { env: environment(active, home), cwd: workspace, timeout: 10_000 })
+
+  // An engine worker the Desktop does not own defers the switch; F8 and its marker stay as they were.
+  const borrowed = spawn(python(old.root), ['-c', "import time; print('ready', flush=True); time.sleep(300)"], {
+    cwd: old.root, env: environment(old.root, home), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
+  })
+  const borrowedClosed = new Promise<void>(resolve => borrowed.once('close', () => resolve()))
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('borrowed F8 worker did not start')), 60_000)
+      borrowed.once('exit', code => { clearTimeout(timer); reject(new Error(`borrowed F8 worker exited early: ${code}`)) })
+      borrowed.stdout!.once('data', () => { clearTimeout(timer); resolve() })
+    })
+    await assert.rejects(installPackagedRuntime(confirmed, true), isRuntimeUpdateBusy)
+    assert.equal(borrowed.exitCode, null, 'a deferred switch must leave the borrowed worker alive')
+    assert.ok(f8Unchanged(), 'a deferred switch keeps F8 and its marker unchanged')
+  } finally {
+    await terminateOwnedSmokeProcess(borrowed, borrowedClosed)
+  }
+
+  // F8's own gateway, started the way Desktop starts it.
+  const gatewayArgv = ['-m', 'hermes_cli.main', ...buildGatewayRunArgs()]
+  const gateway = spawn(python(old.root), gatewayArgv, {
+    cwd: workspace, env: environment(old.root, home), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
+  })
+  const gatewayClosed = new Promise<void>(resolve => gateway.once('close', () => resolve()))
+  let output = ''
+  gateway.stdout!.on('data', bytes => { output = (output + bytes).slice(-4096) })
+  gateway.stderr!.on('data', bytes => { output = (output + bytes).slice(-4096) })
+
+  try {
+    const record = await waitFor(() => {
+      if (gateway.exitCode !== null || gateway.signalCode !== null) {throw new Error(`F8 gateway exited (${gateway.exitCode ?? gateway.signalCode}): ${output}`)}
+      const pidRecord = readJson(path.join(home, 'gateway.pid'))
+      const state = readJson(path.join(home, 'gateway_state.json'))
+
+      return pidRecord && state?.pid === pidRecord.pid && state.gateway_state === 'running' && state.active_agents === 0 ? pidRecord : undefined
+    }, 120_000, () => `F8 gateway never reported an idle running state: ${output}`)
+
+    // A gateway that cannot enter draining (frozen here) defers the switch and is never killed.
+    await psutil('suspend', record.pid)
+
+    try {
+      await assert.rejects(installPackagedRuntime(confirmed, true), isRuntimeUpdateBusy)
+      assert.equal(fs.existsSync(path.join(home, '.drain_request.json')), false, 'a failed drain clears its own request')
+      assert.ok(f8Unchanged(), 'a gateway that never drains keeps F8 and its marker unchanged')
+    } finally {
+      await psutil('resume', record.pid)
+    }
+
+    assert.equal(gateway.exitCode, null, 'a deferred switch must leave the gateway running')
+    // Released: F8's own drain watcher and status writer answer the new engine's request.
+    const upgrade = await installPackagedRuntime(confirmed, true)
+    assert.equal(upgrade.status, 'installed')
+    const retired = gateLog.flatMap(line => line.startsWith('[bundled-engine] retired owned messaging gateways: ') ? line.split(': ')[1].split(', ').map(Number) : [])
+    assert.ok(retired.includes(record.pid), `the switch must retire the F8 gateway: ${gateLog.join(' | ')}`)
+    await waitFor(() => (gateway.exitCode !== null || gateway.signalCode !== null ? true : undefined), 30_000, () => `retired F8 gateway still running: ${output}`)
+    assert.equal(fs.existsSync(path.join(home, '.drain_request.json')), false, 'the switch must clear its own drain request')
+    assert.equal(fs.readFileSync(path.join(home, 'hermes-agent', '.hermes-source-commit'), 'utf8').trim(), release.runtime_commit)
+    assert.equal(fs.readFileSync(path.join(home, 'hermes-agent.legacy', '.hermes-source-commit'), 'utf8').trim(), F8)
+
+    return {
+      borrowedWorker: 'deferred; F8 and its marker unchanged',
+      frozenGateway: 'deferred; F8 and its marker unchanged; gateway kept running',
+      legacyGateway: { pid: record.pid, argv: gatewayArgv, interpreter: python(old.root), retired, exit: gateway.exitCode ?? gateway.signalCode },
+      switchAfterRelease: upgrade,
+      gateLog
+    }
+  } finally {
+    await terminateOwnedSmokeProcess(gateway, gatewayClosed)
+  }
+}
+
 try {
   const fresh = path.join(workspace, 'fresh-home')
   const first = await installPackagedRuntime(consumer(fresh), false)
@@ -442,6 +561,7 @@ try {
   for (const file of [counter, `${counter}.initialized`, '.desktop-model-mutations.sqlite3']) {assert.equal(sha(fs.readFileSync(path.join(returning, file))), fileHashes[file], `mutation metadata changed: ${file}`)}
   assert.equal((await installPackagedRuntime(consumer(returning), true)).status, 'current')
   proof.legacy = { before, after: upgrade, actualRpc: upgradedRpc, reopen: 'current', updateCheck: await assertNoUpdate(returning), userFiles: fileHashes, sqliteBytesDuringInstallUnchanged: true, rowsAfterReopenUnchanged: rows, nativeCounterAndRuntimeJournalUnchanged: [counter, `${counter}.initialized`, '.desktop-model-mutations.sqlite3'], oldRollbackTreePreserved: true, injectedPostSwitchFailureRestoredUsableF8: true }
+  proof.legacyGatewayUpgrade = await verifyLegacyGatewayUpgrade(active)
   proof.success = true
 } catch (error) {
   proof.error = error instanceof Error ? error.message : String(error)
