@@ -316,3 +316,79 @@ def test_an_unwritable_cache_keeps_the_transcript_and_says_why_timing_is_missing
     assert "segments_path" not in result and "segments" not in result
     assert "时间轴" in result["segments_note"]
     assert _detect_tool_failure("media_transcribe", raw) == (False, "")
+
+
+# ── hc-918: say plainly whether asking again can produce timing ───────────────
+# The 2026-10-18 live-recording test Agent transcribed one 10-minute recording three
+# times hunting for timestamps. A result with speech but no timing must say whether a
+# second call can help: only an old cached result (cache_hit) gains timing from one
+# force_refresh; a fresh result without timing stays that way.
+
+
+@pytest.mark.parametrize(
+    ("cache_hit", "retry_helps"),
+    [(False, False), (True, True), (None, False)],
+    ids=["fresh-result", "old-cache-entry", "no-cache-field"],
+)
+def test_gateway_result_without_timing_says_whether_a_retry_can_help(
+    cache_hit, retry_helps, douyin_mod, gateway_http, tmp_path
+):
+    responses, _urls = gateway_http
+    body = _asr_body(None)
+    if cache_hit is None:
+        body.pop("cache_hit")
+    else:
+        body["cache_hit"] = cache_hit
+    responses.append(FakeResponse(200, body))
+    raw = douyin_mod._handle_media_transcribe({"video_path": str(_clip(tmp_path, "t.mp4"))})
+    result = json.loads(raw)
+    assert result["segments_summary"] == {"count": 0}
+    note = result["segments_note"]
+    if retry_helps:
+        assert "force_refresh=true" in note and "一次" in note and "不要再试" in note
+        assert result["cache_hit"] is True
+    else:
+        assert "拿不到时间轴" in note and "force_refresh" in note and "重复计费" in note
+        assert result.get("cache_hit") in (False, None)
+    assert _detect_tool_failure("media_transcribe", raw) == (False, "")
+
+
+def test_legacy_result_without_timing_says_whether_a_retry_can_help(legacy_master, douyin_mod):
+    legacy_master.append({"ok": True, "transcript": TEXT, "title": "", "segments": None, "cache_hit": True})
+    legacy_master.append({"ok": True, "transcript": TEXT, "title": "", "segments": None})
+    cached = json.loads(douyin_mod._handle_media_transcribe({"video_path": "/data/media/talk.mp4"}))
+    fresh = json.loads(douyin_mod._handle_media_transcribe({"video_path": "/data/media/talk.mp4"}))
+    assert "force_refresh=true" in cached["segments_note"] and "不要再试" in cached["segments_note"]
+    assert "拿不到时间轴" in fresh["segments_note"] and "重复计费" in fresh["segments_note"]
+
+
+@pytest.mark.parametrize(
+    ("body", "expected_note"),
+    [
+        (_asr_body(), None),  # timing present: a file, no note
+        (_asr_body(None, text=""), None),  # no speech: speech_note already says do not retry
+    ],
+    ids=["timing-present", "no-speech"],
+)
+def test_no_timing_note_only_when_speech_lacks_timing(body, expected_note, douyin_mod, gateway_http, tmp_path):
+    responses, _urls = gateway_http
+    responses.append(FakeResponse(200, body))
+    result = json.loads(douyin_mod._handle_media_transcribe({"video_path": str(_clip(tmp_path, "n.mp4"))}))
+    assert result.get("segments_note") == expected_note
+
+
+def test_unwritable_cache_note_is_not_overwritten_by_the_no_timing_note(
+    douyin_mod, gateway_http, tmp_path, monkeypatch
+):
+    """Timing existed but could not be written: re-transcribing after a fix DOES help."""
+    responses, _urls = gateway_http
+    monkeypatch.setattr(douyin_mod, "_document_cache_dir", lambda: (_ for _ in ()).throw(PermissionError("ro")))
+    responses.append(FakeResponse(200, _asr_body()))
+    result = json.loads(douyin_mod._handle_media_transcribe({"video_path": str(_clip(tmp_path, "w.mp4"))}))
+    assert result["segments_note"] == douyin_mod._SEGMENTS_WRITE_FAILED_NOTE
+
+
+def test_force_refresh_description_no_longer_invites_blind_retries(douyin_mod):
+    text = douyin_mod.MEDIA_TRANSCRIBE_SCHEMA["parameters"]["properties"]["force_refresh"]["description"]
+    assert "at most once" in text and "cache_hit=true" in text and "bills again" in text
+    assert "segments_note" in douyin_mod.MEDIA_TRANSCRIBE_SCHEMA["description"]
