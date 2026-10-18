@@ -284,6 +284,10 @@ const MANAGED_PLUGIN_NAMES = [
   'apexnodes-social-tools',
   'apexnodes-video-tools',
   'apexnodes-image-tools',
+  // ApexNodes Desktop live recording (hc-918): the gateway resolves pull URLs,
+  // the bundled ffmpeg records locally. Its tools self-hide unless the gateway
+  // reports the default-off `live_recording` entitlement for this user.
+  'apexnodes-live-tools',
   // ApexNodes local document-export tools (hc-565): render structured replies to
   // .xlsx / .pptx / .docx files delivered via MEDIA:. Pure-local (no gateway, no
   // vendor call); deps ship with the desktop install ([file-export] extra).

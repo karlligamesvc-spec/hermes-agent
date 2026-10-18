@@ -1,0 +1,7 @@
+name: apexnodes-live-tools
+version: "0.1.0"
+description: "Desktop live recording (hc-918). The ApexNodes tools gateway resolves a Douyin/TikTok live room to pull URLs (/tools/v1/social/{platform}/live-resolve; default-off entitlement, rights attestation required); the bundled ffmpeg records on this machine and nothing is uploaded. Tools stay hidden unless the gateway reports live.enabled."
+provides_tools:
+  - live_record_start
+  - live_record_status
+  - live_record_stop
