@@ -204,7 +204,8 @@ import {
   reviewWorkflowDomainDeliverable,
   startExistingWorkflowDomainRun,
   startWorkflowDomainGoal,
-  updateWorkflowDomainProject
+  updateWorkflowDomainProject,
+  workflowDomainErrorCode
 } from './apex-workflow-domain'
 import {
   destroyKeepaliveAgents,
@@ -23111,33 +23112,14 @@ ipcMain.handle('hermes:analysis:previewPdf', async (_event, id) => {
 
 function workflowDomainIpcError(error) {
   const statusCode = Number(error && error.statusCode) || 0
+  const code = workflowDomainErrorCode(error)
 
   rememberLog(
-    `[workflow-domain] request failed: status=${statusCode || 'network'} ` +
+    `[workflow-domain] request failed: status=${statusCode || 'network'} code=${code} ` +
       `type=${error && error.name ? error.name : 'Error'}`
   )
 
-  if (statusCode === 401) {
-    return 'sign_in'
-  }
-
-  if (statusCode === 403 || statusCode === 404) {
-    return 'unavailable'
-  }
-
-  if (statusCode === 409 && typeof error?.message === 'string') {
-    try {
-      const detail = JSON.parse(error.message.slice(error.message.indexOf(': ') + 2))?.detail?.code
-
-      if (detail === 'project_not_ready' || detail === 'project_completed') {
-        return detail
-      }
-    } catch {
-      // Return the generic failure below for malformed server responses.
-    }
-  }
-
-  return 'request_failed'
+  return code
 }
 
 ipcMain.handle('hermes:workflowDomain:access', async () => {

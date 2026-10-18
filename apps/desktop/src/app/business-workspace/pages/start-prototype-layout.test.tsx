@@ -59,6 +59,22 @@ function installCatalog(items: { id: string; slug: string; version: number }[], 
   return bridge
 }
 
+// hc-942: Electron reports why workflow access is missing; 'not_enabled' is the server's 404
+// workflow_domain_disabled / workflow_domain_not_allowlisted (apex-workflow-domain.ts).
+function installDeniedAccess(code: string) {
+  const bridge = {
+    access: vi.fn<WorkflowDomainBridge['access']>(async () => ({ available: false, code })),
+    getCatalog: vi.fn<NonNullable<WorkflowDomainBridge['getCatalog']>>(async () => ({ ok: true, items: [], version: 'workflow-catalog/v1' })),
+    getVideoCatalog: vi.fn<NonNullable<WorkflowDomainBridge['getVideoCatalog']>>(async () => ({ ok: true, items: [], version: 'video/v1' })),
+    listProjects: vi.fn(async () => ({ ok: true, items: [], total: 0 })),
+    startGoal: vi.fn<WorkflowDomainBridge['startGoal']>(async () => ({ ok: false }))
+  }
+
+  Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { workflowDomain: bridge } })
+
+  return bridge
+}
+
 afterEach(() => {
   cleanup()
   $authState.set(originalAuth)
@@ -282,5 +298,33 @@ describe('prototype Start paths with the real catalog contract', () => {
     expect(JSON.parse(screen.getByTestId('location').textContent!).state).toMatchObject({ businessStartSelection: true, businessGoalDraft: 'Keep my business brief' })
     expect(bridge.startGoal).not.toHaveBeenCalled()
     expect(chat).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['not_enabled', false],
+    ['unavailable', true],
+    ['request_failed', true],
+    ['sign_in', true]
+  ] as const)('with access code %s the workflow shelf shows: %s', async (code, shelfShown) => {
+    const bridge = installDeniedAccess(code)
+    renderStart(vi.fn(async () => false))
+    await waitFor(() => expect(screen.queryByText(en.home.catalogLoading)).toBeNull())
+
+    const primaryRegion = window.document.querySelector('[data-start-primary-workflows]')
+
+    expect(screen.getByRole('heading', { name: en.home.capabilityPaths })).toBeTruthy()
+
+    if (shelfShown) {
+      expect(primaryRegion).not.toBeNull()
+      expect(within(primaryRegion as HTMLElement).getAllByRole('button').every(button => button.hasAttribute('disabled'))).toBe(true)
+      expect(screen.getByText(en.businessWorkspace.workflows.catalogUnavailable)).toBeTruthy()
+    } else {
+      expect(primaryRegion).toBeNull()
+      expect(screen.queryByRole('heading', { name: en.home.pathsTitle })).toBeNull()
+      expect(screen.queryByText(en.businessWorkspace.workflows.catalogUnavailable)).toBeNull()
+    }
+
+    expect(bridge.access).toHaveBeenCalled()
+    expect(bridge.getCatalog).not.toHaveBeenCalled()
   })
 })

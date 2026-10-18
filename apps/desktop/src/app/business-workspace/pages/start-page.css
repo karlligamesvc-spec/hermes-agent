@@ -81,6 +81,8 @@
 .apex-start-shelf .apex-start-primary-card[aria-pressed="true"] img { border-color: var(--theme-primary); }
 .apex-start-shelf .apex-start-catalog-status { margin-top: 12px; color: var(--ui-text-tertiary); font-size: 12px; }
 .apex-start-shelf .apex-start-secondary-paths { margin-top: 24px; }
+/* hc-942: an account without workflows has no primary shelf above this section. */
+.apex-start-shelf .apex-start-secondary-paths:first-child { margin-top: 0; }
 .apex-start-shelf .apex-start-secondary-paths h2 { color: var(--ui-text-secondary); font-size: 12px; }
 .apex-start-shelf .apex-start-secondary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 8px; }
 
