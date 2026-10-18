@@ -94,6 +94,19 @@ _SEGMENTS_WRITE_FAILED_NOTE = (
 )
 
 
+# hc-918:有人声、却没有时间轴的结果,要明说再调一次能不能拿到。2026-10-18 直播内测里,
+# Agent 为了时间轴把同一段录音转了三次。只有服务端旧缓存(cache_hit)缺时间轴时,
+# force_refresh 重转一次才有用;新鲜结果没有时间轴,重问多少次都一样。
+_NO_TIMING_NOTE = (
+    "这次转写没有返回时间轴(不是缓存造成的)。再次调用 media_transcribe,包括 force_refresh,"
+    "也拿不到时间轴,只会重复计费;请按没有时间轴继续,需要时按分句或段落顺序估算并注明是估算。"
+)
+_NO_TIMING_CACHED_NOTE = (
+    "这份结果来自服务端缓存,缓存里没有时间轴。确实需要字幕时间轴时,用 force_refresh=true "
+    "重新转写一次(会重新计费);重转后仍没有,就按没有时间轴继续,不要再试。"
+)
+
+
 class _PlatformError(RuntimeError):
     """legacy master 端点的 HTTP 错误;``code`` 是服务端 detail.code(可能为 None)。"""
 
@@ -107,6 +120,17 @@ def _speech_fields(transcript: str) -> dict[str, Any]:
     if transcript:
         return {"speech": True}
     return {"speech": False, "speech_note": _NO_SPEECH_NOTE}
+
+
+def _no_timing_fields(result: dict[str, Any], transcript: str, cache_hit: Any) -> dict[str, Any]:
+    """有人声但这次没有时间轴文件时,告诉模型再调一次能不能拿到(两条腿共用)。
+
+    没有人声(speech_note 已经说了不要重试)、已经有 segments_path、或时间轴其实有只是
+    没写成文件(_SEGMENTS_WRITE_FAILED_NOTE)时都不加。
+    """
+    if not transcript or result.get("segments_path") or result.get("segments_note"):
+        return {}
+    return {"segments_note": _NO_TIMING_CACHED_NOTE if cache_hit else _NO_TIMING_NOTE}
 
 
 def _transcript_file_stem(title: str) -> str:
@@ -268,6 +292,7 @@ MEDIA_TRANSCRIBE_SCHEMA = {
         "做字幕时用脚本读这个文件）。"
         "素材没有人声（纯环境声/音乐/静音）时返回 ok=true、speech=false 和空 transcript，"
         "这是正常结果，不要对同一文件重试。"
+        "有人声但没有时间轴时，结果里的 segments_note 会说明再调用能不能拿到时间轴，照它做，不要盲目重转。"
     ),
     "parameters": {
         "type": "object",
@@ -277,9 +302,10 @@ MEDIA_TRANSCRIBE_SCHEMA = {
             "force_refresh": {
                 "type": "boolean",
                 "description": (
-                    "Skip old transcript caches and run ASR again. Use only when a production needs "
-                    "word/utterance timing but segments_summary.count is 0 (an older cached response "
-                    "without timing)."
+                    "Skip the server's transcript cache and run ASR again; this bills again. Use it at "
+                    "most once, and only when a result carried cache_hit=true with segments_summary.count "
+                    "0 (an old cached result without timing). A fresh result without timing gains none "
+                    "on a retry: follow its segments_note."
                 ),
                 "default": False,
             },
@@ -491,11 +517,14 @@ def _gateway_media_transcribe(
     }
     if response.get("cost_cents") is not None:
         result["cost_cents"] = response.get("cost_cents")
+    if response.get("cache_hit") is not None:
+        result["cache_hit"] = bool(response.get("cache_hit"))
     stem = _transcript_file_stem(title)
     transcript_path = _write_transcript_file(transcript, stem)
     if transcript_path:
         result["transcript_path"] = transcript_path
     result.update(_segments_result_fields(response.get("segments"), stem))
+    result.update(_no_timing_fields(result, transcript, response.get("cache_hit")))
     # hc-341: pre-render the verbatim transcript so "完整文案/逐字稿/下载文案" is delivered
     # as the original speech, copied verbatim — the agent only emits the MEDIA line.
     if transcript and _doc_file_delivery_available():
@@ -706,6 +735,7 @@ def _handle_media_transcribe(args: dict, **_kwargs) -> str:
     # master 把时间轴整段内联在响应里,与网关腿同样改交本机文件(transcript_path 仍是 master 的)。
     stem = _transcript_file_stem(str(result.get("title") or ""))
     result.update(_segments_result_fields(result.pop("segments", None), stem))
+    result.update(_no_timing_fields(result, transcript, result.get("cache_hit")))
     if transcript and _doc_file_delivery_available():
         doc_path = render_verbatim_transcript_docx(transcript, str(result.get("title") or ""))
         if doc_path:
