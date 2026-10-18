@@ -567,6 +567,9 @@ try {
   proof.success = true
 } catch (error) {
   proof.error = error instanceof Error ? error.message : String(error)
+  // A busy refusal names its holders below the depth Node prints for an uncaught error.
+  const busyProof = (error as { idleProof?: unknown } | null)?.idleProof
+  if (busyProof) {console.error(`busy proof: ${JSON.stringify(busyProof)}`)}
   throw error
 } finally {
   try {
