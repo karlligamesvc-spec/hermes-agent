@@ -179,6 +179,9 @@ nativeTest('the actual idle scan excludes its owned probe but blocks a live borr
       assert.equal((error as Error & { code: string }).code, 'runtime_update_busy')
       assert.ok(error.message.includes(String(ready.pid)), 'recovery must identify the actual blocking process')
       assert.ok(error.idleProof?.holderPids.includes(ready.pid), 'the actual borrowed PID must remain a blocker')
+      const holder = error.idleProof?.holders[ready.pid]
+      assert.equal(holder?.ppid, process.pid, 'the busy proof names each blocker and its parent')
+      assert.deepEqual(holder?.argv.slice(1, 2), ['-e'])
 
       return true
     })

@@ -8,13 +8,14 @@
  * and every busy refusal is classified by the product's isRuntimeUpdateBusy, never by wording.
  */
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
 import ts from 'typescript'
 import { expect, test } from 'vitest'
 
 import { buildGatewayRunArgs } from './apex-gateway'
-import { IDLE_PID_FILTER_ANCHOR, IDLE_PID_FILTER_REVERSED } from './fixtures/runtime-smoke'
+import { IDLE_PID_FILTER_ANCHOR, IDLE_PID_FILTER_REVERSED, relocateCopiedLegacyTree } from './fixtures/runtime-smoke'
 
 const desktopRoot = path.resolve(import.meta.dirname, '..')
 const sourceOf = (file: string) => fs.readFileSync(path.join(desktopRoot, file), 'utf8')
@@ -89,7 +90,7 @@ test('the smoke reverses the one holder filter inside assertPackagedRuntimeIdle'
 test('the consumer smoke uses the shared fixtures and the product busy classifier, never private copies', () => {
   const smoke = parse('scripts/bundled-runtime-consumer-smoke.mts')
   expect(importedNames(smoke, '../electron/fixtures/runtime-smoke.ts').sort()).toEqual(
-    ['IDLE_PID_FILTER_ANCHOR', 'IDLE_PID_FILTER_REVERSED', 'gatewayFixtureScript', 'gatewayRuntimeState'].sort()
+    ['IDLE_PID_FILTER_ANCHOR', 'IDLE_PID_FILTER_REVERSED', 'gatewayFixtureScript', 'gatewayRuntimeState', 'relocateCopiedLegacyTree'].sort()
   )
   expect(importedNames(smoke, '../electron/runtime-update-busy.ts')).toEqual(['isRuntimeUpdateBusy'])
 
@@ -164,5 +165,54 @@ test('the native retirement test drives the same gateway fixture as the smoke', 
 
   for (const text of literalTexts(unit)) {
     expect(text, 'the gateway fixture lives in fixtures/runtime-smoke.ts').not.toContain('write_pid_file')
+  }
+})
+
+test('the smoke stamps each copied legacy tree for its own location', () => {
+  const smoke = parse('scripts/bundled-runtime-consumer-smoke.mts')
+  const seed = functionNamed(smoke, 'seedOld')
+  expect(callsOf(seed, 'relocateCopiedLegacyTree')).toHaveLength(1)
+  // Node's default turns the copy's relative venv/bin/python into a link to the source tree.
+  const copies = nodesIn(seed, ts.isCallExpression).filter(call => call.expression.getText() === 'fs.cpSync' && call.arguments[0]?.getText() === 'legacySource')
+  expect(copies).toHaveLength(1)
+  const options = copies[0].arguments[2]
+  expect(!!options && ts.isObjectLiteralExpression(options) && options.properties.some(property =>
+    ts.isPropertyAssignment(property) && property.name.getText() === 'verbatimSymlinks' && property.initializer.kind === ts.SyntaxKind.TrueKeyword)).toBe(true)
+})
+
+test.each([
+  ['POSIX', ['lib', 'python3.11', 'site-packages'], '/runner/_temp/legacy-f8/tree'],
+  ['Windows', ['Lib', 'site-packages'], 'D:\\a\\_temp\\legacy-f8\\tree']
+])('a copied %s legacy venv names its own interpreter and editable sources', (_os, sitePackages, source) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-legacy-copy-'))
+
+  try {
+    const site = path.join(root, 'venv', ...sitePackages)
+    fs.mkdirSync(site, { recursive: true })
+    fs.mkdirSync(path.join(root, '.runtime'))
+    const escaped = source.split('\\').join('\\\\')
+    const forward = source.split('\\').join('/')
+    fs.writeFileSync(path.join(root, 'venv', 'pyvenv.cfg'), `home = ${source}/.runtime/py/cpython-3.11.15/bin\nrelocatable = true\n`)
+    fs.writeFileSync(path.join(site, '__editable___hermes_agent_finder.py'), `MAPPING = {'hermes_cli': '${escaped}/hermes_cli', 'gateway': '${forward}/gateway'}\n`)
+    fs.writeFileSync(path.join(site, '__editable__.hermes_agent.pth'), `import __editable___hermes_agent_finder; '${source}'\n`)
+    fs.writeFileSync(path.join(site, 'unrelated.pth'), `${source}\n`)
+    const result = relocateCopiedLegacyTree(source, root)
+    const all = [source, escaped, forward]
+
+    expect(fs.readFileSync(path.join(root, 'venv', 'pyvenv.cfg'), 'utf8')).toBe(`home = ${root}/.runtime/py/cpython-3.11.15/bin\nrelocatable = true\n`)
+
+    for (const name of ['__editable___hermes_agent_finder.py', '__editable__.hermes_agent.pth']) {
+      const text = fs.readFileSync(path.join(site, name), 'utf8')
+      expect(all.some(form => text.includes(form)), `${name} still names the source tree`).toBe(false)
+      expect(text).toContain(root)
+    }
+
+    expect(result.rewritten.sort()).toEqual([path.join('venv', ...sitePackages, '__editable__.hermes_agent.pth'), path.join('venv', ...sitePackages, '__editable___hermes_agent_finder.py')].sort())
+    expect(fs.readFileSync(path.join(site, 'unrelated.pth'), 'utf8'), 'only the fixup\'s own files move').toBe(`${source}\n`)
+    expect(JSON.parse(fs.readFileSync(path.join(root, '.runtime', 'fixup-state.json'), 'utf8')).current_root).toBe(root)
+    // A tree that never named the source is not a copy of it.
+    expect(() => relocateCopiedLegacyTree('/elsewhere/tree', root)).toThrow(/nothing to relocate/)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
   }
 })
