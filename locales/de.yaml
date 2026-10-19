@@ -795,6 +795,7 @@ gateway:
   unknown_command: "Unbekannter Befehl `/{command}`. Geben Sie /commands ein, um die verfügbaren Befehle zu sehen, oder senden Sie die Nachricht ohne führenden Schrägstrich erneut, um sie als normale Nachricht zu senden."
   session:
     auto_reset_notice: "◐ Sitzung nach dem Stopp zurückgesetzt. Konversationsverlauf gelöscht.\nVerwenden Sie /resume, um eine frühere Sitzung zu durchsuchen und wiederherzustellen.\n"
+    auto_reset_plain_notice: "Die vorherige Konversation wurde gelöscht."
     auto_reset_context_exhausted: "\n\n🔄 Sitzung automatisch zurückgesetzt — die Konversation hat die maximale Kontextgröße überschritten und konnte nicht weiter komprimiert werden. Ihre nächste Nachricht startet eine neue Sitzung."
     info_model: "◆ Modell: `{model}`"
     info_provider: "◆ Anbieter: {provider}"

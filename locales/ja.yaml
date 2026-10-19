@@ -795,6 +795,7 @@ gateway:
   unknown_command: "不明なコマンド `/{command}` です。/commands で利用可能なコマンドを確認するか、先頭のスラッシュを外して再送信すると通常のメッセージとして送信されます。"
   session:
     auto_reset_notice: "◐ 停止後にセッションをリセットしました。会話履歴はクリアされました。\n/resume で以前のセッションを閲覧・復元できます。\n"
+    auto_reset_plain_notice: "以前の会話はクリアされました。"
     auto_reset_context_exhausted: "\n\n🔄 セッションを自動リセットしました — 会話が最大コンテキストサイズを超え、これ以上圧縮できませんでした。次のメッセージから新しいセッションが始まります。"
     info_model: "◆ モデル: `{model}`"
     info_provider: "◆ プロバイダー: {provider}"

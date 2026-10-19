@@ -795,6 +795,7 @@ gateway:
   unknown_command: "Bilinmeyen komut `/{command}`. Kullanılabilir komutları görmek için /commands yazın veya normal mesaj olarak göndermek için baştaki eğik çizgi olmadan yeniden gönderin."
   session:
     auto_reset_notice: "◐ Oturum durdurulduktan sonra sıfırlandı. Konuşma geçmişi temizlendi.\nÖnceki bir oturuma göz atıp geri yüklemek için /resume kullanın.\n"
+    auto_reset_plain_notice: "Önceki konuşma temizlendi."
     auto_reset_context_exhausted: "\n\n🔄 Oturum otomatik sıfırlandı — konuşma en büyük bağlam boyutunu aştı ve daha fazla sıkıştırılamadı. Bir sonraki mesajınız yeni bir oturum başlatacak."
     info_model: "◆ Model: `{model}`"
     info_provider: "◆ Sağlayıcı: {provider}"

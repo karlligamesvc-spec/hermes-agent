@@ -807,6 +807,7 @@ gateway:
     auto_reset_notice: |
       ◐ A munkamenet a leállítás után visszaállt. A beszélgetési előzmények törölve.
       A /resume paranccsal böngészhetsz és visszaállíthatsz egy korábbi munkamenetet.
+    auto_reset_plain_notice: "Az előző beszélgetés törölve."
     auto_reset_context_exhausted: "\n\n🔄 A munkamenet automatikusan visszaállt — a beszélgetés túllépte a maximális kontextusméretet, és nem lehetett tovább tömöríteni. A következő üzeneted új munkamenetet indít."
     info_model: "◆ Modell: `{model}`"
     info_provider: "◆ Szolgáltató: {provider}"

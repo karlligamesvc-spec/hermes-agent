@@ -4,9 +4,9 @@ encrypted CDN; ``qr_login`` backs the gateway setup wizard."""
 
 from __future__ import annotations
 
-import asyncio, base64, contextlib, hashlib, json, logging, mimetypes, os, re, secrets, string, tempfile, textwrap, time, uuid
+import asyncio, base64, contextlib, hashlib, json, logging, mimetypes, os, re, secrets, tempfile, textwrap, time, uuid
 from datetime import datetime
-from functools import lru_cache, partial
+from functools import partial
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote, urlparse
@@ -110,162 +110,6 @@ def _make_ssl_connector() -> Optional[aiohttp.TCPConnector]:
 
 def _new_session(**kwargs: Any) -> aiohttp.ClientSession:
     return aiohttp.ClientSession(trust_env=gateway_trust_env(), connector=_make_ssl_connector(), **kwargs)
-
-# hc-457: Weixin (iLink) replies are sent by this adapter directly — unlike
-# Feishu, there is no scheduler-side render layer sitting in front of iLink,
-# so the hc-451 sanitizer in hermes-cloud's app/services/response_sanitizer.py
-# (RUNTIME_BANNER_PATTERNS) never sees this text, and the runtime's own
-# session-reset notice / model-provider-context debug header (built by the
-# `notice = (...)` block feeding adapter.send() and
-# GatewayRunner._format_session_info(), both in gateway/run.py) leaked
-# straight into WeChat chats. Adapted from hc-451 so both sides share the
-# same anchoring philosophy — precise, glyph-anchored (◐/◆) at line-start,
-# so this only ever strips the runtime's own banner lines and never a user's
-# or agent's organic prose that happens to mention "session", "model", or
-# "reset" — with one deliberate extension: hc-451's session-reset pattern is
-# single-line, but gateway/run.py actually builds that notice as a *fixed
-# 3-line template* (◐ headline, then two un-glyphed continuation lines with
-# no symbol of their own). A single-line pattern only strips the headline
-# and leaves the two continuation lines ("Use /resume to browse..." /
-# "Adjust reset timing...") visible on real traffic, so the first pattern
-# below matches the full known 3-line block verbatim (anchored on gateway/
-# run.py's literal template text, not a generic "Use /xxx to..." wildcard —
-# that stays deliberately unmatched in isolation, same as hc-451, since it
-# could legitimately be an agent explaining a real command); a single-line
-# fallback is kept behind it as a defensive net in case the notice is ever
-# reformatted to drop its continuation lines.
-_WEIXIN_RUNTIME_BANNER_PATTERNS = [
-    # Full notice: "◐ Session automatically reset (inactive for 24h).
-    # Conversation history cleared.\nUse /resume to browse and restore a
-    # previous session.\nAdjust reset timing in config.yaml under
-    # session_reset." — matched as one block so the two continuation lines
-    # are only removed as part of *this* known banner, never in isolation.
-    re.compile(
-        r"^[ \t]*◐[ \t]*Session automatically reset\b[^\n]*\n"
-        r"[ \t]*Use /resume to browse and restore a previous session\.\n"
-        r"[ \t]*Adjust reset timing in config\.yaml under session_reset\.[ \t]*$",
-        re.MULTILINE,
-    ),
-    # Defensive fallback: the ◐ headline alone, in case it is ever emitted
-    # without its two fixed continuation lines (mirrors hc-451's original
-    # single-line pattern).
-    re.compile(r"^[ \t]*◐[ \t]*Session automatically reset\b.*$", re.MULTILINE),
-    # "◆ Model: deepseek-v4-pro ◆ Provider: custom ◆ Context: 1.0M tokens"
-    # (also matches a lone "◆ Model: …" / "◆ Provider: …" / "◆ Context: …"
-    # field when emitted on its own line — see _format_session_info() in
-    # gateway/run.py, always appended after the reset notice above).
-    re.compile(r"^[ \t]*◆[ \t]*(?:Model|Provider|Context|Session|Tokens)\s*:.*$", re.MULTILINE),
-    # Other "◐ <Runtime notice>…" system banners share the same glyph +
-    # capitalized-notice shape (defensive net on the *shape*, mirrors hc-451;
-    # no captured banner text beyond session-reset exists yet for this one).
-    re.compile(r"^[ \t]*◐[ \t]*[A-Z][a-zA-Z ]{2,40}(?:reset|cleared|compact|nudge)\b.*$", re.MULTILINE),
-]
-
-# hc-964: the patterns above match the hardcoded English of pre-i18n runtimes (the v2026.8.31
-# image). The runtime now renders both banners through the i18n catalog: gateway/run_turn.py sends
-# ``gateway.session.auto_reset_notice`` followed by _format_session_info()'s
-# ``gateway.session.info_*`` lines, and the /new reply carries the same lines. Under
-# ``display.language: zh`` they arrive in Chinese and none of the English patterns match; even the
-# English notice was reworded, so "Use /resume to …" got through on its own. These patterns are
-# built from those keys' templates exactly as ``t()`` resolves them for rendering: the active
-# language (with its per-key English fallback), from the bundled locale, the profile's
-# ``locales/`` overlay and plugin packs. A reworded banner, or a gateway switched to another
-# locale, needs no edit here, and nothing is loaded that rendering has not loaded already; every
-# locale at once would parse ~5 MB of YAML on the event loop. The precision rules stay: a line must
-# open with ◐/◆ and carry label text before any ``{field}``, and the notice's glyph-less
-# continuation lines are removed only together with their headline.
-_WEIXIN_BANNER_NOTICE_KEYS = ("gateway.session.auto_reset_notice",)
-_WEIXIN_BANNER_LINE_KEYS = (
-    "gateway.session.info_model", "gateway.session.info_provider", "gateway.session.info_context",
-    "gateway.session.info_acting_model", "gateway.session.info_endpoint",
-)
-_WEIXIN_BANNER_GLYPHS = ("◐", "◆")
-
-
-def _template_line_regex(line: str) -> Optional[str]:
-    """Regex source for one line of a catalog template as ``t()`` renders it: the literal text
-    escaped, each ``{field}`` any run of characters within the line. None for a malformed template."""
-    try:
-        parts = list(string.Formatter().parse(line.strip()))
-    except ValueError:
-        return None
-    return "".join(re.escape(text) + (r"[^\n]*?" if field is not None else "") for text, field, _spec, _conv in parts)
-
-
-def _is_banner_headline(line: str) -> bool:
-    """◐/◆ followed by label text before the first field, so a template such as ``◆ {model}`` can
-    never strip an agent's own ◆ bullet points."""
-    stripped = line.strip()
-    if not stripped.startswith(_WEIXIN_BANNER_GLYPHS):
-        return False
-    try:
-        label = next(string.Formatter().parse(stripped[1:]), ("",))[0]
-    except ValueError:
-        return False
-    return bool(label.strip())
-
-
-@lru_cache(maxsize=4)
-def _compile_catalog_banner_patterns(notices: tuple[str, ...], lines: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
-    """Whole notices come before their lone headlines, which would otherwise strand the
-    continuation lines."""
-    blocks, headlines, singles = [], [], []
-    for template in notices:
-        rows = template.strip("\n").split("\n")
-        sources = [_template_line_regex(row) for row in rows]
-        if not _is_banner_headline(rows[0]) or None in sources:
-            continue
-        blocks.append(r"[ \t]*\n[ \t]*".join(sources))
-        if len(sources) > 1:  # the headline alone, should it ever arrive without its continuation lines
-            headlines.append(sources[0])
-    for template in lines:
-        source = _template_line_regex(template)
-        if source and "\n" not in template.strip("\n") and _is_banner_headline(template):
-            singles.append(source)
-    return tuple(re.compile(rf"^[ \t]*{source}[ \t]*$", re.MULTILINE) for source in (*blocks, *headlines, *singles))
-
-
-def _catalog_banner_patterns() -> tuple[re.Pattern[str], ...]:
-    """The runtime banners as the catalog renders them right now. Compiled once per set of
-    templates, so a language, overlay or pack change rebuilds them; empty if the catalog cannot be
-    read, which leaves the English patterns alone in effect."""
-    try:
-        notices = tuple(t(key) for key in _WEIXIN_BANNER_NOTICE_KEYS)
-        lines = tuple(t(key) for key in _WEIXIN_BANNER_LINE_KEYS)
-    except Exception:
-        logger.debug("[weixin] i18n catalog unreadable; filtering English runtime banners only", exc_info=True)
-        return ()
-    return _compile_catalog_banner_patterns(notices, lines)
-
-
-def _weixin_filter_runtime_banners_enabled() -> bool:
-    return os.environ.get("WEIXIN_FILTER_RUNTIME_BANNERS", "true").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _strip_runtime_banners_for_weixin(text: str) -> str:
-    """Strip runtime status banners (the catalog-rendered ones, then
-    _WEIXIN_RUNTIME_BANNER_PATTERNS) from text bound for a Weixin reply.
-
-    Env-gated (default on); set WEIXIN_FILTER_RUNTIME_BANNERS=false to fall
-    back to prior (unfiltered) behavior.
-    """
-    if not text or not _weixin_filter_runtime_banners_enabled():
-        return text
-    filtered = text
-    stripped_count = 0
-    # Catalog patterns first: the English shape net below would otherwise take the reworded English
-    # headline alone and strand its "Use /resume to …" line.
-    for pattern in (*_catalog_banner_patterns(), *_WEIXIN_RUNTIME_BANNER_PATTERNS):
-        filtered, count = pattern.subn("", filtered)
-        stripped_count += count
-    if stripped_count:
-        logger.debug("[weixin] Filtered %d runtime banner line(s) from outbound reply", stripped_count)
-        # Collapse blank-line runs the removed banners leave behind, and trim
-        # stray leading/trailing blank lines without touching interior
-        # single blank-line paragraph breaks.
-        filtered = re.sub(r"[ \t]*\n{3,}", "\n\n", filtered)
-        filtered = filtered.strip("\n")
-    return filtered
 
 
 def check_weixin_requirements() -> bool:
@@ -1208,11 +1052,6 @@ class WeixinAdapter(OwnAccessPolicyMixin, BasePlatformAdapter):
     async def send(self, chat_id: str, content: str, reply_to: Optional[str] = None, metadata: Optional[dict[str, Any]] = None) -> SendResult:
         if not self._send_session or not self._token:
             return SendResult(success=False, error="Not connected")
-        # hc-457: strip runtime session-reset / model-provider-context
-        # banners before anything else touches the content — this is the
-        # single choke point every outbound Weixin text delivery passes
-        # through (see _WEIXIN_RUNTIME_BANNER_PATTERNS above).
-        content = _strip_runtime_banners_for_weixin(content)
         context_token = self._token_store.get(self._account_id, chat_id)
         last_message_id: Optional[str] = None
         # Extract MEDIA: tags and bare local file paths before text delivery, under the routed

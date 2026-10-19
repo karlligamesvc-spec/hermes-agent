@@ -795,6 +795,7 @@ gateway:
   unknown_command: "未知指令 `/{command}`。輸入 /commands 查看可用指令，或移除開頭的斜線後重新傳送，即可當作一般訊息送出。"
   session:
     auto_reset_notice: "◐ 工作階段在停止後已重設。對話記錄已清除。\n使用 /resume 可瀏覽並還原先前的工作階段。\n"
+    auto_reset_plain_notice: "先前的對話已清除。"
     auto_reset_context_exhausted: "\n\n🔄 工作階段已自動重設 — 對話超出上下文大小上限，且無法再進一步壓縮。你的下一則訊息將開始新的工作階段。"
     info_model: "◆ 模型：`{model}`"
     info_provider: "◆ 提供方：{provider}"

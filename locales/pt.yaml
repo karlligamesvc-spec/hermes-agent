@@ -795,6 +795,7 @@ gateway:
   unknown_command: "Comando desconhecido `/{command}`. Digite /commands para ver os disponíveis ou reenvie sem a barra inicial para mandar como mensagem comum."
   session:
     auto_reset_notice: "◐ Sessão reiniciada após ser interrompida. Histórico da conversa limpo.\nUse /resume para navegar e restaurar uma sessão anterior.\n"
+    auto_reset_plain_notice: "A conversa anterior foi limpa."
     auto_reset_context_exhausted: "\n\n🔄 Sessão reiniciada automaticamente — a conversa excedeu o tamanho máximo de contexto e não pôde ser comprimida mais. Sua próxima mensagem iniciará uma nova sessão."
     info_model: "◆ Modelo: `{model}`"
     info_provider: "◆ Fornecedor: {provider}"
