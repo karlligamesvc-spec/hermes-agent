@@ -16,6 +16,14 @@ including Bash. Chromium and optional browser downloads retain their existing
 first-use behavior; embedding the engine does not make every browser tool
 available offline.
 
+The archive leaves out what no installed engine reads: the pytest suite,
+contributor metadata, docs-site images, Desktop QA evidence, Node's C headers,
+agent-browser builds no launcher on the target can select, and the repo's npm
+build trees (`hermes --tui` and `hermes dashboard` run their own `npm ci`).
+`BUNDLE_EXCLUDED_PATHS` in `scripts/build-runtime-bundle.mjs` is the list, and
+`apps/desktop/scripts/runtime-bundle-slim.node-test.mjs` keeps every path a
+runtime reader needs out of it.
+
 The native build runs extraction, fixup, per-file verification, real imports,
 CLI/tool probes, relocation and the probes again. Windows Bash is executed with
 a PATH containing only its bundled directories. Mac Mach-O executables and

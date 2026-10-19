@@ -71,6 +71,20 @@ const RIPGREP_VERSION = '14.1.1'
 // <node dir> --ignore-scripts). Keep the specs identical to the installers'.
 const AGENT_BROWSER_SPECS = ['agent-browser@^0.26.0', '@askjo/camofox-browser@^1.5.2']
 
+// hc-951: paths an installed engine never reads. Each was checked against every runtime consumer
+// (Desktop shell, engine CLI/gateway/serve, platform skills, Hypit, the offline fresh install, legacy
+// upgrade and rollback, the release consumer smoke). Kept on purpose: website/static/api (the model
+// catalog seed), website/docs (skills cite it), apps/shared and every workspace package.json (the TUI
+// build and its npm ci), .runtime/media/ffmpeg (the bundled FFmpeg's corresponding source).
+export const BUNDLE_EXCLUDED_PATHS = Object.freeze([
+  'tests', // pytest suite: outside pyproject's packages, imported only by tests/ and evals/
+  'contributors', // upstream CI attribution map (scripts/audit_pr_attribution.py)
+  'website/static/img', // docs-site images
+  'apps/desktop/docs', // Desktop QA evidence
+  'apps/desktop/pr-assets', // PR screenshots
+  '.runtime/node/include', // C headers: official Node sends node-gyp to its headersUrl, never here
+])
+
 // ---------------------------------------------------------------------------
 // small utils
 // ---------------------------------------------------------------------------
@@ -501,13 +515,12 @@ async function cmdBuild(args) {
   if (target.os === 'win') fs.writeFileSync(path.join(hypitBin, 'hypit.cmd'),
     '@echo off\r\n"%~dp0node.exe" "%~dp0..\\..\\apex_overlay\\hypit_cli.mjs" %*\r\n')
 
-  // ── 8. repo npm trees. Deliberate A2 curation (NOT today's accidental
-  //       full-workspace install): root deps (browser tool resolution) +
-  //       ui-tui workspace (hermes --tui; tui_dist is NOT committed). Both
-  //       resolve from the root package-lock.json. web/ and apps/* are
-  //       excluded — the packaged shell ships its own Electron. ──────────────
-  npm(['install', '--workspaces=false', '--silent'], { cwd: stage })
-  npm(['install', '--workspace', 'ui-tui', '--silent'], { cwd: stage })
+  // ── 8. no repo npm trees (hc-951). The root and ui-tui installs held only
+  //       build tooling. `hermes --tui` and `hermes dashboard` build through
+  //       scripts/build/node-deps.mjs, which reuses a tree only with its
+  //       .hermes-node-deps receipt (never written here): it ran `npm ci`,
+  //       deleting these trees first, or refused when lazy installs are off.
+  //       `serve` never builds a frontend. ──────────────────────────────────
 
   // ── 9. PortableGit (windows only). Runtime tools need Bash, which MinGit
   //       omits even though its git --version probe succeeds. ──────────────
@@ -551,6 +564,7 @@ async function cmdBuild(args) {
   })
 
   // ── 11. prune build detritus + neutralize location-bound links ────────────
+  for (const rel of pruneUnusedRuntimePaths(stage, target.os)) log(`pruned unused runtime path: ${rel}`)
   prunePycache(stage)
   normalizeStageLinks(stage)
 
@@ -586,7 +600,6 @@ async function cmdBuild(args) {
       python: { path: pyDirRel, version: pyVersion, source: 'python-build-standalone (uv-managed)' },
       venv: { path: 'venv', relocatable: true, sync: 'uv sync --extra all --locked', uv_version: uvVersion },
       node: { path: '.runtime/node', version: nodeVersion, npm_prefix: true, globals: AGENT_BROWSER_SPECS },
-      npm_trees: { root: 'node_modules (--workspaces=false)', 'ui-tui': 'hoisted via npm install -w ui-tui' },
       ...(gitComponent ? { git: gitComponent } : {}),
       uv: { path: `.runtime/bin/uv${target.exe}`, version: uvVersion },
       ripgrep: { path: `.runtime/bin/rg${target.exe}`, version: RIPGREP_VERSION },
@@ -712,6 +725,31 @@ function normalizeStageLinks(root) {
     if (changed === 0) return
   }
   die('normalizeStageLinks did not reach a fixpoint in 4 passes')
+}
+
+// agent-browser.js runs bin/agent-browser-<os.platform()>-<os.arch()> of whichever node starts it, and
+// the npm package carries seven. Linux builds are never selectable here. A Mac keeps both Darwin builds:
+// a login shell's path_helper can put an x64 (Rosetta Homebrew) node ahead of the bundled one.
+export function excludedAgentBrowserBinaries(names, os) {
+  const own = os === 'win' ? /^agent-browser-win32-/ : /^agent-browser-darwin-/
+  return names.filter(name => /^agent-browser-(?:darwin|linux|linux-musl|win32)-/.test(name) && !own.test(name))
+}
+
+export function pruneUnusedRuntimePaths(root, os) {
+  const agentBrowserBin = `.runtime/node/${os === 'win' ? '' : 'lib/'}node_modules/agent-browser/bin`
+  const binDir = path.join(root, ...agentBrowserBin.split('/'))
+  const binaries = fs.existsSync(binDir) ? excludedAgentBrowserBinaries(fs.readdirSync(binDir), os) : []
+  const removed = []
+  for (const rel of [...BUNDLE_EXCLUDED_PATHS, ...binaries.map(name => `${agentBrowserBin}/${name}`)]) {
+    const abs = path.join(root, ...rel.split('/'))
+    if (!fs.existsSync(abs)) continue
+    rmrf(abs)
+    removed.push(rel)
+  }
+  // A link into a pruned tree would ship dangling and fail only on the user's machine.
+  const dangling = [...walk(root)].filter(f => f.type === 'link' && !fs.existsSync(f.abs)).map(f => f.rel)
+  if (dangling.length) throw new Error(`pruning left dangling links: ${dangling.join(', ')}`)
+  return removed
 }
 
 function prunePycache(root) {
