@@ -52,6 +52,7 @@
 // electron-free and unit-testable, and neither imports this module, so there is
 // no cycle.
 import { applyConfigYamlKeys } from './apex-client-config'
+import { managedConfigModel, managedDefaultModel, managedModelDisplay } from './apex-model-tiers'
 import {
   auditManagedRelayKeyAnchors,
   locateManagedKeyAnchors,
@@ -1119,18 +1120,12 @@ function resolveApexEndpoints(env: any = {}) {
   const authBase = trimTrailingSlash(env.APEXNODES_AUTH_BASE || DEFAULT_AUTH_BASE)
   const apiBase = trimTrailingSlash(env.APEXNODES_API_BASE || DEFAULT_API_BASE)
   const relayBaseUrl = trimTrailingSlash(env.APEXNODES_RELAY_BASE_URL || DEFAULT_RELAY_BASE_URL)
-  const model = String(env.APEXNODES_MANAGED_MODEL || DEFAULT_MANAGED_MODEL).trim() || DEFAULT_MANAGED_MODEL
+  // hc-960: once tiers are on, a new install starts on the Flash alias.
+  const defaultModel = managedDefaultModel(env, DEFAULT_MANAGED_MODEL)
+  const model = String(env.APEXNODES_MANAGED_MODEL || defaultModel).trim() || defaultModel
   // The display id is what gets WRITTEN to config (collision-free with built-in
-  // catalogs — see MANAGED_MODEL_DISPLAY). Precedence:
-  //   1. explicit APEXNODES_MANAGED_MODEL_DISPLAY override
-  //   2. when only APEXNODES_MANAGED_MODEL is overridden (e.g. staging), derive a
-  //      collision-free id by appending the `-APEX` brand suffix to it
-  //   3. the prod default display name
-  const explicitDisplay = String(env.APEXNODES_MANAGED_MODEL_DISPLAY || '').trim()
-
-  const modelDisplay =
-    explicitDisplay ||
-    (env.APEXNODES_MANAGED_MODEL ? `${model}-APEX` : MANAGED_MODEL_DISPLAY)
+  // catalogs — see MANAGED_MODEL_DISPLAY); precedence in managedModelDisplay.
+  const modelDisplay = managedModelDisplay(env, model, MANAGED_MODEL_DISPLAY)
 
   return {
     authBase,
@@ -1348,11 +1343,11 @@ function buildManagedModelConfig(relayKey, env: any = {}, overrides: any = {}) {
   // The model id WRITTEN to config must be collision-free with the built-in
   // catalogs (see MANAGED_MODEL_DISPLAY). A provision-key `overrides.model` is only honored when it is
   // ALREADY a non-colliding ApexNodes display id (ends with the `-APEX` brand
-  // suffix); otherwise we use the display name so a raw routed id like
+  // suffix, or — with tiers on (hc-960) — a tier alias); otherwise the display name, so a raw routed id like
   // `deepseek-v4-pro` can never re-seed the collision the next time config is
   // (re)written at boot.
   const overrideModel = String(overrides.model || '').trim()
-  const model = /-APEX$/i.test(overrideModel) ? overrideModel : endpoints.modelDisplay
+  const model = managedConfigModel(env, overrideModel, endpoints.modelDisplay)
   const baseUrl = trimTrailingSlash(overrides.baseUrl || '') || endpoints.relayBaseUrl
 
   return {

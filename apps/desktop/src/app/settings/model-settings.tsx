@@ -1,5 +1,5 @@
 import type { ModelOptionProvider } from '@hermes/shared'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,6 +37,7 @@ import {
   SHOW_EXPLICIT_MOA_UI
 } from '@/lib/moa-compose'
 import { displayModelName } from '@/lib/model-status-label'
+import { assistantModelChoice } from '@/lib/model-tiers'
 import { filterPickerProviders, isManagedProviderSlug, providerDisplayName } from '@/lib/provider-allowlist'
 import { cn } from '@/lib/utils'
 import { notifyError, readableError } from '@/store/notifications'
@@ -292,11 +293,85 @@ function StaleAuxWarning({ applying, onReset, slots, taskLabel }: StaleAuxWarnin
 interface ModelSettingsProps {
   /** Notified after the main model is applied, so live UI stores can sync. */
   onMainModelChanged?: (provider: string, model: string) => void
+  /** hc-960: the 高级 fold under Settings › 档位. Only the user's own
+   *  providers and endpoints — no APEX relay shelf, no auxiliary or composed
+   *  multi-model slots — so an APEX account still never picks an APEX model. */
+  ownProvidersOnly?: boolean
   /** Concrete profile selected by the shared Settings "Applies to" scope. */
   scopeProfile?: string
 }
 
-export function ModelSettings({ onMainModelChanged, scopeProfile }: ModelSettingsProps) {
+/** hc-960: in the BYOK fold under 档位, an assistant still on an APEX tier has
+ *  no model-level defaults to tune here. */
+function byokFoldOnTier(ownProvidersOnly: boolean, main: { model: string; provider: string } | null): boolean {
+  return ownProvidersOnly && Boolean(main) && assistantModelChoice(main?.model, main?.provider).kind === 'tier'
+}
+
+/** hc-960: auxiliary slots pick models too; the BYOK fold leaves them on
+ *  "auto" (the main model) and does not show them. */
+function HiddenInByokFold({ byokFold, children }: { byokFold: boolean; children: ReactNode }) {
+  return byokFold ? null : children
+}
+
+/** The main model's reasoning / fast defaults (`agent.reasoning_effort`,
+ *  `agent.service_tier`), for a model that supports either. */
+function ModelDefaultsRow({
+  effortValue,
+  fastOn,
+  fastSupported,
+  hidden,
+  onWrite,
+  reasoningSupported
+}: {
+  effortValue: string
+  fastOn: boolean
+  fastSupported: boolean
+  hidden: boolean
+  onWrite: (key: string, value: string) => Promise<void> | void
+  reasoningSupported: boolean
+}) {
+  const { t } = useI18n()
+  const m = t.settings.model
+
+  if (hidden || !(reasoningSupported || fastSupported)) {
+    return null
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3">
+      <span className="text-xs text-muted-foreground">{m.defaultsLabel}</span>
+      {reasoningSupported && (
+        <div className="flex items-center gap-2 text-xs">
+          {m.reasoning}
+          <Select onValueChange={value => void onWrite('agent.reasoning_effort', value)} value={effortValue}>
+            <SelectTrigger className={cn('min-w-28', CONTROL_TEXT)}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {EFFORT_VALUES.map(value => (
+                <SelectItem key={value} value={value}>
+                  {value === 'none' ? m.reasoningOff : t.shell.modelOptions[effortLabelKey(value)]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      {fastSupported && (
+        <label className="flex items-center gap-2 text-xs">
+          {t.shell.modelOptions.fast}
+          <Switch
+            checked={fastOn}
+            onCheckedChange={checked => void onWrite('agent.service_tier', checked ? 'fast' : 'normal')}
+            size="xs"
+          />
+        </label>
+      )}
+    </div>
+  )
+}
+
+export function ModelSettings({ onMainModelChanged, ownProvidersOnly = false, scopeProfile }: ModelSettingsProps) {
   const { t } = useI18n()
   const m = t.settings.model
   const [loading, setLoading] = useState(true)
@@ -383,7 +458,9 @@ export function ModelSettings({ onMainModelChanged, scopeProfile }: ModelSetting
       // composer picker uses. Foreign providers are hidden even when the user
       // has a key configured (see filterPickerProviders).
       const visible = filterPickerProviders(modelOptions.providers || [])
-      setProviders(visible)
+      setProviders(
+        ownProvidersOnly ? visible.filter(provider => !isManagedProviderSlug(provider.slug, provider.name)) : visible
+      )
 
       const managed = visible.find(provider => isManagedProviderSlug(provider.slug, provider.name))
       setPlatformSel(initialPlatformSelection(modelInfo, moaModels, managed?.models ?? []))
@@ -397,8 +474,11 @@ export function ModelSettings({ onMainModelChanged, scopeProfile }: ModelSetting
           .trim()
           .toLowerCase() === 'moa'
 
-      const seedProvider = composedActive ? '' : modelInfo.provider
-      const seedModel = composedActive ? '' : modelInfo.model
+      // An assistant on an APEX tier has no "own" selection to seed the BYOK
+      // fold with; leave it empty rather than show the relay row.
+      const onTier = ownProvidersOnly && assistantModelChoice(modelInfo.model, modelInfo.provider).kind === 'tier'
+      const seedProvider = composedActive || onTier ? '' : modelInfo.provider
+      const seedModel = composedActive || onTier ? '' : modelInfo.model
 
       if (replaceSelection) {
         setSelectedProvider(seedProvider)
@@ -427,7 +507,7 @@ export function ModelSettings({ onMainModelChanged, scopeProfile }: ModelSetting
         setLoading(false)
       }
     }
-  }, [m.loadFailed, scopeProfile, setCaughtError])
+  }, [m.loadFailed, ownProvidersOnly, scopeProfile, setCaughtError])
 
   useEffect(() => {
     void refresh()
@@ -673,6 +753,7 @@ export function ModelSettings({ onMainModelChanged, scopeProfile }: ModelSetting
 
   const reasoningSupported = mainCaps?.reasoning ?? true
   const fastSupported = mainCaps?.fast ?? false
+  const mainOnTier = byokFoldOnTier(ownProvidersOnly, mainModel)
 
   // Hand-written `reasoning_effort: false`/`off` reaches us as boolean false
   // ("false" once stringified) — show it as Off, not an empty select.
@@ -1156,41 +1237,14 @@ export function ModelSettings({ onMainModelChanged, scopeProfile }: ModelSetting
               : `${selectedProviderRow?.name} signs in through your browser — APEX runs the flow for you.`}
           </p>
         )}
-        {config && mainModel && (reasoningSupported || fastSupported) && (
-          <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3">
-            <span className="text-xs text-muted-foreground">{m.defaultsLabel}</span>
-            {reasoningSupported && (
-              <div className="flex items-center gap-2 text-xs">
-                {m.reasoning}
-                <Select
-                  onValueChange={value => void writeAgentDefault('agent.reasoning_effort', value)}
-                  value={effortValue}
-                >
-                  <SelectTrigger className={cn('min-w-28', CONTROL_TEXT)}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EFFORT_VALUES.map(value => (
-                      <SelectItem key={value} value={value}>
-                        {value === 'none' ? m.reasoningOff : t.shell.modelOptions[effortLabelKey(value)]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {fastSupported && (
-              <label className="flex items-center gap-2 text-xs">
-                {t.shell.modelOptions.fast}
-                <Switch
-                  checked={fastOn}
-                  onCheckedChange={checked => void writeAgentDefault('agent.service_tier', checked ? 'fast' : 'normal')}
-                  size="xs"
-                />
-              </label>
-            )}
-          </div>
-        )}
+        <ModelDefaultsRow
+          effortValue={effortValue}
+          fastOn={fastOn}
+          fastSupported={fastSupported}
+          hidden={!config || !mainModel || mainOnTier}
+          onWrite={writeAgentDefault}
+          reasoningSupported={reasoningSupported}
+        />
         {error && (
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-destructive">
             <span>{error}</span>
@@ -1219,165 +1273,170 @@ export function ModelSettings({ onMainModelChanged, scopeProfile }: ModelSetting
         )}
       </section>
 
-      <section>
-        <div className="mb-2.5 flex items-center justify-between">
-          <SectionHeading icon={Cpu} title={m.auxiliaryTitle} />
-          <Button
-            disabled={!mainModel || applying}
-            onClick={() => void resetAuxiliaryModels()}
-            size="sm"
-            variant="textStrong"
-          >
-            {m.resetAllToMain}
-          </Button>
-        </div>
-        <p className="mb-2 text-xs text-muted-foreground">{m.auxiliaryDesc}</p>
-        {switchStaleAux.length === 0 && persistentStaleAux.length > 0 && (
-          <div className="mb-2.5">
-            <StaleAuxWarning
-              applying={applying}
-              onReset={() => void resetAuxiliaryModels()}
-              slots={persistentStaleAux}
-              taskLabel={auxiliaryTaskLabel}
-            />
+      <HiddenInByokFold byokFold={ownProvidersOnly}>
+        <section>
+          <div className="mb-2.5 flex items-center justify-between">
+            <SectionHeading icon={Cpu} title={m.auxiliaryTitle} />
+            <Button
+              disabled={!mainModel || applying}
+              onClick={() => void resetAuxiliaryModels()}
+              size="sm"
+              variant="textStrong"
+            >
+              {m.resetAllToMain}
+            </Button>
           </div>
-        )}
-        <div className="grid gap-1">
-          {AUX_TASKS.map(meta => {
-            const copy = m.tasks[meta.key] ?? { label: meta.key, hint: meta.key }
-            const current = auxiliary?.tasks.find(entry => entry.task === meta.key)
-            const isAuto = !current || !current.provider || current.provider === 'auto'
-            const isEditing = editingAuxTask === meta.key
+          <p className="mb-2 text-xs text-muted-foreground">{m.auxiliaryDesc}</p>
+          {switchStaleAux.length === 0 && persistentStaleAux.length > 0 && (
+            <div className="mb-2.5">
+              <StaleAuxWarning
+                applying={applying}
+                onReset={() => void resetAuxiliaryModels()}
+                slots={persistentStaleAux}
+                taskLabel={auxiliaryTaskLabel}
+              />
+            </div>
+          )}
+          <div className="grid gap-1">
+            {AUX_TASKS.map(meta => {
+              const copy = m.tasks[meta.key] ?? { label: meta.key, hint: meta.key }
+              const current = auxiliary?.tasks.find(entry => entry.task === meta.key)
+              const isAuto = !current || !current.provider || current.provider === 'auto'
+              const isEditing = editingAuxTask === meta.key
 
-            return (
-              <div className="scroll-mt-6 rounded-lg" id={`aux-task-${meta.key}`} key={meta.key}>
-                <ListRow
-                  action={
-                    !isEditing && (
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <Button
-                          disabled={!mainModel || applying}
-                          onClick={() => void setAuxiliaryToMain(meta.key)}
-                          size="sm"
-                          variant="text"
-                        >
-                          {m.setToMain}
-                        </Button>
-                        <Button
-                          disabled={!providers.length || applying}
-                          onClick={() => beginAuxiliaryEdit(meta.key)}
-                          size="sm"
-                          variant="textStrong"
-                        >
-                          {m.change}
-                        </Button>
-                      </div>
-                    )
-                  }
-                  below={
-                    isEditing && (
-                      <div className="mt-2 grid gap-2 pt-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Select
-                            onValueChange={value => setAuxDraft(prev => ({ ...prev, provider: value, model: '' }))}
-                            value={auxDraft.provider}
-                          >
-                            <SelectTrigger
-                              aria-label={`${copy.label} provider`}
-                              className={cn('min-w-32', CONTROL_TEXT)}
-                            >
-                              <SelectValue placeholder={m.provider} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {providerOptions.map(provider => (
-                                <SelectItem key={provider.slug || 'none'} value={provider.slug || 'none'}>
-                                  {providerDisplayName(provider, t.shell.modelMenu.unnamedEndpoint)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            onValueChange={value => setAuxDraft(prev => ({ ...prev, model: value }))}
-                            value={auxDraft.model}
-                          >
-                            <SelectTrigger aria-label={`${copy.label} model`} className={cn('min-w-48', CONTROL_TEXT)}>
-                              <SelectValue placeholder={m.model} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {withActive(auxDraftProviderModels, auxDraft.model).map(model => (
-                                <SelectItem key={model} value={model}>
-                                  {model}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <span className="text-muted-foreground">{m.reasoning}</span>
-                          <Select
-                            onValueChange={value => setAuxDraft(prev => ({ ...prev, reasoningEffort: value }))}
-                            value={auxDraft.reasoningEffort}
-                          >
-                            <SelectTrigger
-                              aria-label={`${copy.label} reasoning effort`}
-                              className={cn('min-w-32', CONTROL_TEXT)}
-                            >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__inherit__">{m.inheritMainEffort}</SelectItem>
-                              {EFFORT_VALUES.map(value => (
-                                <SelectItem key={value} value={value}>
-                                  {value === 'none' ? m.reasoningOff : t.shell.modelOptions[value]}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
+              return (
+                <div className="scroll-mt-6 rounded-lg" id={`aux-task-${meta.key}`} key={meta.key}>
+                  <ListRow
+                    action={
+                      !isEditing && (
+                        <div className="flex shrink-0 items-center gap-1.5">
                           <Button
-                            disabled={!auxDraft.provider || !auxDraft.model || applying}
-                            onClick={() => void applyAuxiliaryDraft(meta.key)}
+                            disabled={!mainModel || applying}
+                            onClick={() => void setAuxiliaryToMain(meta.key)}
                             size="sm"
+                            variant="text"
                           >
-                            {applying ? m.applying : t.common.apply}
+                            {m.setToMain}
                           </Button>
-                          <Button onClick={() => setEditingAuxTask(null)} size="sm" variant="ghost">
-                            {t.common.cancel}
+                          <Button
+                            disabled={!providers.length || applying}
+                            onClick={() => beginAuxiliaryEdit(meta.key)}
+                            size="sm"
+                            variant="textStrong"
+                          >
+                            {m.change}
                           </Button>
                         </div>
-                      </div>
-                    )
-                  }
-                  description={
-                    <span className="font-mono text-[0.68rem]">
-                      {isAuto ? m.autoUseMain : `${current.provider} · ${current.model || m.providerDefault}`}
-                      {!isAuto && current.base_url && (
-                        <span className="text-muted-foreground"> · {current.base_url}</span>
-                      )}
-                      {current?.reasoning_effort && (
-                        <span className="text-muted-foreground">
-                          {' · '}
-                          {current.reasoning_effort === 'none'
-                            ? `${m.reasoning} ${m.reasoningOff}`
-                            : (t.shell.modelOptions[current.reasoning_effort as keyof typeof t.shell.modelOptions] ??
-                              current.reasoning_effort)}
-                        </span>
-                      )}
-                    </span>
-                  }
-                  title={
-                    <span className="flex items-baseline gap-2">
-                      {copy.label}
-                      <Pill>{copy.hint}</Pill>
-                    </span>
-                  }
-                />
-              </div>
-            )
-          })}
-        </div>
-      </section>
+                      )
+                    }
+                    below={
+                      isEditing && (
+                        <div className="mt-2 grid gap-2 pt-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Select
+                              onValueChange={value => setAuxDraft(prev => ({ ...prev, provider: value, model: '' }))}
+                              value={auxDraft.provider}
+                            >
+                              <SelectTrigger
+                                aria-label={`${copy.label} provider`}
+                                className={cn('min-w-32', CONTROL_TEXT)}
+                              >
+                                <SelectValue placeholder={m.provider} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {providerOptions.map(provider => (
+                                  <SelectItem key={provider.slug || 'none'} value={provider.slug || 'none'}>
+                                    {providerDisplayName(provider, t.shell.modelMenu.unnamedEndpoint)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Select
+                              onValueChange={value => setAuxDraft(prev => ({ ...prev, model: value }))}
+                              value={auxDraft.model}
+                            >
+                              <SelectTrigger
+                                aria-label={`${copy.label} model`}
+                                className={cn('min-w-48', CONTROL_TEXT)}
+                              >
+                                <SelectValue placeholder={m.model} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {withActive(auxDraftProviderModels, auxDraft.model).map(model => (
+                                  <SelectItem key={model} value={model}>
+                                    {model}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="text-muted-foreground">{m.reasoning}</span>
+                            <Select
+                              onValueChange={value => setAuxDraft(prev => ({ ...prev, reasoningEffort: value }))}
+                              value={auxDraft.reasoningEffort}
+                            >
+                              <SelectTrigger
+                                aria-label={`${copy.label} reasoning effort`}
+                                className={cn('min-w-32', CONTROL_TEXT)}
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__inherit__">{m.inheritMainEffort}</SelectItem>
+                                {EFFORT_VALUES.map(value => (
+                                  <SelectItem key={value} value={value}>
+                                    {value === 'none' ? m.reasoningOff : t.shell.modelOptions[value]}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              disabled={!auxDraft.provider || !auxDraft.model || applying}
+                              onClick={() => void applyAuxiliaryDraft(meta.key)}
+                              size="sm"
+                            >
+                              {applying ? m.applying : t.common.apply}
+                            </Button>
+                            <Button onClick={() => setEditingAuxTask(null)} size="sm" variant="ghost">
+                              {t.common.cancel}
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    }
+                    description={
+                      <span className="font-mono text-[0.68rem]">
+                        {isAuto ? m.autoUseMain : `${current.provider} · ${current.model || m.providerDefault}`}
+                        {!isAuto && current.base_url && (
+                          <span className="text-muted-foreground"> · {current.base_url}</span>
+                        )}
+                        {current?.reasoning_effort && (
+                          <span className="text-muted-foreground">
+                            {' · '}
+                            {current.reasoning_effort === 'none'
+                              ? `${m.reasoning} ${m.reasoningOff}`
+                              : (t.shell.modelOptions[current.reasoning_effort as keyof typeof t.shell.modelOptions] ??
+                                current.reasoning_effort)}
+                          </span>
+                        )}
+                      </span>
+                    }
+                    title={
+                      <span className="flex items-baseline gap-2">
+                        {copy.label}
+                        <Pill>{copy.hint}</Pill>
+                      </span>
+                    }
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      </HiddenInByokFold>
       {/* Upstream's explicit Mixture-of-Agents editor. MOA-INVISIBLE-DESIGN
           forbids naming the mechanism, so it stays shut behind
           SHOW_EXPLICIT_MOA_UI — the platform multi-select above composes the

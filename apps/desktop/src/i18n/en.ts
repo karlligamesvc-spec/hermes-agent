@@ -1,5 +1,6 @@
 import { FIELD_DESCRIPTIONS, FIELD_LABELS } from '@/app/settings/constants'
 
+import { enAssistantTool } from './en-assistant-tool'
 import type { Translations } from './types'
 
 export const en: Translations = {
@@ -4450,6 +4451,11 @@ export const en: Translations = {
       thoughtBriefly: 'Thought briefly',
       thoughtFor: duration => `Thought for ${duration}`,
       turnDuration: duration => `This turn took ${duration}`,
+      working: 'APEX is working',
+      agentMessaging: target => `Messaging ${target}…`,
+      agentMessaged: target => `Messaged ${target}`,
+      agentMessageFrom: target => `Message from ${target}`,
+      agentShowMessage: 'show message',
       today: time => `Today, ${time}`,
       yesterday: time => `Yesterday, ${time}`,
       copy: 'Copy',
@@ -4538,7 +4544,8 @@ export const en: Translations = {
       questionProgress: (answered, total) => `${answered} of ${total} answered`,
       lateAnswer: (question, choice) => `Re: "${question}" — my answer: ${choice}`,
       lateAnswerTip: 'Draft this answer as a follow-up message',
-      lateAnswerHint: 'This prompt is no longer waiting. Pick an option to draft it as a follow-up message.'
+      lateAnswerHint: 'This prompt is no longer waiting. Pick an option to draft it as a follow-up message.',
+      recommended: '(Recommended)'
     },
     mcpSetup: {
       installTitle: server => `Add the ${server} MCP server?`,
@@ -4562,109 +4569,7 @@ export const en: Translations = {
       reloadFailed: 'Server saved, but reloading MCP tools failed — they load next session',
       gatewayDisconnected: 'Hermes gateway is not connected'
     },
-    tool: {
-      copyCode: 'Copy code',
-      renderingImage: 'Rendering image',
-      copyOutput: 'Copy output',
-      copyCommand: 'Copy command',
-      copyContent: 'Copy content',
-      copyUrl: 'Copy URL',
-      copyResults: 'Copy results',
-      copyQuery: 'Copy query',
-      copyFile: 'Copy file',
-      copyPath: 'Copy path',
-      failedCalls: (count: number) => `${count} tool call${count === 1 ? '' : 's'} failed`,
-      skillActivity: {
-        loading: 'Loading skill',
-        loaded: 'Loaded skill',
-        loadFailed: 'Failed to load skill',
-        readingResource: 'Reading skill resource',
-        readResource: 'Read skill resource',
-        resourceFailed: 'Failed to read skill resource',
-        listing: 'Listing skills',
-        listed: 'Listed skills',
-        listFailed: 'Failed to list skills',
-        unavailable: 'Skill result unavailable'
-      },
-      outputAlt: 'Tool output',
-      rawResponse: 'Raw response',
-      copyActivity: 'Copy activity',
-      recoveredOne: 'Recovered after 1 failed step',
-      recoveredMany: count => `Recovered after ${count} failed steps`,
-      failedOne: '1 step failed',
-      failedMany: count => `${count} steps failed`,
-      statusRunning: 'Running',
-      statusError: 'Error',
-      statusRecovered: 'Recovered',
-      statusDone: 'Done',
-      resultUnavailable: 'Result unavailable',
-      memoryWriteNoted: 'Memory write noted',
-      actions: {
-        read: 'Read',
-        reading: 'Reading',
-        opened: 'Opened',
-        opening: 'Opening',
-        failedToOpen: 'Failed to open',
-        searched: 'Searched',
-        searching: 'Searching',
-        ran: 'Ran',
-        running: 'Running',
-        ranCode: 'Ran code',
-        runningCode: 'Scripting'
-      },
-      prefixes: {
-        browser: 'Browser',
-        web: 'Web'
-      },
-      titleTemplates: {
-        actionCommand: (action, command) => `${action} ${command}`,
-        actionQuoted: (action, value) => `${action} “${value}”`,
-        actionTarget: (action, target) => `${action} ${target}`,
-        prefixedDone: (prefix, action) => `${prefix} ${action}`,
-        runningPrefixedTool: (prefix, action) => `Running ${prefix.toLowerCase()} ${action.toLowerCase()}`,
-        runningTool: action => `Running ${action.toLowerCase()}`
-      },
-      titles: {
-        browser_click: { done: 'Clicked page element', pending: 'Clicking page element', pendingAction: 'Clicking' },
-        browser_fill: { done: 'Filled form field', pending: 'Filling form field', pendingAction: 'Filling' },
-        browser_navigate: { done: 'Opened page', pending: 'Opening page', pendingAction: 'Opening' },
-        browser_snapshot: {
-          done: 'Captured page snapshot',
-          pending: 'Capturing page snapshot',
-          pendingAction: 'Capturing'
-        },
-        browser_take_screenshot: {
-          done: 'Captured screenshot',
-          pending: 'Capturing screenshot',
-          pendingAction: 'Capturing'
-        },
-        browser_type: { done: 'Typed on page', pending: 'Typing on page', pendingAction: 'Typing' },
-        clarify: { done: 'Asked a question', pending: 'Asking a question', pendingAction: 'Asking' },
-        cronjob: { done: 'Cron job', pending: 'Scheduling cron job', pendingAction: 'Scheduling' },
-        edit_file: { done: 'Edited file', pending: 'Editing file', pendingAction: 'Editing' },
-        execute_code: { done: 'Ran code', pending: 'Scripting', pendingAction: 'Scripting' },
-        image_generate: { done: 'Generated image', pending: 'Generating image', pendingAction: 'Generating' },
-        list_files: { done: 'Listed files', pending: 'Listing files', pendingAction: 'Listing' },
-        memory: { done: 'Saved to memory', pending: 'Saving to memory', pendingAction: 'Saving' },
-        patch: { done: 'Patched file', pending: 'Patching file', pendingAction: 'Patching' },
-        read_file: { done: 'Read file', pending: 'Reading file', pendingAction: 'Reading' },
-        search_files: { done: 'Searched files', pending: 'Searching files', pendingAction: 'Searching' },
-        session_search_recall: {
-          done: 'Searched session history',
-          pending: 'Searching session history',
-          pendingAction: 'Searching'
-        },
-        terminal: { done: 'Ran command', pending: 'Running command', pendingAction: 'Running' },
-        todo: { done: 'Updated todos', pending: 'Updating todos', pendingAction: 'Updating' },
-        vision_analyze: { done: 'Analyzed image', pending: 'Analyzing image', pendingAction: 'Analyzing' },
-        web_extract: { done: 'Read webpage', pending: 'Reading webpage', pendingAction: 'Reading' },
-        web_search: { done: 'Searched web', pending: 'Searching web', pendingAction: 'Searching' },
-        write_file: { done: 'Edited file', pending: 'Editing file', pendingAction: 'Editing' }
-      },
-      searchResults: 'Search results',
-      stdoutLabel: 'stdout',
-      stderrLabel: 'stderr'
-    }
+    tool: enAssistantTool
   },
 
   prompts: {

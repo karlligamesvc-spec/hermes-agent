@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { SETTINGS_ROUTE } from '@/app/routes'
+import { HiddenInModelTierMode } from '@/components/model-tier/hidden-in-tier-mode'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -893,12 +894,15 @@ export function ToolsetConfigPanel({ toolset, onConfiguredChange, profile }: Too
                   <VoiceProviderFields providerKey={provider.tts_provider} section="tts" />
                 )}
                 {MODEL_CATALOG_TOOLSETS.has(toolset) && (
-                  <ModelCatalogPicker
-                    isActiveBackend={provider.is_active || cfg?.active_provider === provider.name}
-                    profile={profile}
-                    providerName={provider.name}
-                    toolset={toolset}
-                  />
+                  // hc-960: an APEX account picks no image/video backend model either.
+                  <HiddenInModelTierMode>
+                    <ModelCatalogPicker
+                      isActiveBackend={provider.is_active || cfg?.active_provider === provider.name}
+                      profile={profile}
+                      providerName={provider.name}
+                      toolset={toolset}
+                    />
+                  </HiddenInModelTierMode>
                 )}
               </div>
             )}

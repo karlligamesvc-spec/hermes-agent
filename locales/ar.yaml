@@ -649,6 +649,7 @@ gateway:
     hint_single: "أجب بالرقم، أو بنص الخيار، أو بإجابتك الخاصة."
     hint_multi: "يُسمح بتحديد أكثر من خيار — أجب بالأرقام مفصولة بفواصل أو مسافات (مثلًا \"1, 3\")، أو بنص الخيار، أو بإجابتك الخاصة."
     option_line: "  {index}. {choice}"
+    recommended_choice: "{choice} (موصى به)"
     question: "❓ {question}"
     answered: "✅ تمت الإجابة: {response}"
     cancelled: "↩️ أُلغي الاستيضاح — ستُعالج رسالتك كمتابعة."

@@ -31,6 +31,7 @@ import {
   DropdownMenuTrigger,
   ErrorState,
   formatModifierToken,
+  HiddenInModelTierMode,
   host,
   Input,
   isSubmitEnter,
@@ -756,10 +757,13 @@ function NewTaskDialog({
             <Input onChange={event => setSkills(event.target.value)} placeholder={k.skillsPlaceholder} value={skills} />
           </Field>
 
-          <Field label={k.model}>
-            <ModelOverrideField onChange={setModelOverride} value={modelOverride} />
-            <span className="text-[0.625rem] text-(--ui-text-quaternary)">{k.modelHint}</span>
-          </Field>
+          {/* hc-960: a task runs on its assistant's tier; an APEX account pins no model. */}
+          <HiddenInModelTierMode>
+            <Field label={k.model}>
+              <ModelOverrideField onChange={setModelOverride} value={modelOverride} />
+              <span className="text-[0.625rem] text-(--ui-text-quaternary)">{k.modelHint}</span>
+            </Field>
+          </HiddenInModelTierMode>
 
           {parents.length > 0 && (
             <Field label={k.parent}>

@@ -649,6 +649,7 @@ gateway:
     hint_single: "番号、選択肢のテキスト、または自由回答で返信してください。"
     hint_multi: "複数選択できます — カンマまたはスペース区切りの番号 (例: \"1, 3\")、選択肢のテキスト、または自由回答で返信してください。"
     option_line: "  {index}. {choice}"
+    recommended_choice: "{choice}（おすすめ）"
     question: "❓ {question}"
     answered: "✅ 回答済み: {response}"
     cancelled: "↩️ 確認をキャンセルしました — あなたのメッセージは続きの指示として処理されます。"

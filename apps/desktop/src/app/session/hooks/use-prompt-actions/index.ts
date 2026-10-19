@@ -7,10 +7,12 @@ import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 
 import { transcribeAudio } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { modelTierCopyNow } from '@/i18n/model-tier'
 import { type ChatMessage, textPart } from '@/lib/chat-messages'
 import { pathLabel } from '@/lib/chat-runtime'
 import { sanitizeComposerInput } from '@/lib/composer-input-sanitize'
 import { triggerHaptic } from '@/lib/haptics'
+import { retryTierFromReloadConfig, switchSessionToModelTier } from '@/lib/model-tiers'
 import { setMutableRef } from '@/lib/mutable-ref'
 import { normalize } from '@/lib/text'
 import { transcribeAudioClientDirect } from '@/lib/voice-client-direct'
@@ -35,6 +37,8 @@ import {
   setActiveSessionId,
   setAwaitingResponse,
   setBusy,
+  setCurrentModel,
+  setCurrentProvider,
   setMessages,
   setTurnStartedAt
 } from '@/store/session'
@@ -924,7 +928,7 @@ export function usePromptActions({
   )
 
   const reloadFromMessage = useCallback(
-    async (parentId: string | null) => {
+    async (parentId: string | null, config?: unknown) => {
       // Ref, not the closure-captured prop — a truncating resubmit aimed at a
       // stale session deletes the wrong transcript.
       const sessionId = activeSessionIdRef.current
@@ -938,6 +942,23 @@ export function usePromptActions({
 
       if (!plan) {
         return
+      }
+
+      // hc-960: "换更强的再答一次" — move this chat up a tier first, then
+      // regenerate. A failed switch stops here: re-answering on the same tier
+      // would look like the stronger answer.
+      const retryTier = retryTierFromReloadConfig(config)
+
+      if (retryTier) {
+        try {
+          const applied = await switchSessionToModelTier(requestGateway, sessionId, retryTier)
+          setCurrentModel(applied.model)
+          setCurrentProvider(applied.provider)
+        } catch (err) {
+          notifyError(err, modelTierCopyNow().retryStrongerFailed)
+
+          return
+        }
       }
 
       clearNotifications()
@@ -971,7 +992,14 @@ export function usePromptActions({
         notifyError(err, copy.regenerateFailed)
       }
     },
-    [activeSessionIdRef, applySurvivorRowIds, copy.regenerateFailed, submitRewindPrompt, updateSessionState]
+    [
+      activeSessionIdRef,
+      applySurvivorRowIds,
+      copy.regenerateFailed,
+      requestGateway,
+      submitRewindPrompt,
+      updateSessionState
+    ]
   )
 
   // Cursor-style "restore checkpoint": rewind the conversation to a past user

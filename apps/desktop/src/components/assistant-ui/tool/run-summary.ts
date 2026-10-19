@@ -1,4 +1,4 @@
-import { translateNow } from '@/i18n'
+import { runtimeTranslations, translateNow } from '@/i18n'
 import { summarizeShellCommand } from '@/lib/summarize-command'
 import { firstStringField } from '@/lib/text'
 import { extractToolErrorMessage } from '@/lib/tool-result-summary'
@@ -30,13 +30,9 @@ type RunCategory = 'delegate' | 'edit' | 'explore' | 'other' | 'run'
 // category happens to be live.
 const CATEGORY_ORDER: readonly RunCategory[] = ['edit', 'explore', 'run', 'delegate', 'other']
 
-const CATEGORY_COPY: Record<RunCategory, { noun: [string, string]; past: string; present: string }> = {
-  delegate: { noun: ['task', 'tasks'], past: 'Delegated', present: 'Delegating' },
-  edit: { noun: ['file', 'files'], past: 'Edited', present: 'Editing' },
-  explore: { noun: ['file', 'files'], past: 'Explored', present: 'Exploring' },
-  other: { noun: ['tool', 'tools'], past: 'Used', present: 'Using' },
-  run: { noun: ['command', 'commands'], past: 'Ran', present: 'Running' }
-}
+// Each category's verbs and count phrase come from the active locale, so the
+// line reads "Used 4 tools" in English and 「用了 4 个工具」 in Chinese.
+const runCopy = () => runtimeTranslations().assistant.tool.runSummary
 
 const EXPLORE_TOOLS = new Set([
   'list_files',
@@ -82,7 +78,7 @@ export function toolPresentVerb(toolName: string): string {
     return translateNow('assistant.tool.skillActivity.loading')
   }
 
-  return CATEGORY_COPY[toolCategory(toolName)].present
+  return runCopy()[toolCategory(toolName)].present
 }
 
 /** The thing a tool acted on, as the header should name it. */
@@ -105,7 +101,7 @@ function toolTarget(tool: ToolCallLike): string {
  * command line only earns its space while it's the thing you're waiting on.
  */
 function clause(category: RunCategory, tools: ToolCallLike[], live: boolean): string {
-  const copy = CATEGORY_COPY[category]
+  const copy = runCopy()[category]
   const verb = live ? copy.present : copy.past
   const target = tools.length === 1 ? toolTarget(tools[0]) : ''
 
@@ -113,7 +109,7 @@ function clause(category: RunCategory, tools: ToolCallLike[], live: boolean): st
     return `${verb} ${target}`
   }
 
-  return `${verb} ${tools.length} ${copy.noun[tools.length === 1 ? 0 : 1]}`
+  return `${verb} ${copy.count(tools.length)}`
 }
 
 function lowerFirst(text: string): string {
@@ -186,5 +182,7 @@ export function summarizeToolRun(tools: readonly ToolCallLike[], live: boolean):
     clauses.push(translateNow('assistant.tool.failedCalls', failed))
   }
 
-  return [...skillClauses, ...clauses].map((text, index) => (index === 0 ? text : lowerFirst(text))).join(', ')
+  return [...skillClauses, ...clauses]
+    .map((text, index) => (index === 0 ? text : lowerFirst(text)))
+    .join(runCopy().separator)
 }

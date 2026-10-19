@@ -23,6 +23,7 @@ import { useState } from 'react'
 
 import { avatarColor, botAppearance, BotFace } from './avatar'
 import { AvatarPicker } from './avatar-picker'
+import { advancedHintFor, EditBotTierField, useEditBotTier } from './bot-tier'
 import { $botMeta, botSelectionKey, ROSTER_KEY, saveBotMeta } from './data'
 import { labeled } from './dialog-parts'
 import { useBots } from './i18n'
@@ -70,6 +71,7 @@ export function EditProfileDialog({ bot, open, onClose }: EditProfileDialogProps
   const [busy, setBusy] = useState(false)
   const [advanced, setAdvanced] = useState(false)
   const [adv, setAdv] = useState(emptyAdvancedState())
+  const tier = useEditBotTier(bot, open)
 
   // Re-seed local state each time a different bot opens the dialog.
   const [seedKey, setSeedKey] = useState<null | string>(null)
@@ -84,6 +86,7 @@ export function EditProfileDialog({ bot, open, onClose }: EditProfileDialogProps
       setImage(appearance.image ?? null)
       setTitle(meta?.title || '')
       setDescription(bot.description || '')
+      tier.reset()
       setBusy(false)
       setAdvanced(false)
       setAdv(emptyAdvancedState())
@@ -144,9 +147,14 @@ export function EditProfileDialog({ bot, open, onClose }: EditProfileDialogProps
       }
     }
 
-    if (adv.loaded && (adv.dirtyModel || adv.dirtySoul || adv.dirtySkills || adv.dirtyToolsets || adv.dirtyMcp)) {
+    const toApply = tier.applyTo(adv)
+
+    if (
+      toApply.loaded &&
+      (toApply.dirtyModel || toApply.dirtySoul || toApply.dirtySkills || toApply.dirtyToolsets || toApply.dirtyMcp)
+    ) {
       try {
-        const res = await applyAdvancedConfig(bot, adv)
+        const res = await applyAdvancedConfig(bot, toApply)
         const failed = Object.entries(res?.applied || {}).filter(([, ok]) => !ok)
 
         if (failed.length) {
@@ -230,6 +238,7 @@ export function EditProfileDialog({ bot, open, onClose }: EditProfileDialogProps
               value={description}
             />
           )}
+          <EditBotTierField tier={tier} />
           <Button
             className="flex items-center gap-1 text-xs font-medium text-(--ui-text-tertiary) hover:text-(--ui-text-secondary)"
             onClick={() => setAdvanced(v => !v)}
@@ -237,7 +246,7 @@ export function EditProfileDialog({ bot, open, onClose }: EditProfileDialogProps
             variant="text"
           >
             <DisclosureCaret open={advanced} />
-            {b.bot.advancedHint}
+            {advancedHintFor(b, tier.shown)}
           </Button>
           {advanced ? (
             <div className="rounded-md border border-(--ui-stroke-secondary) p-3">

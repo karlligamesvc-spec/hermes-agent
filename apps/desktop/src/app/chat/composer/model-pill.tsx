@@ -19,6 +19,7 @@ import { composedMemberCount } from '@/lib/moa-compose'
 import { formatModelPillLabel } from '@/lib/model-status-label'
 import { modelVendor } from '@/lib/model-vendor'
 import { cn } from '@/lib/utils'
+import { $modelTierMode } from '@/store/model-tiers'
 import { $currentModelSource, setModelPickerOpen } from '@/store/session'
 import type { MoaConfigResponse } from '@/types/hermes'
 
@@ -69,6 +70,9 @@ export function ModelPill({
   const restoreSelection = useRef<(() => void) | null>(null)
   const scope = useComposerScope()
   const hasLiveMenu = Boolean(model.modelMenuContent)
+  // hc-960: an APEX account never picks a model — no pill on any composer
+  // (main, tiles, the Start input); the assistant's tier lives in its settings.
+  const modelTierMode = useStore($modelTierMode)
 
   // The `composer.modelPicker` hotkey, routed to exactly one surface (the pane
   // under the pointer, else the active composer — see requestModelMenuToggle).
@@ -191,6 +195,10 @@ export function ModelPill({
         : copy.switchModel
 
   const title = pinnedOverride ? `${baseTitle} — ${copy.modelPinned}` : baseTitle
+
+  if (modelTierMode) {
+    return null
+  }
 
   if (!model.modelMenuContent) {
     return (

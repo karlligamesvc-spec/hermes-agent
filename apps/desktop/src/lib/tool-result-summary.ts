@@ -1,6 +1,7 @@
 // Heuristic JSON → human summary for tool results. Default view; technical
 // mode still gets the raw JSON section.
 
+import { translateNow } from '@/i18n'
 import { capitalize, normalize } from '@/lib/text'
 
 const WRAPPER_KEYS = ['data', 'result', 'output', 'response', 'payload'] as const
@@ -60,7 +61,10 @@ const titleCase = (k: string) =>
     .map(capitalize)
     .join(' ')
 
-const pluralize = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`
+// The summary's own words come from the active locale; the field names it
+// title-cases are the tool's data and stay as the tool wrote them.
+const countItems = (n: number) => translateNow('assistant.tool.detail.items', n)
+const countFields = (n: number) => translateNow('assistant.tool.detail.fields', n)
 
 function clipInline(value: string, max = 180): string {
   const c = value.replace(/\s+/g, ' ').trim()
@@ -122,7 +126,7 @@ function summarizeScalar(v: unknown): string {
 
 function summarizeRecordInline(record: Json, depth: number): string {
   if (depth > 3) {
-    return pluralize(Object.keys(record).length, 'field')
+    return countFields(Object.keys(record).length)
   }
 
   const title = firstString(record, ['title', 'name', 'path', 'file', 'filepath', 'url', 'href', 'link', 'id'])
@@ -151,7 +155,7 @@ function summarizeRecordInline(record: Json, depth: number): string {
     .filter(Boolean)
     .slice(0, 2)
 
-  return pairs.length ? pairs.join(' · ') : pluralize(Object.keys(record).length, 'field')
+  return pairs.length ? pairs.join(' · ') : countFields(Object.keys(record).length)
 }
 
 function summarizeListItem(item: unknown, depth: number): string {
@@ -170,7 +174,7 @@ function summarizeListItem(item: unknown, depth: number): string {
   }
 
   if (Array.isArray(v)) {
-    return pluralize(v.length, 'item')
+    return countItems(v.length)
   }
 
   if (isRecord(v)) {
@@ -205,7 +209,7 @@ function formatFieldValue(value: unknown, depth: number): string {
 
     const first = summarizeListItem(v[0], depth + 1)
 
-    return first ? `${pluralize(v.length, 'item')} (${first})` : pluralize(v.length, 'item')
+    return first ? `${countItems(v.length)} (${first})` : countItems(v.length)
   }
 
   if (isRecord(v)) {
@@ -236,7 +240,7 @@ function formatArraySummary(value: unknown[], depth: number): string {
 
   if (value.length > max) {
     const remaining = value.length - max
-    lines.push(`- … ${remaining} more ${remaining === 1 ? 'item' : 'items'}`)
+    lines.push(`- ${translateNow('assistant.tool.detail.moreItems', remaining)}`)
   }
 
   return lines.join('\n')

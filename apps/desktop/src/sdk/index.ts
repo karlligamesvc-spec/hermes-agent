@@ -1546,6 +1546,15 @@ export { McpTab } from '@/app/skills/mcp-tab'
 /** The oversized Collapse lettering an empty chat is titled with — core writes
  *  "HERMES AGENT" with it, a `chat.empty` contribution writes its own name. */
 export { Wordmark } from '@/components/chat/wordmark'
+/** hc-960: renders its children only off tier mode — the zero-branch way to
+ *  drop a model control (a per-task model override…) on an APEX account. */
+export { HiddenInModelTierMode } from '@/components/model-tier/hidden-in-tier-mode'
+/** hc-960: THE Flash / Pro / Max cards — "这个助手用哪一档". A plugin that
+ *  edits an assistant (Bot Mode) renders these instead of a model picker when
+ *  `useModelTierMode()` is on, and writes the pick as
+ *  `{ provider: MODEL_TIER_PROVIDER, model: MODEL_TIER_ALIAS[tier] }`. Never
+ *  name a model on that path. */
+export { ModelTierPicker } from '@/components/model-tier/tier-picker'
 /** Pane placement roles. `'floating'` is the one NON-tiling value: the pane is
  *  excluded from the layout tree and rendered as a fixed, draggable card above
  *  it — it takes no width from any zone, has no tab, and can't be docked.
@@ -1667,6 +1676,9 @@ export {
   useI18n,
   usePluginI18n
 } from '@/i18n'
+/** hc-960: Flash / Pro / Max copy ("档位", "自己的模型服务" …) for a plugin surface
+ *  that labels a tier — `modelTierCopyNow` outside React. */
+export { modelTierCopyNow, useModelTierCopy } from '@/i18n/model-tier'
 /** THE way to run a decorative rAF animation (avatars, shimmer, sprites):
  *  fps budget + hidden/minimized/unfocused pause + idle dormancy + teardown.
  *  Plugins must route animation clocks through this instead of raw rAF loops
@@ -1699,6 +1711,17 @@ export { formatModifierToken } from '@/lib/keybinds/combo'
  *  a renderer that stays open for days. Only for values that can be
  *  regenerated — eviction costs a recompute or a refetch, never correctness. */
 export { LruCache } from '@/lib/lru-cache'
+/** hc-960: tier ids, the relay alias each is written as, and how a profile's
+ *  configured model reads in tier terms (`assistantModelChoice`). */
+export {
+  assistantModelChoice,
+  type AssistantModelChoice,
+  DEFAULT_MODEL_TIER,
+  MODEL_TIER_ALIAS,
+  MODEL_TIER_LABEL,
+  type ModelTier,
+  modelTierDisplayName
+} from '@/lib/model-tiers'
 /** The app's deterministic identity color for a name (profiles, assignees,
  *  authors), its translucent tag fill, and the curated picker swatches — so
  *  plugin-rendered identities read the same hue as everywhere else. The
@@ -1706,6 +1729,9 @@ export { LruCache } from '@/lib/lru-cache'
  *  hand-picked color still sits with the generated ones; reach for them
  *  instead of literal hex, which can't follow the theme. */
 export { PROFILE_SWATCHES, profileColor, profileColorSoft } from '@/lib/profile-color'
+/** hc-960: the provider a tier is written under — the managed relay's named
+ *  custom provider. */
+export { MANAGED_PROVIDER_SLUG as MODEL_TIER_PROVIDER } from '@/lib/provider-allowlist'
 /** The shared client itself, for invalidation OUTSIDE React (e.g. a
  *  `ctx.socket` frame invalidating a query). Inside components keep using
  *  `useQueryClient`. */
@@ -1737,6 +1763,9 @@ export {
   type TranscriptDirectiveProps
 } from '@/lib/transcript-directives'
 export { cn } from '@/lib/utils'
+/** hc-960: true when this window runs on an APEX account with the tier
+ *  switch on — no model picker, no model name; show `ModelTierPicker`. */
+export { useModelTierMode } from '@/store/model-tiers'
 /** THE unread store behind `SessionStatusDot`'s emerald dot. A plugin that
  *  learns out-of-band that a session produced something the user hasn't seen
  *  (a roster poll's activity watermark, say) writes HERE rather than keeping

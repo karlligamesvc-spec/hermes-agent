@@ -31,7 +31,7 @@ import {
 
 import { overviewEvidence } from '../shared/analysis-video-overview'
 
-import { analysisAccountBoundary, canApplyManagedRenewal, managedAccountId } from './apex-account-boundary'
+import { analysisAccountBoundary, canApplyManagedRenewal, managedAccountId, readAccount } from './apex-account-boundary'
 import {
   AGENT_STATE,
   detectClaude as detectClaudeAuth,
@@ -158,6 +158,7 @@ import {
   syncManagedRelayConfigYaml
 } from './apex-managed'
 import { ManagedCredentialLifetime, managedProvisionCommitToken, ManagedRelayRecoveryCoordinator, provisionManagedRelayForCurrentAccount } from './apex-managed-recovery'
+import { applyModelTierSwitches, healManagedModelTier, modelTierStatus } from './apex-model-tiers'
 import { normalizeStoredPluginsState, syncPlatformPlugins } from './apex-platform-plugins'
 import {
   applyPlatformSkills,
@@ -19365,15 +19366,6 @@ function readManagedConfig() {
   }
 }
 
-// Normalize the stored (clear, non-secret) account descriptor for the account
-// panel. Missing → empty object so callers can read fields safely.
-function readManagedAccount(stored) {
-  const account = stored && typeof stored.account === 'object' && stored.account ? stored.account : {}
-  const str = value => (typeof value === 'string' ? value.trim() : '')
-
-  return { email: str(account.email), name: str(account.name), plan: str(account.plan) }
-}
-
 // The stored managed config: { key, baseUrl, model, account, accessToken }. key
 // is '' when none is stored / managed is disabled. Centralizes the "do we have a
 // managed credential?" question for the boot seed, onboarding gate, and IPC
@@ -19390,7 +19382,7 @@ function resolveManagedConfig() {
 
   const endpoints = resolveApexEndpoints(process.env)
   const stored = readManagedConfig()
-  const account = readManagedAccount(stored)
+  const account = readAccount(stored)
   // An explicit env key (e.g. a CI/dev/admin-provisioned key for real-machine
   // testing) wins over stored state, using env/default base_url + model. No JWT
   // in this path — an env key is managed out-of-band, so self-heal stays off
@@ -19590,7 +19582,7 @@ function writeManagedConfig(provisioned, renewal = false) {
   const previous = resolveManagedConfig()
   fs.mkdirSync(path.dirname(DESKTOP_MANAGED_CONFIG_PATH), { recursive: true })
   const key = provisioned && typeof provisioned.apiKey === 'string' ? provisioned.apiKey.trim() : ''
-  const account = provisioned && provisioned.account ? readManagedAccount({ account: provisioned.account }) : null
+  const account = provisioned && provisioned.account ? readAccount({ account: provisioned.account }) : null
   const accessToken = provisioned && typeof provisioned.accessToken === 'string' ? provisioned.accessToken.trim() : ''
 
   const next = key
@@ -20732,6 +20724,8 @@ function readClientConfigState() {
   }
 }
 
+applyModelTierSwitches(process.env, readClientConfigState().payload, rememberLog) // hc-960: before app.whenReady
+
 function writeClientConfigState(next) {
   fs.mkdirSync(path.dirname(DESKTOP_CLIENT_CONFIG_PATH), { recursive: true })
   writeFileAtomic(DESKTOP_CLIENT_CONFIG_PATH, JSON.stringify(next, null, 2))
@@ -21042,6 +21036,8 @@ function healConfigYamlProductBlocks(reason) {
         .replace(/^(\s{2}default:\s*)\S.*$/m, `$1${endpoints.modelDisplay}`)
       fixed.push('model(moa-global)')
     }
+
+    raw = healManagedModelTier(raw, managed, endpoints.relayBaseUrl, process.env, fixed) // hc-960: old ids → Flash
 
     // Skills: union the managed disabled names back in — add-only, so a user's
     // enable-toggles (names they removed) survive. This is BOTH the "block was
@@ -23556,6 +23552,7 @@ ipcMain.handle('hermes:managed:status', async () => {
     // otherwise the env/default for display.
     model: managed.model || endpoints.model,
     modelDisplay: endpoints.modelDisplay,
+    ...modelTierStatus(process.env), // hc-960: Flash / Pro / Max switches
     provider: endpoints.provider,
     baseUrl: managed.baseUrl || endpoints.relayBaseUrl,
     // Display-only identity for the account panel (empty strings when unknown /

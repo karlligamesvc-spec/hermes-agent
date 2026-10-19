@@ -11,9 +11,9 @@ import { FadeText } from '@/components/ui/fade-text'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { useI18n } from '@/i18n'
 import { AlertCircle, CheckCircle2 } from '@/lib/icons'
-import { displayModelName } from '@/lib/model-status-label'
 import { useSessionSlice } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
+import { useUserFacingModelName } from '@/store/model-tiers'
 import { $subagentsBySession } from '@/store/subagents'
 import { openSessionInNewWindow } from '@/store/windows'
 
@@ -70,6 +70,8 @@ function DelegateRowView({ row }: { row: DelegateRow }) {
   const live = isDelegateRowLive(row.status)
   const elapsed = useElapsedSeconds(live, `delegate:${row.id}`)
   const activity = row.activity.slice(-TICKER_DEPTH)
+  // hc-960: a child's model reads as its tier on an APEX account.
+  const modelName = useUserFacingModelName()
 
   const statusLabel = live
     ? copy.statusRunning
@@ -78,7 +80,7 @@ function DelegateRowView({ row }: { row: DelegateRow }) {
       : copy.statusDone
 
   const meta = [
-    row.model ? displayModelName(row.model) : '',
+    row.model ? modelName(row.model) : '',
     !live && row.durationSeconds ? formatDurationSeconds(row.durationSeconds) : ''
   ].filter(Boolean)
 

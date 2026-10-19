@@ -113,7 +113,9 @@ interface ChatViewProps extends Omit<React.ComponentProps<'div'>, 'onSubmit'> {
   onSubmit: (text: string, options?: SubmitTextOptions) => Promise<boolean> | boolean
   onThreadMessagesChange: (messages: readonly ThreadMessage[]) => void
   onEdit: (message: AppendMessage) => Promise<void>
-  onReload: (parentId: string | null) => Promise<void>
+  /** `config` is assistant-ui's reload run config; it carries the stronger
+   *  tier for "换更强的再答一次" (hc-960). */
+  onReload: (parentId: string | null, config?: unknown) => Promise<void>
   onRestoreToMessage?: (messageId: string, target?: RestoreMessageTarget) => Promise<void>
   onRetryResume: (sessionId: string) => void
   onTranscribeAudio?: (audio: Blob) => Promise<string>
@@ -196,7 +198,9 @@ interface ChatRuntimeBoundaryProps {
   children: React.ReactNode
   onCancel: () => Promise<void> | void
   onEdit: (message: AppendMessage) => Promise<void>
-  onReload: (parentId: string | null) => Promise<void>
+  /** `config` is assistant-ui's reload run config; it carries the stronger
+   *  tier for "换更强的再答一次" (hc-960). */
+  onReload: (parentId: string | null, config?: unknown) => Promise<void>
   onThreadMessagesChange: (messages: readonly ThreadMessage[]) => void
   /** Route points at an unloaded session — render empty until resume swaps in
    *  the new transcript, so the previous session's messages don't linger. */

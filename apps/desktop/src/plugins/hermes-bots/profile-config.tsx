@@ -16,7 +16,8 @@ import {
   Input,
   queryClient,
   surfaceModelSwitchConfirm,
-  Textarea
+  Textarea,
+  useModelTierMode
 } from '@hermes/plugin-sdk'
 import { useState } from 'react'
 
@@ -129,6 +130,7 @@ interface AdvancedProfileConfigProps {
 
 export function AdvancedProfileConfig({ bot, state, setState }: AdvancedProfileConfigProps) {
   const b = useBots()
+  const modelTierMode = useModelTierMode()
   const [loaded, setLoaded] = useState(false)
   const [unsupported, setUnsupported] = useState(false)
   const [skillFilter, setSkillFilter] = useState('')
@@ -156,8 +158,10 @@ export function AdvancedProfileConfig({ bot, state, setState }: AdvancedProfileC
         const catalog = ((cat && cat.servers) || []).filter(s => !have.has(s.name))
         setState(prev => ({
           ...prev,
-          provider: res.model?.provider || '',
-          model: res.model?.default || '',
+          // A model pick staged before this lazy load landed (the tier cards
+          // above the fold) wins over the server's current value.
+          provider: prev.dirtyModel ? prev.provider : res.model?.provider || '',
+          model: prev.dirtyModel ? prev.model : res.model?.default || '',
           soul: res.soul || '',
           skills: res.skills || [],
           toolsets: res.toolsets || [],
@@ -244,6 +248,26 @@ export function AdvancedProfileConfig({ bot, state, setState }: AdvancedProfileC
       )
     }))
 
+  // hc-960: on an APEX account the tier cards in the dialog's main form own
+  // this assistant's model; a bot on another machine keeps the picker.
+  const modelPicker =
+    modelTierMode && !bot.remoteSource ? null : (
+      <ModelPicker
+        bot={bot}
+        onChange={patch =>
+          setState(prev => ({
+            ...prev,
+            dirtyModel: true,
+            ...patch
+          }))
+        }
+        value={{
+          provider: state.provider,
+          model: state.model
+        }}
+      />
+    )
+
   const enabledSkills = state.skills.filter(s => s.enabled).length
   const enabledToolsets = state.toolsets.filter(t => t.enabled).length
   const mcpList = state.mcp || []
@@ -258,20 +282,7 @@ export function AdvancedProfileConfig({ bot, state, setState }: AdvancedProfileC
   if (SkillsView && (!botRoute || skillsViewRoutesConnections)) {
     return (
       <div className="grid gap-4">
-        <ModelPicker
-          bot={bot}
-          onChange={patch =>
-            setState(prev => ({
-              ...prev,
-              dirtyModel: true,
-              ...patch
-            }))
-          }
-          value={{
-            provider: state.provider,
-            model: state.model
-          }}
-        />
+        {modelPicker}
         {labeled(
           'Capabilities (applies immediately — skills, tools, MCP)',
           <ResizableFrame height={460} minHeight={300}>
@@ -307,20 +318,7 @@ export function AdvancedProfileConfig({ bot, state, setState }: AdvancedProfileC
   if (bot?.sourceScoped && botRoute?.mode === 'remote' && !skillsViewRoutesConnections) {
     return (
       <div className="grid gap-4">
-        <ModelPicker
-          bot={bot}
-          onChange={patch =>
-            setState(prev => ({
-              ...prev,
-              dirtyModel: true,
-              ...patch
-            }))
-          }
-          value={{
-            provider: state.provider,
-            model: state.model
-          }}
-        />
+        {modelPicker}
         <div className="rounded-md border border-(--ui-stroke-secondary) px-3 py-2 text-xs text-(--ui-text-tertiary)">
           Remote capabilities require a newer desktop. Model and SOUL changes remain staged until you save.
         </div>
@@ -344,20 +342,7 @@ export function AdvancedProfileConfig({ bot, state, setState }: AdvancedProfileC
 
   return (
     <div className="grid gap-4">
-      <ModelPicker
-        bot={bot}
-        onChange={patch =>
-          setState(prev => ({
-            ...prev,
-            dirtyModel: true,
-            ...patch
-          }))
-        }
-        value={{
-          provider: state.provider,
-          model: state.model
-        }}
-      />
+      {modelPicker}
       {labeled(
         `Skills (${enabledSkills}/${state.skills.length} enabled)`,
         <div className="grid gap-1.5 rounded-md border border-(--ui-stroke-secondary) p-2">

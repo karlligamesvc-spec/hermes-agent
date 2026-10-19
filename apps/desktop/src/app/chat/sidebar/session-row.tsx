@@ -18,13 +18,13 @@ import { sessionTitle } from '@/lib/chat-runtime'
 import { pathLeaf } from '@/lib/display-path'
 import { triggerHaptic } from '@/lib/haptics'
 import { middleClickHandlers } from '@/lib/middle-click'
-import { displayModelName } from '@/lib/model-status-label'
 import { sessionProjectLabel } from '@/lib/session-project-label'
 import { handoffOriginSource, sessionSourceLabel } from '@/lib/session-source'
 import { coarseElapsed } from '@/lib/time'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
 import { $sidebarRowMeta } from '@/store/layout'
+import { useUserFacingModelName } from '@/store/model-tiers'
 import { normalizeProfileKey } from '@/store/profile'
 import { $projects } from '@/store/projects'
 import { $pullRequestsByBranch, sessionPrKey } from '@/store/pull-requests'
@@ -274,8 +274,10 @@ function SidebarSessionRowImpl({
 
   // Card footer line: which model worked on it and how big it got. Rendered
   // as separate spans with a flex gap — a joined string can't put real space
-  // between them (HTML collapses runs of whitespace to one).
-  const model = card && session.model ? displayModelName(session.model) : ''
+  // between them (HTML collapses runs of whitespace to one). hc-960: on an
+  // APEX account the "model" is the tier it ran on.
+  const modelName = useUserFacingModelName()
+  const model = card && session.model ? modelName(session.model) : ''
   const size = card && session.message_count > 0 ? r.messageCount(session.message_count) : ''
   // Live plan progress ("3/7"), far right of the footer. A selector keyed to
   // this row: only rows whose own fraction changes repaint on todo events.

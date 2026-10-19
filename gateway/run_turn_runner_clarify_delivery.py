@@ -25,6 +25,15 @@ UNDELIVERED_NO_SURFACE = "[clarify prompt could not be delivered: no chat surfac
 SEND_ACK_WINDOW = 15
 
 
+def shown_choices(choices):
+    """Choices as every adapter (and the text fallback) shows them: the recommended marker in the user's
+    language. The registration keeps the wire choices; answers resolve against them through
+    ``strip_recommended``, which knows both forms."""
+    from tools.clarify_tool import display_choice
+
+    return [display_choice(choice) for choice in choices] if choices else None
+
+
 def text_fallback_coro(adapter, **send_kwargs):
     """The base numbered-text ``send_clarify`` as a fresh coroutine, or ``None`` when the adapter has
     no native override — its ``send_clarify`` already IS the text path, so retrying it would only
