@@ -44,11 +44,14 @@ ASR 族:
 视频生成族:
   POST {base}/tools/v1/video/generate → {"data": {...}, "cost_cents": int}
                                                            ← generate_video
+  GET  {base}/tools/v1/check → image/video 段带 hc-945 的逐链路健康(legs)
+                                                           ← 生成前预检(hc-969)
 
 错误语义(全部显式降级文案,不静默吞):
-  401 key 失效→提示重新登录;402 配额/余额;429 限流(本客户端带有限退避重试);
-  503 按 download resolve / ASR / 其他能力分段,不向用户暴露供应商细节;
-  其余透传 detail。
+  401 key 失效→提示重新登录;402 配额/余额;429 限流(本客户端带有限退避重试,
+  日限 429 除外);503 按 download resolve / ASR / 图片视频生成 / 其他能力分段,
+  不向用户暴露供应商细节;其余透传 detail。图片/视频生成只在能自己恢复的失败上
+  提示再试(hc-969,见 media_error_message)。
 ──────────────────────────────────────────────────────────────────────────────
 
 模式解析(insight:云端 P1 回退通道 = 旧 master 内网端点,PD §8):
@@ -68,6 +71,7 @@ Agent API key 解析(桌面与云同一把 key 的两种落点):
 from __future__ import annotations
 
 import logging
+import math
 import mimetypes
 import os
 import re
@@ -76,6 +80,7 @@ import subprocess
 import sys
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -84,8 +89,11 @@ import httpx
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "DAILY_LIMIT_CODES",
     "DESKTOP_SPAWN_ENV_CONTRACT",
     "GATEWAY_PUBLIC_BASE",
+    "MEDIA_IMAGE",
+    "MEDIA_VIDEO",
     "SOCIAL_PLATFORMS",
     "SOURCE_CONFIG",
     "SOURCE_ENV",
@@ -102,10 +110,13 @@ __all__ = [
     "gateway_disabled",
     "guess_media_content_type",
     "media_cache_dir",
+    "media_error_message",
+    "media_unavailable_reason",
     "missing_credential_error",
     "request_json",
     "resolve_agent_api_key",
     "stale_credential_message",
+    "tools_check",
     "transcribe_upload",
     "unwrap",
     "use_gateway",
@@ -195,12 +206,22 @@ _ASR_DIRECT_VERDICT_STATUSES = frozenset({401, 402, 413, 429})
 
 
 class GatewayError(RuntimeError):
-    """网关调用失败——message 即面向用户的显式降级文案(中文,不静默)。"""
+    """网关调用失败——message 即面向用户的显式降级文案(中文,不静默)。
 
-    def __init__(self, message: str, *, status: int | None = None, code: str | None = None):
+    ``vendor_code`` 是 503 ``vendor_unavailable`` 背后服务端自己的 code(hc-969)。"""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        code: str | None = None,
+        vendor_code: str | None = None,
+    ):
         super().__init__(message)
         self.status = status
         self.code = code
+        self.vendor_code = vendor_code
 
 
 # ---------------------------------------------------------------------------
@@ -387,19 +408,21 @@ def _server_detail(response: httpx.Response) -> str:
     return str(detail or "").strip()[:300]
 
 
-def _server_code(response: httpx.Response) -> str | None:
+def _server_code(response: httpx.Response, key: str = "code") -> str | None:
     """服务端机器可读的 detail.code(如 ``asr_no_speech``);没有就 None。
 
     hc-926:此前 HTTP 错误只保留了文案,调用方分不出「素材没有人声」这类正常结论
-    与真故障,只能一律报 tool_error。"""
+    与真故障,只能一律报 tool_error。hc-969:``key="vendor_code"`` 取 503
+    ``vendor_unavailable`` 背后的原 code——视频整体关停和上游繁忙都以
+    ``vendor_unavailable`` 到达,只有它分得开。"""
     try:
         body = response.json()
     except ValueError:  # JSONDecodeError / UnicodeDecodeError: no machine-readable code
         return None
     detail = body.get("detail") if isinstance(body, dict) else None
-    if not isinstance(detail, dict) or not detail.get("code"):
+    if not isinstance(detail, dict) or not detail.get(key):
         return None
-    return str(detail["code"]).strip() or None
+    return str(detail[key]).strip() or None
 
 
 def _error_from_response(
@@ -410,6 +433,12 @@ def _error_from_response(
 ) -> GatewayError:
     status = response.status_code
     detail = _server_detail(response)
+    code = _server_code(response)
+    vendor_code = _server_code(response, "vendor_code")
+    media = _MEDIA_GENERATE_PATHS.get(path)
+    honest = media_error_message(media, status, vendor_code or code, detail) if media else None
+    if honest is not None:
+        return GatewayError(honest, status=status, code=code, vendor_code=vendor_code)
     if status == 401:
         # hc-604:按凭据来源分流。此前无论来源一律「请重新登录」,而现场最常见的
         # 一种(env 未注入 → 读到 config.yaml 里的陈副本)恰恰是重新登录修不好的。
@@ -438,7 +467,7 @@ def _error_from_response(
     )
     if detail and status != 413 and not redact_outage_detail:
         message = f"{message}(详情: {detail})"
-    return GatewayError(message, status=status, code=_server_code(response))
+    return GatewayError(message, status=status, code=code, vendor_code=vendor_code)
 
 
 def _retry_after_seconds(response: httpx.Response, attempt: int) -> float:
@@ -498,7 +527,12 @@ def request_json(
                 f"无法连接平台服务(网络错误):{exc}。请检查网络/代理后重试;凭据本身没有问题。",
                 code="network_unreachable",
             ) from exc
-        if response.status_code == 429 and attempt < _MAX_429_RETRIES:
+        if (
+            response.status_code == 429
+            and attempt < _MAX_429_RETRIES
+            # hc-969: a daily limit holds until tomorrow; backing off only makes the user wait.
+            and _server_code(response) not in DAILY_LIMIT_CODES
+        ):
             delay = _retry_after_seconds(response, attempt)
             attempt += 1
             logger.info("gateway 429 on %s — backoff %.1fs (attempt %d)", path, delay, attempt)
@@ -522,6 +556,122 @@ def unwrap(response_body: dict[str, Any]) -> dict[str, Any]:
     if "cost_cents" in response_body and "cost_cents" not in out:
         out["cost_cents"] = response_body.get("cost_cents")
     return out
+
+
+# ---------------------------------------------------------------------------
+# 图片/视频生成:链路健康预检 + 如实错误(hc-969)
+# ---------------------------------------------------------------------------
+#
+# 2026-10-18 评测:桌面端生图、生视频全部失败,用户却被告知「服务繁忙,请稍后重试」,
+# 白等很久。服务端 hc-945/hc-948 已如实报错并按链路记健康;这里是桌面这一侧:
+#   * 生成前读 /tools/v1/check 的逐链路健康,链路关停或连续失败就当场说清楚,不再
+#     发出一个注定要等几分钟才失败的请求。Kael 2026-10-19 拍板:工具保留(check_fn
+#     不隐藏),只说「暂时不可用」——隐藏会让助手以为自己不会做,而不是今天暂时不行;
+#   * 只有能自己恢复的失败才让用户再试:日限说「明天恢复」,关停/未开通说「重试也
+#     不会成功」,其余 503 用服务端逐 code 写好的那句(hc-945 起已如实)。
+
+MEDIA_IMAGE = "image"
+MEDIA_VIDEO = "video"
+_MEDIA_LABELS = {MEDIA_IMAGE: "图片", MEDIA_VIDEO: "视频"}
+_MEDIA_GENERATE_PATHS = {
+    "/tools/v1/image/generate": MEDIA_IMAGE,
+    "/tools/v1/video/generate": MEDIA_VIDEO,
+}
+
+# 429 codes that hold until tomorrow: request_json answers them on the first
+# response instead of backing off, and the user hears when it comes back.
+DAILY_LIMIT_CODES = frozenset({"image_daily_limit_reached", "video_daily_limit_reached"})
+
+
+def _media_switched_off(media: str) -> str:
+    return f"平台现在暂时关闭了{_MEDIA_LABELS[media]}生成，重新开放之前重试也不会成功。"
+
+
+def media_error_message(media: str, status: int | None, code: str | None, detail: str = "") -> str | None:
+    """The honest sentence for a failed image/video generation, or None to let the
+    generic status table answer.
+
+    ``code`` is the server's own code: ``vendor_code`` behind a gateway 503, or
+    ``detail.code`` from the legacy master endpoints, so both legs say the same
+    thing. Only a failure that can clear by itself invites another try."""
+    label = _MEDIA_LABELS[media]
+    if status == 429 and code in DAILY_LIMIT_CODES:
+        return f"今天的{label}生成额度用完了，明天恢复。"
+    if status != 503:
+        return None
+    if code == "video_generation_unavailable":
+        # hc-948 rollback lever: the whole capability is off until an operator reopens it.
+        return _media_switched_off(media)
+    if code == "provider_not_configured":
+        return f"平台还没有开通{label}生成服务，重试也不会成功。"
+    if code == "provider_auth_failed":
+        return f"平台的{label}生成服务配置出了问题，要等平台修好才能用，重试也不会成功。"
+    # Busy, timeouts, failed jobs: the server's sentence says whether trying again
+    # helps (hc-945 rewrote them per code), so it is not wrapped in a retry promise.
+    return detail or f"{label}生成服务出了问题，没有说明原因。"
+
+
+def tools_check(*, timeout: float = 5) -> dict[str, Any] | None:
+    """``GET /tools/v1/check``; None when it cannot be read.
+
+    A check that cannot be read never stops a generation: the call goes ahead and
+    reports its own outcome."""
+    try:
+        return request_json("GET", "/tools/v1/check", timeout=timeout)
+    except GatewayError:
+        logger.info("tools check unreadable; generating without a leg-health verdict")
+        return None
+
+
+def _leg_view(section: dict[str, Any], model: str | None) -> tuple[Any, Any]:
+    """The (entry, health) pair that describes the leg this call will use.
+
+    A selected model is its own leg (``legs["chinaapi:<model>"]``, health fields at
+    the top). A video call without a model renders on the default leg, which the
+    section describes flat (``serving`` on /tools/v1/check, ``ok`` on the legacy
+    check, health under ``health``)."""
+    if model:
+        legs = section.get("legs")
+        entry = legs.get(f"chinaapi:{model}") if isinstance(legs, dict) else None
+        return entry, entry
+    return section, section.get("health")
+
+
+def media_unavailable_reason(media: str, model: str | None, read_check: Callable[[], Any]) -> str | None:
+    """Why this generation should not start, read from hc-945's leg health; None = go ahead.
+
+    ``read_check`` returns the ``image``/``video`` block of /tools/v1/check, or the
+    legacy /media/{image,video}/check body; both carry the same per-leg health. It
+    is not called for an image without a model: the server picks that engine by
+    purpose and availability, and no single leg describes it. Anything short of a
+    clear "this leg is not serving" goes ahead: an older server without leg
+    health, a model the server does not list, an unreadable check."""
+    if not model and media != MEDIA_VIDEO:
+        return None
+    section = read_check()
+    if not isinstance(section, dict):
+        return None
+    entry, health = _leg_view(section, model)
+    if not isinstance(entry, dict) or not isinstance(health, dict):
+        return None
+    if entry.get("serving", entry.get("ok")) is not False:
+        return None
+    if entry.get("configured") is False:
+        return _media_switched_off(media)
+    if health.get("healthy") is not False:
+        return None
+    label = _MEDIA_LABELS[media]
+    seconds = health.get("retry_after_seconds")
+    if isinstance(seconds, (int, float)) and not isinstance(seconds, bool) and seconds > 0:
+        when = f"大约 {max(1, math.ceil(seconds / 60))} 分钟后可以再试"
+    else:
+        when = "过一会儿可以再试"
+    if model:
+        return (
+            f"你选的{label}模型最近连续几次都没生成成功，平台先暂停了它，{when}；"
+            f"现在也可以在输入框的「+」菜单里换一个{label}模型。"
+        )
+    return f"{label}生成最近连续几次都没成功，平台先暂停了它，{when}。"
 
 
 # ---------------------------------------------------------------------------
