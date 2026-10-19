@@ -4,9 +4,11 @@ import { type MutableRefObject, useCallback, useRef } from 'react'
 
 import { getProfiles } from '@/hermes'
 import type { Translations } from '@/i18n'
+import { modelTierCopyNow } from '@/i18n/model-tier'
 import { type ChatMessage, toChatMessages } from '@/lib/chat-messages'
 import { sessionTitle } from '@/lib/chat-runtime'
 import {
+  canonicalDesktopSlashCommand,
   type CommandsCatalogLike,
   type DesktopActionId,
   type DesktopCommandSurface,
@@ -16,10 +18,12 @@ import {
   resolveDesktopCommand
 } from '@/lib/desktop-slash-commands'
 import { isMissingRpcMethod } from '@/lib/gateway-rpc'
+import { maskModelNamesInText } from '@/lib/model-tiers'
 import { setSessionYolo } from '@/lib/yolo-session'
 import { openCommandPalettePage } from '@/store/command-palette'
 import { setComposerDraft } from '@/store/composer'
 import { applyGoalStatusText } from '@/store/goals'
+import { $modelTierMode, MODEL_TIER_BLOCKED_SLASH_COMMANDS } from '@/store/model-tiers'
 import { dismissNotification, notify, notifyError } from '@/store/notifications'
 import { setPetScale } from '@/store/pet-gallery'
 import { $petGenInput, openPetGenerate } from '@/store/pet-generate'
@@ -238,13 +242,18 @@ export function useSlashCommand(deps: SlashCommandDeps) {
         // Header carries the command token only. The full invocation would
         // duplicate long args — `/goal <prose>` echoed the whole goal in the
         // mono header, then again in the backend notice right under it.
-        const render = (text: string) =>
+        // hc-960: backend text (`/status` prints `Model: <id>`) never names
+        // a model on an APEX account — the line reads 档位 and ids read as tiers.
+        const render = (raw: string) => {
+          const text = $modelTierMode.get() ? maskModelNamesInText(raw, modelTierCopyNow()) : raw
+
           appendSessionTextMessage(
             sessionId,
             'system',
             ctx.recordInput ? slashStatusText(`/${ctx.name}`, text) : text,
             storedSessionId
           )
+        }
 
         return { render, sessionId, storedSessionId }
       }
@@ -1191,6 +1200,16 @@ export function useSlashCommand(deps: SlashCommandDeps) {
         }
 
         const ctx: SlashActionCtx = { arg, command, name, recordInput, sessionHint }
+
+        // hc-960: `/model` (bare or with an id) and `/moa` would pick models;
+        // an APEX account gets where its tier lives instead, and nothing runs.
+        if ($modelTierMode.get() && MODEL_TIER_BLOCKED_SLASH_COMMANDS.has(canonicalDesktopSlashCommand(`/${name}`))) {
+          const resolved = await withSlashOutput(ctx)
+          resolved?.render(modelTierCopyNow().slashHint)
+
+          return
+        }
+
         const surface = resolveDesktopCommand(`/${name}`)?.surface
 
         switch (surface?.kind) {

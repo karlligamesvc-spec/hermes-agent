@@ -85,13 +85,14 @@ export function buildConfigSearchEntries(
   schema: Record<string, ConfigFieldSchema> | null | undefined,
   config: HermesConfigRecord | null | undefined,
   copy: ConfigSearchCopy,
-  sections: DesktopConfigSection[] = SECTIONS
+  sections: DesktopConfigSection[] = SECTIONS,
+  hiddenKeys?: ReadonlySet<string>
 ): SettingsSearchEntry[] {
   if (!schema || !config) {
     return []
   }
 
-  const sectionFields = sectionFieldEntries(schema, config)
+  const sectionFields = sectionFieldEntries(schema, config, hiddenKeys)
 
   return sections.flatMap(section => {
     const context = copy.sections[section.id] ?? section.label

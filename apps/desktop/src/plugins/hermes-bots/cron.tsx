@@ -19,6 +19,8 @@ import {
   GlyphSpinner,
   host,
   Input,
+  modelTierCopyNow,
+  modelTierDisplayName,
   PanelEmpty,
   queryClient,
   relativeTime,
@@ -33,6 +35,7 @@ import {
   Tip,
   translateNow,
   useI18n,
+  useModelTierMode,
   useQuery,
   useValue
 } from '@hermes/plugin-sdk'
@@ -365,7 +368,10 @@ export function routineLastResult(status: string | null | undefined): null | str
  *  rows. Pure so the detail contract is testable without a renderer, and so
  *  the dialog cannot invent a field the gateway never sent: an absent value
  *  drops its row instead of rendering "undefined". */
-export function routineDetailRows(job: RoutineJob | null | undefined): Array<{ label: string; value: string }> {
+export function routineDetailRows(
+  job: RoutineJob | null | undefined,
+  { modelTierMode = false }: { modelTierMode?: boolean } = {}
+): Array<{ label: string; value: string }> {
   const paused = job?.enabled === false || job?.state === 'paused'
   const label = scheduleLabel(job?.schedule)
   const raw = String(job?.schedule || '').trim()
@@ -385,7 +391,10 @@ export function routineDetailRows(job: RoutineJob | null | undefined): Array<{ l
       ['Last run', routineTimestamp(job?.last_run_at)],
       ['Last result', routineLastResult(job?.last_status)],
       ['Delivers to', job?.deliver],
-      ['Model', job?.model],
+      // hc-960: an APEX account reads a pinned model as its tier, or nothing.
+      modelTierMode
+        ? [modelTierCopyNow().lineLabel, job?.model ? modelTierDisplayName(job.model) : null]
+        : ['Model', job?.model],
       ['Working directory', job?.workdir]
     ] as Array<[string, string]>
   )
@@ -418,7 +427,8 @@ interface RoutineDetailDialogProps {
 export function RoutineDetailDialog({ job, onClose, open }: RoutineDetailDialogProps) {
   const b = useBots()
   const { t } = useI18n()
-  const rows = job ? routineDetailRows(job) : []
+  const modelTierMode = useModelTierMode()
+  const rows = job ? routineDetailRows(job, { modelTierMode }) : []
   const issue = job ? routineDetailIssue(job) : null
   const instruction = String(job?.prompt_preview || '').trim()
 

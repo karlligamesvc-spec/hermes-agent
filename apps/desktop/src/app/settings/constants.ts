@@ -51,6 +51,19 @@ export const CONSUMER_HIDDEN_SECTIONS: ReadonlySet<string> = new Set(['billing']
 
 export const isConsumerHiddenSection = (view: string): boolean => CONSUMER_HIDDEN_SECTIONS.has(view)
 
+// hc-960: config fields that choose or tune a model. Hidden from the pages
+// and from settings search while an APEX account is in tier mode — every
+// assistant runs on Flash / Pro / Max and subagents inherit it. The values stay
+// in config.yaml untouched; a BYOK user (tier mode off) still sees them.
+export const MODEL_TIER_HIDDEN_CONFIG_KEYS: ReadonlySet<string> = new Set([
+  'model_context_length',
+  'fallback_providers',
+  'delegation.model',
+  'delegation.provider',
+  'delegation.reasoning_effort',
+  'agent.service_tier'
+])
+
 // ApexNodes (China-first) ordering: mainland-stable domestic providers get the
 // low priorities (1–9) so they float to the top of Settings → Keys, matching the
 // onboarding API-key picker's domestic-first layout. International providers

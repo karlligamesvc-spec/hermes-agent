@@ -29,6 +29,7 @@ import {
   resetAllBindings,
   resetBinding
 } from '@/store/keybinds'
+import { MODEL_TIER_HIDDEN_KEYBIND_ACTIONS, useModelTierMode } from '@/store/model-tiers'
 
 import { SettingsContent } from './primitives'
 
@@ -39,7 +40,14 @@ export function KeybindSettings() {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   // Subscribe so contributed actions appear/disappear live in the map.
   useContributions(KEYBINDS_AREA)
-  const actionList = allKeybindActions()
+
+  // hc-960: the model-picker chord is inert on an APEX account, so unlisted.
+  const modelTierMode = useModelTierMode()
+
+  const actionList = allKeybindActions().filter(
+    action => !(modelTierMode && MODEL_TIER_HIDDEN_KEYBIND_ACTIONS.has(action.id))
+  )
+
   const [query, setQuery] = useState('')
 
   const openCombo = bindings[KEYBIND_PANEL_ACTION]?.[0]

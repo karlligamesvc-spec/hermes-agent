@@ -34,7 +34,7 @@ import { useMemo } from 'react'
 
 import { getPluginCtx } from './shared'
 
-type BotsMessages = {
+export type BotsMessages = {
   /** Left rail: the bot + group-chat roster. */
   roster: {
     title: string
@@ -120,6 +120,9 @@ type BotsMessages = {
     createFailed: string
     advanced: string
     advancedHint: string
+    /** hc-960: the same fold on an APEX account, where the tier above it
+     *  owns the model. */
+    advancedHintTiers: string
     advancedFailed: string
     openAnotherChatUnsupported: string
     remoteConnectionsUnsupported: string
@@ -362,6 +365,7 @@ const en: BotsMessages = {
     createFailed: 'Could not create the profile yet',
     advanced: 'Advanced',
     advancedHint: 'Advanced — model, skills, toolsets, SOUL.md',
+    advancedHintTiers: 'Advanced — skills, toolsets, SOUL.md',
     advancedFailed: 'Advanced configuration failed',
     openAnotherChatUnsupported: 'Update Hermes Desktop to open another Bot chat.',
     remoteConnectionsUnsupported: 'Update Hermes Desktop to chat with bots on other connections.',
@@ -594,6 +598,7 @@ const ja: BotsMessages = {
     createFailed: 'プロファイルをまだ作成できませんでした',
     advanced: '詳細設定',
     advancedHint: '詳細設定 — モデル、スキル、ツールセット、SOUL.md',
+    advancedHintTiers: '詳細設定 — スキル、ツールセット、SOUL.md',
     advancedFailed: '詳細設定に失敗しました',
     openAnotherChatUnsupported: '別のボットチャットを開くには Hermes Desktop を更新してください。',
     remoteConnectionsUnsupported: '他の接続上のボットとチャットするには Hermes Desktop を更新してください。',
@@ -822,6 +827,7 @@ const zh: BotsMessages = {
     createFailed: '暂时无法创建配置档案',
     advanced: '高级',
     advancedHint: '高级 — 模型、技能、工具集、SOUL.md',
+    advancedHintTiers: '高级 — 技能、工具集、SOUL.md',
     advancedFailed: '高级配置失败',
     openAnotherChatUnsupported: '请更新 Hermes Desktop 以打开另一个助手聊天。',
     remoteConnectionsUnsupported: '请更新 Hermes Desktop 以与其他连接上的助手聊天。',
@@ -1048,6 +1054,7 @@ const zhHant: BotsMessages = {
     createFailed: '暫時無法建立設定檔',
     advanced: '進階',
     advancedHint: '進階 — 模型、技能、工具集、SOUL.md',
+    advancedHintTiers: '進階 — 技能、工具集、SOUL.md',
     advancedFailed: '進階設定失敗',
     openAnotherChatUnsupported: '請更新 Hermes Desktop 以開啟另一個助手聊天。',
     remoteConnectionsUnsupported: '請更新 Hermes Desktop 以與其他連線上的助手聊天。',
