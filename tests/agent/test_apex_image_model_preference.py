@@ -60,6 +60,34 @@ def test_bundled_image_plugin_uses_picker_on_gateway_and_legacy(
     assert [payload["model"] for payload in captured] == [expected, expected]
 
 
+def test_a_saved_agnes_image_2_5_moves_to_gpt_image_2_5_flare(image_plugin, monkeypatch, tmp_path):
+    """hc-957: Agnes Image 2.5 left the picker; a config saved before that keeps working."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    (tmp_path / "config.yaml").write_text(
+        "apex:\n  generation_image_model: agnes-image-2.5-flash\n", encoding="utf-8"
+    )
+    captured = []
+    monkeypatch.setattr(image_plugin, "_use_gateway", lambda: True)
+    monkeypatch.setattr(
+        image_plugin._gateway,
+        "request_json",
+        lambda _method, _path, payload, timeout: captured.append(payload)
+        or {"data": {"ok": True, "model": payload["model"]}},
+    )
+
+    result = json.loads(image_plugin._handle_generate_image({"prompt": "西高地犬"}))
+
+    assert result["model"] == "gpt-image-2.5-flare"
+    assert [payload["model"] for payload in captured] == ["gpt-image-2.5-flare"]
+
+
+def test_the_picker_no_longer_offers_agnes_image_2_5(image_plugin):
+    model = image_plugin.GENERATE_IMAGE_SCHEMA["parameters"]["properties"]["model"]
+    assert "agnes-image-2.5-flash" not in model["enum"]
+    assert "Agnes" not in model["description"]
+    assert set(image_plugin.RETIRED_IMAGE_MODELS.values()) <= set(model["enum"])
+
+
 @pytest.mark.parametrize(
     "invalid_yaml",
     ["apex: [unterminated\n", "apex: []\n", "apex:\n  generation_image_model: unknown\n"],

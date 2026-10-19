@@ -3,6 +3,8 @@ import { persistString, storedString } from '@/lib/storage'
 
 export type GenerationKind = 'image' | 'video'
 
+// 'agnes' no longer belongs to any listed model (hc-957). It stays in the union only
+// because context-menu.tsx still special-cases that icon; drop both together.
 export type GenerationModelIconKey =
   | 'agnes'
   | 'gemini'
@@ -24,7 +26,6 @@ export interface GenerationModel {
 export const IMAGE_GENERATION_MODELS: readonly GenerationModel[] = [
   { icon: 'qwen', id: 'qwen-image-3.0-pro', label: 'Qwen Image 3.0 Pro' },
   { icon: 'gemini', id: 'gemini-2.5-flash-image', label: 'Gemini Image 2.5' },
-  { icon: 'agnes', id: 'agnes-image-2.5-flash', label: 'Agnes Image 2.5' },
   { icon: 'gpt-flare', id: 'gpt-image-2.5-flare', label: 'GPT Image 2.5 Flare' },
   { icon: 'gpt-sunburst', id: 'gpt-image-2.5-sunburst', label: 'GPT Image 2.5 Sunburst' }
 ]
@@ -47,12 +48,27 @@ const DEFAULT_MODEL_IDS: Record<GenerationKind, string> = {
   video: 'doubao-seedance-2-0-mini-260615'
 }
 
+// hc-957 (Kael, 2026-10-19): Agnes Image 2.5 left the picker, and a selection saved
+// before that moves to GPT Image 2.5 Flare. Resolving it here makes
+// previouslySelectedImageModel() return the replacement, so the composer's start-up
+// migration (context-menu.tsx) writes it to apex.generation_image_model as well.
+const RETIRED_MODEL_IDS: Record<GenerationKind, Readonly<Record<string, string>>> = {
+  image: { 'agnes-image-2.5-flash': 'gpt-image-2.5-flare' },
+  video: {}
+}
+
+function storedModelId(kind: GenerationKind): null | string {
+  const stored = storedString(MODEL_KEYS[kind])
+
+  return (stored && RETIRED_MODEL_IDS[kind][stored]) || stored
+}
+
 export const generationModels = (kind: GenerationKind): readonly GenerationModel[] =>
   kind === 'image' ? IMAGE_GENERATION_MODELS : VIDEO_GENERATION_MODELS
 
 export function selectedGenerationModel(kind: GenerationKind): GenerationModel {
   const models = generationModels(kind)
-  const stored = storedString(MODEL_KEYS[kind])
+  const stored = storedModelId(kind)
 
   return (
     models.find(model => model.id === stored) ?? models.find(model => model.id === DEFAULT_MODEL_IDS[kind]) ?? models[0]
@@ -72,13 +88,13 @@ export function selectGenerationModel(kind: GenerationKind, id: string): Generat
 }
 
 export function previouslySelectedImageModel(): GenerationModel | null {
-  const stored = storedString(MODEL_KEYS.image)
+  const stored = storedModelId('image')
 
   return IMAGE_GENERATION_MODELS.find(model => model.id === stored) ?? null
 }
 
 export function previouslySelectedVideoModel(): GenerationModel | null {
-  const stored = storedString(MODEL_KEYS.video)
+  const stored = storedModelId('video')
 
   return VIDEO_GENERATION_MODELS.find(model => model.id === stored) ?? null
 }
