@@ -639,6 +639,50 @@ export async function getWorkflowDomainAccess(
   return { enabled: true }
 }
 
+// hc-942: every workflow-domain route answers 404 with one of these codes while the feature is
+// off or the account is outside its allowlist (hermes-cloud app/routers/workflow_domain.py). That
+// is an account state, not an outage, so it gets its own code instead of 'unavailable'.
+const WORKFLOW_DOMAIN_NOT_ENABLED_CODES = new Set(['workflow_domain_disabled', 'workflow_domain_not_allowlisted'])
+
+function serverDetailCode(message: unknown): string | null {
+  // ApexNodes HTTP errors read `${status}: ${body}` (main.ts apexAuthBodylessJson).
+  const text = typeof message === 'string' ? message : ''
+
+  try {
+    const code = JSON.parse(text.slice(text.indexOf(': ') + 2))?.detail?.code
+
+    return typeof code === 'string' ? code : null
+  } catch {
+    return null
+  }
+}
+
+/** The renderer-facing code for a failed workflow-domain request; raw HTTP never crosses IPC. */
+export function workflowDomainErrorCode(error: unknown): string {
+  const failure = (error ?? {}) as { message?: unknown; statusCode?: unknown }
+  const statusCode = Number(failure.statusCode) || 0
+
+  if (statusCode === 401) {
+    return 'sign_in'
+  }
+
+  const detailCode = statusCode === 404 || statusCode === 409 ? serverDetailCode(failure.message) : null
+
+  if (statusCode === 404 && detailCode && WORKFLOW_DOMAIN_NOT_ENABLED_CODES.has(detailCode)) {
+    return 'not_enabled'
+  }
+
+  if (statusCode === 403 || statusCode === 404) {
+    return 'unavailable'
+  }
+
+  if (statusCode === 409 && (detailCode === 'project_not_ready' || detailCode === 'project_completed')) {
+    return detailCode
+  }
+
+  return 'request_failed'
+}
+
 function workflowDomainListUrl(
   apiBase: string,
   path: string,

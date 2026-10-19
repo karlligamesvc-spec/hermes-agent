@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { test } from 'vitest'
 
@@ -27,6 +29,7 @@ import {
   startExistingWorkflowDomainRun,
   startWorkflowDomainGoal,
   updateWorkflowDomainProject,
+  workflowDomainErrorCode,
   workflowDomainUrl,
   workflowProjectName
 } from './apex-workflow-domain'
@@ -967,4 +970,64 @@ test('keeps an explicit Start retry key and never retries an unavailable atomic 
   assert.equal(calls.length, 2)
   assert.deepEqual(calls[0], calls[1])
   assert.equal(calls[0]?.url.endsWith('/start-goal'), true)
+})
+
+// hc-942: failures shaped exactly as main.ts apexAuthBodylessJson rejects them.
+function httpFailure(statusCode: number, body: unknown) {
+  const text = typeof body === 'string' ? body : JSON.stringify(body)
+
+  return Object.assign(new Error(`${statusCode}: ${text}`), { statusCode })
+}
+
+test.each([
+  ['feature-off 404', httpFailure(404, { detail: { code: 'workflow_domain_disabled' } }), 'not_enabled'],
+  ['outside-allowlist 404', httpFailure(404, { detail: { code: 'workflow_domain_not_allowlisted' } }), 'not_enabled'],
+  ['phase-2-reads-off 404', httpFailure(404, { detail: { code: 'workflow_phase2_read_disabled' } }), 'unavailable'],
+  ['missing-record 404', httpFailure(404, { detail: { code: 'project_not_found' } }), 'unavailable'],
+  ['plain-text 404', httpFailure(404, 'Not Found'), 'unavailable'],
+  ['403', httpFailure(403, { detail: 'Forbidden' }), 'unavailable'],
+  ['401', httpFailure(401, { detail: 'expired' }), 'sign_in'],
+  ['not-ready 409', httpFailure(409, { detail: { code: 'project_not_ready' } }), 'project_not_ready'],
+  ['completed 409', httpFailure(409, { detail: { code: 'project_completed' } }), 'project_completed'],
+  ['other 409', httpFailure(409, { detail: { code: 'idempotency_conflict' } }), 'request_failed'],
+  ['500 carrying a not-enabled code', httpFailure(500, { detail: { code: 'workflow_domain_disabled' } }), 'request_failed'],
+  ['network', new Error('socket hang up'), 'request_failed'],
+  ['malformed access body', new Error('Workflow domain access is not enabled'), 'request_failed']
+] as const)('maps a %s failure to its IPC code', (_label, error, expected) => {
+  assert.equal(workflowDomainErrorCode(error), expected)
+})
+
+test('an account outside the workflow allowlist reads as not enabled through the access exit', async () => {
+  const transport = {
+    getJson: async () => {
+      throw httpFailure(404, { detail: { code: 'workflow_domain_not_allowlisted' } })
+    }
+  }
+
+  const failure = await getWorkflowDomainAccess('https://api.apex-nodes.com', transport).then(
+    () => null,
+    (error: unknown) => error
+  )
+
+  assert.equal(workflowDomainErrorCode(failure), 'not_enabled')
+})
+
+test('main.ts maps workflow-domain IPC failures only through workflowDomainErrorCode', () => {
+  const main = readFileSync(join(import.meta.dirname, 'main.ts'), 'utf8')
+  const start = main.indexOf('function workflowDomainIpcError(error) {')
+
+  assert.notEqual(start, -1)
+  const body = main.slice(start, main.indexOf('\n}\n', start)).replace(/\/\/.*$/gm, '')
+
+  assert.match(body, /const code = workflowDomainErrorCode\(error\)/)
+  assert.match(body, /\n\s*return code$/)
+  // No second status table beside the shared one (the hc-942 404 split must reach every exit).
+  assert.doesNotMatch(body, /statusCode\s*===/)
+
+  const accessStart = main.indexOf("ipcMain.handle('hermes:workflowDomain:access', async () => {")
+
+  assert.notEqual(accessStart, -1)
+  const access = main.slice(accessStart, main.indexOf('\n})\n', accessStart))
+
+  assert.match(access, /const code = workflowDomainIpcError\(error\)\s+return \{ available: false, code \}/)
 })

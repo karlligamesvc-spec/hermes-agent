@@ -49,6 +49,9 @@ export function BusinessStartShelf({ onSelectGoal, onSelectWorkflow, selectedWor
   const testCatalog = catalog.mode === 'ready' && /(?:local|test|staging|review)/i.test(catalog.version ?? '')
 
   const primaryAvailable = catalog.mode === 'ready' && primaryStarters.every(starter => catalog.items.some(item => item.id === starter.id && item.slug === starter.slug))
+  // hc-942: an account the server has not enabled for workflows gets no workflow shelf at all,
+  // instead of three disabled cards and an outage sentence. Real failures still say so below.
+  const workflowsNotEnabled = catalog.mode === 'unavailable' && catalog.reason === 'not_enabled'
   const projects = useWorkflowProjects(2)
   const channelStatus = useChannelStatus()
 
@@ -92,7 +95,7 @@ export function BusinessStartShelf({ onSelectGoal, onSelectWorkflow, selectedWor
 
   return (
     <div className="apex-start-shelf pointer-events-auto w-full text-left" data-business-start-shelf="">
-      <section aria-labelledby="business-start-workflows">
+      {!workflowsNotEnabled && <section aria-labelledby="business-start-workflows">
         <header className="apex-start-section-heading">
           <div>
             <p>{t.home.pathsEyebrow}</p>
@@ -134,7 +137,7 @@ export function BusinessStartShelf({ onSelectGoal, onSelectWorkflow, selectedWor
         {!primaryAvailable && <p className="apex-start-catalog-status" role="status">
           {catalog.mode === 'loading' ? t.home.catalogLoading : c.workflows.catalogUnavailable}
         </p>}
-      </section>
+      </section>}
 
       <section aria-labelledby="business-start-capability-goals" className="apex-start-secondary-paths">
         <h2 id="business-start-capability-goals">{t.home.capabilityPaths}</h2>

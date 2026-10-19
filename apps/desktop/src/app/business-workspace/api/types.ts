@@ -1,5 +1,6 @@
 export interface WorkflowDomainBridge {
-  access: () => Promise<{ available: boolean }>
+  /** `code` says why access is missing; 'not_enabled' = feature off or account outside the allowlist. */
+  access: () => Promise<{ available: boolean; code?: string }>
   localVideoReadiness?: () => Promise<{
     basicToolsReady: boolean
     missing: Array<'node' | 'npm' | 'ffmpeg' | 'ffprobe'>

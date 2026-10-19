@@ -38,7 +38,9 @@ export type WorkflowProjectMutationOutcome =
   | { mode: 'unavailable' }
 
 export type WorkflowCatalogOutcome =
-  { items: WorkflowCatalogItem[]; mode: 'ready'; version: null | string } | { mode: 'failed' } | { mode: 'unavailable' }
+  | { items: WorkflowCatalogItem[]; mode: 'ready'; version: null | string }
+  | { mode: 'failed' }
+  | { mode: 'unavailable'; reason?: 'not_enabled' }
 
 export type WorkflowVideoCatalogOutcome =
   | { items: WorkflowVideoCatalogItem[]; mode: 'ready'; version: null | string }
@@ -424,7 +426,7 @@ export async function listWorkflowCatalog(
     const access = await bridge.access()
 
     if (!access.available) {
-      return { mode: 'unavailable' }
+      return access.code === 'not_enabled' ? { mode: 'unavailable', reason: 'not_enabled' } : { mode: 'unavailable' }
     }
 
     const catalog = await bridge.getCatalog()
