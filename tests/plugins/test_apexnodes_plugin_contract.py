@@ -44,8 +44,9 @@ CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 # 与 cloud 侧 tests/test_hc563_plugin_tools_contract.py 内嵌的是同一个值。
 # v7(hc-926):media_transcribe 对无人声素材返回成功 + speech=false(no_speech_is_success)。
 # v8(hc-929):media_transcribe 两条腿都把豆包时间轴落文件,结果面只给 segments_path + 摘要。
-EXPECTED_CONTRACT_SHA256 = "4de70e252140706843401abe586eb766ba30af58d03e12d205fe9a6384e2859c"
-EXPECTED_CONTRACT_VERSION = 8
+# v9(hc-948):generate_video 的 provider 枚举去掉 agnes(Kael:Agnes 从候选中全部去掉)。
+EXPECTED_CONTRACT_SHA256 = "93b451eb5763028c2352617fcbf884aa96825ca15ab6cc8a863c46e0a7c2530f"
+EXPECTED_CONTRACT_VERSION = 9
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
