@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DesktopOnboardingOverlay } from '@/components/onboarding'
 import { I18nProvider } from '@/i18n'
+import { $accountTeam } from '@/store/account-team'
 import { $authState, canMountDesktopOnboarding, markSignedIn } from '@/store/auth'
 import { $notifications, clearNotifications } from '@/store/notifications'
 import { $desktopOnboarding, cancelOnboardingFlow } from '@/store/onboarding'
@@ -198,7 +199,6 @@ describe('signed-in account navigation', () => {
   })
 })
 
-
 describe('account sign-out failure recovery', () => {
   beforeEach(() => {
     signIn()
@@ -252,5 +252,102 @@ describe('account sign-out failure recovery', () => {
     expect($notifications.get()).toHaveLength(0)
     expect($authState.get().account.email).toBe('new@example.invalid')
     expect($desktopOnboarding.get().requested).toBe(false)
+  })
+})
+
+describe('team line in the account menu (hc-971)', () => {
+  function signInAs(accountId: string) {
+    $authState.set({
+      account: { email: 'kael@apex-nodes.com', name: 'Kael', plan: 'fast' },
+      accountId,
+      enabled: true,
+      gateReason: null,
+      loginTruth: true,
+      status: 'signed-in'
+    })
+  }
+
+  function withTeamBridge(read: ReturnType<typeof vi.fn>) {
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { managed: { team: read } } })
+
+    return read
+  }
+
+  function renderPanel(locale: 'en' | 'zh' = 'zh') {
+    render(<I18nProvider configClient={null} initialLocale={locale}><MemoryRouter><AccountPanel /></MemoryRouter></I18nProvider>)
+  }
+
+  async function openMenu() {
+    fireEvent.keyDown(screen.getByRole('button', { name: /Kael/ }), { key: 'Enter' })
+    await screen.findByRole('menuitem', { name: /个人资料|Profile/ })
+  }
+
+  beforeEach(() => {
+    $accountTeam.set({ accountId: null, team: null })
+  })
+
+  afterEach(() => {
+    cleanup()
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: undefined })
+    vi.restoreAllMocks()
+  })
+
+  it('shows the team and the admin mark at the top of the menu', async () => {
+    signInAs('acc-1')
+    const read = withTeamBridge(vi.fn(async () => ({ ok: true, team: { isAdmin: true, name: '星河传媒', status: 'active' } })))
+    renderPanel()
+    await openMenu()
+
+    expect(await screen.findByText('团队：星河传媒')).toBeTruthy()
+    expect(screen.getByText('管理员')).toBeTruthy()
+    expect(read).toHaveBeenCalled()
+  })
+
+  it('says a pending team is not open yet, in English too', async () => {
+    signInAs('acc-1')
+    withTeamBridge(vi.fn(async () => ({ ok: true, team: { isAdmin: false, name: 'Studio', status: 'pending' } })))
+    renderPanel('en')
+    await openMenu()
+
+    expect(await screen.findByText('Team: Studio')).toBeTruthy()
+    expect(screen.getByText('Not open yet')).toBeTruthy()
+    expect(screen.queryByText('Admin')).toBeNull()
+  })
+
+  it.each([
+    ['no team', { ok: true, team: null }],
+    ['a failed read', { message: 'FETCH_FAILED', ok: false, team: null }]
+  ])('shows no team line for %s', async (_label, result) => {
+    signInAs('acc-1')
+    const read = withTeamBridge(vi.fn(async () => result))
+    renderPanel()
+    await openMenu()
+    await waitFor(() => expect(read).toHaveBeenCalled())
+
+    expect(screen.queryByText(/团队：/)).toBeNull()
+  })
+
+  it('drops the last account\'s team the moment the account changes', async () => {
+    signInAs('acc-1')
+    withTeamBridge(
+      vi.fn().mockResolvedValueOnce({ ok: true, team: { isAdmin: false, name: '星河传媒', status: 'active' } }).mockResolvedValue({ ok: true, team: null })
+    )
+    renderPanel()
+    await waitFor(() => expect($accountTeam.get().team?.name).toBe('星河传媒'))
+
+    await act(async () => {
+      signInAs('acc-2')
+    })
+    await openMenu()
+
+    expect(screen.queryByText(/团队：/)).toBeNull()
+  })
+
+  it('keeps working on an older main process without the bridge', async () => {
+    signInAs('acc-1')
+    renderPanel()
+    await openMenu()
+
+    expect(screen.queryByText(/团队：/)).toBeNull()
   })
 })

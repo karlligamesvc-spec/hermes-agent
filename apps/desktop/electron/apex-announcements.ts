@@ -110,10 +110,94 @@ function parseAnnouncementsResponse(body) {
   return body.items.map(normalizeAnnouncement).filter(Boolean)
 }
 
+/** What main.ts lends these reads: the stored login JWT, the API base, its authed transport. */
+interface AnnouncementReadDeps {
+  accessToken: () => string
+  apiBase: () => string
+  getJson: (url: string, opts: { bearer: string }) => Promise<unknown>
+  log: (line: string) => void
+  postJson: (url: string, opts: { body: object; bearer: string }) => Promise<unknown>
+}
+
+function errorText(error) {
+  return error && error.message ? error.message : error
+}
+
+/**
+ * Fetch the signed-in user's product-update announcements from the cloud
+ * (hc-446 content source; same feed the web /app/whats-new page reads).
+ * Authenticates with the STORED login JWT — no re-login needed for a user
+ * already signed in to managed. NEVER throws; a fetch failure resolves
+ * ok:false with a message the renderer maps to copy. An empty `items` array
+ * with ok:true is a normal, expected state (no published announcements yet —
+ * ANNOUNCEMENTS_ENABLED gates IM dispatch, not this read) — the renderer
+ * shows "no announcements yet", not an error. (Moved here from main.ts by
+ * hc-971 so main.ts could take the team read without growing.)
+ *
+ * @param {AnnouncementReadDeps} deps
+ */
+async function fetchAnnouncements(deps: AnnouncementReadDeps) {
+  const token = String(deps.accessToken() || '').trim()
+
+  if (!token) {
+    // No stored JWT → the panel prompts sign-in. Not an error — an expected
+    // pre-condition for a user who hasn't signed in to managed yet.
+    return { ok: false, needsSignIn: true, items: [], message: 'NOT_SIGNED_IN' }
+  }
+
+  let body
+
+  try {
+    body = await deps.getJson(announcementsListUrl(deps.apiBase()), { bearer: token })
+  } catch (error: any) {
+    if (error && error.statusCode === 401) {
+      return { ok: false, needsSignIn: true, items: [], message: 'SESSION_EXPIRED' }
+    }
+
+    deps.log(`[announcements] list fetch failed: ${errorText(error)}`)
+
+    return { ok: false, items: [], message: 'FETCH_FAILED' }
+  }
+
+  return { ok: true, items: parseAnnouncementsResponse(body) }
+}
+
+/**
+ * Best-effort read receipt for one announcement — fired from the renderer once
+ * the changelog panel has actually shown an unread item (mirrors the web
+ * /app/whats-new page's "mark read when scrolled into view" semantic per
+ * app/services/announcement_service.py's mark_read docstring). Never throws;
+ * a failure is silently swallowed since this is a receipt, not a gate — the
+ * list itself already rendered from the successful GET.
+ *
+ * @param {AnnouncementReadDeps} deps
+ * @param {unknown} announcementId
+ */
+async function markAnnouncementRead(deps: AnnouncementReadDeps, announcementId) {
+  const token = String(deps.accessToken() || '').trim()
+  const id = String(announcementId || '').trim()
+
+  if (!token || !id) {
+    return { ok: false }
+  }
+
+  try {
+    await deps.postJson(announcementReadUrl(deps.apiBase(), id), { body: {}, bearer: token })
+
+    return { ok: true }
+  } catch (error) {
+    deps.log(`[announcements] mark-read failed (ignored): ${errorText(error)}`)
+
+    return { ok: false }
+  }
+}
+
 export {
   announcementReadUrl,
   ANNOUNCEMENTS_LIST_PATH,
   announcementsListUrl,
+  fetchAnnouncements,
+  markAnnouncementRead,
   normalizeAnnouncement,
   parseAnnouncementsResponse
 }
