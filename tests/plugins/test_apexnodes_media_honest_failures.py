@@ -438,12 +438,15 @@ def test_no_clear_verdict_goes_ahead(_hermes_home, desktop_env, server, media, c
     assert server.requests == [("GET", "/tools/v1/check"), ("POST", media.generate)]
 
 
-def test_an_image_without_a_model_skips_the_check(desktop_env, server, image):
-    """The server picks a model-less image engine by purpose; no single leg describes it."""
+def test_an_image_without_a_model_reads_the_check_and_goes_ahead_without_a_verdict(desktop_env, server, image):
+    """The server picks a model-less image engine by purpose. hc-984: the plugin reads the
+    leg that purpose routes to from ``purpose_legs``; a check without that list (this one,
+    as from a server before hc-984) gives no verdict, so the call goes ahead."""
+    server.answer("/tools/v1/check", FakeResponse(200, _check_body("image")))
     server.answer(image.generate, FakeResponse(200, {"data": {"ok": True}}))
 
     assert _generate(image)["ok"] is True
-    assert server.requests == [("POST", image.generate)]
+    assert server.requests == [("GET", "/tools/v1/check"), ("POST", image.generate)]
 
 
 def test_legacy_leg_reads_the_master_check_too(_hermes_home, legacy_env, master, media):

@@ -269,7 +269,7 @@ CREATOR_TOP_POSTS_SCHEMA = {
 
 def _payload(args: dict) -> dict[str, Any]:
     if not isinstance(args, dict):
-        raise RuntimeError("tool expects a JSON object argument")
+        raise RuntimeError("工具参数必须是 JSON 对象。")
     platform = str(args.get("platform") or "").strip().lower()
     if not platform:
         raise RuntimeError("请提供 platform")
@@ -299,7 +299,7 @@ def _insight_payload(args: dict) -> dict[str, Any]:
     is renamed to the gateway's ``topic_name`` here so the agent-facing name stays
     plain while the wire contract stays explicit."""
     if not isinstance(args, dict):
-        raise RuntimeError("tool expects a JSON object argument")
+        raise RuntimeError("工具参数必须是 JSON 对象。")
     platform = str(args.get("platform") or "").strip().lower()
     if not platform:
         raise RuntimeError("请提供 platform")
@@ -371,7 +371,7 @@ def _handler(capability: str):
 
 def _creator_payload(args: dict) -> dict[str, Any]:
     if not isinstance(args, dict):
-        raise RuntimeError("tool expects a JSON object argument")
+        raise RuntimeError("工具参数必须是 JSON 对象。")
     if not (args.get("url") or args.get("user_id")):
         raise RuntimeError("请提供创作者主页链接 url，或 platform + user_id")
     platform = args.get("platform")

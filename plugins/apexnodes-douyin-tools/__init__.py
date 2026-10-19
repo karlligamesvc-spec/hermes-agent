@@ -585,7 +585,7 @@ def _routed_intent(args: dict) -> str | None:
 
 def _handle_social_download(args: dict, **_kwargs) -> str:
     if not isinstance(args, dict):
-        return tool_error("social_download expects a JSON object argument")
+        return tool_error("social_download 的参数必须是 JSON 对象。")
     url = str(args.get("url") or args.get("share_url") or "").strip()
     if not url:
         return tool_error("请提供视频分享链接")
@@ -719,7 +719,7 @@ def render_verbatim_transcript_docx(transcript: str, title: str) -> str | None:
 
 def _handle_media_transcribe(args: dict, **_kwargs) -> str:
     if not isinstance(args, dict):
-        return tool_error("media_transcribe expects a JSON object argument")
+        return tool_error("media_transcribe 的参数必须是 JSON 对象。")
     video_path = str(args.get("video_path") or "").strip() or None
     url = str(args.get("url") or args.get("share_url") or "").strip() or None
     force_refresh = bool(args.get("force_refresh")) if "force_refresh" in args else None
@@ -759,7 +759,7 @@ def _handle_media_transcribe(args: dict, **_kwargs) -> str:
 
 def _handle_image_ocr(args: dict, **_kwargs) -> str:
     if not isinstance(args, dict):
-        return tool_error("image_ocr expects a JSON object argument")
+        return tool_error("image_ocr 的参数必须是 JSON 对象。")
     raw_images = args.get("image_urls")
     image_urls = [str(item).strip() for item in raw_images if str(item).strip()] if isinstance(raw_images, list) else None
     payload = {
@@ -900,7 +900,7 @@ def _read_batch_response(body: dict[str, Any]) -> dict[str, Any]:
 
 def _handle_social_batch_submit(args: dict, **_kwargs) -> str:
     if not isinstance(args, dict):
-        return tool_error("social_batch_submit expects a JSON object argument")
+        return tool_error("social_batch_submit 的参数必须是 JSON 对象。")
     urls = args.get("urls")
     if isinstance(urls, str):
         urls = [urls]
@@ -943,7 +943,7 @@ def _handle_social_batch_submit(args: dict, **_kwargs) -> str:
 
 def _handle_social_batch_status(args: dict, **_kwargs) -> str:
     if not isinstance(args, dict):
-        return tool_error("social_batch_status expects a JSON object argument")
+        return tool_error("social_batch_status 的参数必须是 JSON 对象。")
     job_id = str(args.get("job_id") or "").strip()
     if not job_id:
         return tool_error("请提供 job_id。")

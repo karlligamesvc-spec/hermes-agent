@@ -31,6 +31,14 @@ def _use_gateway() -> bool:
     return _gateway is not None and _gateway.use_gateway()
 
 
+def _say(key: str, fallback: str, **fields: Any) -> str:
+    """hc-984: the gateway's (zh, en) sentence in the user's language; its Chinese twin
+    on a bare copy without the gateway module."""
+    if _gateway is not None:
+        return _gateway.say(key, media=_gateway.MEDIA_IMAGE, **fields)
+    return fallback.format(**fields)
+
+
 # 图片渲染是同步调用,但多图/付费档可能耗时数十秒——给足超时余量。
 _IMAGE_REQUEST_TIMEOUT = 180
 
@@ -79,26 +87,47 @@ def _request(method: str, path: str, payload: dict[str, Any] | None = None, time
     request = urllib.request.Request(f"{_api_base()}{path}", data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
+            raw = response.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
-        raw = exc.read().decode("utf-8", errors="replace")
-        try:
-            detail = json.loads(raw).get("detail", raw)
-        except json.JSONDecodeError:
-            detail = raw
-        if isinstance(detail, dict):
-            code = detail.get("code")
-            message = str(detail.get("message") or detail.get("code") or "")
-        else:
-            code, message = None, str(detail or "")
+        code, message = _error_detail(exc.read().decode("utf-8", errors="replace"))
         # hc-969: same honest table as the gateway leg; an error the server did not
         # explain is no longer reported as "繁忙,请稍后重试".
         honest = (
             _gateway.media_error_message(_gateway.MEDIA_IMAGE, exc.code, code, message) if _gateway else None
         )
-        raise RuntimeError(honest or message or f"图片生成服务出错了(HTTP {exc.code}),没有说明原因。") from exc
+        raise RuntimeError(
+            honest
+            or message
+            or _say("media_no_reason_status", "图片生成服务出错了({status}),没有说明原因。", status=f"HTTP {exc.code}")
+        ) from exc
     except urllib.error.URLError as exc:
-        raise RuntimeError(f"无法连接图片生成服务: {exc.reason}") from exc
+        raise RuntimeError(_say("media_unreachable", "无法连接图片生成服务: {reason}", reason=exc.reason)) from exc
+    # hc-984: an answer that cannot be read is said as such instead of crashing the tool.
+    try:
+        body = json.loads(raw)
+    except ValueError as exc:
+        raise RuntimeError(_say("media_unreadable", "图片生成服务的回答读不出来，这次没有结果。")) from exc
+    if not isinstance(body, dict):
+        raise RuntimeError(_say("media_unreadable", "图片生成服务的回答读不出来，这次没有结果。"))
+    return body
+
+
+def _error_detail(raw: str) -> tuple[str | None, str]:
+    """``(code, message)`` from an error answer's ``detail`` (hc-984).
+
+    A body that is not JSON (an HTML gateway page, plain text) or a validation list
+    used to be relayed raw, and a bare code was passed off as the reason; they now
+    read as "no reason given"."""
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        return None, ""
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(detail, str):
+        return None, detail.strip()
+    if isinstance(detail, dict):
+        return str(detail.get("code") or "").strip() or None, str(detail.get("message") or "").strip()
+    return None, ""
 
 
 def _legacy_check() -> bool:
@@ -157,7 +186,7 @@ def _desktop_image_model() -> str | None:
             return None
         apex = config["apex"]
         if not isinstance(apex, dict):
-            raise RuntimeError("当前图片模型设置格式无效")
+            raise RuntimeError(_say("media_setting_malformed", "当前图片模型设置格式无效"))
         if "generation_image_model" not in apex:
             return None
         model = apex["generation_image_model"]
@@ -165,10 +194,10 @@ def _desktop_image_model() -> str | None:
             model = RETIRED_IMAGE_MODELS.get(model, model)
         allowed = GENERATE_IMAGE_SCHEMA["parameters"]["properties"]["model"]["enum"]
         if not isinstance(model, str) or model not in allowed:
-            raise RuntimeError("当前图片模型设置不是可用的模型")
+            raise RuntimeError(_say("media_setting_unknown", "当前图片模型设置不是可用的模型"))
         return model
     except (OSError, ValueError, RuntimeError) as exc:
-        raise RuntimeError(f"无法读取当前图片模型设置: {exc}") from exc
+        raise RuntimeError(f"{_say('media_setting_unreadable', '无法读取当前图片模型设置')}: {exc}") from exc
 
 
 GENERATE_IMAGE_SCHEMA = {
@@ -319,23 +348,14 @@ def _localize_gateway_image(result: dict[str, Any], prompt: str) -> str:
 
 def _handle_generate_image(args: dict, **_kwargs) -> str:
     if not isinstance(args, dict):
-        return tool_error("generate_image expects a JSON object argument")
+        return tool_error(_say("media_not_object", "generate_image 的参数必须是 JSON 对象。"))
     prompt = str(args.get("prompt") or "").strip()
     if not prompt:
-        return tool_error("请提供图片描述")
+        return tool_error(_say("media_missing_prompt", "请提供图片描述"))
     try:
         selected_model = _desktop_image_model() or str(args.get("model") or "").strip() or None
     except RuntimeError as exc:
-        return tool_error(f"图片生成失败: {exc}")
-    # hc-969: a leg the server reports switched off or failing is said now, instead of
-    # a request that waits to fail.
-    unavailable = (
-        _gateway.media_unavailable_reason(_gateway.MEDIA_IMAGE, selected_model, _leg_health)
-        if _gateway
-        else None
-    )
-    if unavailable:
-        return tool_error(unavailable)
+        return tool_error(_say("media_failed", "图片生成失败: {reason}", reason=exc))
     payload = {
         "prompt": prompt,
         "aspect_ratio": str(args.get("aspect_ratio") or "square").strip() or "square",
@@ -351,18 +371,34 @@ def _handle_generate_image(args: dict, **_kwargs) -> str:
         "subtitle": str(args.get("subtitle") or "").strip() or None,
         "template": str(args.get("template") or "").strip() or None,
     }
+    # hc-969: a leg the server reports switched off or failing is said now, instead of
+    # a request that waits to fail. hc-984: with or without a model.
+    unavailable = (
+        _gateway.media_unavailable_reason(
+            _gateway.MEDIA_IMAGE,
+            selected_model,
+            _leg_health,
+            provider=payload["provider"],
+            purpose=payload["purpose"],
+            title=payload["title"],
+        )
+        if _gateway
+        else None
+    )
+    if unavailable:
+        return tool_error(unavailable)
     if _use_gateway():
         try:
             response = _gateway.request_json(
                 "POST", "/tools/v1/image/generate", payload, timeout=_IMAGE_REQUEST_TIMEOUT
             )
         except _gateway.GatewayError as exc:
-            return tool_error(f"图片生成失败: {exc}")
+            return tool_error(_say("media_failed", "图片生成失败: {reason}", reason=exc))
         return _localize_gateway_image(_gateway.unwrap(response), prompt)
     try:
         return tool_result(**_request("POST", "/media/image-generate", payload))
     except RuntimeError as exc:
-        return tool_error(f"图片生成失败: {exc}")
+        return tool_error(_say("media_failed", "图片生成失败: {reason}", reason=exc))
 
 
 def register(ctx):
