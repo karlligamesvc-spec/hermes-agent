@@ -17,6 +17,7 @@ import {
 import * as layout from './apex-bundle-layout'
 import * as migrate from './apex-bundle-migrate'
 import { compareSemver } from './apex-runtime-latest'
+import { redactArgv } from './argv-redaction'
 import { buildDesktopBackendEnv } from './backend-env'
 import { RUNTIME_YAML_IMPORT } from './bootstrap-platform'
 import type { DesktopBootstrapEvent } from './bootstrap-types'
@@ -353,8 +354,15 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
     // Windows venv Python has a live redirector parent carrying our activeRoot argument.
     // Exclude only the exact process Node launched for this scan, never other ancestors/workers.
     const holderPids = result.holders.filter((pid: number) => pid !== ownedProbePid && !options.retiringGatewayPids?.includes(pid))
+
     // What each blocker is (name, parent, executable, leading argv), so a busy switch names its holder.
-    const holders: Record<number, HolderDetail | undefined> = Object.fromEntries(holderPids.map((pid: number) => [pid, result.details?.[String(pid)]]))
+    // A holder can be any process on the machine, so its argv keeps its shape but loses secret values.
+    const holders: Record<number, HolderDetail | undefined> = Object.fromEntries(holderPids.map((pid: number) => {
+      const detail: HolderDetail | undefined = result.details?.[String(pid)]
+
+      return [pid, detail && { ...detail, argv: redactArgv(detail.argv) }]
+    }))
+
     const idleProof = { ownedProbePid, workerPid: result.workerPid as number, rawHolderPids: result.holders as number[], holderPids: holderPids as number[], holders }
 
     if (holderPids.length) {

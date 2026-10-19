@@ -153,7 +153,7 @@ nativeTest('the actual idle scan excludes its owned probe but blocks a live borr
       assert.ok(idle.rawHolderPids.includes(idle.ownedProbePid), 'native Windows must reproduce the scanner launcher holder')
     }
 
-    child = spawn(process.execPath, ['-e', 'console.log(JSON.stringify({pid:process.pid})); setInterval(()=>{},1000)'], { cwd: active, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    child = spawn(process.execPath, ['-e', 'console.log(JSON.stringify({pid:process.pid})); setInterval(()=>{},1000)', '--', '--api-key', 'fixture-secret'], { cwd: active, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
     closed = new Promise(resolve => child!.once('close', () => resolve()))
     const worker = child
 
@@ -182,6 +182,8 @@ nativeTest('the actual idle scan excludes its owned probe but blocks a live borr
       const holder = error.idleProof?.holders[ready.pid]
       assert.equal(holder?.ppid, process.pid, 'the busy proof names each blocker and its parent')
       assert.deepEqual(holder?.argv.slice(1, 2), ['-e'])
+      assert.deepEqual(holder?.argv.slice(3), ['--', '--api-key', '[REDACTED]'], 'a secret in a holder argv never reaches the busy proof')
+      assert.ok(!JSON.stringify(error.idleProof).includes('fixture-secret'))
 
       return true
     })
