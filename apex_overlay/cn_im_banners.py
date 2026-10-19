@@ -139,6 +139,11 @@ def _is_banner_headline(line: str) -> bool:
     return bool(label.strip())
 
 
+def _whole_lines(source: str) -> re.Pattern[str]:
+    """``source`` matching whole lines only, blanks around it included."""
+    return re.compile(rf"^[ \t]*{source}[ \t]*$", re.MULTILINE)
+
+
 @lru_cache(maxsize=4)
 def _compile_catalog_patterns(
     notices: tuple[str, ...], lines: tuple[str, ...],
@@ -158,10 +163,7 @@ def _compile_catalog_patterns(
         source = _template_line_regex(template)
         if source and "\n" not in template.strip("\n") and _is_banner_headline(template):
             singles.append(source)
-    def compiled(sources):
-        return tuple(re.compile(rf"^[ \t]*{source}[ \t]*$", re.MULTILINE) for source in sources)
-
-    return compiled((*blocks, *headlines)), compiled(singles)
+    return tuple(map(_whole_lines, (*blocks, *headlines))), tuple(map(_whole_lines, singles))
 
 
 def _catalog_patterns() -> tuple[tuple[re.Pattern[str], ...], tuple[re.Pattern[str], ...]]:
