@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import type * as React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { HiddenInModelTierMode } from '@/components/model-tier/hidden-in-tier-mode'
 import { PageLoader } from '@/components/page-loader'
 import { ApexPageHeader } from '@/components/ui/apex-page-header'
 import { Button } from '@/components/ui/button'
@@ -44,10 +45,13 @@ import {
   updateCronJob
 } from '@/hermes'
 import { type Locale, type Translations, useI18n } from '@/i18n'
+import { useModelTierCopy } from '@/i18n/model-tier'
 import { AlertTriangle } from '@/lib/icons'
 import { requestModelOptions } from '@/lib/model-options'
+import { modelTierDisplayName } from '@/lib/model-tiers'
 import { asText } from '@/lib/text'
 import { $cronFocusJobId, $cronJobs, invalidateCronJobsRequests, setCronFocusJobId } from '@/store/cron'
+import { useModelTierMode } from '@/store/model-tiers'
 import { notify, notifyError, readableError } from '@/store/notifications'
 import { $profileScope, ALL_PROFILES } from '@/store/profile'
 
@@ -812,7 +816,13 @@ function CronJobDetail({
   const isPaused = state === 'paused'
   const deliver = jobDeliver(job)
   const prompt = jobPrompt(job)
-  const modelOverride = jobModel(job)
+  // hc-960: an APEX account sees a pinned job as its tier, or nothing.
+  const modelTierMode = useModelTierMode()
+  const tierCopy = useModelTierCopy()
+
+  const modelOverride = modelTierMode
+    ? jobModel(job) && modelTierDisplayName(jobModel(job), jobProvider(job))
+    : jobModel(job)
 
   return (
     <PanelDetail>
@@ -843,7 +853,9 @@ function CronJobDetail({
             { label: c.last.replace(/:$/, ''), value: formatTime(job.last_run_at) },
             { label: c.next.replace(/:$/, ''), value: formatTime(job.next_run_at) },
             { label: c.deliverLabel, value: c.deliveryLabels[deliver] ?? deliver },
-            ...(modelOverride ? [{ label: c.modelLabel, value: modelOverride }] : [])
+            ...(modelOverride
+              ? [{ label: modelTierMode ? tierCopy.lineLabel : c.modelLabel, value: modelOverride }]
+              : [])
           ]}
         />
 
@@ -1267,36 +1279,40 @@ function CronEditorDialog({
               </Field>
             </div>
 
+            {/* hc-960: a job runs on its assistant's tier; an APEX account pins
+                no model (an existing pin is kept as saved, not shown). */}
             {!scriptOnlyJob && (
-              <Field htmlFor="cron-model" label={c.modelLabel} optional optionalLabel={c.optional}>
-                <Select onValueChange={setModelChoice} value={modelChoice}>
-                  <SelectTrigger className="h-9 rounded-md" id="cron-model">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={MODEL_DEFAULT_VALUE}>{c.modelDefault}</SelectItem>
-                    {!modelChoiceKnown && (
-                      <SelectItem className="font-mono" value={modelChoice}>
-                        {modelChoice.slice(modelChoice.indexOf(':') + 1)}
-                      </SelectItem>
-                    )}
-                    {modelProviders.map(provider => (
-                      <SelectGroup key={provider.slug}>
-                        <SelectLabel>{provider.name}</SelectLabel>
-                        {(provider.models ?? []).map(model => (
-                          <SelectItem
-                            className="font-mono"
-                            key={`${provider.slug}:${model}`}
-                            value={`${provider.slug}:${model}`}
-                          >
-                            {model}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
+              <HiddenInModelTierMode>
+                <Field htmlFor="cron-model" label={c.modelLabel} optional optionalLabel={c.optional}>
+                  <Select onValueChange={setModelChoice} value={modelChoice}>
+                    <SelectTrigger className="h-9 rounded-md" id="cron-model">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={MODEL_DEFAULT_VALUE}>{c.modelDefault}</SelectItem>
+                      {!modelChoiceKnown && (
+                        <SelectItem className="font-mono" value={modelChoice}>
+                          {modelChoice.slice(modelChoice.indexOf(':') + 1)}
+                        </SelectItem>
+                      )}
+                      {modelProviders.map(provider => (
+                        <SelectGroup key={provider.slug}>
+                          <SelectLabel>{provider.name}</SelectLabel>
+                          {(provider.models ?? []).map(model => (
+                            <SelectItem
+                              className="font-mono"
+                              key={`${provider.slug}:${model}`}
+                              value={`${provider.slug}:${model}`}
+                            >
+                              {model}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </HiddenInModelTierMode>
             )}
 
             {schedulePreset === 'custom' ? (

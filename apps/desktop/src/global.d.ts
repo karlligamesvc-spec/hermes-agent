@@ -1722,6 +1722,12 @@ export interface DesktopManagedStatus {
   model: string
   // UI display label for the model (e.g. deepseek-v4-pro-APEX).
   modelDisplay: string
+  // hc-960: Flash / Pro / Max switch (APEXNODES_MODEL_TIERS or the platform
+  // client-config `desktop_features.model_tiers`). Optional so an older main
+  // process reads as off.
+  modelTiers?: boolean
+  // hc-960: the later Max switch (`desktop_features.model_tier_max`).
+  modelTierMax?: boolean
   // Signed-in user's display name, if the backend/JWT provided one. '' otherwise.
   name: string
   // Signed-in user's plan/tier label (e.g. 'free', 'pro'), if available. ''

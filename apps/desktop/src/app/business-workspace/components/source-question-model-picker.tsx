@@ -15,6 +15,7 @@ import { displayModelName } from '@/lib/model-status-label'
 import { filterApexLlmShelf } from '@/lib/provider-allowlist'
 import { $activeConnectionId } from '@/store/connections'
 import { $gateway } from '@/store/gateway'
+import { $modelTierMode } from '@/store/model-tiers'
 import { $activeGatewayProfile } from '@/store/profile'
 
 import type { SourceQuestionModel } from '../source-question-answer'
@@ -36,6 +37,8 @@ export function SourceQuestionModelPicker({
   const gateway = useStore($gateway)
   const profile = useStore($activeGatewayProfile)
   const connectionId = useStore($activeConnectionId)
+  // hc-960: an APEX account answers on its assistant's tier; no model select.
+  const modelTierMode = useStore($modelTierMode)
   const copy = VIDEO_SOURCE_CHAT_COPY[locale]
 
   const catalog = useQuery({
@@ -46,8 +49,12 @@ export function SourceQuestionModelPicker({
         profile,
         request: gateway ? gateway.request.bind(gateway) : undefined
       }),
-    enabled: !!gateway && !disabled
+    enabled: !!gateway && !disabled && !modelTierMode
   })
+
+  if (modelTierMode) {
+    return null
+  }
 
   const providers = filterApexLlmShelf(catalog.data?.providers ?? [])
 

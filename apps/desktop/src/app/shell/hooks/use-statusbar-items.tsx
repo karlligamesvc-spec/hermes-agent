@@ -34,9 +34,10 @@ import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
 import { resolveVersionStatus } from '@/lib/version-status'
 import { copyFilePath, revealFile } from '@/store/file-actions'
-import { $freeTierStatus, FREE_TIER_MODEL } from '@/store/free-tier'
+import { FREE_TIER_MODEL } from '@/store/free-tier'
 import { openFreeTierSignIn } from '@/store/free-tier-sign-in'
 import { revealFileInTree } from '@/store/layout'
+import { $freeTierStatusForChrome } from '@/store/model-tiers'
 import { $onboardingGate, guidedOnboardingActive } from '@/store/onboarding-gate'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $projectTree, projectNameForCwd } from '@/store/projects'
@@ -139,7 +140,7 @@ export function useStatusbarItems({
 
   // Backend truth for the free-tier chip. Refreshed on the ambient status
   // cadence (use-status-snapshot), never polled from here.
-  const freeTier = useStore($freeTierStatus)
+  const freeTier = useStore($freeTierStatusForChrome)
   // The chip is a standing invitation to sign in. During the guided first
   // launch that invitation lives on the guide's own ready screen; a second
   // one in the statusbar is a distraction from the chat they are in. The

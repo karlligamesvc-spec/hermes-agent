@@ -123,6 +123,33 @@ export async function terminateOwnedSmokeProcess(child, closed) {
   if (!await waitForOwnedClose(closed, 5000)) throw new Error(`Owned smoke process ${child.pid} did not close within 5 seconds`)
 }
 
+/** hc-954: `hermes --tui` resolves the compiled TUI the bundle ships and the bundled Node, with no
+ * build, and that TUI loads there. Without a TTY it prints its notice and exits 0, after its whole
+ * module graph has been evaluated. */
+export async function probeBundledTui(root, manifest, env, log = () => {}) {
+  const win = manifest.os === 'win'
+  const python = path.join(root, 'venv', win ? 'Scripts/python.exe' : 'bin/python')
+  const node = path.join(root, ...manifest.components.node.path.split('/'), ...(win ? ['node.exe'] : ['bin', 'node']))
+  const entry = path.join(root, 'hermes_cli', 'tui_dist', 'entry.js')
+  const resolve = [
+    'import json, pathlib, sys',
+    'from hermes_cli.main_tui_launch import _make_tui_argv',
+    'argv, _ = _make_tui_argv(pathlib.Path(sys.argv[1]) / "ui-tui", False)',
+    'print(json.dumps(argv))',
+  ].join('\n')
+  const options = { cwd: os.tmpdir(), env, windowsHide: true, timeout: 60_000, maxBuffer: 1024 * 1024 }
+  const { stdout } = await execute(python, ['-c', resolve, root], options)
+  const argv = JSON.parse(stdout.trim().split('\n').pop())
+  const same = (a, b) => { try { return fs.realpathSync(a) === fs.realpathSync(b) } catch { return false } }
+  if (argv.length !== 3 || !same(argv[0], node) || argv[1] !== '--expose-gc' || !same(argv[2], entry)) {
+    throw new Error(`hermes --tui did not resolve the bundled TUI on the bundled Node: ${JSON.stringify(argv)}`)
+  }
+  const ran = await execute(argv[0], argv.slice(1), options)
+  if (!ran.stdout.includes('hermes-tui: no TTY')) throw new Error(`The bundled TUI did not load:\n${ran.stdout}${ran.stderr}`)
+  log('tui-ok (hermes_cli/tui_dist on the bundled Node, no build)')
+  return { node: argv[0], entry: argv[2] }
+}
+
 /** Launch only the extracted interpreter's real CLI serve path. No --stop,
  * process-table scans or shared HOME; cleanup targets only this spawned root
  * and, on Windows, the descendants enumerated while that root is still live. */

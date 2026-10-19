@@ -6,14 +6,17 @@ import { useGatewayRequest } from '@/app/gateway/hooks/use-gateway-request'
 import { $pluginRecords } from '@/contrib/plugins-store'
 import { getEnvVars, getHermesConfigSchema } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { useModelTierCopy } from '@/i18n/model-tier'
 import { type IconComponent, Monitor, Package, Palette, Settings2, Wrench } from '@/lib/icons'
 import { $agentPlugins, isDesktopRelevantPlugin, loadAgentPlugins } from '@/store/agent-plugins'
+import { useModelTierMode } from '@/store/model-tiers'
 import { $gatewayState } from '@/store/session'
 import { TRANSLUCENCY_SUPPORTED } from '@/store/translucency'
 
 import { useHermesConfigRecord } from '../hooks/use-config-record'
 import { useOnProfileSwitch } from '../hooks/use-on-profile-switch'
 
+import { MODEL_TIER_HIDDEN_CONFIG_KEYS } from './constants'
 import {
   APPEARANCE_SETTING_IDS,
   buildConfigSearchEntries,
@@ -41,6 +44,8 @@ export interface PluginSearchEntry {
 export function useSettingsSearchCatalog(enabled: boolean) {
   const { t } = useI18n()
   const configQuery = useHermesConfigRecord()
+  const tierMode = useModelTierMode()
+  const tierCopy = useModelTierCopy()
 
   const schemaQuery = useQuery({
     queryKey: ['hermes-config-schema'],
@@ -111,11 +116,17 @@ export function useSettingsSearchCatalog(enabled: boolean) {
   const configEntries =
     configQuery.isFetching || schemaQuery.isFetching || configQuery.isError || schemaQuery.isError
       ? []
-      : buildConfigSearchEntries(schemaQuery.data?.fields, configQuery.data, {
-          fieldDescriptions: t.settings.fieldDescriptions,
-          fieldLabels: t.settings.fieldLabels,
-          sections: t.settings.sections
-        })
+      : buildConfigSearchEntries(
+          schemaQuery.data?.fields,
+          configQuery.data,
+          {
+            fieldDescriptions: t.settings.fieldDescriptions,
+            fieldLabels: t.settings.fieldLabels,
+            sections: tierMode ? { ...t.settings.sections, model: tierCopy.navLabel } : t.settings.sections
+          },
+          undefined,
+          tierMode ? MODEL_TIER_HIDDEN_CONFIG_KEYS : undefined
+        )
 
   const appearanceContext = t.settings.sections.appearance
   const appearance = t.settings.appearance

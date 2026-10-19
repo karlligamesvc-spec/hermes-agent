@@ -1,4 +1,5 @@
 import { translateNow } from '@/i18n'
+import { skillDisplayName } from '@/lib/skill-display-name'
 import { firstStringField } from '@/lib/text'
 import { extractToolErrorMessage } from '@/lib/tool-result-summary'
 
@@ -31,7 +32,7 @@ export function skillActivityTitle(part: SkillCall, live = true): string | undef
   const missing = !pending && part.result === undefined
   const file = firstStringField(args, ['file_path'])
   const name = firstStringField(args, ['name'])
-  const target = [name, file].filter(Boolean).join(' → ')
+  const target = translateNow('assistant.tool.skillTarget', name ? skillDisplayName(name) : '', file)
 
   const keys =
     part.toolName === 'skills_list'
@@ -43,5 +44,5 @@ export function skillActivityTitle(part: SkillCall, live = true): string | undef
   const key = failed ? keys.failed : missing ? 'unavailable' : pending ? keys.pending : keys.done
   const label = translateNow(`assistant.tool.skillActivity.${key}`)
 
-  return target ? `${label}: ${target}` : label
+  return target ? translateNow('assistant.tool.skillTitle', label, target) : label
 }

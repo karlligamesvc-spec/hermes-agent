@@ -27,6 +27,7 @@ import { AGENT_MESSAGE_RE } from '@/components/assistant-ui/thread/user-message'
 import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button'
 import { formatElapsed } from '@/components/chat/activity-timer'
 import { PreviewAttachment } from '@/components/chat/preview-attachment'
+import { RetryStrongerButton } from '@/components/model-tier/retry-stronger'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { CopyButton } from '@/components/ui/copy-button'
@@ -701,6 +702,9 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
           ⏱ {formatElapsed(durationS)}
         </span>
       )}
+      {/* hc-960: always visible under the latest answer (not hover-gated
+          like the icons beside it) — it is the one tier control in a chat. */}
+      <RetryStrongerButton />
       <ActionBarPrimitive.Root
         className={
           // NOTE: intentionally NOT `hideWhenRunning`. That prop unmounts the

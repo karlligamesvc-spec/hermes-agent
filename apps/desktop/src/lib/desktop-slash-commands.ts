@@ -1,4 +1,5 @@
 import { peekCachedSlashCompletion } from '@/lib/slash-completion-cache'
+import { $modelTierMode, MODEL_TIER_BLOCKED_SLASH_COMMANDS } from '@/store/model-tiers'
 
 import desktopSlashRegistry from './desktop-slash-registry.json'
 
@@ -530,6 +531,12 @@ export function isDesktopSlashSuggestion(command: string): boolean {
 
   // Aliases stay hidden so the popover isn't cluttered with duplicates.
   if (isAliasCommand(normalized)) {
+    return false
+  }
+
+  // hc-960: an APEX account picks no model, so `/model` / `/moa` are not
+  // offered (typing one answers with where the tier lives — slash.ts).
+  if ($modelTierMode.get() && MODEL_TIER_BLOCKED_SLASH_COMMANDS.has(canonicalDesktopSlashCommand(normalized))) {
     return false
   }
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { useViewedInterval } from '@/hooks/use-viewed-interval'
+import { translateNow } from '@/i18n'
 
 // Module-level registry so timers survive component unmount/remount (e.g.
 // when a tool row scrolls out and back). Keyed by caller-supplied timerKey;
@@ -30,7 +31,7 @@ function startedAt(key?: string): number {
 
 export function formatElapsed(seconds: number): string {
   if (seconds < 60) {
-    return `${seconds}s`
+    return translateNow('assistant.tool.formatDuration', String(seconds), 's')
   }
 
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`

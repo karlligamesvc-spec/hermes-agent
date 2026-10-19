@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { saveHermesConfig } from '@/api/config'
 
@@ -25,7 +25,6 @@ describe('APEX generation model picker', () => {
     expect(IMAGE_GENERATION_MODELS.map(model => model.id)).toEqual([
       'qwen-image-3.0-pro',
       'gemini-2.5-flash-image',
-      'agnes-image-2.5-flash',
       'gpt-image-2.5-flare',
       'gpt-image-2.5-sunburst'
     ])
@@ -46,7 +45,6 @@ describe('APEX generation model picker', () => {
     expect(models.map(model => model.icon)).toEqual([
       'qwen',
       'gemini',
-      'agnes',
       'gpt-flare',
       'gpt-sunburst',
       'seedance-2.5',
@@ -82,7 +80,7 @@ describe('APEX generation model picker', () => {
 
   it('keeps the prior model when the runtime rejects the update', async () => {
     vi.mocked(saveHermesConfig).mockResolvedValueOnce({ ok: false })
-    await expect(saveImageGenerationModel('agnes-image-2.5-flash')).rejects.toThrow()
+    await expect(saveImageGenerationModel('qwen-image-3.0-pro')).rejects.toThrow()
     expect(selectedGenerationModel('image').id).toBe('gpt-image-2.5-flare')
   })
 
@@ -93,6 +91,37 @@ describe('APEX generation model picker', () => {
   })
 })
 
+describe('retired image models (hc-957)', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    vi.clearAllMocks()
+  })
+
+  // clearAllMocks keeps queued *Once results; never let one leak into later suites.
+  afterEach(() => {
+    vi.mocked(saveHermesConfig).mockReset()
+  })
+
+  it('no longer offers Agnes Image 2.5 and refuses it before writing configuration', async () => {
+    expect(IMAGE_GENERATION_MODELS.map(model => model.label)).not.toContain('Agnes Image 2.5')
+    await expect(saveImageGenerationModel('agnes-image-2.5-flash')).rejects.toThrow()
+    expect(saveHermesConfig).not.toHaveBeenCalled()
+  })
+
+  it('moves a saved Agnes selection to GPT Image 2.5 Flare in the picker and the runtime', async () => {
+    window.localStorage.setItem('apex-generation-image-model-v1', 'agnes-image-2.5-flash')
+    vi.mocked(saveHermesConfig).mockResolvedValueOnce({ ok: true })
+
+    expect(selectedGenerationModel('image').id).toBe('gpt-image-2.5-flare')
+    // The composer's start-up migration saves previouslySelectedImageModel() to the runtime.
+    const migrated = previouslySelectedImageModel()
+    expect(migrated?.id).toBe('gpt-image-2.5-flare')
+    await saveImageGenerationModel(migrated?.id ?? '')
+
+    expect(saveHermesConfig).toHaveBeenCalledWith({ apex: { generation_image_model: 'gpt-image-2.5-flare' } })
+    expect(window.localStorage.getItem('apex-generation-image-model-v1')).toBe('gpt-image-2.5-flare')
+  })
+})
 
 describe('video model runtime binding', () => {
   beforeEach(() => {

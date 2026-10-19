@@ -25,6 +25,7 @@ import { getLocalCatalog, getLocalModelsStatus } from '@/hermes'
 import type { Translations } from '@/i18n/types'
 import { LOCAL_SETUP_TIP_ID, localSetupDue, localSetupEligible } from '@/lib/tips/local-cta'
 import { $localModelsEnabled } from '@/store/local-models-flag'
+import { $modelTierMode } from '@/store/model-tiers'
 import { $connection } from '@/store/session'
 import { $retiredTips, $tipShownAt, dismissTip, showTip } from '@/store/tips'
 
@@ -51,6 +52,12 @@ export function offerLocalSetupTip(copy: Translations['tips'], openLocalModels: 
   // no Local Models pane for the button to open, so the campaign never runs
   // (and never spends a status/catalog read).
   if (!$localModelsEnabled.get()) {
+    return false
+  }
+
+  // hc-960: the bubble anchors to the model pill and its action makes a
+  // local model the default — an APEX account has neither.
+  if ($modelTierMode.get()) {
     return false
   }
 

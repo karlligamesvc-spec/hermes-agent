@@ -82,6 +82,7 @@ disarm into a **loud CI failure**, the prerequisite for trusting monkey-patch.
 | `cn_mirror_env` | Route runtime dependency downloads through China mirrors when configured (hc-476). |
 | `im_passthrough` | Route `/cc` and `/codex` into direct coding-agent sessions (hc-539). |
 | `region` | Provide the shared region-policy helpers used by the China-specific seams. |
+| `packaged_engine` | An engine installed by APEX Desktop never builds a frontend, and `hermes --tui` runs its shipped TUI on the bundled Node (hc-954). Hooked in place from `source_build.py` and `main_tui_launch.py`: plugin discovery runs too late on those paths. |
 
 `plugins/apex-overlay/__init__.py` is the authoritative registration order.
 Every behavioral seam has a matching test under `tests/apex_overlay/` that

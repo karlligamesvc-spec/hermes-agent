@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils'
 import { upsertDesktopActionTask } from '@/store/activity'
 import { $desktopUpdateProgress, applyDesktopUpdates, checkDesktopUpdates } from '@/store/desktop-update'
 import { $pinnedSessionIds, pinSession, unpinSession } from '@/store/layout'
+import { useModelTierMode } from '@/store/model-tiers'
 import { notify } from '@/store/notifications'
 import { $runtimeUpdateCheck } from '@/store/runtime-update'
 import { $sessions, sessionPinId } from '@/store/session'
@@ -649,6 +650,9 @@ interface UsagePanelProps {
 function UsagePanel({ error, loading, onRefresh, period, usage }: UsagePanelProps) {
   const { t } = useI18n()
   const cc = t.commandCenter
+  // hc-960: "Top models" names models; an APEX account sees none, and a
+  // historical id has no honest tier to show instead.
+  const modelTierMode = useModelTierMode()
   const daily = useMemo(() => usage?.daily ?? [], [usage])
   const totals = usage?.totals
   const byModel = usage?.by_model ?? []
@@ -751,15 +755,17 @@ function UsagePanel({ error, loading, onRefresh, period, usage }: UsagePanelProp
       </section>
 
       <div className="grid min-h-0 gap-x-8 gap-y-5 pt-1 sm:grid-cols-2">
-        <UsageList
-          emptyLabel={cc.noModelUsage}
-          rows={byModel.slice(0, 6).map(entry => ({
-            key: entry.model,
-            label: entry.model,
-            value: `${compactNumber((entry.input_tokens || 0) + (entry.output_tokens || 0))}`
-          }))}
-          title={cc.topModels}
-        />
+        {modelTierMode ? null : (
+          <UsageList
+            emptyLabel={cc.noModelUsage}
+            rows={byModel.slice(0, 6).map(entry => ({
+              key: entry.model,
+              label: entry.model,
+              value: `${compactNumber((entry.input_tokens || 0) + (entry.output_tokens || 0))}`
+            }))}
+            title={cc.topModels}
+          />
+        )}
         <UsageList
           emptyLabel={cc.noSkillActivity}
           rows={topSkills.slice(0, 6).map(entry => ({

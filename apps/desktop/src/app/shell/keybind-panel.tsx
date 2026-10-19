@@ -28,6 +28,7 @@ import {
   resetAllBindings,
   resetBinding
 } from '@/store/keybinds'
+import { MODEL_TIER_HIDDEN_KEYBIND_ACTIONS, useModelTierMode } from '@/store/model-tiers'
 
 // The full hotkey map. Quiet popover, click a row's chip to rebind.
 export function KeybindPanel() {
@@ -36,6 +37,8 @@ export function KeybindPanel() {
   const bindings = useStore($bindings)
   const k = t.keybinds
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
+  // hc-960: the model-picker chord is inert on an APEX account, so unlisted.
+  const modelTierMode = useModelTierMode()
 
   const openCombo = bindings[KEYBIND_PANEL_ACTION]?.[0]
 
@@ -75,7 +78,10 @@ export function KeybindPanel() {
           <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
             {KEYBIND_CATEGORIES.map(category => {
               const actions = KEYBIND_ACTIONS.filter(
-                action => action.category === category && action.id !== KEYBIND_PANEL_ACTION
+                action =>
+                  action.category === category &&
+                  action.id !== KEYBIND_PANEL_ACTION &&
+                  !(modelTierMode && MODEL_TIER_HIDDEN_KEYBIND_ACTIONS.has(action.id))
               )
 
               const readonly = KEYBIND_READONLY.filter(shortcut => shortcut.category === category)

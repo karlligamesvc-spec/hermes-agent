@@ -10,8 +10,10 @@ import { FadeText } from '@/components/ui/fade-text'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { type Translations, useI18n } from '@/i18n'
 import { AlertCircle, CheckCircle2 } from '@/lib/icons'
+import { modelTierDisplayName } from '@/lib/model-tiers'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
+import { useModelTierMode } from '@/store/model-tiers'
 import {
   $subagentsBySession,
   allSubagents,
@@ -322,6 +324,8 @@ function StreamLine({
 
 export function SubagentRow({ node, depth = 0, nowMs }: { node: SubagentNode; depth?: number; nowMs: number }) {
   const { t } = useI18n()
+  // hc-960: a subagent's model reads as its tier on an APEX account.
+  const modelTierMode = useModelTierMode()
   const running = node.status === 'running' || node.status === 'queued'
   const elapsed = useElapsedSeconds(running, `subagent:${node.id}`, node.startedAt)
 
@@ -341,7 +345,7 @@ export function SubagentRow({ node, depth = 0, nowMs }: { node: SubagentNode; de
   const fileLines = [...node.filesWritten.map(p => `+ ${p}`), ...node.filesRead.map(p => `· ${p}`)]
 
   const subtitle = [
-    node.model,
+    node.model && modelTierMode ? modelTierDisplayName(node.model) : node.model,
     fmtDuration(durationSeconds, t.agents),
     node.toolCount ? t.agents.toolsCount(node.toolCount) : '',
     fmtTokens((node.inputTokens ?? 0) + (node.outputTokens ?? 0), t.agents),

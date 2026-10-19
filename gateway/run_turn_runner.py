@@ -1375,7 +1375,7 @@ class TurnRunner:
         """One card: register, send, wait, then retire it (no answer) or re-arm (answer).
         Returns ``(response, answered)``; the caller decides what "no answer" means."""
         from gateway.run_turn_runner_clarify_delivery import (
-            UNDELIVERED_NO_SURFACE, _clarify_send_then_wait, text_fallback_coro)
+            UNDELIVERED_NO_SURFACE, _clarify_send_then_wait, shown_choices, text_fallback_coro)
         from tools import clarify_gateway as clarify_mod
         import uuid
         ctx = self._ctx
@@ -1387,7 +1387,7 @@ class TurnRunner:
         clarify_id = uuid.uuid4().hex[:10]
         choices = list(choices) if choices else None
         send_kwargs = dict(
-            chat_id=ctx._status_chat_id, question=question, choices=choices, clarify_id=clarify_id,
+            chat_id=ctx._status_chat_id, question=question, choices=shown_choices(choices), clarify_id=clarify_id,
             session_key=session_key, metadata=ctx._status_thread_metadata,
         )
 

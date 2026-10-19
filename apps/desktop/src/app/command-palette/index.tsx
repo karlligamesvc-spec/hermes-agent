@@ -21,6 +21,7 @@ import { KbdCombo } from '@/components/ui/kbd'
 import { getHermesConfigRecord, listAllProfileSessions } from '@/hermes'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useI18n } from '@/i18n'
+import { useModelTierCopy } from '@/i18n/model-tier'
 import { sessionTitle } from '@/lib/chat-runtime'
 import {
   Activity,
@@ -70,6 +71,7 @@ import {
 } from '@/store/command-palette'
 import { $bindings, bindingsFor } from '@/store/keybinds'
 import { $dismissedAutoProjectIds, filterVisibleProjects } from '@/store/layout'
+import { useModelTierMode } from '@/store/model-tiers'
 import { openPetGenerate } from '@/store/pet-generate'
 import { $projectTree, goToProject, openFolderAsProject, requestStartWorkSession } from '@/store/projects'
 import { runGatewayRestart } from '@/store/system-actions'
@@ -92,7 +94,7 @@ import {
   SKILLS_ROUTE,
   STARMAP_ROUTE
 } from '../routes'
-import { isConsumerHiddenSection, SECTIONS } from '../settings/constants'
+import { isConsumerHiddenSection, MODEL_TIER_HIDDEN_CONFIG_KEYS, SECTIONS } from '../settings/constants'
 import { configFieldLabel, type SettingsSearchEntry } from "../settings/settings-search"
 import { settingsSearchTargetQuery } from "../settings/settings-search"
 import { useSettingsSearchCatalog } from "../settings/use-settings-search"
@@ -677,9 +679,16 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
     setPage(prev => (prev ? (PAGE_PARENTS[prev] ?? null) : null))
   }, [])
 
+  // hc-960: an APEX account's model page is 档位, its provider pages fold
+  // into 档位 › 高级, and model-picking fields stay out of ⌘K like they stay out
+  // of the settings nav.
+  const tierMode = useModelTierMode()
+  const tierCopy = useModelTierCopy()
+
   const settingsSectionLabel = useCallback(
-    (section: (typeof SECTIONS)[number]) => t.settings.sections[section.id] ?? section.label,
-    [t.settings.sections]
+    (section: (typeof SECTIONS)[number]) =>
+      tierMode && section.id === 'model' ? tierCopy.navLabel : (t.settings.sections[section.id] ?? section.label),
+    [t.settings.sections, tierCopy, tierMode]
   )
 
   // Running a keepOpen row (a toggle) changes state the rows themselves report,
@@ -942,13 +951,15 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
             label: settingsSectionLabel(section),
             run: go(settingsTab(`config:${section.id}`))
           })),
-          ...VISIBLE_NON_CONFIG_SETTINGS.map(entry => ({
-            icon: entry.icon,
-            id: `set-${entry.tab}`,
-            keywords: ['settings', ...(entry.keywords ?? [])],
-            label: t.settings.nav[entry.labelKey],
-            run: go(settingsTab(entry.tab))
-          }))
+          ...VISIBLE_NON_CONFIG_SETTINGS.filter(entry => !(tierMode && entry.tab.startsWith('providers'))).map(
+            entry => ({
+              icon: entry.icon,
+              id: `set-${entry.tab}`,
+              keywords: ['settings', ...(entry.keywords ?? [])],
+              label: t.settings.nav[entry.labelKey],
+              run: go(settingsTab(entry.tab))
+            })
+          )
         ]
       }
     ]
@@ -963,7 +974,8 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
     projectTree,
     selectTick,
     settingsSectionLabel,
-    t
+    t,
+    tierMode
   ])
 
   // The long, granular lists (settings fields, API keys, MCP servers, archived
@@ -1138,7 +1150,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
     }
 
     const fieldItems = VISIBLE_SECTIONS.flatMap(section =>
-      section.keys.map(key => ({
+      section.keys.filter(key => !(tierMode && MODEL_TIER_HIDDEN_CONFIG_KEYS.has(key))).map(key => ({
         icon: section.icon,
         id: `field-${key}`,
         keywords: ['settings', key, section.label, settingsSectionLabel(section)],
@@ -1225,8 +1237,10 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
     setTheme,
     settingsCatalog,
     settingsEntryItem,
+    settingsSectionLabel,
     t,
-    themeName
+    themeName,
+    tierMode
   ])
 
   // Branch rows rank below BOTH the fixed groups and the typed-only lists: they

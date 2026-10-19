@@ -33,7 +33,6 @@ import {
   type ClarifyRequest,
   clearClarifyRequest,
   normalizeChoices,
-  RECOMMENDED_LABEL,
   sessionClarifyRequest,
   warnDroppedChoices
 } from '@/store/clarify'
@@ -165,9 +164,11 @@ export function readClarifyResult(result: unknown): ClarifyResult {
 
 const letterFor = (index: number): string => String.fromCharCode(65 + index)
 
-// The backend tags the agent's preferred option (`mark_recommended`); the card
-// renders the label in tertiary text so the option itself still reads first.
+// The backend tags the agent's preferred option (`mark_recommended`) with an
+// English wire marker; the card shows the active locale's word for it, in
+// tertiary text so the option itself still reads first.
 function ChoiceLabel({ choice }: { choice: string }) {
+  const { t } = useI18n()
   const bare = bareChoice(choice)
 
   if (bare === choice) {
@@ -176,7 +177,7 @@ function ChoiceLabel({ choice }: { choice: string }) {
 
   return (
     <>
-      {bare} <span className="text-(--ui-text-tertiary)">{RECOMMENDED_LABEL}</span>
+      {bare} <span className="text-(--ui-text-tertiary)">{t.assistant.clarify.recommended}</span>
     </>
   )
 }
@@ -325,7 +326,7 @@ function ClarifyToolSingleSettled({ args, result }: ToolCallMessagePartProps) {
   // the options were unrecoverable.
   const followUp = useCallback(
     (choice: string) => {
-      requestComposerInsert(copy.lateAnswer(question, choice), { mode: 'block' })
+      requestComposerInsert(copy.lateAnswer(question, bareChoice(choice)), { mode: 'block' })
       requestComposerFocus()
       triggerHaptic('selection')
     },

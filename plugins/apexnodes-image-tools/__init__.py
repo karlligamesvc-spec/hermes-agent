@@ -110,6 +110,13 @@ def _check() -> bool:
     return _legacy_check()
 
 
+# hc-957 (Kael, 2026-10-19): Agnes Image 2.5 left the Desktop picker and the model
+# catalog, and a selection saved before that moves to GPT Image 2.5 Flare. The
+# composer rewrites the saved value on its next start; until it does, this mapping
+# keeps that config working instead of failing the "not an available model" check.
+RETIRED_IMAGE_MODELS = {"agnes-image-2.5-flash": "gpt-image-2.5-flare"}
+
+
 def _desktop_image_model() -> str | None:
     """Read the Desktop picker preference at call time, including live changes."""
     from hermes_cli.config import (
@@ -134,6 +141,8 @@ def _desktop_image_model() -> str | None:
         if "generation_image_model" not in apex:
             return None
         model = apex["generation_image_model"]
+        if isinstance(model, str):
+            model = RETIRED_IMAGE_MODELS.get(model, model)
         allowed = GENERATE_IMAGE_SCHEMA["parameters"]["properties"]["model"]["enum"]
         if not isinstance(model, str) or model not in allowed:
             raise RuntimeError("当前图片模型设置不是可用的模型")
@@ -188,13 +197,12 @@ GENERATE_IMAGE_SCHEMA = {
                 "enum": [
                     "qwen-image-3.0-pro",
                     "gemini-2.5-flash-image",
-                    "agnes-image-2.5-flash",
                     "gpt-image-2.5-flare",
                     "gpt-image-2.5-sunburst",
                 ],
                 "description": (
                     "用户在 APEX 中选择的图片模型。名称依次为 Qwen Image 3.0 Pro、"
-                    "Gemini Image 2.5、Agnes Image 2.5、GPT Image 2.5 Flare、"
+                    "Gemini Image 2.5、GPT Image 2.5 Flare、"
                     "GPT Image 2.5 Sunburst。Desktop 当前选择的图片模型始终优先。"
                 ),
             },

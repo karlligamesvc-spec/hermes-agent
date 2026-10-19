@@ -12,6 +12,7 @@ import { useI18n } from '@/i18n'
 import { ChevronDown } from '@/lib/icons'
 import { reasoningEffortLabel } from '@/lib/reasoning-effort'
 import { cn } from '@/lib/utils'
+import { $modelTierMode } from '@/store/model-tiers'
 import { $defaultReasoningEffort } from '@/store/session'
 
 import type { ChatBarState } from './types'
@@ -36,8 +37,10 @@ export function ReasoningPill({ disabled, model }: { disabled: boolean; model: C
   const reasoningEffort = useStore(view.$reasoningEffort)
   const defaultEffort = useStore($defaultReasoningEffort)
   const [open, setOpen] = useState(false)
+  // hc-960: an APEX account picks no reasoning level; its tier decides.
+  const modelTierMode = useStore($modelTierMode)
 
-  if (!model.reasoningMenuContent || model.supportsReasoning === false) {
+  if (modelTierMode || !model.reasoningMenuContent || model.supportsReasoning === false) {
     return null
   }
 

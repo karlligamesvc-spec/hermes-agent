@@ -6,6 +6,7 @@ import { codiconIcon } from '@/components/ui/codicon'
 import { Tip } from '@/components/ui/tooltip'
 import { getHermesConfigDefaults, getHermesConfigRecord, saveHermesConfig } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { useModelTierCopy } from '@/i18n/model-tier'
 import { triggerHaptic } from '@/lib/haptics'
 import {
   Archive,
@@ -26,6 +27,7 @@ import {
 import { confirm } from '@/store/confirm'
 import { $activeConnectionId } from '@/store/connections'
 import { $localModelsEnabled } from '@/store/local-models-flag'
+import { useModelTierMode } from '@/store/model-tiers'
 import { notifyError } from '@/store/notifications'
 import { $settingsScopeProfile } from '@/store/settings-scope'
 
@@ -68,6 +70,11 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
 export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: SettingsPageProps) {
   const scopeProfile = useStore($settingsScopeProfile)
   const activeConnectionId = useStore($activeConnectionId)
+  // hc-960: an APEX account gets 档位 for the model page, and the provider
+  // group (accounts, API keys, custom endpoints, local models) folds into 档位 ›
+  // 高级 — still reachable from there, just not a top-level door.
+  const tierMode = useModelTierMode()
+  const tierCopy = useModelTierCopy()
   const { t } = useI18n()
   const navigate = useNavigate()
   const { hash, pathname, search } = useLocation()
@@ -175,7 +182,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
           active: activeView === view,
           icon: s.icon,
           id: view,
-          label: t.settings.sections[s.id] ?? s.label,
+          label: tierMode && s.id === 'model' ? tierCopy.navLabel : (t.settings.sections[s.id] ?? s.label),
           onSelect: () => setActiveView(view)
         }
 
@@ -300,8 +307,8 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         label: t.settings.nav.about,
         onSelect: () => setActiveView('about')
       }
-    ],
-    [activeView, keysView, providerView, t, setActiveView, openProviderView, openKeysView]
+    ].filter(group => !(tierMode && group.id === 'providers')),
+    [activeView, keysView, providerView, t, tierCopy, tierMode, setActiveView, openProviderView, openKeysView]
   )
 
   const navFooter = (
