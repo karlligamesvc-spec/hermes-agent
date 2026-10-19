@@ -16,6 +16,8 @@ Until hc-948 the sentence above held only for the hermes-cloud copy of the video
 
 Smoke from the repo root: `scripts/run_tests.sh tests/agent/test_apex_video_model_preference.py tests/agent/test_apex_image_model_preference.py`. Four reverse injections turn it red: ignoring the picker, letting the LLM argument win, silently falling back on a broken picker, and accepting an unknown model. It runs on the next paired Desktop release. It does not show what the vendor renders.
 
+Kael then took Agnes out of every candidate list (2026-10-18), so the `provider` enum offers only `chinaapi`. `tests/contracts/plugin_tools_contract.json` moves to contract_version 9 in both repos, with the same pinned hash. The ApexNodes server refuses an explicit `provider=agnes` with 400 `video_provider_retired` before any spend. That also covers copies of this plugin that still list it, such as Desktop 0.17.58. Smoke: `scripts/run_tests.sh tests/plugins/test_apexnodes_plugin_contract.py`. Putting `agnes` back into the enum turns it red.
+
 ## Source conversation model and input border
 
 The single video conversation composer has a visible theme border and focus highlight. Its footer offers the same configured, product-filtered text model catalog as chat, plus Default (Agent settings). This chooses the model that answers source questions, independently of the image/video generation settings. The choice is local to the current analysis view and resets when its account, connection, profile or source ownership scope changes. Picking a row makes no model call and does not change the main chat model. During an answer the selector is disabled.

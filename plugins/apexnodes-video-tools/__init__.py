@@ -160,7 +160,9 @@ GENERATE_VIDEO_SCHEMA = {
             },
             "provider": {
                 "type": "string",
-                "enum": ["agnes", "chinaapi"],
+                # hc-948: Agnes left every candidate list (Kael, 2026-10-18); the
+                # ApexNodes server also refuses an explicit agnes from older copies.
+                "enum": ["chinaapi"],
                 "description": (
                     "Optional legacy rendering route. Leave empty when model is selected. "
                     "It may be unavailable, in which case the tool says so; do not silently fall back."
