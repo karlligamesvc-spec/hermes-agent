@@ -65,12 +65,18 @@ COVERAGE BOUNDARY (mirrors the original patch's honesty)
 ========================================================
 Covered: the busy-ack family (interrupt/queue/steer/subagent/gateway-busy incl.
 the "(iteration i/m, N min elapsed, running: tool)" detail), the first-time
-busy-input onboarding tip (appended into the busy-ack ``message``), the
-no-home-channel notice, and the "Agent is running — …" mid-run command
-rejections.
+busy-input onboarding tips (appended into the busy-ack ``message``; read from
+the catalog, see ``_HC228_ZH_CATALOG_KEYS``), the no-home-channel notice, and
+the "Agent is running — …" mid-run command rejections.
 NOT covered (follow-up, lower blast radius): other slash-command usage replies
 (e.g. /help, /usage, /insights output that are not routed through _handle_message
-as a plain string return), and the long-running "⏳ Working — N min" heartbeat.
+as a plain string return), the long-running "⏳ Working — N min" heartbeat, and
+the first-time tool-progress tip (a progress bubble no choke point sees).
+Busy-ack variants added upstream later (redirect, steering into subagents,
+compressing) and the /loop rejection are not in the table either. Those, the
+heartbeat and the tool-progress tip come from the catalog, so under
+display.language zh they are already Chinese; for them this table only matters
+when the gateway runs in English.
 
 Idempotent (``_MARK`` sentinels + module ``_APPLIED``) and fail-safe: the
 localizer's own try/except returns the original text on any error, and every
@@ -112,50 +118,24 @@ _HC228_ZH_PLATFORMS = frozenset(
     {"wecom", "weixin", "dingtalk", "wecom_callback", "qqbot"}
 )
 
+# The first-time busy-input tips (agent/onboarding.py) render from these catalog
+# keys in the active language, so under display.language zh they already arrive
+# in Chinese. Under en they arrive in English and are mapped to their zh
+# rendering, like the busy-ack around them. They are read from the catalog, not
+# copied here, so a reworded tip cannot fall out of step with this table.
+# gateway.onboarding.tool_progress is not listed: it goes out as a progress
+# bubble (adapter.send / edit_message), which none of the choke points sees.
+_HC228_ZH_CATALOG_KEYS = (
+    "gateway.onboarding.busy_queue",
+    "gateway.onboarding.busy_steer",
+    "gateway.onboarding.busy_redirect",
+    "gateway.onboarding.busy_interrupt",
+)
+
 # Ordered longest/most-specific first so partial fragments never clobber a
 # fuller match. Every English fragment of the covered message family is listed,
 # so a gated platform never sees a partial-English message.
 _HC228_ZH_LITERALS = [
-    # --- first-time busy-input onboarding tips (full sentences) ---
-    (
-        "\U0001f4a1 First-time tip — I queued your message instead of "
-        "interrupting. Send `/busy interrupt` to make new messages stop the "
-        "current task immediately, or `/busy status` to check. This notice "
-        "won't appear again.",
-        "\U0001f4a1 首次提示——我把你的"
-        "消息排队了，没有打断当前"
-        "任务。发送 `/busy interrupt` 可让新消"
-        "息立即停止当前任务，或发"
-        "送 `/busy status` 查看状态。此提示"
-        "只显示一次。",
-    ),
-    (
-        "\U0001f4a1 First-time tip — I steered your message into the "
-        "current run; it will arrive after the next tool call instead of "
-        "interrupting. Send `/busy interrupt` or `/busy queue` to change this, "
-        "or `/busy status` to check. This notice won't appear again.",
-        "\U0001f4a1 首次提示——我把你的"
-        "消息插入了当前运行，它会"
-        "在下一次工具调用后到达，"
-        "而不是打断当前任务。发送 "
-        "`/busy interrupt` 或 `/busy queue` 可更改，或"
-        "发送 `/busy status` 查看状态。此提"
-        "示只显示一次。",
-    ),
-    (
-        "\U0001f4a1 First-time tip — I just interrupted my current task to "
-        "answer you. Send `/busy queue` to queue follow-ups for after the "
-        "current task instead, `/busy steer` to inject them mid-run without "
-        "interrupting, or `/busy status` to check. This notice won't appear "
-        "again.",
-        "\U0001f4a1 首次提示——我刚刚中"
-        "断当前任务来回答你。发送 "
-        "`/busy queue` 可改为把后续消息排到"
-        "当前任务之后，`/busy steer` 可在运"
-        "行中插入而不打断，或发送 "
-        "`/busy status` 查看状态。此提示只"
-        "显示一次。",
-    ),
     # --- gateway-busy (full strings, both gerunds x both phrasings) ---
     (
         "⏳ Gateway is restarting and is not accepting another turn right now.",
@@ -225,12 +205,6 @@ _HC228_ZH_LITERALS = [
         "Agent is running — wait or /stop first, then change runtime.",
         "AI 助手正在运行——请先等待或发送 /stop，然后再切换运行时。",
     ),
-    (
-        "Agent is running — use /goal status / pause / clear mid-run, or "
-        "/stop before setting a new goal.",
-        "AI 助手正在运行——运行中可用 /goal status / pause / clear，"
-        "或先发送 /stop 再设置新目标。",
-    ),
     ("⏳ Agent is running — ", "⏳ AI 助手正在运行——"),
     (
         " can't run mid-turn. Wait for the current response or `/stop` first.",
@@ -294,6 +268,18 @@ def _platform_config_key(platform) -> str:
         return ""
 
 
+def _catalog_rows():
+    """(en, zh) renderings of ``_HC228_ZH_CATALOG_KEYS``, through the profile's locale overlay and packs."""
+    from agent.i18n import t
+
+    rows = []
+    for key in _HC228_ZH_CATALOG_KEYS:
+        needle, repl = t(key, lang="en"), t(key, lang="zh")
+        if needle and needle != repl:  # an empty needle would splice repl between every character
+            rows.append((needle, repl))
+    return rows
+
+
 def _hc228_localize(platform, text):
     """Chinese-ize gateway control/status text for native CN-IM entries only
     (wecom/weixin/dingtalk/wecom_callback/qqbot). Feishu and international
@@ -310,6 +296,8 @@ def _hc228_localize(platform, text):
         if key not in _HC228_ZH_PLATFORMS:
             return text
         out = text
+        for needle, repl in _catalog_rows():
+            out = out.replace(needle, repl)
         for needle, repl in _HC228_ZH_LITERALS:
             out = out.replace(needle, repl)
         for needle, repl in _HC228_ZH_LITERALS_EXTRA:

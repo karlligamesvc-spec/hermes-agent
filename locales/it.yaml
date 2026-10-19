@@ -737,6 +737,12 @@ gateway:
     unknown_mode: "Modalità sconosciuta `{arg}`. Usa `/busy queue`, `/busy steer` o `/busy interrupt`."
     save_failed: "Impossibile salvare la modalità input quando occupato nella configurazione. Modalità invariata."
     set: "Modalità input quando occupato impostata su **`{mode}`** (salvata).\n_{behavior}_"
+  onboarding:
+    busy_queue: "💡 Suggerimento — Ho messo in coda il tuo messaggio invece di interrompere. Invia `/busy interrupt` per far sì che i nuovi messaggi fermino subito l'attività corrente, oppure `/busy status` per controllare. Questo avviso non comparirà più."
+    busy_steer: "💡 Suggerimento — Ho indirizzato il tuo messaggio nell'esecuzione corrente; arriverà dopo la prossima chiamata a uno strumento, senza interrompere. Invia `/busy interrupt` o `/busy queue` per cambiare, oppure `/busy status` per controllare. Questo avviso non comparirà più."
+    busy_redirect: "💡 Suggerimento — Ho reindirizzato l'esecuzione corrente in base al tuo messaggio. Il lavoro completato resta nel contesto e `/stop` annulla comunque l'attività. Invia `/busy queue` per attendere un turno separato, oppure `/busy status` per controllare. Questo avviso non comparirà più."
+    busy_interrupt: "💡 Suggerimento — Ho appena interrotto l'attività corrente per risponderti. Invia `/busy queue` per mettere invece in coda i messaggi successivi dopo l'attività corrente, `/busy steer` per inserirli durante l'esecuzione senza interrompere, oppure `/busy status` per controllare. Questo avviso non comparirà più."
+    tool_progress: "💡 Suggerimento — Quello strumento ha richiesto un po' di tempo e sto mostrando ogni passaggio. Se i messaggi di avanzamento ti sembrano troppi, invia `/verbose` per cambiare modalità (all → new → off). Questo avviso non comparirà più."
   pause:
     resumed: "▶️ Ripreso — il nuovo lavoro viene di nuovo accettato."
     not_paused: "Hermes non era in pausa."

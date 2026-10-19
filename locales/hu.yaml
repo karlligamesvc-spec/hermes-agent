@@ -747,6 +747,12 @@ gateway:
     unknown_mode: "Ismeretlen mód: `{arg}`. Használd a `/busy queue`, `/busy steer` vagy `/busy interrupt` parancsot."
     save_failed: "A foglalt beviteli módot nem sikerült a konfigurációba menteni. A mód nem változott."
     set: "Foglalt beviteli mód beállítva: **`{mode}`** (mentve).\n_{behavior}_"
+  onboarding:
+    busy_queue: "💡 Tipp — Megszakítás helyett sorba állítottam az üzenetedet. Küldd el a `/busy interrupt` parancsot, hogy az új üzenetek azonnal leállítsák a jelenlegi feladatot, vagy a `/busy status` parancsot az ellenőrzéshez. Ez az értesítés többé nem jelenik meg."
+    busy_steer: "💡 Tipp — Az üzenetedet a futó feladatba irányítottam; megszakítás helyett a következő eszközhívás után ér oda. Küldd el a `/busy interrupt` vagy a `/busy queue` parancsot a módosításhoz, vagy a `/busy status` parancsot az ellenőrzéshez. Ez az értesítés többé nem jelenik meg."
+    busy_redirect: "💡 Tipp — Az üzeneted alapján átirányítottam a futó feladatot. Az elvégzett munka a kontextusban marad, és a `/stop` továbbra is megszakítja a feladatot. Küldd el a `/busy queue` parancsot, ha külön körre szeretnél várni, vagy a `/busy status` parancsot az ellenőrzéshez. Ez az értesítés többé nem jelenik meg."
+    busy_interrupt: "💡 Tipp — Épp megszakítottam a jelenlegi feladatomat, hogy válaszoljak neked. Küldd el a `/busy queue` parancsot, ha a további üzeneteket inkább a jelenlegi feladat utánra állítanád sorba, a `/busy steer` parancsot, ha megszakítás nélkül, futás közben juttatnád be őket, vagy a `/busy status` parancsot az ellenőrzéshez. Ez az értesítés többé nem jelenik meg."
+    tool_progress: "💡 Tipp — Ez az eszköz eltartott egy ideig, ezért minden lépést élőben mutatok. Ha túl soknak érzed a folyamatüzeneteket, küldd el a `/verbose` parancsot a módok közötti váltáshoz (all → new → off). Ez az értesítés többé nem jelenik meg."
   pause:
     resumed: "▶️ Folytatás — újra fogadjuk az új munkát."
     not_paused: "A Hermes nem volt szüneteltetve."

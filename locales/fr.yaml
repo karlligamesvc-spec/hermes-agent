@@ -863,6 +863,12 @@ gateway:
     set: |-
       Mode de saisie quand occupé défini sur **`{mode}`** (enregistré).
       _{behavior}_
+  onboarding:
+    busy_queue: "💡 Astuce — J'ai mis votre message en file au lieu d'interrompre. Envoyez `/busy interrupt` pour que les nouveaux messages arrêtent immédiatement la tâche en cours, ou `/busy status` pour vérifier. Ce message ne s'affichera plus."
+    busy_steer: "💡 Astuce — J'ai orienté votre message vers l'exécution en cours ; il parviendra après le prochain appel d'outil, sans interruption. Envoyez `/busy interrupt` ou `/busy queue` pour changer ce comportement, ou `/busy status` pour vérifier. Ce message ne s'affichera plus."
+    busy_redirect: "💡 Astuce — J'ai redirigé l'exécution en cours à partir de votre message. Le travail déjà fait reste dans le contexte, et `/stop` annule toujours la tâche. Envoyez `/busy queue` pour attendre un tour séparé, ou `/busy status` pour vérifier. Ce message ne s'affichera plus."
+    busy_interrupt: "💡 Astuce — Je viens d'interrompre ma tâche en cours pour vous répondre. Envoyez `/busy queue` pour plutôt mettre les messages suivants en file après la tâche en cours, `/busy steer` pour les injecter pendant l'exécution sans interrompre, ou `/busy status` pour vérifier. Ce message ne s'affichera plus."
+    tool_progress: "💡 Astuce — Cet outil a pris du temps et j'affiche chaque étape. Si les messages de progression vous semblent trop nombreux, envoyez `/verbose` pour changer de mode (all → new → off). Ce message ne s'affichera plus."
   pause:
     resumed: "▶️ Reprise — le nouveau travail est de nouveau accepté."
     not_paused: "Hermes n'était pas en pause."
