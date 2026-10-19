@@ -16,6 +16,7 @@ import {
 } from '@/app/business-workspace/view-model/workflow-starters'
 import { SuggestionPills } from '@/app/chat/composer/suggestion-pills'
 import { I18nProvider, type Locale, setRuntimeI18nLocale, TRANSLATIONS } from '@/i18n'
+import type { StepFacts } from '@/i18n/types-process'
 import { randomIdeaTemplates } from '@/lib/project-idea-templates'
 import { $composerSuggestionsBySession, clearDraftSuggestions, sampleComposerDraft } from '@/store/composer-suggestions'
 import { englishWords, readableText } from '@/test/zh-copy'
@@ -60,8 +61,20 @@ const CALLS: Record<string, unknown[][]> = {
     ['', 'references/launch-playbook.md']
   ],
   'assistant.tool.detail.exitCode': [[1]],
-  'assistant.tool.detail.snapshotStats': [[3, 2, 1]]
+  'assistant.tool.detail.snapshotStats': [[3, 2, 1]],
+  'assistant.tool.process.compactNumber': [[8], [126000], [320000000]]
 }
+
+// hc-973: a step's templates take what it came back with. Each one runs with
+// everything filled in, with an empty result and with nothing but a call
+// count, so no branch can fall back to an English word or an "undefined".
+const STEP_FACTS: StepFacts[] = [
+  { calls: 2, chars: 1820, count: 20, length: '1 分 43 秒', likes: '12.6 万', platform: '抖音', query: '收纳神器' },
+  { calls: 1, empty: true },
+  { calls: 1 }
+]
+
+const STEP_TEMPLATE = /^assistant\.tool\.process\.(steps\.[^.]+|unknownStep)\.(done|source)$/
 
 // Copy behind the suggestion cards and the process area. Each entry is a
 // subtree of the catalog, swept whole.
@@ -103,7 +116,8 @@ function renderedCopy(locale: Locale, path: string): [string, string][] {
   }
 
   if (typeof node === 'function') {
-    const calls = CALLS[path] ?? [['示例', '示例', '示例']]
+    const calls =
+      CALLS[path] ?? (STEP_TEMPLATE.test(path) ? STEP_FACTS.map(facts => [facts]) : [['示例', '示例', '示例']])
 
     return calls.map(args => [path, String((node as (...a: unknown[]) => unknown)(...args))])
   }

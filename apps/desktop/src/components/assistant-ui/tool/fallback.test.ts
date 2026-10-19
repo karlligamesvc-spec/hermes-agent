@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import { isCardTool, isSilentTool } from '@/lib/tool-render-class'
 
-import { splitRunItems, technicalTrace } from './fallback'
+import { splitProcessItems } from '../process/tool-group-slot'
+import { processKind } from '../process/turn-process'
+
+import { technicalTrace } from './fallback'
 
 describe('isCardTool', () => {
   it('keeps what the user has to look at out of a summary', () => {
@@ -31,15 +34,22 @@ describe('isSilentTool', () => {
   })
 })
 
-describe('splitRunItems', () => {
+describe('splitProcessItems', () => {
+  // How the transcript classifies each part of a range: activity folds into
+  // the turn's process block, a card keeps its own surface in place.
+  const kinds = (...names: string[]) =>
+    names.map(name => (name ? processKind({ toolName: name, type: 'tool-call' }) : 'card'))
+
   it('collapses a stretch of activity into one run', () => {
-    expect(splitRunItems(['read_file', 'search_files', 'terminal'])).toEqual([{ end: 2, kind: 'run', start: 0 }])
+    expect(splitProcessItems(kinds('read_file', 'search_files', 'terminal'))).toEqual([
+      { end: 2, kind: 'run', start: 0 }
+    ])
   })
 
   it('keeps a card at the point in the turn where it happened', () => {
-    // Read, edit, read has to stay in that order — a summary, the diff, then a
-    // second summary — rather than sorting the diffs to one end.
-    expect(splitRunItems(['read_file', 'patch', 'read_file', 'terminal'])).toEqual([
+    // Read, edit, read has to stay in that order — the diff stays where it
+    // happened rather than sorting to one end.
+    expect(splitProcessItems(kinds('read_file', 'patch', 'read_file', 'terminal'))).toEqual([
       { end: 0, kind: 'run', start: 0 },
       { index: 1, kind: 'card' },
       { end: 3, kind: 'run', start: 2 }
@@ -47,14 +57,14 @@ describe('splitRunItems', () => {
   })
 
   it('does not let adjacent cards merge into a run', () => {
-    expect(splitRunItems(['patch', 'write_file'])).toEqual([
+    expect(splitProcessItems(kinds('patch', 'write_file'))).toEqual([
       { index: 0, kind: 'card' },
       { index: 1, kind: 'card' }
     ])
   })
 
   it('passes a part that is not a tool call through as its own card', () => {
-    expect(splitRunItems(['read_file', '', 'read_file'])).toEqual([
+    expect(splitProcessItems(kinds('read_file', '', 'read_file'))).toEqual([
       { end: 0, kind: 'run', start: 0 },
       { index: 1, kind: 'card' },
       { end: 2, kind: 'run', start: 2 }
@@ -62,7 +72,7 @@ describe('splitRunItems', () => {
   })
 
   it('has nothing to split when the range is empty', () => {
-    expect(splitRunItems([])).toEqual([])
+    expect(splitProcessItems([])).toEqual([])
   })
 })
 
