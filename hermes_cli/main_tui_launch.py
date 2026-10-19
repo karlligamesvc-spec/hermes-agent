@@ -146,11 +146,19 @@ def _ensure_tui_workspace(tui_dir: Path) -> None:
 
 
 def _tui_node_bin(bin: str) -> str:
-    """Resolve the TUI runtime through PM; an explicit bundled HERMES_NODE wins."""
+    """Resolve the TUI runtime through PM; an explicit bundled HERMES_NODE, then an installed APEX engine's own Node, win."""
     if bin == "node":
         env_node = os.environ.get("HERMES_NODE")
         if env_node and os.path.isfile(env_node) and os.access(env_node, os.X_OK):
             return env_node
+        # hc-954: an installed APEX engine runs its shipped TUI on its own Node; PM never downloads one.
+        try:
+            from apex_overlay.packaged_engine import bundled_node
+        except ImportError:  # a tree without the APEX overlay has no installed engine
+            bundled_node = None
+        engine_node = bundled_node and bundled_node(Path(__file__).resolve().parent.parent)
+        if engine_node:
+            return engine_node
     from pm import ensure
     path = shutil.which(bin, path=ensure(bin).env["PATH"])
     if not path:
@@ -201,9 +209,14 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
     if not tui_dev and not _tui_need_rebuild(tui_dir):
         return [_tui_node_bin("node"), "--expose-gc", str(tui_dir / "dist/entry.js")], tui_dir
 
-    from hermes_cli.source_build import build_source_tui, prepare_launch_dependencies, source_build_env
+    from hermes_cli.source_build import (
+        build_source_tui, packaged_engine_refusal, prepare_launch_dependencies, source_build_env)
 
     project_root = tui_dir.parent
+    refusal = packaged_engine_refusal(project_root)  # hc-954
+    if refusal:
+        print(f"Error: {refusal}", file=sys.stderr)
+        sys.exit(1)
     env = source_build_env()
     prepare_launch_dependencies(project_root, env=env)
     if tui_dev:

@@ -30,6 +30,19 @@ executables. Missing, unlocked, wrong-source or wrong-architecture payloads
 reject packaging. The final synchronized job also compares the embedded engine
 commit and label across both platform workflows.
 
+An installed engine is never a frontend build tree: Desktop keeps the previous one
+for rollback, and reinstalling a version already on disk re-verifies every file
+and rejects a changed tree. (Desktop also starts a verify at every launch, but
+through the engine link the builder's main-module check fails, so that verify
+exits without hashing anything; fixing it is a separate decision.) The archive
+carries the compiled TUI at `hermes_cli/tui_dist` (built from the pinned source
+in a scratch copy with the bundled Node; upstream's sealed payloads use the same
+layout), and `hermes --tui` runs it on `.runtime/node`. Every other frontend build
+(`hermes dashboard`, `hermes --tui --dev`, `hermes desktop`, an update's product
+builds) refuses inside an installed engine before it downloads anything
+(`apex_overlay/packaged_engine.py`). The native smoke checks at both locations
+that the TUI resolves to the shipped build and loads on the bundled Node.
+
 Native build command (the Mac invocation requires the existing signing
 certificate and Apple API key file variables):
 

@@ -344,6 +344,7 @@ _UPDATE_DEPENDENCIES = (
     "hermes_cli/memory_provider_migration.py",
     "hermes_cli/left_core_migration.py",  # source_build migrates plugins that left core
     "hermes_cli/web_build_limits.py",  # source_build caps the dashboard Node build
+    "apex_overlay/packaged_engine.py",  # hc-954: source_build refuses to build inside an installed APEX engine
     "hermes_cli/desktop_console.py",
     "hermes_cli/bundled_app.py",
     "hermes_cli/gui_uninstall.py",
