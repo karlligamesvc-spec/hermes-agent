@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from tools.clarify_tool import (
     clarify_tool,
     MAX_CHOICES,
@@ -196,6 +198,78 @@ class TestClarifyRecommendedLabel:
         response = result["responses"][0]
         assert response["choices_offered"] is None
         assert response["user_response"] == "whatever"
+
+
+def _shown_choices(question):
+    """The choices the surface callback receives for one question."""
+    seen = []
+
+    def cb(questions):
+        seen.extend(questions[0]["choices"] or [])
+        return _reply({"q0": seen[0]})
+
+    return seen, _ask(cb, [question])["responses"][0]
+
+
+class TestClarifyNoRecommendation:
+    """``recommended: false`` is a question with no better answer (the user's situation, a taste):
+    no choice is labeled, so no surface shows one. Without it the first choice stays labeled."""
+
+    @pytest.mark.parametrize("flag", [False, "false", " False "])
+    def test_no_choice_is_labelled(self, flag):
+        # A string "false": nested args skip coerce_tool_args, so the model's false can arrive as text.
+        seen, response = _shown_choices({"question": "What do you film?", "choices": ["Vlogs", "Skits"],
+                                         "recommended": flag})
+        assert seen == ["Vlogs", "Skits"]
+        assert response["choices_offered"] == ["Vlogs", "Skits"]
+        assert response["user_response"] == "Vlogs"
+
+    @pytest.mark.parametrize("extra", [{}, {"recommended": True}, {"recommended": "true"}, {"recommended": None}])
+    def test_first_choice_stays_labelled_unless_false(self, extra):
+        seen, response = _shown_choices({"question": "Pick", "choices": ["Rebase", "Merge"], **extra})
+        assert seen == ["Rebase (Recommended)", "Merge"]
+        assert response["user_response"] == "Rebase"
+
+    def test_a_label_the_model_wrote_itself_is_dropped(self):
+        seen, response = _shown_choices({"question": "What do you film?", "recommended": False,
+                                         "choices": ["Vlogs (recommended)", "Skits (Recommended)"]})
+        assert seen == ["Vlogs", "Skits"]
+        assert response["choices_offered"] == ["Vlogs", "Skits"]
+
+    def test_each_question_in_a_batch_decides_for_itself(self):
+        seen = {}
+
+        def cb(questions):
+            seen["choices"] = [q["choices"] for q in questions]
+            return _reply({"q0": "Vlogs", "q1": "Daily"})
+
+        _ask(cb, [
+            {"question": "What do you film?", "choices": ["Vlogs", "Skits"], "recommended": False},
+            {"question": "How often should you post?", "choices": ["Daily", "Weekly"]},
+        ])
+        assert seen["choices"] == [["Vlogs", "Skits"], ["Daily (Recommended)", "Weekly"]]
+
+    def test_the_agent_dispatch_path_carries_the_flag(self):
+        """The agent runs clarify through its inline executor, after ``coerce_tool_args``."""
+        from types import SimpleNamespace
+
+        from agent.inline_tool_executors import INLINE_TOOL_EXECUTORS, InlineToolContext
+        seen = []
+
+        def cb(questions):
+            seen.extend(questions[0]["choices"])
+            return _reply({"q0": seen[0]})
+
+        INLINE_TOOL_EXECUTORS["clarify"](
+            SimpleNamespace(clarify_callback=cb),
+            {"questions": [{"question": "What do you film?", "choices": ["Vlogs", "Skits"], "recommended": "false"}]},
+            InlineToolContext(effective_task_id="task"))
+        assert seen == ["Vlogs", "Skits"]
+
+    def test_schema_offers_the_flag_as_optional(self):
+        item = CLARIFY_SCHEMA["parameters"]["properties"]["questions"]["items"]
+        assert item["properties"]["recommended"] == {"type": "boolean"}
+        assert "recommended" not in item["required"]
 
 
 class TestRegistryMultiSelectPassThrough:

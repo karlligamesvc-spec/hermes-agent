@@ -108,6 +108,43 @@ describe('the question card in a Chinese chat', () => {
     expect(englishWords(readableText(container))).toEqual([])
   })
 
+  // `recommended: false` (a question about the user's situation) reaches the
+  // card with no wire marker on any choice. The card labels only a marked
+  // choice, never one by its position.
+  it('labels no choice of a question with no better answer', () => {
+    const situation = ['口播', '剧情', '带货']
+
+    openRequest({
+      choices: null,
+      multiSelect: false,
+      question: '',
+      questions: [
+        { choices: situation, multiSelect: false, qid: 'q0', question: '你主要拍什么内容？' },
+        { choices: CHOICES, multiSelect: false, qid: 'q1', question: QUESTION }
+      ],
+      requestId: 'request-situation-zh',
+      sessionId: 'session-zh'
+    })
+
+    const { container } = renderZh(
+      props({
+        questions: [
+          { choices: situation, question: '你主要拍什么内容？', recommended: false },
+          { choices: CHOICES, question: QUESTION }
+        ]
+      })
+    )
+
+    const rows = (qid: string) =>
+      [...container.querySelectorAll(`[data-clarify-batch-question="${qid}"] [data-choice]`)].map(
+        row => row.textContent
+      )
+
+    expect(rows('q0')).toEqual(['A口播', 'B剧情', 'C带货'])
+    expect(rows('q1')[0]).toBe('A先出 10 秒样片 推荐')
+    expect(container.textContent?.match(/推荐/g)).toHaveLength(1)
+  })
+
   it('drafts a late answer in Chinese, without the wire marker', async () => {
     const inserts: string[] = []
     const stop = onComposerInsertRequest(detail => inserts.push(detail.text))

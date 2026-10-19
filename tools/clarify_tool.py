@@ -10,11 +10,13 @@ MAX_QUESTIONS = 5  # independent questions per call
 # Per-choice cap. Surfaces wrap long choice text (newlines kept), so anything longer is rejected here, at the
 # source, instead of a surface silently dropping a choice that ``choices_offered`` still reports as shown.
 MAX_CHOICE_CHARS = 8000
-# Applied to the first choice here (not per-surface) so every adapter renders it identically. It is a wire
-# marker and stays English; chat surfaces show it through ``display_choice`` in the user's language.
+# Applied to the first choice here (not per-surface) so every adapter renders it identically, and left off
+# here for a question that sets ``recommended: false``: no surface labels a choice by its position. It is a
+# wire marker and stays English; chat surfaces show it through ``display_choice`` in the user's language.
 RECOMMENDED_LABEL = "(Recommended)"
 _UNAVAILABLE = "Clarify tool is not available in this execution context."
-_SHAPE = "Pass questions=[{question, choices?, multi_select?}]; a single question is a one-entry array."
+_SHAPE = ("Pass questions=[{question, choices?, multi_select?, recommended?}]; a single question is a "
+          "one-entry array.")
 
 
 def mark_recommended(choices: list[str]) -> list[str]:
@@ -68,8 +70,8 @@ def _clean_answer(raw, multi: bool):
 
 def _normalize_questions(questions) -> tuple:
     """Validate ``questions`` -> ``(normalized, error)``. Entries carry ``qid`` (stable wire id
-    ``q<index>`` surfaces key answers by), ``question``, decorated ``choices``, bare
-    ``choices_offered`` and ``multi_select``."""
+    ``q<index>`` surfaces key answers by), ``question``, decorated ``choices`` (none labeled for
+    ``recommended: false``), bare ``choices_offered`` and ``multi_select``."""
     if not isinstance(questions, list) or not questions:
         return None, f"questions must be a non-empty array. {_SHAPE}"
     if len(questions) > MAX_QUESTIONS:
@@ -81,6 +83,9 @@ def _normalize_questions(questions) -> tuple:
         text = str(item.get("question") or "").strip()
         if not text:
             return None, f"questions[{index}].question must be non-empty text."
+        # No option is better than another (the user's situation, a taste), so none is labeled, not even
+        # one the model labeled itself. Nested args skip ``coerce_tool_args``: false may arrive as "false".
+        no_recommendation = str(item.get("recommended")).strip().lower() == "false"
         choices = item.get("choices")
         if choices is not None:
             if not isinstance(choices, list) or not all(isinstance(c, str) for c in choices):
@@ -89,6 +94,8 @@ def _normalize_questions(questions) -> tuple:
                 if len(choice.strip()) > MAX_CHOICE_CHARS:
                     return None, (f"questions[{index}].choices[{pos}] is {len(choice.strip())} characters; the limit is "
                                   f"{MAX_CHOICE_CHARS}. Move detail into the question text and resend.")
+            if no_recommendation:
+                choices = [strip_recommended(c) for c in choices]
             cleaned = [c.strip() for c in choices if c.strip()][:MAX_CHOICES]
             if choices and not cleaned:
                 # A card with no options strands the turn: say so instead of silently asking open-ended.
@@ -97,7 +104,7 @@ def _normalize_questions(questions) -> tuple:
             choices = cleaned or None
         normalized.append({
             "qid": f"q{index}", "question": text,
-            "choices": mark_recommended(list(choices)) if choices else None,
+            "choices": (list(choices) if no_recommendation else mark_recommended(list(choices))) if choices else None,
             "choices_offered": list(choices) if choices else None,
             "multi_select": bool(item.get("multi_select")) and bool(choices)})
     return normalized, None
@@ -163,7 +170,10 @@ CLARIFY_SCHEMA = {
         "change another question, ask separately). Per question: "
         f"single-select (up to {MAX_CHOICES} choices — put your recommended "
         "option FIRST, the UI marks it '(Recommended)' and auto-appends an "
-        "'Other' free-text row), multi-select (multi_select=true), or "
+        "'Other' free-text row; when no option is better than the others, "
+        "e.g. asking about the user's situation or taste, pass "
+        "recommended=false and nothing is marked), multi-select "
+        "(multi_select=true), or "
         "open-ended (omit choices). Options go ONLY in `choices`, never "
         "enumerated inside the question text (choices render as pickable "
         "rows; options written into the question are dead prose the user "
@@ -185,7 +195,8 @@ CLARIFY_SCHEMA = {
                 "description": (
                     "The question(s). Each: question text (options excluded), "
                     "optional choices (recommended first; omit for free-text), "
-                    "optional multi_select. Responses come back in question "
+                    "optional multi_select, optional recommended (false: no "
+                    "choice is marked). Responses come back in question "
                     "order with the question text echoed."
                 ),
                 "items": {
@@ -198,6 +209,7 @@ CLARIFY_SCHEMA = {
                             "maxItems": MAX_CHOICES,
                         },
                         "multi_select": {"type": "boolean"},
+                        "recommended": {"type": "boolean"},
                     },
                     "required": ["question"],
                 },
