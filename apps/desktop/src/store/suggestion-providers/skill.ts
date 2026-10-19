@@ -2,6 +2,7 @@ import { requestComposerFocus, requestComposerInsert } from '@/app/chat/composer
 import { getSkills } from '@/hermes'
 import { translateNow } from '@/i18n'
 import type { ChatMessage } from '@/lib/chat-messages'
+import { skillDisplayName } from '@/lib/skill-display-name'
 import { type ComposerSuggestion, registerDraftProvider } from '@/store/composer-suggestions'
 import { $activeSessionId, $currentCwd, $messages } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
@@ -190,9 +191,12 @@ function sessionTranscript(sessionId: string | null): readonly ChatMessage[] {
 
 function toSuggestion(name: string): ComposerSuggestion {
   const copy = (key: string, ...args: unknown[]) => translateNow(`composer.skillSuggestions.${key}`, ...args)
+  // The pill names the skill the way the transcript does; the `/name` it
+  // inserts stays the real command.
+  const shown = skillDisplayName(name)
 
   return {
-    doneLabel: copy('done', name),
+    doneLabel: copy('done', shown),
     doneTip: copy('doneTip'),
     icon: 'zap',
     id: name,
@@ -202,11 +206,11 @@ function toSuggestion(name: string): ComposerSuggestion {
       requestComposerInsert(`/${name} `, { mode: 'prefix' })
       requestComposerFocus()
     },
-    label: copy('label', name),
+    label: copy('label', shown),
     provider: 'skill',
-    tip: copy('tip', name),
-    workingLabel: copy('label', name),
-    workingTip: copy('tip', name)
+    tip: copy('tip', shown),
+    workingLabel: copy('label', shown),
+    workingTip: copy('tip', shown)
   }
 }
 

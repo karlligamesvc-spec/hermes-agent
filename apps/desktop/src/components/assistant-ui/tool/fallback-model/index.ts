@@ -1,6 +1,6 @@
 import { stripAnsi } from '@hermes/shared/ansi'
 
-import { type ToolTitleKey, translateNow } from '@/i18n'
+import { runtimeTranslations, type ToolTitleKey, translateNow } from '@/i18n'
 import { normalizeExternalUrl } from '@/lib/external-link'
 import { summarizeShellCommand } from '@/lib/summarize-command'
 import { capitalize, firstStringField, normalize } from '@/lib/text'
@@ -256,6 +256,13 @@ function toolMeta(name: string): ToolMeta {
 
   const action = titleForTool(name)
   const prefix = PREFIX_META.find(p => name.startsWith(p.prefix))
+  // A locale that names the tool says so in words; the glyph stays whatever
+  // the name's family draws, so naming a tool never changes how its row looks.
+  const named = runtimeTranslations().assistant.tool.toolNames[name]
+
+  if (named) {
+    return prefix ? { ...named, icon: prefix.icon, tone: prefix.tone } : { ...named, tone: 'default' }
+  }
 
   if (prefix) {
     const prefixLabel = translateNow(`assistant.tool.prefixes.${prefix.labelKey}`)
@@ -270,11 +277,26 @@ function toolMeta(name: string): ToolMeta {
   }
 
   return {
-    done: action,
+    done: translateNow('assistant.tool.titleTemplates.unknownToolDone', action),
     pending: translateNow('assistant.tool.titleTemplates.runningTool', action),
     pendingAction: translateNow('assistant.tool.actions.running'),
     tone: 'default'
   }
+}
+
+// A reloaded transcript keeps the `tool_call` bridge the model called (the
+// live feed already reports the tool underneath), so a single bridged call is
+// titled by that tool, as its live row was. Connector batches have their own card.
+function bridgedToolName(part: ToolPart): string {
+  if (part.toolName !== 'tool_call') {
+    return part.toolName
+  }
+
+  const args = parseMaybeObject(part.args)
+  const calls = Array.isArray(args.calls) ? args.calls : [args]
+  const name = calls.length === 1 ? firstStringField(parseMaybeObject(calls[0]), ['name']) : ''
+
+  return name || part.toolName
 }
 
 const COUNT_FIELD_KEYS = [
@@ -414,7 +436,7 @@ function pluralizeNoun(noun: string, count: number): string {
 }
 
 function formatCountLabel(metric: CountMetric): string {
-  return `${metric.count} ${pluralizeNoun(metric.noun, metric.count)}`
+  return translateNow('assistant.tool.countLabel', metric.count, metric.noun, pluralizeNoun(metric.noun, metric.count))
 }
 
 function countMetric(count: number, noun: string): CountMetric {
@@ -588,18 +610,19 @@ export function cleanVisibleText(text: string): string {
 function summarizeBrowserSnapshot(snapshot: string): string {
   const count = (re: RegExp) => snapshot.match(re)?.length ?? 0
 
-  const stats = [
-    `${count(/button\s+"[^"]+"/g)} buttons`,
-    `${count(/link\s+"[^"]+"/g)} links`,
-    `${count(/(?:textbox|combobox|searchbox)\s+"[^"]+"/g)} inputs`
-  ].join(' · ')
+  const stats = translateNow(
+    'assistant.tool.detail.snapshotStats',
+    count(/button\s+"[^"]+"/g),
+    count(/link\s+"[^"]+"/g),
+    count(/(?:textbox|combobox|searchbox)\s+"[^"]+"/g)
+  )
 
   const labels = Array.from(snapshot.matchAll(/(?:button|link|combobox|textbox)\s+"([^"]+)"/g))
     .map(m => m[1].trim())
     .filter(Boolean)
     .slice(0, 4)
 
-  return labels.length ? `${stats}\nTop controls: ${labels.join(', ')}` : stats
+  return labels.length ? `${stats}\n${translateNow('assistant.tool.detail.topControls', labels.join(', '))}` : stats
 }
 
 function collectResultItems(value: unknown): unknown[] {
@@ -666,7 +689,7 @@ function toolErrorText(part: ToolPart, result: Record<string, unknown>): string 
       extractedError ||
       envelopeErrorText(part.toolResultMetadata) ||
       (typeof part.result === 'string' && part.result.trim()) ||
-      'Tool returned an error.'
+      translateNow('assistant.tool.detail.toolError')
     )
   }
 
@@ -675,11 +698,17 @@ function toolErrorText(part: ToolPart, result: Record<string, unknown>): string 
   }
 
   if (result.success === false || result.ok === false) {
-    return firstStringField(result, ['message', 'reason', 'detail']) || 'Tool returned success=false.'
+    return (
+      firstStringField(result, ['message', 'reason', 'detail']) ||
+      translateNow('assistant.tool.detail.toolSuccessFalse')
+    )
   }
 
   if (typeof result.status === 'string' && /^(error|failed|failure|fatal|exception)$/i.test(result.status.trim())) {
-    return firstStringField(result, ['message', 'reason', 'detail']) || `Tool returned status "${result.status}".`
+    return (
+      firstStringField(result, ['message', 'reason', 'detail']) ||
+      translateNow('assistant.tool.detail.toolStatus', result.status)
+    )
   }
 
   // A non-zero exit code alone is a weak failure signal: grep returns 1 on
@@ -694,7 +723,7 @@ function toolErrorText(part: ToolPart, result: Record<string, unknown>): string 
   if (exit !== null && exit !== 0) {
     const hasOutput = Boolean(firstStringField(result, ['output', 'stdout', 'stderr', 'output_preview'])?.trim())
 
-    return hasOutput ? '' : `Command failed with exit code ${exit}.`
+    return hasOutput ? '' : translateNow('assistant.tool.detail.exitCode', exit)
   }
 
   return ''
@@ -729,7 +758,7 @@ function toolStatus(part: ToolPart, resultRecord: Record<string, unknown>): Tool
     return 'notice'
   }
 
-  if (part.toolName === 'terminal' && error === 'Command failed with exit code 1.') {
+  if (part.toolName === 'terminal' && error === translateNow('assistant.tool.detail.exitCode', 1)) {
     return 'notice'
   }
 
@@ -924,7 +953,7 @@ function cronjobDetail(argsRecord: Record<string, unknown>, resultRecord: Record
 
   if (jobs) {
     if (!jobs.length) {
-      return 'No cron jobs scheduled'
+      return translateNow('assistant.tool.detail.noCronJobsScheduled')
     }
 
     return jobs
@@ -942,10 +971,10 @@ function cronjobDetail(argsRecord: Record<string, unknown>, resultRecord: Record
   const nextRun = cronScalar(resultRecord.next_run_at)
 
   const rows: [string, string][] = [
-    ['Schedule', cronScalar(resultRecord.schedule)],
-    ['Repeat', cronScalar(resultRecord.repeat)],
-    ['Delivery', cronScalar(resultRecord.deliver)],
-    ['Next run', nextRun ? formatCronTime(nextRun) : '']
+    [translateNow('assistant.tool.detail.cronSchedule'), cronScalar(resultRecord.schedule)],
+    [translateNow('assistant.tool.detail.cronRepeat'), cronScalar(resultRecord.repeat)],
+    [translateNow('assistant.tool.detail.cronDelivery'), cronScalar(resultRecord.deliver)],
+    [translateNow('assistant.tool.detail.cronNextRun'), nextRun ? formatCronTime(nextRun) : '']
   ]
 
   const lines = rows.filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`)
@@ -1074,11 +1103,11 @@ function toolSubtitle(
 
 function toolDetailLabel(toolName: string): string {
   if (toolName === 'web_search') {
-    return 'Details'
+    return translateNow('assistant.tool.detail.details')
   }
 
   if (toolName === 'browser_snapshot') {
-    return 'Snapshot summary'
+    return translateNow('assistant.tool.detail.snapshotSummary')
   }
 
   return ''
@@ -1182,9 +1211,11 @@ function toolDetailText(
       return detail
     }
 
+    const label = translateNow('assistant.tool.detail.duration')
+
     return detail
-      .replace(/^\s*-\s*Duration\s+S\s*:\s*[-+]?[\d.]+(?:e[-+]?\d+)?\s*$/gim, `- Duration: ${duration}`)
-      .replace(/\bDuration\s+S\s*:/gi, 'Duration:')
+      .replace(/^\s*-\s*Duration\s+S\s*:\s*[-+]?[\d.]+(?:e[-+]?\d+)?\s*$/gim, `- ${label}: ${duration}`)
+      .replace(/\bDuration\s+S\s*:/gi, `${label}:`)
   }
 
   if (part.toolName === 'cronjob') {
@@ -1437,7 +1468,7 @@ function dynamicTitle(
 export function buildToolView(part: ToolPart, inlineDiff: string): ToolView {
   const argsRecord = parseMaybeObject(part.args)
   const resultRecord = toolResultRecord(part)
-  const meta = toolMeta(part.toolName)
+  const meta = toolMeta(bridgedToolName(part))
   const status = toolStatus(part, resultRecord)
   // Skip residual error-heuristic text once status is success (stale isError
   // envelope over a landed memory write would otherwise foul the subtitle).
@@ -1506,7 +1537,7 @@ export function buildToolView(part: ToolPart, inlineDiff: string): ToolView {
   return {
     countLabel: resultCount ? formatCountLabel(resultCount) : undefined,
     detail,
-    detailLabel: error ? 'Error details' : toolDetailLabel(part.toolName),
+    detailLabel: error ? translateNow('assistant.tool.detail.errorDetails') : toolDetailLabel(part.toolName),
     durationLabel: durationLabel(resultRecord),
     icon: meta.icon,
     imageUrl: toolImageUrl(argsRecord, resultRecord),

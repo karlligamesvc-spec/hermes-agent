@@ -27,9 +27,11 @@ export interface ClarifyRequest {
 
 /**
  * The backend labels the agent's recommended option by appending this to the
- * first choice (`tools/clarify_tool.py::mark_recommended`). The renderer never
- * writes it — it only styles it, and discounts it when measuring a choice so a
- * long option isn't dropped for length the label added.
+ * first choice (`tools/clarify_tool.py::mark_recommended`). It is a wire marker,
+ * always English: the renderer never writes it and never shows it — the card
+ * swaps in the locale's word (`assistant.clarify.recommended`) — and discounts
+ * it when measuring a choice so a long option isn't dropped for length the
+ * label added.
  */
 export const RECOMMENDED_LABEL = '(Recommended)'
 

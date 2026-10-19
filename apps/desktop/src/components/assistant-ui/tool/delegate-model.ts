@@ -1,3 +1,4 @@
+import { translateNow } from '@/i18n'
 import { firstStringField, normalize } from '@/lib/text'
 import type { SubagentProgress, SubagentStatus } from '@/store/subagents'
 
@@ -82,7 +83,14 @@ export function delegateRowsFromCall(args: unknown, result: unknown, toolCallId 
   const goals = delegateGoals(args)
   const finished = resultRows(result)
   const dispatched = dispatchedGoals(result)
-  const titles = goals.length > 0 ? goals : dispatched.length > 0 ? dispatched : finished.map(() => 'Delegated task')
+
+  const titles =
+    goals.length > 0
+      ? goals
+      : dispatched.length > 0
+        ? dispatched
+        : finished.map(() => translateNow('assistant.tool.detail.delegatedTask'))
+
   const idle: DelegateRowStatus = result === undefined ? 'running' : 'dispatched'
 
   return titles.map((goal, index) => {

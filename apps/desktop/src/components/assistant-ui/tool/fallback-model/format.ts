@@ -1,3 +1,5 @@
+import { translateNow } from '@/i18n'
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
 }
@@ -76,7 +78,7 @@ export function clampForDisplay(value: string, max = MAX_TOOL_RENDER_CHARS): str
 
   const omitted = value.length - max
 
-  return `${value.slice(0, max)}\n\n… ${omitted.toLocaleString()} more characters truncated — use Copy for the full output.`
+  return `${value.slice(0, max)}\n\n${translateNow('assistant.tool.detail.truncated', omitted.toLocaleString())}`
 }
 
 export function prettyJson(value: unknown): string {
@@ -123,19 +125,23 @@ export function numberValue(value: unknown): null | number {
   return Number.isFinite(n) ? n : null
 }
 
+// Units come from the active locale: "2m 5s" in English, 「2 分 5 秒」 in Chinese.
+const unit = (value: number | string, name: 'h' | 'm' | 'ms' | 's') =>
+  translateNow('assistant.tool.formatDuration', String(value), name)
+
+const joinUnits = (...parts: string[]) => parts.join(translateNow('assistant.tool.durationSeparator'))
+
 export function formatDurationSeconds(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) {
     return ''
   }
 
   if (seconds < 1) {
-    const ms = Math.max(1, Math.round(seconds * 1000))
-
-    return `${ms}ms`
+    return unit(Math.max(1, Math.round(seconds * 1000)), 'ms')
   }
 
   if (seconds < 60) {
-    return `${seconds.toFixed(seconds >= 10 ? 0 : 1)}s`
+    return unit(seconds.toFixed(seconds >= 10 ? 0 : 1), 's')
   }
 
   const wholeSeconds = Math.round(seconds)
@@ -143,11 +149,11 @@ export function formatDurationSeconds(seconds: number): string {
   const remSeconds = wholeSeconds % 60
 
   if (minutes < 60) {
-    return remSeconds ? `${minutes}m ${remSeconds}s` : `${minutes}m`
+    return remSeconds ? joinUnits(unit(minutes, 'm'), unit(remSeconds, 's')) : unit(minutes, 'm')
   }
 
   const hours = Math.floor(minutes / 60)
   const remMinutes = minutes % 60
 
-  return remMinutes ? `${hours}h ${remMinutes}m` : `${hours}h`
+  return remMinutes ? joinUnits(unit(hours, 'h'), unit(remMinutes, 'm')) : unit(hours, 'h')
 }

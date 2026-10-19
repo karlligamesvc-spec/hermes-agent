@@ -2,7 +2,7 @@ import { isRecord } from '@hermes/shared/i18n'
 
 import { TRANSLATIONS } from './catalog'
 import { DEFAULT_LOCALE } from './languages'
-import type { Locale } from './types'
+import type { Locale, Translations } from './types'
 
 let runtimeLocale: Locale = DEFAULT_LOCALE
 
@@ -61,4 +61,11 @@ export function getRuntimeI18nLocale(): Locale {
 
 export function translateNow(key: string, ...args: unknown[]): string {
   return translateFrom(locale => TRANSLATIONS[locale], runtimeLocale, key, args)
+}
+
+/** The active locale's merged catalog, for keyed tables (`toolNames`,
+ *  `skillNames`) where a missing entry must read as absent rather than as the
+ *  dotted key `translateNow` echoes back. */
+export function runtimeTranslations(): Translations {
+  return TRANSLATIONS[runtimeLocale]
 }

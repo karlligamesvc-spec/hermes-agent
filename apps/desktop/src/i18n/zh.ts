@@ -1,6 +1,7 @@
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
+import { zhAssistantTool } from './zh-assistant-tool'
 
 export const zh = defineLocale({
   common: {
@@ -2724,7 +2725,7 @@ export const zh = defineLocale({
       createDesc: '为工作区命名并添加一个或多个文件夹。',
       renameTitle: '重命名项目',
       addFolderTitle: '添加文件夹',
-      namePlaceholder: '例如 Skunkworks',
+      namePlaceholder: '例如 新品上市',
       foldersLabel: '文件夹',
       ideaLabel: '想法',
       ideaPlaceholder: '这个项目是关于什么的？（保存到 IDEA.md）',
@@ -3007,16 +3008,17 @@ export const zh = defineLocale({
       connectFailed: server => `无法连接 ${server}`
     },
     skillSuggestions: {
-      label: skill => `使用技能: ${skill}`,
-      tip: skill => `你提到了“${skill}” — 点击以该技能开头`,
-      done: skill => `已添加 /${skill}`,
+      label: skill => (skill ? `使用技能：${skill}` : '使用这个技能'),
+      tip: skill =>
+        skill ? `你提到了「${skill}」——点一下，这条消息就用它开头` : '你提到了这个技能——点一下，这条消息就用它开头',
+      done: skill => (skill ? `已添加「${skill}」` : '已添加技能'),
       doneTip: '发送时将加载该技能'
     },
     githubSuggestions: {
       label: '设置 GitHub',
-      tip: '这里通过 gh CLI 技能使用 GitHub — 点击连接你的账号',
-      done: '已添加 /github-auth',
-      doneTip: '发送消息后，agent 将引导你完成 GitHub 登录'
+      tip: '点一下，连接你的 GitHub 账号',
+      done: '已添加 GitHub 登录',
+      doneTip: '发送后，APEX 会带你完成 GitHub 登录'
     },
     repairSuggestions: {
       label: server => `重新连接 ${server}`,
@@ -3957,7 +3959,21 @@ export const zh = defineLocale({
       loadingResponse: 'APEX 正在加载回复',
       resumeWhenBackgroundDone: count =>
         count === 1 ? '后台任务完成后将自动继续' : `${count} 个后台任务完成后将自动继续`,
+      loadingLocalModel: model => `正在把 ${model} 载入内存`,
+      processingPrompt: '正在处理你的消息',
       thinking: '思考中',
+      thought: '已思考',
+      thoughtBriefly: '思考了片刻',
+      thoughtFor: duration => `思考了 ${duration}`,
+      turnDuration: duration => `本轮用时 ${duration}`,
+      working: 'APEX 正在处理',
+      agentMessaging: target => `正在给 ${target} 发消息…`,
+      agentMessaged: target => `已给 ${target} 发消息`,
+      agentMessageFrom: target => `${target} 发来的消息`,
+      agentShowMessage: '查看消息',
+      react: '回应',
+      filesChanged: count => `${count} 个文件有改动`,
+      reviewChanges: '查看改动',
       today: time => `今天，${time}`,
       yesterday: time => `昨天，${time}`,
       copy: '复制',
@@ -4035,7 +4051,14 @@ export const zh = defineLocale({
       placeholder: '输入你的答案…',
       skip: '跳过',
       skipped: '已跳过',
-      continueLabel: '继续'
+      continueLabel: '继续',
+      confirmAndContinueLabel: '确认并继续',
+      answeredBadge: '已回答',
+      questionProgress: (answered, total) => `已回答 ${answered}/${total}`,
+      lateAnswer: (question, choice) => `关于“${question}”，我的回答是：${choice}`,
+      lateAnswerTip: '把这个回答写成一条新消息',
+      lateAnswerHint: '这个问题已不再等待回答。选一个选项，会把它写成一条新消息发出。',
+      recommended: '推荐'
     },
     mcpSetup: {
       installTitle: server => `添加 ${server} MCP 服务器？`,
@@ -4059,94 +4082,7 @@ export const zh = defineLocale({
       reloadFailed: '服务器已保存，但重新加载 MCP 工具失败 — 将在下个会话加载',
       gatewayDisconnected: 'Hermes 网关未连接'
     },
-    tool: {
-      copyCode: '复制代码',
-      renderingImage: '正在渲染图片',
-      copyOutput: '复制输出',
-      copyCommand: '复制命令',
-      copyContent: '复制内容',
-      copyUrl: '复制 URL',
-      copyResults: '复制结果',
-      copyQuery: '复制查询',
-      copyFile: '复制文件',
-      copyPath: '复制路径',
-      failedCalls: (count: number) => `${count} 次工具调用失败`,
-      skillActivity: {
-        loading: '正在加载技能',
-        loaded: '已加载技能',
-        loadFailed: '技能加载失败',
-        readingResource: '正在读取技能资源',
-        readResource: '已读取技能资源',
-        resourceFailed: '技能资源读取失败',
-        listing: '正在列出技能',
-        listed: '已列出技能',
-        listFailed: '技能列表获取失败',
-        unavailable: '技能结果不可用'
-      },
-      outputAlt: '工具输出',
-      rawResponse: '原始响应',
-      copyActivity: '复制活动',
-      recoveredOne: '在 1 个失败步骤后已恢复',
-      recoveredMany: count => `在 ${count} 个失败步骤后已恢复`,
-      failedOne: '1 个步骤失败',
-      failedMany: count => `${count} 个步骤失败`,
-      statusRunning: '运行中',
-      statusError: '错误',
-      statusRecovered: '已恢复',
-      statusDone: '完成',
-      actions: {
-        read: '已读取',
-        reading: '正在读取',
-        opened: '已打开',
-        opening: '正在打开',
-        failedToOpen: '打开失败',
-        searched: '已搜索',
-        searching: '正在搜索',
-        ran: '已运行',
-        running: '正在运行',
-        ranCode: '已运行代码',
-        runningCode: '正在编写脚本'
-      },
-      prefixes: {
-        browser: '浏览器',
-        web: '网页'
-      },
-      titleTemplates: {
-        actionCommand: (action, command) => `${action} ${command}`,
-        actionQuoted: (action, value) => `${action}“${value}”`,
-        actionTarget: (action, target) => `${action} ${target}`,
-        prefixedDone: (prefix, action) => `${prefix}${action}`,
-        runningPrefixedTool: (prefix, action) => `正在运行${prefix}${action}`,
-        runningTool: action => `正在运行 ${action}`
-      },
-      titles: {
-        browser_click: { done: '已点击页面元素', pending: '正在点击页面元素', pendingAction: '正在点击' },
-        browser_fill: { done: '已填写表单字段', pending: '正在填写表单字段', pendingAction: '正在填写' },
-        browser_navigate: { done: '已打开页面', pending: '正在打开页面', pendingAction: '正在打开' },
-        browser_snapshot: { done: '已捕获页面快照', pending: '正在捕获页面快照', pendingAction: '正在捕获' },
-        browser_take_screenshot: { done: '已捕获截图', pending: '正在捕获截图', pendingAction: '正在捕获' },
-        browser_type: { done: '已在页面输入', pending: '正在页面输入', pendingAction: '正在输入' },
-        clarify: { done: '已提问', pending: '正在提问', pendingAction: '正在提问' },
-        cronjob: { done: 'Cron 任务', pending: '正在安排 Cron 任务', pendingAction: '正在安排' },
-        edit_file: { done: '已编辑文件', pending: '正在编辑文件', pendingAction: '正在编辑' },
-        execute_code: { done: '已运行代码', pending: '正在编写脚本', pendingAction: '正在编写脚本' },
-        image_generate: { done: '已生成图片', pending: '正在生成图片', pendingAction: '正在生成' },
-        list_files: { done: '已列出文件', pending: '正在列出文件', pendingAction: '正在列出' },
-        patch: { done: '已修补文件', pending: '正在修补文件', pendingAction: '正在修补' },
-        read_file: { done: '已读取文件', pending: '正在读取文件', pendingAction: '正在读取' },
-        search_files: { done: '已搜索文件', pending: '正在搜索文件', pendingAction: '正在搜索' },
-        session_search_recall: { done: '已搜索会话历史', pending: '正在搜索会话历史', pendingAction: '正在搜索' },
-        terminal: { done: '已运行命令', pending: '正在运行命令', pendingAction: '正在运行' },
-        todo: { done: '已更新待办', pending: '正在更新待办', pendingAction: '正在更新' },
-        vision_analyze: { done: '已分析图片', pending: '正在分析图片', pendingAction: '正在分析' },
-        web_extract: { done: '已读取网页', pending: '正在读取网页', pendingAction: '正在读取' },
-        web_search: { done: '已搜索网页', pending: '正在搜索网页', pendingAction: '正在搜索' },
-        write_file: { done: '已编辑文件', pending: '正在编辑文件', pendingAction: '正在编辑' }
-      },
-      searchResults: '搜索结果',
-      stdoutLabel: '输出',
-      stderrLabel: '错误输出'
-    }
+    tool: zhAssistantTool
   },
 
   prompts: {
@@ -4436,13 +4372,13 @@ export const zh = defineLocale({
     primaryPaths: {
       commerce: {
         title: '从市场机会到上架素材',
-        summary: '选品分析 · 产品定位 · Listing · 图片 · 短视频',
+        summary: '选品分析 · 产品定位 · 商品详情页 · 图片 · 短视频',
         prompt: '分析美国宠物用品市场，并生成选品报告和上架素材'
       },
       geo: {
         title: '提升品牌可见度与获客',
         summary: '品牌诊断 · 问题地图 · 内容优化 · 线索发现',
-        prompt: '诊断我的品牌在 AI Search 中的可见度，并给出 GEO 获客方案'
+        prompt: '诊断我的品牌在 AI 搜索中的可见度，并给出 GEO 获客方案'
       },
       content: {
         title: '洞察、创作到数据复盘',
@@ -4701,9 +4637,9 @@ export const zh = defineLocale({
           prompt: '依据真实画面和时间轴，完成有证据可回溯的镜头分析报告。'
         },
         project: {
-          title: '4. Brief 与可编辑工程',
+          title: '4. 创意简报与可编辑工程',
           summary: '把抽象结构转成可修改的创意方案与制作工程。',
-          prompt: '根据已有分析建立原创 Brief、Treatment、镜头计划和可编辑工程。'
+          prompt: '根据已有分析写出原创的创意简报、拍摄方案和镜头计划，并建立可编辑工程。'
         },
         assets: {
           title: '5. 素材生成与质检',

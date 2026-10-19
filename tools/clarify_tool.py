@@ -10,7 +10,8 @@ MAX_QUESTIONS = 5  # independent questions per call
 # Per-choice cap. Surfaces wrap long choice text (newlines kept), so anything longer is rejected here, at the
 # source, instead of a surface silently dropping a choice that ``choices_offered`` still reports as shown.
 MAX_CHOICE_CHARS = 8000
-# Applied to the first choice here (not per-surface) so every adapter renders it identically.
+# Applied to the first choice here (not per-surface) so every adapter renders it identically. It is a wire
+# marker and stays English; chat surfaces show it through ``display_choice`` in the user's language.
 RECOMMENDED_LABEL = "(Recommended)"
 _UNAVAILABLE = "Clarify tool is not available in this execution context."
 _SHAPE = "Pass questions=[{question, choices?, multi_select?}]; a single question is a one-entry array."
@@ -25,11 +26,29 @@ def mark_recommended(choices: list[str]) -> list[str]:
     return [f"{first} {RECOMMENDED_LABEL}"] + list(choices[1:])
 
 
+def _shown_recommended_label() -> str:
+    """The label as chat surfaces show it in the active language ("（推荐）")."""
+    from agent.i18n import t
+    return t("gateway.clarify.recommended_choice", choice="").strip()
+
+
+def display_choice(choice: str) -> str:
+    """A choice as a chat surface shows it: the English wire marker becomes the active language's label
+    ("选项A（推荐）"); an unmarked choice passes through untouched."""
+    text = str(choice).strip()
+    if not text.casefold().endswith(RECOMMENDED_LABEL.casefold()):
+        return choice
+    from agent.i18n import t
+    return t("gateway.clarify.recommended_choice", choice=text[: -len(RECOMMENDED_LABEL)].strip())
+
+
 def strip_recommended(text: str) -> str:
-    """Remove the recommendation label so presentation never leaks into ``user_response``."""
+    """Remove the recommendation label, the wire marker or the label a surface showed in the user's
+    language, so presentation never leaks into ``user_response``."""
     stripped = str(text).strip()
-    if stripped.casefold().endswith(RECOMMENDED_LABEL.casefold()):
-        return stripped[: -len(RECOMMENDED_LABEL)].strip()
+    for label in (RECOMMENDED_LABEL, _shown_recommended_label()):
+        if label and stripped.casefold().endswith(label.casefold()):
+            return stripped[: -len(label)].strip()
     return stripped
 
 
