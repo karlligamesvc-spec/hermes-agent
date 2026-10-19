@@ -10,6 +10,12 @@ Smoke from apps/desktop: npx vitest run src/app/chat/composer/generation-models.
 
 Native smoke starts with a fresh isolated runtime, selects MiniMax H3 via the actual composer menu, independently reads config.yaml, reloads and verifies the retained selection, then selects Mini and checks the file again. Companion plugin tests use real YAML and a local HTTP server to check actual payloads and changes at call time. These smokes do not establish upstream render capacity, cost/visual quality, production plugin delivery, Windows hardware or an updater release. Reverse validation saving video under the image key must fail the video config payload assertions; removing plugin preference precedence must fail the HTTP payload assertion.
 
+## hc-948 bundled plugin binding
+
+Until hc-948 the sentence above held only for the hermes-cloud copy of the video plugin. The Desktop runs this repo's `plugins/apexnodes-video-tools`, which never read `apex.generation_video_model`, so every Desktop video call went out without `model` and reached the Agnes leg (2026-10-18 review: three Agnes HTTP 503s). `_desktop_video_model()` now mirrors the image plugin's `_desktop_image_model()`. It runs on every call, on both the gateway and legacy paths: a saved choice wins over the LLM's `model` argument, an absent preference keeps the platform default, and a malformed or unknown value fails with a "当前视频模型设置" error before any request. The paired apex-nodes PR (same ticket) makes Seedance 2.0 Mini via chinaapi the platform default for calls without `model`.
+
+Smoke from the repo root: `scripts/run_tests.sh tests/agent/test_apex_video_model_preference.py tests/agent/test_apex_image_model_preference.py`. Four reverse injections turn it red: ignoring the picker, letting the LLM argument win, silently falling back on a broken picker, and accepting an unknown model. It runs on the next paired Desktop release. It does not show what the vendor renders.
+
 ## Source conversation model and input border
 
 The single video conversation composer has a visible theme border and focus highlight. Its footer offers the same configured, product-filtered text model catalog as chat, plus Default (Agent settings). This chooses the model that answers source questions, independently of the image/video generation settings. The choice is local to the current analysis view and resets when its account, connection, profile or source ownership scope changes. Picking a row makes no model call and does not change the main chat model. During an answer the selector is disabled.

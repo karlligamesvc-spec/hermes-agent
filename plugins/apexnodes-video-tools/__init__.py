@@ -155,7 +155,7 @@ GENERATE_VIDEO_SCHEMA = {
                 "description": (
                     "用户在 APEX 中选择的视频模型。名称依次为 Seedance 2.5、Seedance 2.0、"
                     "Seedance 2.0 Fast、Seedance 2.0 Mini、MiniMax H3。"
-                    "未指定时使用平台默认模型。"
+                    "Desktop 当前选择的视频模型始终优先;未指定时使用平台默认模型(Seedance 2.0 Mini)。"
                 ),
             },
             "provider": {
@@ -170,6 +170,47 @@ GENERATE_VIDEO_SCHEMA = {
         "required": ["prompt"],
     },
 }
+
+
+def _desktop_video_model() -> str | None:
+    """Read the Desktop video picker at call time, including live changes (hc-948).
+
+    The Desktop saves ``apex.generation_video_model`` (seeded to Seedance 2.0 Mini),
+    but until hc-948 this plugin never read it: only the hermes-cloud copy did, and
+    the Desktop runs this one. So every Desktop video call went out without ``model``
+    and landed on the Agnes leg. Same rules as the image plugin's
+    ``_desktop_image_model``: the saved choice wins over the LLM's argument, an
+    absent preference keeps the platform default, and a malformed or unknown value
+    fails before any request instead of silently falling back.
+    """
+    from hermes_cli.config import (
+        get_config_path,
+        load_config_readonly,
+        require_readable_config_before_write,
+    )
+
+    config_path = get_config_path()
+    if not config_path.exists():
+        return None
+    try:
+        # The strict preflight keeps the loader's last-known-good fallback from
+        # silently routing a malformed picker to the platform default.
+        require_readable_config_before_write(config_path)
+        config = load_config_readonly()
+        if not isinstance(config, dict) or "apex" not in config:
+            return None
+        apex = config["apex"]
+        if not isinstance(apex, dict):
+            raise RuntimeError("当前视频模型设置格式无效")
+        if "generation_video_model" not in apex:
+            return None
+        model = apex["generation_video_model"]
+        allowed = GENERATE_VIDEO_SCHEMA["parameters"]["properties"]["model"]["enum"]
+        if not isinstance(model, str) or model not in allowed:
+            raise RuntimeError("当前视频模型设置不是可用的模型")
+        return model
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise RuntimeError(f"无法读取当前视频模型设置: {exc}") from exc
 
 
 def _localize_gateway_video(result: dict[str, Any], prompt: str) -> str:
@@ -203,12 +244,16 @@ def _handle_generate_video(args: dict, **_kwargs) -> str:
     prompt = str(args.get("prompt") or "").strip()
     if not prompt:
         return tool_error("请提供视频描述")
+    try:
+        selected_model = _desktop_video_model() or str(args.get("model") or "").strip() or None
+    except RuntimeError as exc:
+        return tool_error(f"视频生成失败: {exc}")
     payload = {
         "prompt": prompt,
         "aspect_ratio": str(args.get("aspect_ratio") or "landscape").strip() or "landscape",
         "size": str(args.get("size") or "").strip() or None,
         "seconds": args.get("seconds"),
-        "model": str(args.get("model") or "").strip() or None,
+        "model": selected_model,
         # hc-659: forwarded verbatim; the master picks/validates the leg (the plugin
         # never learns which engines exist, and never holds a vendor key).
         "provider": str(args.get("provider") or "").strip() or None,
