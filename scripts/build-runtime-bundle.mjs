@@ -75,8 +75,10 @@ const AGENT_BROWSER_SPECS = ['agent-browser@^0.26.0', '@askjo/camofox-browser@^1
 // hc-951: paths an installed engine never reads. Each was checked against every runtime consumer
 // (Desktop shell, engine CLI/gateway/serve, platform skills, Hypit, the offline fresh install, legacy
 // upgrade and rollback, the release consumer smoke). Kept on purpose: website/static/api (the model
-// catalog seed), website/docs (skills cite it), apps/shared and every workspace package.json (the TUI
-// build and its npm ci), .runtime/media/ffmpeg (the bundled FFmpeg's corresponding source).
+// catalog seed), website/docs (skills cite it), apps/shared and every workspace package.json (frontend
+// builds reach their installed-engine refusal through the manifests: without web/package.json,
+// `hermes dashboard` would skip its build as if it were done), .runtime/media/ffmpeg (the bundled
+// FFmpeg's corresponding source).
 export const BUNDLE_EXCLUDED_PATHS = Object.freeze([
   'tests', // pytest suite: outside pyproject's packages, imported only by tests/ and evals/
   'contributors', // upstream CI attribution map (scripts/audit_pr_attribution.py)
@@ -517,11 +519,10 @@ async function cmdBuild(args) {
     '@echo off\r\n"%~dp0node.exe" "%~dp0..\\..\\apex_overlay\\hypit_cli.mjs" %*\r\n')
 
   // ── 8. no repo npm trees (hc-951). The root and ui-tui installs held only
-  //       build tooling. `hermes --tui` and `hermes dashboard` build through
-  //       scripts/build/node-deps.mjs, which reuses a tree only with its
-  //       .hermes-node-deps receipt (never written here): it ran `npm ci`,
-  //       deleting these trees first, or refused when lazy installs are off.
-  //       `serve` never builds a frontend. ──────────────────────────────────
+  //       build tooling. The TUI ships compiled (step 9b, hc-954) and runs on
+  //       the bundled Node; every other frontend build refuses inside an
+  //       installed engine (apex_overlay/packaged_engine.py), so nothing
+  //       here runs `npm ci`. `serve` never builds a frontend. ─────────────
 
   // ── 9. PortableGit (windows only). Runtime tools need Bash, which MinGit
   //       omits even though its git --version probe succeeds. ──────────────

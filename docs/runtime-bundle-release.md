@@ -19,7 +19,8 @@ available offline.
 The archive leaves out what no installed engine reads: the pytest suite,
 contributor metadata, docs-site images, Desktop QA evidence, Node's C headers,
 agent-browser builds no launcher on the target can select, and the repo's npm
-build trees (`hermes --tui` and `hermes dashboard` run their own `npm ci`).
+build trees (the TUI ships compiled in `hermes_cli/tui_dist`, and every other
+frontend build refuses inside an installed engine).
 `BUNDLE_EXCLUDED_PATHS` in `scripts/build-runtime-bundle.mjs` is the list, and
 `apps/desktop/scripts/runtime-bundle-slim.node-test.mjs` keeps every path a
 runtime reader needs out of it.

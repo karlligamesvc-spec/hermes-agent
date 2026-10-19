@@ -106,12 +106,12 @@ test('the model catalog seed that hermes reads from the install root stays in th
   }
 })
 
-test('every npm workspace manifest stays, because the TUI and dashboard builds run npm ci', () => {
+test('every npm workspace manifest stays, because frontend builds reach their installed-engine refusal through them', () => {
   const lock = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package-lock.json'), 'utf8'))
   const workspaces = Object.values(lock.packages).filter(entry => entry.link).map(entry => entry.resolved)
   assert.ok(workspaces.includes('ui-tui') && workspaces.includes('apps/shared'), 'the lock no longer links the TUI workspaces')
   for (const rel of [...workspaces.map(dir => `${dir}/package.json`), 'package.json', 'package-lock.json']) {
-    assert.ok(!isExcluded(rel), `${rel} is excluded, but npm ci reads every workspace manifest`)
+    assert.ok(!isExcluded(rel), `${rel} is excluded, but frontend builds reach their installed-engine refusal through the workspace manifests`)
   }
 })
 
