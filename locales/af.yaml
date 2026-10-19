@@ -649,6 +649,7 @@ gateway:
     hint_single: "Antwoord met die nommer, die opsieteks, of jou eie antwoord."
     hint_multi: "Veelvuldige keuses toegelaat — antwoord met die nommers geskei deur kommas of spasies (bv. \"1, 3\"), die opsieteks, of jou eie antwoord."
     option_line: "  {index}. {choice}"
+    recommended_choice: "{choice} (Aanbeveel)"
     question: "❓ {question}"
     answered: "✅ geantwoord: {response}"
     cancelled: "↩️ Verduideliking gekanselleer — jou boodskap sal as 'n opvolg hanteer word."

@@ -1,6 +1,7 @@
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
+import { zhHantAssistantTool } from './zh-hant-assistant-tool'
 
 export const zhHant = defineLocale({
   sessionImport: {
@@ -2285,7 +2286,7 @@ export const zhHant = defineLocale({
       createDesc: '為工作區命名並新增一個或多個資料夾。',
       renameTitle: '重新命名專案',
       addFolderTitle: '新增資料夾',
-      namePlaceholder: '例如 Skunkworks',
+      namePlaceholder: '例如 新品上市',
       foldersLabel: '資料夾',
       ideaLabel: '想法',
       ideaPlaceholder: '這個專案是關於什麼的？（儲存到 IDEA.md）',
@@ -2419,6 +2420,44 @@ export const zhHant = defineLocale({
   },
 
   composer: {
+    mcpSuggestions: {
+      label: server => `新增 ${server}`,
+      tip: keyword => `因為你提到「${keyword}」而推薦——點一下即可連線`,
+      connecting: server => `正在連線 ${server}…`,
+      cancelTip: '點一下即可取消',
+      added: server => `已新增 ${server}`,
+      addedTip: '已連線——它的工具已可在此對話中使用',
+      connectFailed: server => `無法連線 ${server}`
+    },
+    skillSuggestions: {
+      label: skill => (skill ? `使用技能：${skill}` : '使用這個技能'),
+      tip: skill =>
+        skill ? `你提到了「${skill}」——點一下，這則訊息就用它開頭` : '你提到了這個技能——點一下，這則訊息就用它開頭',
+      done: skill => (skill ? `已新增「${skill}」` : '已新增技能'),
+      doneTip: '傳送時會載入這個技能'
+    },
+    githubSuggestions: {
+      label: '設定 GitHub',
+      tip: '點一下，連線你的 GitHub 帳號',
+      done: '已新增 GitHub 登入',
+      doneTip: '傳送後，APEX 會帶你完成 GitHub 登入'
+    },
+    repairSuggestions: {
+      label: server => `重新連線 ${server}`,
+      tip: server => `${server} 剛才因連線錯誤而失敗`,
+      working: server => `正在重新連線 ${server}…`,
+      workingTip: '點一下即可取消',
+      done: server => `已重新連線 ${server}`,
+      doneTip: '新的憑證已在此對話中生效',
+      failed: server => `無法重新連線 ${server}`
+    },
+    cronSuggestions: {
+      label: '定時執行',
+      tip: phrase => `「${phrase}」聽起來是週期性的工作——可以改成排程執行`,
+      prefix: '將這件事設定為排程工作：',
+      done: '已標記為排程工作',
+      doneTip: '傳送後由助手建立工作'
+    },
     voiceEngineQwen: '千問即時語音',
     voiceEngineQwenShort: '千問即時語音',
     voiceEngineQwenNeedsLogin: '請先登入 APEX',
@@ -3394,7 +3433,21 @@ export const zhHant = defineLocale({
       loadingResponse: 'APEX 正在載入回覆',
       resumeWhenBackgroundDone: count =>
         count === 1 ? '背景工作完成後將自動繼續' : `${count} 個背景工作完成後將自動繼續`,
+      loadingLocalModel: model => `正在把 ${model} 載入記憶體`,
+      processingPrompt: '正在處理您的訊息',
       thinking: '思考中',
+      thought: '已思考',
+      thoughtBriefly: '思考了片刻',
+      thoughtFor: duration => `思考了 ${duration}`,
+      turnDuration: duration => `本輪用時 ${duration}`,
+      working: 'APEX 正在處理',
+      agentMessaging: target => `正在傳訊息給 ${target}…`,
+      agentMessaged: target => `已傳訊息給 ${target}`,
+      agentMessageFrom: target => `${target} 傳來的訊息`,
+      agentShowMessage: '查看訊息',
+      react: '回應',
+      filesChanged: count => `${count} 個檔案有變更`,
+      reviewChanges: '查看變更',
       today: time => `今天，${time}`,
       yesterday: time => `昨天，${time}`,
       copy: '複製',
@@ -3447,100 +3500,16 @@ export const zhHant = defineLocale({
       placeholder: '輸入您的答案…',
       skip: '略過',
       skipped: '已略過',
-      continueLabel: '繼續'
+      continueLabel: '繼續',
+      confirmAndContinueLabel: '確認並繼續',
+      answeredBadge: '已回答',
+      questionProgress: (answered, total) => `已回答 ${answered}/${total}`,
+      lateAnswer: (question, choice) => `關於「${question}」，我的回答是：${choice}`,
+      lateAnswerTip: '把這個回答寫成一則新訊息',
+      lateAnswerHint: '這個問題已不再等待回答。選一個選項，會把它寫成一則新訊息送出。',
+      recommended: '推薦'
     },
-    tool: {
-      copyCode: '複製程式碼',
-      renderingImage: '正在渲染圖片',
-      copyOutput: '複製輸出',
-      copyCommand: '複製指令',
-      copyContent: '複製內容',
-      copyUrl: '複製 URL',
-      copyResults: '複製結果',
-      copyQuery: '複製查詢',
-      copyFile: '複製檔案',
-      copyPath: '複製路徑',
-      failedCalls: (count: number) => `${count} 次工具呼叫失敗`,
-      skillActivity: {
-        loading: '正在載入技能',
-        loaded: '已載入技能',
-        loadFailed: '技能載入失敗',
-        readingResource: '正在讀取技能資源',
-        readResource: '已讀取技能資源',
-        resourceFailed: '技能資源讀取失敗',
-        listing: '正在列出技能',
-        listed: '已列出技能',
-        listFailed: '技能清單取得失敗',
-        unavailable: '技能結果無法使用'
-      },
-      outputAlt: '工具輸出',
-      rawResponse: '原始回應',
-      copyActivity: '複製活動',
-      recoveredOne: '在 1 個失敗步驟後已復原',
-      recoveredMany: count => `在 ${count} 個失敗步驟後已復原`,
-      failedOne: '1 個步驟失敗',
-      failedMany: count => `${count} 個步驟失敗`,
-      statusRunning: '執行中',
-      statusError: '錯誤',
-      statusRecovered: '已復原',
-      statusDone: '完成',
-      actions: {
-        read: '已讀取',
-        reading: '正在讀取',
-        opened: '已開啟',
-        opening: '正在開啟',
-        failedToOpen: '開啟失敗',
-        searched: '已搜尋',
-        searching: '正在搜尋',
-        ran: '已執行',
-        running: '正在執行',
-        ranCode: '已執行程式碼',
-        runningCode: '正在撰寫腳本'
-      },
-      prefixes: {
-        browser: '瀏覽器',
-        web: '網頁'
-      },
-      titleTemplates: {
-        actionCommand: (action, command) => `${action} ${command}`,
-        actionQuoted: (action, value) => `${action}「${value}」`,
-        actionTarget: (action, target) => `${action} ${target}`,
-        prefixedDone: (prefix, action) => `${prefix}${action}`,
-        runningPrefixedTool: (prefix, action) => `正在執行${prefix}${action}`,
-        runningTool: action => `正在執行 ${action}`
-      },
-      titles: {
-        browser_click: { done: '已點擊頁面元素', pending: '正在點擊頁面元素', pendingAction: '正在點擊' },
-        browser_fill: { done: '已填寫表單欄位', pending: '正在填寫表單欄位', pendingAction: '正在填寫' },
-        browser_navigate: { done: '已開啟頁面', pending: '正在開啟頁面', pendingAction: '正在開啟' },
-        browser_snapshot: { done: '已擷取頁面快照', pending: '正在擷取頁面快照', pendingAction: '正在擷取' },
-        browser_take_screenshot: { done: '已擷取截圖', pending: '正在擷取截圖', pendingAction: '正在擷取' },
-        browser_type: { done: '已在頁面輸入', pending: '正在頁面輸入', pendingAction: '正在輸入' },
-        clarify: { done: '已提問', pending: '正在提問', pendingAction: '正在提問' },
-        cronjob: { done: 'Cron 工作', pending: '正在安排 Cron 工作', pendingAction: '正在安排' },
-        edit_file: { done: '已編輯檔案', pending: '正在編輯檔案', pendingAction: '正在編輯' },
-        execute_code: { done: '已執行程式碼', pending: '正在撰寫腳本', pendingAction: '正在撰寫腳本' },
-        image_generate: { done: '已生成圖片', pending: '正在生成圖片', pendingAction: '正在生成' },
-        list_files: { done: '已列出檔案', pending: '正在列出檔案', pendingAction: '正在列出' },
-        patch: { done: '已修補檔案', pending: '正在修補檔案', pendingAction: '正在修補' },
-        read_file: { done: '已讀取檔案', pending: '正在讀取檔案', pendingAction: '正在讀取' },
-        search_files: { done: '已搜尋檔案', pending: '正在搜尋檔案', pendingAction: '正在搜尋' },
-        session_search_recall: {
-          done: '已搜尋工作階段歷史',
-          pending: '正在搜尋工作階段歷史',
-          pendingAction: '正在搜尋'
-        },
-        terminal: { done: '已執行指令', pending: '正在執行指令', pendingAction: '正在執行' },
-        todo: { done: '已更新待辦', pending: '正在更新待辦', pendingAction: '正在更新' },
-        vision_analyze: { done: '已分析圖片', pending: '正在分析圖片', pendingAction: '正在分析' },
-        web_extract: { done: '已讀取網頁', pending: '正在讀取網頁', pendingAction: '正在讀取' },
-        web_search: { done: '已搜尋網頁', pending: '正在搜尋網頁', pendingAction: '正在搜尋' },
-        write_file: { done: '已編輯檔案', pending: '正在編輯檔案', pendingAction: '正在編輯' }
-      },
-      searchResults: '搜尋結果',
-      stdoutLabel: '輸出',
-      stderrLabel: '錯誤輸出'
-    }
+    tool: zhHantAssistantTool
   },
 
   prompts: {
@@ -3830,13 +3799,13 @@ export const zhHant = defineLocale({
     primaryPaths: {
       commerce: {
         title: '從市場機會到上架素材',
-        summary: '選品分析 · 產品定位 · Listing · 圖片 · 短影片',
+        summary: '選品分析 · 產品定位 · 商品詳情頁 · 圖片 · 短影片',
         prompt: '分析美國寵物用品市場，並產生選品報告和上架素材'
       },
       geo: {
         title: '提升品牌可見度與獲客',
         summary: '品牌診斷 · 問題地圖 · 內容優化 · 潛在客戶發現',
-        prompt: '診斷我的品牌在 AI Search 中的可見度，並提出 GEO 獲客方案'
+        prompt: '診斷我的品牌在 AI 搜尋中的可見度，並提出 GEO 獲客方案'
       },
       content: {
         title: '洞察、創作到數據復盤',
@@ -4095,9 +4064,9 @@ export const zhHant = defineLocale({
           prompt: '依據真實畫面和時間軸，完成有證據可追溯的鏡頭分析報告。'
         },
         project: {
-          title: '4. Brief 與可編輯工程',
+          title: '4. 創意簡報與可編輯工程',
           summary: '把抽象結構轉成原創方案與可修改的製作工程。',
-          prompt: '根據既有分析建立原創 Brief、Treatment、鏡頭計畫和可編輯工程。'
+          prompt: '根據既有分析寫出原創的創意簡報、拍攝方案和鏡頭計畫，並建立可編輯工程。'
         },
         assets: {
           title: '5. 素材生成與質檢',

@@ -649,6 +649,7 @@ gateway:
     hint_single: "Numarayı, seçenek metnini veya kendi yanıtınızı yazın."
     hint_multi: "Birden fazla seçim yapılabilir — numaraları virgül veya boşlukla ayırarak (örn. \"1, 3\"), seçenek metnini veya kendi yanıtınızı yazın."
     option_line: "  {index}. {choice}"
+    recommended_choice: "{choice} (Önerilen)"
     question: "❓ {question}"
     answered: "✅ yanıtlandı: {response}"
     cancelled: "↩️ Netleştirme iptal edildi — mesajınız devam mesajı olarak işlenecek."

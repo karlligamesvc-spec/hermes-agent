@@ -40,7 +40,7 @@ import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { ToolIcon } from '@/components/ui/tool-icon'
 import { Tip } from '@/components/ui/tooltip'
-import { useI18n } from '@/i18n'
+import { translateNow, useI18n } from '@/i18n'
 import { connectorCalls } from '@/lib/connector-tools'
 import { PrettyLink, LinkifiedText as SharedLinkifiedText, urlSlugTitleLabel } from '@/lib/external-link'
 import { AlertCircle, CheckCircle2 } from '@/lib/icons'
@@ -120,6 +120,7 @@ const TOOL_PAYLOAD_PRE_CLASS = cn(TOOL_SECTION_SURFACE_CLASS, 'font-mono text-[0
  * nothing else here.
  */
 function ToolPayloadDisclosure({ args, result }: { args: unknown; result: unknown }) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
 
   return (
@@ -135,7 +136,7 @@ function ToolPayloadDisclosure({ args, result }: { args: unknown; result: unknow
         type="button"
       >
         <DisclosureCaret className="text-(--ui-text-tertiary)" open={open} size="0.625rem" />
-        Tool payload
+        {t.assistant.tool.detail.payload}
       </button>
       {open && (
         <pre className={cn(TOOL_PAYLOAD_PRE_CLASS, 'mt-1 whitespace-pre-wrap wrap-anywhere')}>
@@ -179,8 +180,8 @@ function prettyTechnicalValue(value: unknown): string {
 
 export function technicalTrace(args: unknown, result: unknown): string {
   const parts = [
-    ['Arguments', args],
-    ['Result', result]
+    [translateNow('assistant.tool.detail.arguments'), args],
+    [translateNow('assistant.tool.detail.result'), result]
   ]
     .filter(([, value]) => value !== undefined && value !== null)
     .map(([label, value]) => `${label}:\n${prettyTechnicalValue(value)}`)
@@ -470,7 +471,7 @@ function ToolEntry({ part }: ToolEntryProps) {
     (part.toolName === 'terminal' || part.toolName === 'execute_code' || part.toolName === 'read_file')
 
   const hasSearchHits = Boolean(view.searchHits?.length)
-  const searchResultsLabel = part.toolName === 'web_search' ? 'Search results' : view.detailLabel
+  const searchResultsLabel = part.toolName === 'web_search' ? copy.searchResults : view.detailLabel
 
   const hasExpandableContent = Boolean(
     view.imageUrl ||
@@ -646,7 +647,7 @@ function ToolEntry({ part }: ToolEntryProps) {
             <div className="max-w-full text-xs leading-relaxed text-(--ui-text-secondary)">
               {view.searchQuery && (
                 <p className="mb-1 flex min-w-0 gap-1.5 wrap-anywhere">
-                  <span className="shrink-0 font-medium text-(--ui-text-tertiary)">Search</span>
+                  <span className="shrink-0 font-medium text-(--ui-text-tertiary)">{copy.detail.search}</span>
                   <span>{view.searchQuery}</span>
                 </p>
               )}
@@ -685,7 +686,7 @@ function ToolEntry({ part }: ToolEntryProps) {
                 {view.detailLabel && <p className={TOOL_SECTION_LABEL_CLASS}>{view.detailLabel}</p>}
                 {view.stdout && (
                   <div className="space-y-0.5">
-                    {view.stderr && <p className={TOOL_SECTION_LABEL_CLASS}>stdout</p>}
+                    {view.stderr && <p className={TOOL_SECTION_LABEL_CLASS}>{copy.stdoutLabel}</p>}
                     <pre className={cn(TOOL_SECTION_PRE_CLASS, 'whitespace-pre-wrap wrap-anywhere')}>
                       {view.rendersAnsi ? (
                         <AnsiText text={clampForDisplay(view.stdout)} />
@@ -697,7 +698,7 @@ function ToolEntry({ part }: ToolEntryProps) {
                 )}
                 {view.stderr && (
                   <div className={cn('space-y-0.5', view.stdout && 'mt-1.5')}>
-                    <p className={TOOL_SECTION_LABEL_CLASS}>stderr</p>
+                    <p className={TOOL_SECTION_LABEL_CLASS}>{copy.stderrLabel}</p>
                     <pre
                       className={cn(
                         TOOL_SECTION_PRE_CLASS,
@@ -741,6 +742,8 @@ interface TerminalTranscriptProps {
 }
 
 function TerminalTranscript({ command, exitCode }: TerminalTranscriptProps) {
+  const { t } = useI18n()
+
   if (!command && exitCode === undefined) {
     return null
   }
@@ -762,7 +765,7 @@ function TerminalTranscript({ command, exitCode }: TerminalTranscriptProps) {
             exitCode === 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
           )}
         >
-          exit {exitCode}
+          {t.assistant.tool.detail.exitBadge(exitCode)}
         </span>
       )}
     </div>

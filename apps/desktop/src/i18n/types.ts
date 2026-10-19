@@ -7,6 +7,8 @@
 
 import type { TipId } from '@/lib/tips/catalog'
 
+import type { AssistantToolCopy } from './types-assistant-tool'
+
 interface UninstallOptionCopy {
   title: string
   description: string
@@ -14,37 +16,6 @@ interface UninstallOptionCopy {
 }
 
 export type Locale = 'en' | 'zh' | 'zh-hant' | 'ja' | 'ar'
-
-export type ToolTitleKey =
-  | 'browser_click'
-  | 'browser_fill'
-  | 'browser_navigate'
-  | 'browser_snapshot'
-  | 'browser_take_screenshot'
-  | 'browser_type'
-  | 'clarify'
-  | 'cronjob'
-  | 'edit_file'
-  | 'execute_code'
-  | 'image_generate'
-  | 'list_files'
-  | 'memory'
-  | 'patch'
-  | 'read_file'
-  | 'search_files'
-  | 'session_search_recall'
-  | 'terminal'
-  | 'todo'
-  | 'vision_analyze'
-  | 'web_extract'
-  | 'web_search'
-  | 'write_file'
-
-interface ToolTitleCopy {
-  done: string
-  pending: string
-  pendingAction: string
-}
 
 interface ModeOptionCopy {
   label: string
@@ -3756,6 +3727,13 @@ export interface Translations {
       thoughtBriefly: string
       thoughtFor: (duration: string) => string
       turnDuration: (duration: string) => string
+      /** Accessible name of the turn-activity row while no wait hint shows. */
+      working: string
+      /** Inter-agent delivery notice (`send_message` to another agent). */
+      agentMessaging: (target: string) => string
+      agentMessaged: (target: string) => string
+      agentMessageFrom: (target: string) => string
+      agentShowMessage: string
       today: (time: string) => string
       yesterday: (time: string) => string
       copy: string
@@ -3849,6 +3827,9 @@ export interface Translations {
       lateAnswer: (question: string, choice: string) => string
       lateAnswerTip: string
       lateAnswerHint: string
+      /** What the card shows beside the option the backend marked with the
+       *  English wire marker `(Recommended)`; only the display is localized. */
+      recommended: string
     }
     mcpSetup: {
       installTitle: (server: string) => string
@@ -3872,74 +3853,7 @@ export interface Translations {
       reloadFailed: string
       gatewayDisconnected: string
     }
-    tool: {
-      copyCode: string
-      renderingImage: string
-      copyOutput: string
-      copyCommand: string
-      copyContent: string
-      copyUrl: string
-      copyResults: string
-      copyQuery: string
-      copyFile: string
-      copyPath: string
-      failedCalls: (count: number) => string
-      skillActivity: {
-        loading: string
-        loaded: string
-        loadFailed: string
-        readingResource: string
-        readResource: string
-        resourceFailed: string
-        listing: string
-        listed: string
-        listFailed: string
-        unavailable: string
-      }
-      outputAlt: string
-      rawResponse: string
-      copyActivity: string
-      recoveredOne: string
-      recoveredMany: (count: number) => string
-      failedOne: string
-      failedMany: (count: number) => string
-      statusRunning: string
-      statusError: string
-      statusRecovered: string
-      statusDone: string
-      /** Over-budget / rejected memory write title — not "Saved to memory". */
-      resultUnavailable: string
-      memoryWriteNoted: string
-      actions: {
-        read: string
-        reading: string
-        opened: string
-        opening: string
-        failedToOpen: string
-        searched: string
-        searching: string
-        ran: string
-        running: string
-        ranCode: string
-        runningCode: string
-      }
-      prefixes: {
-        browser: string
-        web: string
-      }
-      titleTemplates: {
-        actionCommand: (action: string, command: string) => string
-        actionQuoted: (action: string, value: string) => string
-        actionTarget: (action: string, target: string) => string
-        prefixedDone: (prefix: string, action: string) => string
-        runningPrefixedTool: (prefix: string, action: string) => string
-        runningTool: (action: string) => string
-      }
-      titles: Record<ToolTitleKey, ToolTitleCopy>
-      searchResults: string
-      stdoutLabel: string
-      stderrLabel: string
-    }
+    tool: AssistantToolCopy
   }
 
   prompts: {
