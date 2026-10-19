@@ -737,6 +737,12 @@ gateway:
     unknown_mode: "Mód anaithnid `{arg}`. Úsáid `/busy queue`, `/busy steer`, nó `/busy interrupt`."
     save_failed: "Níorbh fhéidir an mód ionchuir gnóthach a shábháil sa chumraíocht. Mód gan athrú."
     set: "Mód ionchuir gnóthach socraithe go **`{mode}`** (sábháilte).\n_{behavior}_"
+  onboarding:
+    busy_queue: "💡 Leid — Chuir mé do theachtaireacht i scuaine in ionad cur isteach. Seol `/busy interrupt` chun go stopfaidh teachtaireachtaí nua an tasc reatha láithreach, nó `/busy status` chun seiceáil. Ní thaispeánfar an fógra seo arís."
+    busy_steer: "💡 Leid — Stiúir mé do theachtaireacht isteach sa rith reatha; sroichfidh sí é tar éis an chéad ghlao uirlise eile in ionad cur isteach. Seol `/busy interrupt` nó `/busy queue` chun é seo a athrú, nó `/busy status` chun seiceáil. Ní thaispeánfar an fógra seo arís."
+    busy_redirect: "💡 Leid — D'atreoraigh mé an rith reatha de réir do theachtaireachta. Fanann an obair atá déanta sa chomhthéacs, agus cuireann `/stop` an tasc ar ceal i gcónaí. Seol `/busy queue` chun fanacht le seal ar leith, nó `/busy status` chun seiceáil. Ní thaispeánfar an fógra seo arís."
+    busy_interrupt: "💡 Leid — Chuir mé isteach ar mo thasc reatha díreach anois chun freagra a thabhairt duit. Seol `/busy queue` chun teachtaireachtaí leantacha a chur i scuaine go dtí tar éis an taisc reatha, `/busy steer` chun iad a chur isteach le linn an rith gan cur isteach, nó `/busy status` chun seiceáil. Ní thaispeánfar an fógra seo arís."
+    tool_progress: "💡 Leid — Thóg an uirlis sin tamall agus táim ag sruthú gach céime. Má bhraitheann na teachtaireachtaí dul chun cinn róthorannach, seol `/verbose` chun na móid a athrú (all → new → off). Ní thaispeánfar an fógra seo arís."
   pause:
     resumed: "▶️ Atosaithe — glactar le hobair nua arís."
     not_paused: "Ní raibh Hermes ar sos."

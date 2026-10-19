@@ -737,6 +737,12 @@ gateway:
     unknown_mode: "未知模式 `{arg}`。請使用 `/busy queue`、`/busy steer` 或 `/busy interrupt`。"
     save_failed: "忙碌輸入模式無法儲存至設定。模式未變更。"
     set: "忙碌輸入模式已設為 **`{mode}`**（已儲存）。\n_{behavior}_"
+  onboarding:
+    busy_queue: "💡 首次提示——我把你的訊息排入佇列，沒有打斷目前的任務。傳送 `/busy interrupt` 可讓新訊息立即停止目前的任務，或傳送 `/busy status` 查看狀態。此提示只會顯示一次。"
+    busy_steer: "💡 首次提示——我把你的訊息引導進目前的執行，它會在下一次工具呼叫後送達，而不會打斷目前的任務。傳送 `/busy interrupt` 或 `/busy queue` 可變更，或傳送 `/busy status` 查看狀態。此提示只會顯示一次。"
+    busy_redirect: "💡 首次提示——我已依你的訊息調整了目前的執行。已完成的工作會保留在上下文中，`/stop` 仍可取消任務。傳送 `/busy queue` 可改為排入佇列、等目前任務完成後單獨處理，或傳送 `/busy status` 查看狀態。此提示只會顯示一次。"
+    busy_interrupt: "💡 首次提示——我剛剛中斷了目前的任務來回答你。傳送 `/busy queue` 可改為把後續訊息排到目前任務之後，`/busy steer` 可在執行中插入而不打斷，或傳送 `/busy status` 查看狀態。此提示只會顯示一次。"
+    tool_progress: "💡 首次提示——這個工具執行了較長時間，我正在即時推送每一步的進度。如果覺得進度訊息太多，傳送 `/verbose` 可循環切換顯示模式（all → new → off）。此提示只會顯示一次。"
   pause:
     resumed: "▶️ 已恢復 — 重新開始接受新工作。"
     not_paused: "Hermes 並未暫停。"
