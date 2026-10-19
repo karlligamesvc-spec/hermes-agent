@@ -945,6 +945,7 @@ gateway:
     auto_reset_notice: |
       ◐ Session réinitialisée après un arrêt. Historique de conversation effacé.
       Utilisez /resume pour parcourir et restaurer une session précédente.
+    auto_reset_plain_notice: "La conversation précédente a été effacée."
     auto_reset_context_exhausted: |2-
 
 

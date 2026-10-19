@@ -801,6 +801,7 @@ gateway:
   unknown_command: "未知命令 `/{command}`。输入 /commands 查看可用命令，或去掉开头的斜杠重新发送，以作为普通消息处理。"
   session:
     auto_reset_notice: "◐ 会话在停止后已重置。对话历史已清空。\n用 /resume 浏览并恢复之前的会话。\n"
+    auto_reset_plain_notice: "之前的对话已清空。"
     auto_reset_context_exhausted: "\n\n🔄 会话已自动重置——对话超出了最大上下文大小，且无法进一步压缩。你的下一条消息将开始一个新会话。"
     info_model: "◆ 模型：`{model}`"
     info_provider: "◆ 提供方：{provider}"

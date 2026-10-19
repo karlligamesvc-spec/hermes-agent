@@ -801,6 +801,7 @@ gateway:
   unknown_command: "Onbekende opdrag `/{command}`. Tik /commands om te sien wat beskikbaar is, of stuur weer sonder die voorste skuinsstreep om dit as 'n gewone boodskap te stuur."
   session:
     auto_reset_notice: "◐ Sessie herstel nadat dit gestop is. Gesprekgeskiedenis uitgevee.\nGebruik /resume om 'n vorige sessie te blaai en te herstel.\n"
+    auto_reset_plain_notice: "Die vorige gesprek is uitgevee."
     auto_reset_context_exhausted: "\n\n🔄 Sessie outomaties herstel — die gesprek het die maksimum konteksgrootte oorskry en kon nie verder saamgepers word nie. Jou volgende boodskap sal 'n vars sessie begin."
     info_model: "◆ Model: `{model}`"
     info_provider: "◆ Verskaffer: {provider}"

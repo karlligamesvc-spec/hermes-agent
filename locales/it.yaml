@@ -801,6 +801,7 @@ gateway:
   unknown_command: "Comando sconosciuto `/{command}`. Digita /commands per vedere quelli disponibili, oppure reinvia senza la barra iniziale per mandarlo come messaggio normale."
   session:
     auto_reset_notice: "◐ Sessione reimpostata dopo l'interruzione. Cronologia della conversazione cancellata.\nUsa /resume per sfogliare e ripristinare una sessione precedente.\n"
+    auto_reset_plain_notice: "La conversazione precedente è stata cancellata."
     auto_reset_context_exhausted: "\n\n🔄 Sessione reimpostata automaticamente — la conversazione ha superato la dimensione massima del contesto e non poteva essere compressa ulteriormente. Il tuo prossimo messaggio avvierà una nuova sessione."
     info_model: "◆ Modello: `{model}`"
     info_provider: "◆ Provider: {provider}"

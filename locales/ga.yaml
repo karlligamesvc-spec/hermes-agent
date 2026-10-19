@@ -801,6 +801,7 @@ gateway:
   unknown_command: "Ordú anaithnid `/{command}`. Clóscríobh /commands chun a fheiceáil cad atá ar fáil, nó seol arís gan an slais tosaigh chun é a sheoladh mar ghnáth-theachtaireacht."
   session:
     auto_reset_notice: "◐ Athshocraíodh an seisiún tar éis é a stopadh. Glanadh stair an chomhrá.\nÚsáid /resume chun seisiún roimhe seo a bhrabhsáil agus a athchóiriú.\n"
+    auto_reset_plain_notice: "Glanadh an comhrá roimhe seo."
     auto_reset_context_exhausted: "\n\n🔄 Seisiún athshocraithe go huathoibríoch — chuaigh an comhrá thar an uasmhéid comhthéacs agus níorbh fhéidir é a dhlúthú a thuilleadh. Tosóidh do chéad teachtaireacht eile seisiún úr."
     info_model: "◆ Samhail: `{model}`"
     info_provider: "◆ Soláthraí: {provider}"

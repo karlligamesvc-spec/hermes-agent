@@ -1,7 +1,7 @@
 # apex_overlay — the ApexNodes overlay seam pattern
 
-> Status: **production**. The bundled `apex-overlay` plugin currently applies
-> 15 independently tested seams. Each seam keeps ApexNodes behavior outside
+> Status: **production**. The bundled `apex-overlay` plugin applies every seam
+> below, each independently tested. Each seam keeps ApexNodes behavior outside
 > hot upstream files so version upgrades remain reviewable. Discipline and the
 > original audit live in `OVERLAY-SEAM-AUDIT.md` in the hermes-cloud repo.
 
@@ -79,6 +79,7 @@ disarm into a **loud CI failure**, the prerequisite for trusting monkey-patch.
 | `stt_no_lazy_install` | Prevent managed containers from OOMing on an in-request STT dependency install (hc-401). |
 | `first_turn_ack` | Acknowledge long first turns on the native China IM channels (hc-401). |
 | `cn_im_messages` | Localize gateway control/status messages for China IM channels (hc-401). |
+| `cn_im_banners` | On WeChat, WeCom, DingTalk, QQ and Feishu, replace the runtime's session-reset notice with one plain sentence and drop the ◆ session lines, in any catalog language (hc-976; was hc-457/hc-964 in-place in `weixin.py`). |
 | `cn_mirror_env` | Route runtime dependency downloads through China mirrors when configured (hc-476). |
 | `im_passthrough` | Route `/cc` and `/codex` into direct coding-agent sessions (hc-539). |
 | `region` | Provide the shared region-policy helpers used by the China-specific seams. |
