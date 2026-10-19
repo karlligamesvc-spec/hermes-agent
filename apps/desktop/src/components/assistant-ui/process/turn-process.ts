@@ -607,13 +607,50 @@ function buildStep(calls: ProcessCall[], prep: ProcessCall[]): ProcessStep {
   }
 }
 
+// How long a thought took is only ever measured by the live stream's stamps. A
+// finished turn can be rebuilt from stored history afterwards (reconciliation,
+// catch-up hydration), where a thought keeps its text but loses its end stamp
+// or gets a later start one — seen on a real turn as 「想了 12 秒」 turning into
+// 「想了 1 秒」 at settle. So each thought's longest measured time is kept for
+// the app session, keyed by its text, and a rebuilt turn never undercounts what
+// the user watched. A thought nobody measured stays unmeasured: 「想过了」.
+const measuredThoughts = new Map<string, number>()
+const MAX_MEASURED_THOUGHTS = 500
+
+function thoughtSeconds(block: TurnPart, text: string): number | undefined {
+  const own =
+    block.timestamp !== undefined && block.completedAt !== undefined && block.completedAt >= block.timestamp
+      ? block.completedAt - block.timestamp
+      : undefined
+
+  const key = `${text.length}:${text.slice(0, 96)}`
+  const known = measuredThoughts.get(key)
+  const best = own === undefined ? known : Math.max(own, known ?? own)
+
+  if (best !== undefined && best !== known) {
+    if (measuredThoughts.size >= MAX_MEASURED_THOUGHTS) {
+      measuredThoughts.delete(measuredThoughts.keys().next().value as string)
+    }
+
+    measuredThoughts.set(key, best)
+  }
+
+  return best
+}
+
+export function __resetMeasuredThoughtsForTests() {
+  measuredThoughts.clear()
+}
+
 function reasoningOf(parts: readonly TurnPart[], live: boolean): TurnReasoning {
   const blocks = parts.filter(part => part.type === 'reasoning' && typeof part.text === 'string' && part.text.trim())
   let seconds: null | number = null
 
   for (const block of blocks) {
-    if (block.timestamp !== undefined && block.completedAt !== undefined && block.completedAt >= block.timestamp) {
-      seconds = (seconds ?? 0) + (block.completedAt - block.timestamp)
+    const measured = thoughtSeconds(block, (block.text as string).trim())
+
+    if (measured !== undefined) {
+      seconds = (seconds ?? 0) + measured
     }
   }
 

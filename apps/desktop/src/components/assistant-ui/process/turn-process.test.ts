@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { setRuntimeI18nLocale } from '@/i18n'
 
-import { buildTurnProcess, stepChain, type TurnPart, wholeSeconds } from './turn-process'
+import {
+  __resetMeasuredThoughtsForTests,
+  buildTurnProcess,
+  stepChain,
+  type TurnPart,
+  wholeSeconds
+} from './turn-process'
 import { turnAnchor, turnBounds } from './turn-state'
 
 // hc-973: how a turn's calls fold into the steps the process area shows.
@@ -205,6 +211,24 @@ describe('time', () => {
 
     expect(measured.reasoning.seconds).toBe(8)
     expect(buildTurnProcess([{ text: '想过', timestamp: 100, type: 'reasoning' }], false).reasoning.seconds).toBeNull()
+  })
+
+  it('keeps a thought’s measured time when the finished turn is rebuilt without its stamps', () => {
+    __resetMeasuredThoughtsForTests()
+
+    const watched = buildTurnProcess(
+      [{ completedAt: 312, text: '先看看这条视频的开头', timestamp: 300, type: 'reasoning' }],
+      false
+    )
+
+    // Stored history keeps the text but not the end stamp, and starts it later.
+    const rebuilt = buildTurnProcess([{ text: '先看看这条视频的开头', timestamp: 311, type: 'reasoning' }], false)
+
+    expect(watched.reasoning.seconds).toBe(12)
+    expect(rebuilt.reasoning.seconds).toBe(12)
+    expect(
+      buildTurnProcess([{ text: '一个没人量过的念头', timestamp: 1, type: 'reasoning' }], false).reasoning.seconds
+    ).toBeNull()
   })
 
   it('says durations in whole seconds and never in milliseconds', () => {
