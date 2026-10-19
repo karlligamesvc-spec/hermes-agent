@@ -4,9 +4,9 @@ encrypted CDN; ``qr_login`` backs the gateway setup wizard."""
 
 from __future__ import annotations
 
-import asyncio, base64, contextlib, hashlib, json, logging, mimetypes, os, re, secrets, tempfile, textwrap, time, uuid
+import asyncio, base64, contextlib, hashlib, json, logging, mimetypes, os, re, secrets, string, tempfile, textwrap, time, uuid
 from datetime import datetime
-from functools import partial
+from functools import lru_cache, partial
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote, urlparse
@@ -161,14 +161,90 @@ _WEIXIN_RUNTIME_BANNER_PATTERNS = [
     re.compile(r"^[ \t]*◐[ \t]*[A-Z][a-zA-Z ]{2,40}(?:reset|cleared|compact|nudge)\b.*$", re.MULTILINE),
 ]
 
+# hc-964: the patterns above match the hardcoded English of pre-i18n runtimes (the v2026.8.31
+# image). The runtime now renders both banners through the i18n catalog: gateway/run_turn.py sends
+# ``gateway.session.auto_reset_notice`` followed by _format_session_info()'s
+# ``gateway.session.info_*`` lines, and the /new reply carries the same lines. Under
+# ``display.language: zh`` they arrive in Chinese and none of the English patterns match; even the
+# English notice was reworded, so "Use /resume to …" got through on its own. These patterns are
+# built from those keys' templates exactly as ``t()`` resolves them for rendering: the active
+# language (with its per-key English fallback), from the bundled locale, the profile's
+# ``locales/`` overlay and plugin packs. A reworded banner, or a gateway switched to another
+# locale, needs no edit here, and nothing is loaded that rendering has not loaded already; every
+# locale at once would parse ~5 MB of YAML on the event loop. The precision rules stay: a line must
+# open with ◐/◆ and carry label text before any ``{field}``, and the notice's glyph-less
+# continuation lines are removed only together with their headline.
+_WEIXIN_BANNER_NOTICE_KEYS = ("gateway.session.auto_reset_notice",)
+_WEIXIN_BANNER_LINE_KEYS = (
+    "gateway.session.info_model", "gateway.session.info_provider", "gateway.session.info_context",
+    "gateway.session.info_acting_model", "gateway.session.info_endpoint",
+)
+_WEIXIN_BANNER_GLYPHS = ("◐", "◆")
+
+
+def _template_line_regex(line: str) -> Optional[str]:
+    """Regex source for one line of a catalog template as ``t()`` renders it: the literal text
+    escaped, each ``{field}`` any run of characters within the line. None for a malformed template."""
+    try:
+        parts = list(string.Formatter().parse(line.strip()))
+    except ValueError:
+        return None
+    return "".join(re.escape(text) + (r"[^\n]*?" if field is not None else "") for text, field, _spec, _conv in parts)
+
+
+def _is_banner_headline(line: str) -> bool:
+    """◐/◆ followed by label text before the first field, so a template such as ``◆ {model}`` can
+    never strip an agent's own ◆ bullet points."""
+    stripped = line.strip()
+    if not stripped.startswith(_WEIXIN_BANNER_GLYPHS):
+        return False
+    try:
+        label = next(string.Formatter().parse(stripped[1:]), ("",))[0]
+    except ValueError:
+        return False
+    return bool(label.strip())
+
+
+@lru_cache(maxsize=4)
+def _compile_catalog_banner_patterns(notices: tuple[str, ...], lines: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
+    """Whole notices come before their lone headlines, which would otherwise strand the
+    continuation lines."""
+    blocks, headlines, singles = [], [], []
+    for template in notices:
+        rows = template.strip("\n").split("\n")
+        sources = [_template_line_regex(row) for row in rows]
+        if not _is_banner_headline(rows[0]) or None in sources:
+            continue
+        blocks.append(r"[ \t]*\n[ \t]*".join(sources))
+        if len(sources) > 1:  # the headline alone, should it ever arrive without its continuation lines
+            headlines.append(sources[0])
+    for template in lines:
+        source = _template_line_regex(template)
+        if source and "\n" not in template.strip("\n") and _is_banner_headline(template):
+            singles.append(source)
+    return tuple(re.compile(rf"^[ \t]*{source}[ \t]*$", re.MULTILINE) for source in (*blocks, *headlines, *singles))
+
+
+def _catalog_banner_patterns() -> tuple[re.Pattern[str], ...]:
+    """The runtime banners as the catalog renders them right now. Compiled once per set of
+    templates, so a language, overlay or pack change rebuilds them; empty if the catalog cannot be
+    read, which leaves the English patterns alone in effect."""
+    try:
+        notices = tuple(t(key) for key in _WEIXIN_BANNER_NOTICE_KEYS)
+        lines = tuple(t(key) for key in _WEIXIN_BANNER_LINE_KEYS)
+    except Exception:
+        logger.debug("[weixin] i18n catalog unreadable; filtering English runtime banners only", exc_info=True)
+        return ()
+    return _compile_catalog_banner_patterns(notices, lines)
+
 
 def _weixin_filter_runtime_banners_enabled() -> bool:
     return os.environ.get("WEIXIN_FILTER_RUNTIME_BANNERS", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _strip_runtime_banners_for_weixin(text: str) -> str:
-    """Strip runtime status banners (see _WEIXIN_RUNTIME_BANNER_PATTERNS)
-    from text bound for a Weixin reply.
+    """Strip runtime status banners (the catalog-rendered ones, then
+    _WEIXIN_RUNTIME_BANNER_PATTERNS) from text bound for a Weixin reply.
 
     Env-gated (default on); set WEIXIN_FILTER_RUNTIME_BANNERS=false to fall
     back to prior (unfiltered) behavior.
@@ -177,7 +253,9 @@ def _strip_runtime_banners_for_weixin(text: str) -> str:
         return text
     filtered = text
     stripped_count = 0
-    for pattern in _WEIXIN_RUNTIME_BANNER_PATTERNS:
+    # Catalog patterns first: the English shape net below would otherwise take the reworded English
+    # headline alone and strand its "Use /resume to …" line.
+    for pattern in (*_catalog_banner_patterns(), *_WEIXIN_RUNTIME_BANNER_PATTERNS):
         filtered, count = pattern.subn("", filtered)
         stripped_count += count
     if stripped_count:
