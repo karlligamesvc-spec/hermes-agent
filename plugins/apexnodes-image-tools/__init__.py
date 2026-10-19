@@ -87,27 +87,47 @@ def _request(method: str, path: str, payload: dict[str, Any] | None = None, time
         except json.JSONDecodeError:
             detail = raw
         if isinstance(detail, dict):
-            message = detail.get("message") or detail.get("code") or "图片生成服务繁忙,请稍后重试"
+            code = detail.get("code")
+            message = str(detail.get("message") or detail.get("code") or "")
         else:
-            message = str(detail or "图片生成服务繁忙,请稍后重试")
-        raise RuntimeError(message) from exc
+            code, message = None, str(detail or "")
+        # hc-969: same honest table as the gateway leg; an error the server did not
+        # explain is no longer reported as "繁忙,请稍后重试".
+        honest = (
+            _gateway.media_error_message(_gateway.MEDIA_IMAGE, exc.code, code, message) if _gateway else None
+        )
+        raise RuntimeError(honest or message or f"图片生成服务出错了(HTTP {exc.code}),没有说明原因。") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"无法连接图片生成服务: {exc.reason}") from exc
 
 
 def _legacy_check() -> bool:
+    # hc-969: ``ok`` also folds in hc-945 leg health. The tool stays offered while a
+    # leg is failing (the handler says why it cannot run); only a platform with no
+    # key or model hides it.
     try:
         data = _request("GET", "/media/image/check", timeout=5)
-        return bool(data.get("ok") and data.get("api_key_configured") and data.get("model"))
+        return bool(data.get("api_key_configured") and data.get("model"))
     except Exception:
         return False
 
 
 def _check() -> bool:
     # 网关模式:可用性=配置齐(base+key);额度/限流/上游故障在调用时显式报错。
+    # hc-969:链路关停或连续失败也不隐藏工具,由 _handle_generate_image 当场说明。
     if _use_gateway():
         return bool(_gateway.agent_api_key())
     return _legacy_check()
+
+
+def _leg_health() -> dict[str, Any] | None:
+    """hc-969: the server's health view of the image legs; None when unreadable."""
+    if _use_gateway():
+        return (_gateway.tools_check() or {}).get("image")
+    try:
+        return _request("GET", "/media/image/check", timeout=5)
+    except (RuntimeError, OSError, ValueError):
+        return None
 
 
 # hc-957 (Kael, 2026-10-19): Agnes Image 2.5 left the Desktop picker and the model
@@ -307,6 +327,15 @@ def _handle_generate_image(args: dict, **_kwargs) -> str:
         selected_model = _desktop_image_model() or str(args.get("model") or "").strip() or None
     except RuntimeError as exc:
         return tool_error(f"图片生成失败: {exc}")
+    # hc-969: a leg the server reports switched off or failing is said now, instead of
+    # a request that waits to fail.
+    unavailable = (
+        _gateway.media_unavailable_reason(_gateway.MEDIA_IMAGE, selected_model, _leg_health)
+        if _gateway
+        else None
+    )
+    if unavailable:
+        return tool_error(unavailable)
     payload = {
         "prompt": prompt,
         "aspect_ratio": str(args.get("aspect_ratio") or "square").strip() or "square",

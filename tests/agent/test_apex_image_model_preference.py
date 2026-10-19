@@ -12,6 +12,26 @@ import pytest
 PLUGIN = Path(__file__).resolve().parents[2] / "plugins/apexnodes-image-tools/__init__.py"
 
 
+def _fake_transports(captured, answer):
+    """Fake legacy ``_request`` and gateway ``request_json``. hc-969's leg-health read
+    gets an empty body (no verdict, the call goes ahead); the generation call records
+    its payload and answers ``answer(payload)``."""
+
+    def legacy(_method, path, payload=None, timeout=None):
+        if path.endswith("/check"):
+            return {}
+        captured.append(payload)
+        return answer(payload)
+
+    def gateway(_method, path, payload=None, *, timeout=None):
+        if path == "/tools/v1/check":
+            return {}
+        captured.append(payload)
+        return {"data": answer(payload)}
+
+    return legacy, gateway
+
+
 @pytest.fixture
 def image_plugin():
     spec = importlib.util.spec_from_file_location("apex_image_model_preference_test", PLUGIN)
@@ -40,22 +60,14 @@ def test_bundled_image_plugin_uses_picker_on_gateway_and_legacy(
     if explicit:
         args["model"] = explicit
     captured = []
+    fake_legacy, fake_gateway = _fake_transports(captured, lambda _payload: {"ok": True, "model": expected})
 
     monkeypatch.setattr(image_plugin, "_use_gateway", lambda: False)
-    monkeypatch.setattr(
-        image_plugin,
-        "_request",
-        lambda _method, _path, payload: captured.append(payload) or {"ok": True, "model": expected},
-    )
+    monkeypatch.setattr(image_plugin, "_request", fake_legacy)
     assert json.loads(image_plugin._handle_generate_image(args))["model"] == expected
 
     monkeypatch.setattr(image_plugin, "_use_gateway", lambda: True)
-    monkeypatch.setattr(
-        image_plugin._gateway,
-        "request_json",
-        lambda _method, _path, payload, timeout: captured.append(payload)
-        or {"data": {"ok": True, "model": expected}},
-    )
+    monkeypatch.setattr(image_plugin._gateway, "request_json", fake_gateway)
     assert json.loads(image_plugin._handle_generate_image(args))["model"] == expected
     assert [payload["model"] for payload in captured] == [expected, expected]
 
@@ -67,13 +79,9 @@ def test_a_saved_agnes_image_2_5_moves_to_gpt_image_2_5_flare(image_plugin, monk
         "apex:\n  generation_image_model: agnes-image-2.5-flash\n", encoding="utf-8"
     )
     captured = []
+    _fake_legacy, fake_gateway = _fake_transports(captured, lambda payload: {"ok": True, "model": payload["model"]})
     monkeypatch.setattr(image_plugin, "_use_gateway", lambda: True)
-    monkeypatch.setattr(
-        image_plugin._gateway,
-        "request_json",
-        lambda _method, _path, payload, timeout: captured.append(payload)
-        or {"data": {"ok": True, "model": payload["model"]}},
-    )
+    monkeypatch.setattr(image_plugin._gateway, "request_json", fake_gateway)
 
     result = json.loads(image_plugin._handle_generate_image({"prompt": "西高地犬"}))
 

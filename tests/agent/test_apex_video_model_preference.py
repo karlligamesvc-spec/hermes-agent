@@ -28,24 +28,36 @@ def video_plugin():
     return plugin
 
 
+def _fake_transports(captured, answer):
+    """Fake legacy ``_request`` and gateway ``request_json``. hc-969's leg-health read
+    gets an empty body (no verdict, the call goes ahead); the generation call records
+    its payload and answers ``answer(payload)``."""
+
+    def legacy(_method, path, payload=None, timeout=None):
+        if path.endswith("/check"):
+            return {}
+        captured.append(payload)
+        return answer(payload)
+
+    def gateway(_method, path, payload=None, *, timeout=None):
+        if path == "/tools/v1/check":
+            return {}
+        captured.append(payload)
+        return {"data": answer(payload)}
+
+    return legacy, gateway
+
+
 def _capture_both_paths(video_plugin, monkeypatch, args, answer):
     """Run the handler once on the legacy path and once on the gateway path."""
     captured = []
+    fake_legacy, fake_gateway = _fake_transports(captured, lambda _payload: {"ok": True, "model": answer})
     monkeypatch.setattr(video_plugin, "_use_gateway", lambda: False)
-    monkeypatch.setattr(
-        video_plugin,
-        "_request",
-        lambda _method, _path, payload: captured.append(payload) or {"ok": True, "model": answer},
-    )
+    monkeypatch.setattr(video_plugin, "_request", fake_legacy)
     legacy = json.loads(video_plugin._handle_generate_video(dict(args)))
 
     monkeypatch.setattr(video_plugin, "_use_gateway", lambda: True)
-    monkeypatch.setattr(
-        video_plugin._gateway,
-        "request_json",
-        lambda _method, _path, payload, timeout: captured.append(payload)
-        or {"data": {"ok": True, "model": answer}},
-    )
+    monkeypatch.setattr(video_plugin._gateway, "request_json", fake_gateway)
     gateway = json.loads(video_plugin._handle_generate_video(dict(args)))
     return captured, legacy, gateway
 
@@ -128,14 +140,11 @@ def test_the_picker_is_reread_on_every_call(video_plugin, monkeypatch, tmp_path)
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     config = tmp_path / "config.yaml"
     captured = []
+    _fake_legacy, fake_gateway = _fake_transports(captured, lambda _payload: {"ok": True})
     monkeypatch.setattr(video_plugin, "_use_gateway", lambda: True)
-    monkeypatch.setattr(
-        video_plugin._gateway,
-        "request_json",
-        lambda _method, _path, payload, timeout: captured.append(payload["model"]) or {"data": {"ok": True}},
-    )
+    monkeypatch.setattr(video_plugin._gateway, "request_json", fake_gateway)
     for model in (MINI, "MiniMax-H3"):
         config.write_text(f"apex:\n  generation_video_model: {model}\n", encoding="utf-8")
         video_plugin._handle_generate_video({"prompt": "收纳架开箱"})
 
-    assert captured == [MINI, "MiniMax-H3"]
+    assert [payload["model"] for payload in captured] == [MINI, "MiniMax-H3"]
