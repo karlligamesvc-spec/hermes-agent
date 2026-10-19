@@ -57,6 +57,12 @@ export interface DesktopAuthState {
    *  app falls back to the hc-511 behavior (a relay 401 is only surfaced on a
    *  chat send). Read by the recovery + startup/catalog reconcile paths. */
   loginTruth: boolean
+  /** hc-960: the shell's Flash / Pro / Max switch, mirrored from managed
+   *  status (default off). Read through `store/model-tiers.ts`, never alone —
+   *  it only means something on an APEX account. */
+  modelTiers?: boolean
+  /** hc-960: the later Max switch (default off). */
+  modelTierMax?: boolean
   status: AuthStatus
 }
 
@@ -190,10 +196,21 @@ export async function refreshAuthStatus(): Promise<void> {
       // hc-519: mirror the rollback switch (default on) so the recovery + reconcile
       // paths read one value. undefined (older main process) → on (fail-safe).
       const loginTruth = status.loginStateTruth !== false
+      const modelTiers = status.modelTiers === true
+      const modelTierMax = status.modelTierMax === true
 
       if (!status.enabled) {
         // Managed off — the account gate doesn't apply; leave chat unblocked.
-        patch({ enabled: false, loginTruth, status: 'signed-in', accountId: null, account: EMPTY_ACCOUNT, gateReason: null })
+        patch({
+          enabled: false,
+          loginTruth,
+          modelTiers,
+          modelTierMax,
+          status: 'signed-in',
+          accountId: null,
+          account: EMPTY_ACCOUNT,
+          gateReason: null
+        })
         writeCachedSignedIn(false)
 
         return
@@ -202,7 +219,7 @@ export async function refreshAuthStatus(): Promise<void> {
       // Native status proves credential presence, not successful authentication.
       // A fresh status read cannot clear a server-confirmed hard account gate.
       if (hasHardAuthGate($authState.get())) {
-        patch({ enabled: true, loginTruth })
+        patch({ enabled: true, loginTruth, modelTiers, modelTierMax })
 
         return
       }
@@ -219,6 +236,8 @@ export async function refreshAuthStatus(): Promise<void> {
         patch({
           enabled: true,
           loginTruth,
+          modelTiers,
+          modelTierMax,
           status: stillExpired ? 'expired' : 'signed-in',
           accountId: status.accountId ?? null,
           account: accountFromStatus(status),
@@ -236,6 +255,8 @@ export async function refreshAuthStatus(): Promise<void> {
       patch({
         enabled: true,
         loginTruth,
+        modelTiers,
+        modelTierMax,
         accountId: null,
         account: EMPTY_ACCOUNT,
         status: $authState.get().status === 'disabled' ? 'disabled' : 'signed-out'

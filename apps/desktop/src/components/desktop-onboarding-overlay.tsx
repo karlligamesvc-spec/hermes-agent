@@ -25,6 +25,7 @@ import {
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { cn } from '@/lib/utils'
 import { $desktopBoot, type DesktopBootState } from '@/store/boot'
+import { $modelTierMode } from '@/store/model-tiers'
 import {
   $desktopOnboarding,
   cancelOnboardingFlow,
@@ -505,7 +506,15 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
   const { t } = useI18n()
   const { localEndpoint, manual, mode, needsCredential, providers } = useStore($desktopOnboarding)
   const [showAll, setShowAll] = useState(readShowAll)
-  const ordered = useMemo(() => (providers ? sortProviders(providers) : []), [providers])
+  // hc-960: an APEX account reaches this picker only through 档位 › 高级 to
+  // add its OWN service; recommending upstream's Nous Portal there is noise.
+  const modelTierMode = useStore($modelTierMode)
+
+  const ordered = useMemo(
+    () => (providers ? sortProviders(providers) : []).filter(p => !(modelTierMode && p.id === FEATURED_ID)),
+    [modelTierMode, providers]
+  )
+
   const hasOauth = ordered.length > 0
   const apiKeyOptions = useApiKeyCatalog()
 

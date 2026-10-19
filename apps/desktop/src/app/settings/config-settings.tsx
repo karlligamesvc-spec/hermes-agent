@@ -22,6 +22,7 @@ import {
 } from '@/store/data-url-read-max'
 import { $disableF12, setDisableF12 } from '@/store/disable-f12'
 import { $keepAwake, setKeepAwake } from '@/store/keep-awake'
+import { useModelTierMode } from '@/store/model-tiers'
 import { notify, notifyError } from '@/store/notifications'
 import { normalizeProfileKey } from '@/store/profile'
 import { repoDiscoveryPolicyFromConfig, repoDiscoveryPolicySignature, scanAndRecordRepos } from '@/store/projects'
@@ -33,6 +34,7 @@ import { useOnProfileSwitch } from '../hooks/use-on-profile-switch'
 import { PanelEmpty } from '../overlays/panel'
 
 import { ConfigField } from './config-field'
+import { MODEL_TIER_HIDDEN_CONFIG_KEYS } from './constants'
 import {
   clearsEnabledToolsets,
   diffConfig,
@@ -45,7 +47,7 @@ import {
 } from './helpers'
 import { MemoryConnect } from './memory/connect'
 import { ProviderConfigPanel } from './memory/provider-config-panel'
-import { ModelSettings } from './model-settings'
+import { ModelSection } from './model-tier-settings'
 import { PoolLimitsSetting } from './pool-limits-setting'
 import { EmptyState, ListRow, SettingsContent, SettingsSkeleton, ToggleRow } from './primitives'
 import { SettingsProfileScope } from './profile-scope'
@@ -91,6 +93,9 @@ function ConfigSettingsInner({
 }: ConfigSettingsProps & { scopeProfile: string | undefined }) {
   const { t } = useI18n()
   const c = t.settings.config
+  // hc-960: an APEX account sees 档位 instead of the model page, and no field
+  // that picks or tunes a model.
+  const tierMode = useModelTierMode()
   const keepAwake = useStore($keepAwake)
   const disableF12 = useStore($disableF12)
   // The editable draft is local (debounced autosave watches it), but it's seeded
@@ -271,8 +276,8 @@ function ConfigSettingsInner({
       return new Map<string, [string, ConfigFieldSchema][]>()
     }
 
-    return sectionFieldEntries(schema, config)
-  }, [schema, config])
+    return sectionFieldEntries(schema, config, tierMode ? MODEL_TIER_HIDDEN_CONFIG_KEYS : undefined)
+  }, [schema, config, tierMode])
 
   const fields = sectionFields.get(activeSectionId) ?? []
 
@@ -349,7 +354,7 @@ function ConfigSettingsInner({
         <SettingsContent>
           <SettingsProfileScope className="mb-5" />
           <div className="mb-6">
-            <ModelSettings onMainModelChanged={onMainModelChanged} scopeProfile={scopeProfile} />
+            <ModelSection onMainModelChanged={onMainModelChanged} scopeProfile={scopeProfile} />
           </div>
         </SettingsContent>
       )
@@ -390,7 +395,7 @@ function ConfigSettingsInner({
       <SettingsProfileScope className="mb-5" />
       {activeSectionId === 'model' && (
         <div className="mb-6">
-          <ModelSettings onMainModelChanged={onMainModelChanged} scopeProfile={scopeProfile} />
+          <ModelSection onMainModelChanged={onMainModelChanged} scopeProfile={scopeProfile} />
         </div>
       )}
       {/* Device-local desktop prefs (not config.yaml) — they live here since
@@ -418,7 +423,7 @@ function ConfigSettingsInner({
           where image-attachment behavior already lives, so this sits above the
           schema fields for that section. */}
       {activeSectionId === 'chat' ? <AttachmentSizeSetting /> : null}
-      {visibleFields.length === 0 && activeSectionId !== 'chat' ? (
+      {emptyPage(activeSectionId, visibleFields.length, tierMode) ? (
         <EmptyState description={c.emptyDesc} title={c.emptyTitle} />
       ) : visibleFields.length === 0 ? null : (
         <div className="grid gap-1">
@@ -461,6 +466,12 @@ function ConfigSettingsInner({
       />
     </SettingsContent>
   )
+}
+
+/** Nothing to list: no schema field — except Chat, whose own control sits above
+ *  the fields, and (hc-960) the 档位 page, where the tier cards ARE the page. */
+function emptyPage(sectionId: string, fieldCount: number, tierMode: boolean): boolean {
+  return fieldCount === 0 && sectionId !== 'chat' && !(tierMode && sectionId === 'model')
 }
 
 /** Free-form MB cap for Desktop's data-URL attach/preview path (main-process). */

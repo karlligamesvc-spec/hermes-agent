@@ -30,3 +30,13 @@ export function analysisAccountBoundary(scope: string, currentAccount: () => str
     }
   }
 }
+
+/** The stored (clear, non-secret) managed account descriptor for the account
+ *  panel. Missing → empty fields so callers can read them safely. */
+export function readAccount(stored: { account?: unknown } | null | undefined) {
+  const raw = stored?.account
+  const account = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const str = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
+
+  return { email: str(account.email), name: str(account.name), plan: str(account.plan) }
+}

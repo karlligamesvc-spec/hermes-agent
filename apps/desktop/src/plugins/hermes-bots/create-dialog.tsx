@@ -42,6 +42,7 @@ import { avatarColor, blobatarSvg, botAppearance, BotFace } from './avatar'
 import { isBackfilledFacePng } from './avatar-image'
 import { AvatarPicker } from './avatar-picker'
 import { $selectedBot } from './bot-state'
+import { createModelFields, NewBotModelPicker, NewBotTierField, useNewBotModel } from './bot-tier'
 import { createCanonicalChat } from './canonical-chat'
 import { $botMeta, botHandle, botRosterKey, filterBots, ROSTER_KEY, saveBotMeta } from './data'
 import { labeled, ResizableFrame } from './dialog-parts'
@@ -58,7 +59,6 @@ import {
 import { useBots } from './i18n'
 import { displayName, slugify } from './labels'
 import { McpSetupButton } from './mcp-setup'
-import { ModelPicker } from './model-picker'
 import type {
   CapabilityEntry,
   McpCatalogResponse,
@@ -136,8 +136,6 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
   const [image, setImage] = useState<null | string>(null)
   const [advanced, setAdvanced] = useState(false)
   const [cloneFrom, setCloneFrom] = useState('default')
-  const [model, setModel] = useState('')
-  const [provider, setProvider] = useState('')
   const [soul, setSoul] = useState('')
   const [noSkills, setNoSkills] = useState(false)
   const [shareAuth, setShareAuth] = useState(true)
@@ -171,7 +169,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
   const activeConnectionId = String(host.state?.connectionId?.get?.() || '').trim()
   // Remote target = an explicitly picked registry connection that is not the
   // one this window is already on.
-  const remoteTarget = Boolean(targetConnection) && targetConnection !== (activeConnectionId || 'local')
+  const { remoteTarget, ...newModel } = useNewBotModel(targetConnection, activeConnectionId)
 
   const targetLabel = remoteTarget
     ? (connections || []).find(c => c.id === targetConnection)?.label || targetConnection
@@ -269,8 +267,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
     // the second agent you create silently start from a fresh profile
     // instead of cloning the main one like the first dialog open did.
     setCloneFrom('default')
-    setModel('')
-    setProvider('')
+    newModel.reset()
     setSoul('')
     setNoSkills(false)
     setShareAuth(true)
@@ -399,12 +396,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
           roster,
           customSoul: soul
         }),
-        ...(model.trim() && provider.trim()
-          ? {
-              model: model.trim(),
-              provider: provider.trim()
-            }
-          : {})
+        ...createModelFields(newModel)
       })
       createdRef.current = slug
 
@@ -684,6 +676,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
               value={description}
             />
           )}
+          <NewBotTierField choice={newModel} />
           <Button
             className="flex items-center gap-1 text-xs font-medium text-(--ui-text-tertiary) hover:text-(--ui-text-secondary)"
             onClick={() => {
@@ -760,22 +753,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
                       </SelectContent>
                     </Select>
                   )}
-                  <ModelPicker
-                    onChange={patch => {
-                      if ('provider' in patch) {
-                        setProvider(patch.provider)
-                      }
-
-                      if ('model' in patch) {
-                        setModel(patch.model)
-                      }
-                    }}
-                    placeholderModel="inherited from launch profile"
-                    value={{
-                      provider,
-                      model
-                    }}
-                  />
+                  <NewBotModelPicker choice={newModel} />
                   {labeled(
                     'SOUL.md (optional — replaces the generated persona)',
                     <Textarea

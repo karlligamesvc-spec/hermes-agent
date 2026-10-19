@@ -17,6 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   ErrorState,
+  HiddenInModelTierMode,
   host,
   isSubmitEnter,
   Loader,
@@ -772,16 +773,19 @@ export function TaskDrawer({
                   {task.workspace_path}
                 </MetaRow>
               )}
-              <MetaRow label={k.model}>
-                <ModelOverrideField
-                  onChange={next => void mutate(() => patchTask(task.id, overridePatch(next)))()}
-                  value={{
-                    effort: task.reasoning_effort ?? '',
-                    model: task.model_override ?? '',
-                    provider: task.provider_override ?? ''
-                  }}
-                />
-              </MetaRow>
+              {/* hc-960: a task runs on its assistant's tier; an APEX account pins no model. */}
+              <HiddenInModelTierMode>
+                <MetaRow label={k.model}>
+                  <ModelOverrideField
+                    onChange={next => void mutate(() => patchTask(task.id, overridePatch(next)))()}
+                    value={{
+                      effort: task.reasoning_effort ?? '',
+                      model: task.model_override ?? '',
+                      provider: task.provider_override ?? ''
+                    }}
+                  />
+                </MetaRow>
+              </HiddenInModelTierMode>
               {task.created_by && <MetaRow label={k.metaCreatedBy}>{task.created_by}</MetaRow>}
               {ago(task.created_at) && <MetaRow label={k.metaCreated}>{ago(task.created_at)}</MetaRow>}
               {running && task.worker_pid ? <MetaRow label={k.metaWorkerPid}>{task.worker_pid}</MetaRow> : null}

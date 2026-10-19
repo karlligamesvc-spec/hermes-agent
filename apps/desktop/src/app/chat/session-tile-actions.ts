@@ -14,8 +14,10 @@ import { useCallback, useMemo, useRef } from 'react'
 
 import type { ClientSessionState } from '@/app/types'
 import { useI18n } from '@/i18n'
+import { modelTierCopyNow } from '@/i18n/model-tier'
 import { textPart } from '@/lib/chat-messages'
 import { triggerHaptic } from '@/lib/haptics'
+import { retryTierFromReloadConfig, switchSessionToModelTier } from '@/lib/model-tiers'
 import { clearClarifyRequest } from '@/store/clarify'
 import type { ComposerAttachment } from '@/store/composer'
 import { resetSessionBackground } from '@/store/composer-status'
@@ -522,7 +524,7 @@ export function useSessionTileActions({ requestGateway, runtimeId, scope, stored
   )
 
   const reloadFromMessage = useCallback(
-    async (parentId: string | null) => {
+    async (parentId: string | null, config?: unknown) => {
       const state = readState()
 
       if (!state || state.busy) {
@@ -533,6 +535,21 @@ export function useSessionTileActions({ requestGateway, runtimeId, scope, stored
 
       if (!plan) {
         return
+      }
+
+      // hc-960: "换更强的再答一次" on a tile — the same session-only tier switch
+      // the primary chat runs (use-prompt-actions), on THIS tile's session.
+      const retryTier = retryTierFromReloadConfig(config)
+
+      if (retryTier) {
+        try {
+          const applied = await switchSessionToModelTier(requestSessionGateway, runtimeIdRef.current, retryTier)
+          update(current => ({ ...current, model: applied.model, provider: applied.provider }))
+        } catch (err) {
+          notifyError(err, modelTierCopyNow().retryStrongerFailed)
+
+          return
+        }
       }
 
       const messages = state.messages
@@ -568,7 +585,7 @@ export function useSessionTileActions({ requestGateway, runtimeId, scope, stored
         notifyError(err, copy.regenerateFailed)
       }
     },
-    [applySurvivorRowIds, copy.regenerateFailed, readState, submitRewind, update]
+    [applySurvivorRowIds, copy.regenerateFailed, readState, requestSessionGateway, submitRewind, update]
   )
 
   const restoreToMessage = useCallback(

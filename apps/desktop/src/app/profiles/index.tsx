@@ -8,10 +8,13 @@ import { Button } from '@/components/ui/button'
 import { ProfileGlyph } from '@/components/ui/profile-glyph'
 import { getProfileSoul, type ProfileInfo, updateProfileSoul } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { useModelTierCopy } from '@/i18n/model-tier'
 import { displayPath } from '@/lib/display-path'
 import { AlertTriangle, Save } from '@/lib/icons'
+import { assistantModelChoice, MODEL_TIER_LABEL } from '@/lib/model-tiers'
 import { resolveProfileColor } from '@/lib/profile-color'
 import { normalize } from '@/lib/text'
+import { useModelTierMode } from '@/store/model-tiers'
 import { notify, notifyError } from '@/store/notifications'
 import { $profileColors, profileLabel, refreshProfiles } from '@/store/profile'
 
@@ -226,6 +229,10 @@ function ProfileRow({
 function ProfileDetail({ profile }: { profile: ProfileInfo }) {
   const { t } = useI18n()
   const p = t.profiles
+  // hc-960: on an APEX account a profile (an assistant) shows its tier.
+  const modelTierMode = useModelTierMode()
+  const tierCopy = useModelTierCopy()
+  const choice = assistantModelChoice(profile.model, profile.provider)
 
   return (
     <PanelDetail>
@@ -246,17 +253,24 @@ function ProfileDetail({ profile }: { profile: ProfileInfo }) {
 
         <PanelMeta
           rows={[
-            {
-              label: p.modelLabel,
-              value: profile.model ? (
-                <span className="font-mono">
-                  {profile.model}
-                  {profile.provider ? <span className="text-muted-foreground/55"> · {profile.provider}</span> : null}
-                </span>
-              ) : (
-                <span className="text-muted-foreground/55">{p.notSet}</span>
-              )
-            },
+            modelTierMode
+              ? {
+                  label: tierCopy.lineLabel,
+                  value: choice.kind === 'tier' ? MODEL_TIER_LABEL[choice.tier] : tierCopy.ownModel
+                }
+              : {
+                  label: p.modelLabel,
+                  value: profile.model ? (
+                    <span className="font-mono">
+                      {profile.model}
+                      {profile.provider ? (
+                        <span className="text-muted-foreground/55"> · {profile.provider}</span>
+                      ) : null}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground/55">{p.notSet}</span>
+                  )
+                },
             { label: p.skillsLabel, value: profile.skill_count }
           ]}
         />

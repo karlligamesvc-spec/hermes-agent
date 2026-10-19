@@ -7,6 +7,7 @@ import { getUsageAnalytics } from '@/hermes'
 import { type Locale, useI18n } from '@/i18n'
 import { AlertTriangle, Package } from '@/lib/icons'
 import { $authState } from '@/store/auth'
+import { useModelTierMode } from '@/store/model-tiers'
 import type { AnalyticsResponse } from '@/types/hermes'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
@@ -207,8 +208,16 @@ export function ProfileStatsView({ onClose, onOpenSettings }: ProfileStatsViewPr
   )
 }
 
+/** "最常用模型": usage history names the models that ran. An APEX account in
+ *  tier mode sees no model name, and a historical id has no honest tier to
+ *  show instead, so the insight is dropped there (hc-960). */
+function useTopModelInsight(usage: AnalyticsResponse): string | undefined {
+  return useModelTierMode() ? undefined : usage.by_model[0]?.model
+}
+
 function UsageBody({ locale, t, usage }: { locale: Locale; t: ReturnType<typeof useI18n>['t']; usage: AnalyticsResponse }) {
   const p = t.profileStats
+  const topModel = useTopModelInsight(usage)
   const intlTag = INTL_TAGS[locale]
   const totals = usage.totals
   const daily = usage.daily
@@ -301,8 +310,6 @@ function UsageBody({ locale, t, usage }: { locale: Locale; t: ReturnType<typeof 
       insights.push({ label: p.insights.longestStreak, value: p.insights.streakDays(longestStreak) })
     }
   }
-
-  const topModel = usage.by_model[0]?.model
 
   if (topModel) {
     insights.push({ label: p.insights.topModel, value: topModel })

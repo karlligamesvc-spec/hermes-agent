@@ -196,12 +196,17 @@ export function inferFieldSchema(value: unknown): ConfigFieldSchema {
 // Backend schema omits some declared keys; config presence is the availability signal.
 export function sectionFieldEntries(
   schema: Record<string, ConfigFieldSchema>,
-  config: HermesConfigRecord
+  config: HermesConfigRecord,
+  hiddenKeys?: ReadonlySet<string>
 ): Map<string, [string, ConfigFieldSchema][]> {
   return new Map(
     SECTIONS.map(s => [
       s.id,
       s.keys.flatMap(k => {
+        if (hiddenKeys?.has(k)) {
+          return []
+        }
+
         const value = getNested(config, k)
         const field = schema[k] ?? (value === undefined ? undefined : inferFieldSchema(value))
 

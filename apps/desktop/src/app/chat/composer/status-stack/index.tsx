@@ -28,7 +28,8 @@ import {
   type StatusGroup,
   stopBackgroundProcess
 } from '@/store/composer-status'
-import { $freeTierRoute, $freeTierStatus, freeTierStripPending } from '@/store/free-tier'
+import { $freeTierRoute, freeTierStripPending } from '@/store/free-tier'
+import { $freeTierStatusForChrome } from '@/store/model-tiers'
 import { $previewStatusBySession, dismissPreviewArtifact } from '@/store/preview-status'
 import { $sessionControlBySession, refreshSessionControl } from '@/store/session-control'
 import { $threadScrolledUp } from '@/store/thread-scroll'
@@ -119,7 +120,7 @@ export function ComposerStatusStack({ onStopOperation, onSubmit, queue, sessionI
   const operationBySession = useStore($activeOperationBySession)
   const hasOperation = Boolean(sessionId && operationBySession[sessionId])
   const billing = useStore($billingBlock)
-  const freeTierStatus = useStore($freeTierStatus)
+  const freeTierStatus = useStore($freeTierStatusForChrome)
   const freeTierRoute = useStore($freeTierRoute)
   // One claimed owner across every mounted composer, so a split view shows the
   // notice once — and a non-owning stack adds no empty row to its card.

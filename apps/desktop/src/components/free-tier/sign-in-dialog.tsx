@@ -30,6 +30,7 @@ import {
   type FreeTierSignInFailure,
   releaseFreeTierSignIn
 } from '@/store/free-tier-sign-in'
+import { $modelTierMode } from '@/store/model-tiers'
 import { refreshOnboardingProviders } from '@/store/onboarding'
 import { $currentModel, setModelPickerOpen } from '@/store/session'
 
@@ -56,7 +57,10 @@ export function FreeTierSignInDialog({ onSelectModel }: FreeTierSignInDialogProp
   const queryClient = useQueryClient()
   const { t } = useI18n()
   const copy = t.freeTier
-  const owned = claim === id
+  // hc-960: an APEX account never starts the Nous free-tier sign-in, whose
+  // last step is a model pick.
+  const modelTierMode = useStore($modelTierMode)
+  const owned = claim === id && !modelTierMode
 
   useEffect(() => {
     claimFreeTierSignIn(id)
