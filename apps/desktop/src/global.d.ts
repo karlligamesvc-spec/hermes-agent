@@ -279,6 +279,10 @@ declare global {
       // user's cloud account. See electron/apex-managed.cjs.
       managed: {
         status: () => Promise<DesktopManagedStatus>
+        // hc-971: the light team the signed-in account belongs to, read from the
+        // cloud with the stored login JWT. Optional: an older main process may
+        // not expose it (the account menu then shows no team line).
+        team?: () => Promise<DesktopTeamResult>
         // hc-512: live relay model-catalog state for the model menu. Optional:
         // an older main process may not expose it yet. `refresh: true`
         // re-probes now (menu open / user retry); a 401 kicks the key
@@ -1700,6 +1704,21 @@ export interface BackendExit {
 // / agentAuth / runtime / shellUpdate / worktrees); these are the payload
 // shapes the renderer imports from '@/global'.
 // ---------------------------------------------------------------------------
+
+// hc-971: the light team (apex-nodes hc-955) the signed-in account belongs to.
+// Display only; `team: null` whenever there is none or it cannot be confirmed.
+export interface DesktopTeamSummary {
+  isAdmin: boolean
+  name: string
+  status: 'active' | 'pending'
+}
+
+export interface DesktopTeamResult {
+  message?: 'FETCH_FAILED' | 'NOT_SIGNED_IN' | 'SESSION_EXPIRED'
+  needsSignIn?: boolean
+  ok: boolean
+  team: DesktopTeamSummary | null
+}
 
 export interface DesktopManagedStatus {
   runtimePending?: boolean

@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { Codicon } from '@/components/ui/codicon'
@@ -10,9 +10,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import type { DesktopTeamSummary } from '@/global'
 import { useI18n } from '@/i18n'
+import { useAccountTeamCopy } from '@/i18n/account-team'
 import { profileColor } from '@/lib/profile-color'
 import { cn } from '@/lib/utils'
+import { $accountTeam, loadAccountTeam, teamFor } from '@/store/account-team'
 import { $authState, type AuthAccount, captureManagedAuthRecoveryScope, signOutAccount } from '@/store/auth'
 import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
 import { dismissNarrowSidebarOverlay } from '@/store/layout'
@@ -35,6 +38,26 @@ function displayName(account: AuthAccount, fallback: string): string {
   return fallback
 }
 
+// hc-971: the light team this account belongs to, display only (the web
+// console manages it). Shown at the top of the menu; nothing when there is none.
+function AccountTeamLine({ team }: { team: DesktopTeamSummary }) {
+  const copy = useAccountTeamCopy()
+
+  return (
+    <>
+      <div className="flex items-center gap-2 px-2 py-1.5 text-xs" data-apex-account-team="">
+        <Codicon name="organization" size="0.875rem" />
+        <span className="min-w-0 flex-1 truncate text-foreground" title={team.name}>
+          {copy.line(team.name)}
+        </span>
+        {team.isAdmin && <span className="shrink-0 text-(--ui-text-tertiary)">{copy.admin}</span>}
+        {team.status === 'pending' && <span className="shrink-0 text-(--ui-text-tertiary)">{copy.pending}</span>}
+      </div>
+      <DropdownMenuSeparator />
+    </>
+  )
+}
+
 function initialOf(name: string): string {
   const match = name.replace(/[^\p{L}\p{N}]/gu, '').charAt(0)
 
@@ -44,8 +67,8 @@ function initialOf(name: string): string {
 // Bottom-left account panel (Codex account row, high-fidelity). The row is
 // avatar (initial) + a two-line stack: display name over the signed-in email —
 // no plan badge or phone icon. The business rail adds a menu caret. Click →
-// a popover menu with 个人资料, 设置, 项目, 定时运行, 连接助手, 历史会话, 交付物, optional real usage,
-// and 退出登录. These destinations share one information-architecture group
+// a popover menu with the account's team when it has one (hc-971), 个人资料, 设置,
+// 项目, 定时运行, 连接助手, 历史会话, 交付物, optional real usage, and 退出登录. These destinations share one information-architecture group
 // instead of spending permanent sidebar height on additional rows. Rendered
 // only on managed builds when signed in (the auth gate handles the signed-out
 // case); on a managed-disabled build the panel stays hidden.
@@ -57,9 +80,25 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
   const a = t.auth.account
   const nav = t.sidebar.nav
   const navigate = useNavigate()
-  const { account, enabled, status } = useStore($authState)
+  const { account, accountId, enabled, status } = useStore($authState)
+  const team = teamFor(useStore($accountTeam), accountId)
   const [open, setOpen] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
+
+  // hc-971: read the team once per signed-in account; opening the menu re-reads it.
+  useEffect(() => {
+    if (status === 'signed-in') {
+      void loadAccountTeam(accountId)
+    }
+  }, [accountId, status])
+
+  function onMenuOpenChange(next: boolean) {
+    setOpen(next)
+
+    if (next) {
+      void loadAccountTeam(accountId)
+    }
+  }
 
   function openBusinessDestination(id: 'projects' | 'scheduled-runs', route: string) {
     if (onNavigateBusiness) {
@@ -142,7 +181,7 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
   const usageLabel: null | string = null
 
   return (
-    <DropdownMenu onOpenChange={setOpen} open={open}>
+    <DropdownMenu onOpenChange={onMenuOpenChange} open={open}>
       <DropdownMenuTrigger asChild>
         <button
           aria-label={`${a.openMenu}: ${name}`}
@@ -171,6 +210,7 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="start" className="w-56" side="top" sideOffset={6}>
+        {team && <AccountTeamLine team={team} />}
         <DropdownMenuItem onSelect={() => navigate(PROFILE_STATS_ROUTE)}>
           <Codicon name="account" size="0.875rem" />
           <span>{a.profile}</span>
