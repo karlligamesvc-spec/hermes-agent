@@ -26,6 +26,16 @@ def source_product_current(project_root: Path, product: str, out: Path) -> bool:
         return False
 
 
+def packaged_engine_refusal(project_root: Path) -> str | None:
+    """hc-954: why ``project_root`` must not be built (an engine installed by APEX Desktop:
+    apex_overlay/packaged_engine.py), or None. A tree without the overlay has no such engine."""
+    try:
+        from apex_overlay.packaged_engine import build_refusal
+    except ImportError:
+        return None
+    return build_refusal(project_root)
+
+
 def source_build_env(base_env: dict | None = None, *, explicit: bool = False, verify: bool = True) -> dict[str, str]:
     from pm import ensure
     from pm.environments import project_python, running_from_selected_environment
@@ -36,6 +46,9 @@ def source_build_env(base_env: dict | None = None, *, explicit: bool = False, ve
     # activated in-process. Icon generation starts an isolated child, which needs
     # the selected venv executable rather than the store interpreter.
     root = repo_root()
+    refusal = packaged_engine_refusal(root)  # before PM acquires npm
+    if refusal:
+        raise RuntimeError(refusal)
     python = str(project_python(root)) if running_from_selected_environment(root) else sys.executable
     env = {**os.environ, **(base_env or {}), "CI": "1", "HERMES_PYTHON": python,
            "PYTHON": python}
@@ -60,6 +73,9 @@ def run_in_custody(project_root: Path, command: list, label: str, **kwargs):
 
 
 def run_source_script(project_root: Path, script: str, *args: str, env: dict, label: str) -> None:
+    refusal = packaged_engine_refusal(project_root)  # the tree these scripts write, whoever runs them
+    if refusal:
+        raise RuntimeError(refusal)
     command = [shutil.which("node", path=env["PATH"]), str(project_root / script), *args]
     # npm's deprecation warnings are the loudest lines and never actionable
     # here; they still land in the failure tail.

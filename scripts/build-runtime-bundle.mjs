@@ -33,6 +33,7 @@
 // Layout produced (bundle root = versions/<key>/ once installed):
 //   ./                      runtime source tree (git archive of the pinned ref)
 //   ./venv/                 relocatable venv (uv venv --relocatable + uv sync)
+//   ./hermes_cli/tui_dist/  compiled TUI (`hermes --tui`), runs on .runtime/node
 //   ./.runtime/py/<name>/   python-build-standalone CPython (uv-managed)
 //   ./.runtime/node/        portable Node 22 = npm -g prefix (agent-browser…)
 //   ./.runtime/git/         PortableGit, including Bash (windows only)
@@ -50,7 +51,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import { notarizeMacRuntimePayload, signMacRuntimePayload, verifyNotarizedMacExecutable } from './mac-runtime-payload.mjs'
-import { probeBundledBackend, removeOwnedRuntimeTree, runtimeSmokeEnvironment } from './runtime-bundle-offline-smoke.mjs'
+import { probeBundledBackend, probeBundledTui, removeOwnedRuntimeTree, runtimeSmokeEnvironment } from './runtime-bundle-offline-smoke.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -526,6 +527,9 @@ async function cmdBuild(args) {
     gitComponent = { path: '.runtime/git', version: MINGIT_VERSION, flavor: 'PortableGit', shell: 'bin/bash.exe' }
   }
 
+  // ── 9b. compiled TUI (hc-954). An installed engine never builds a frontend. ─
+  buildPackagedTui({ repoRoot, sha, stage, tools, nodeExe, env: npmEnv })
+
   // ── 10. small tools: uv + rg into .runtime/bin ─────────────────────────────
   const binDir = path.join(stage, '.runtime', 'bin')
   fs.mkdirSync(binDir, { recursive: true })
@@ -591,6 +595,7 @@ async function cmdBuild(args) {
       uv: { path: `.runtime/bin/uv${target.exe}`, version: uvVersion },
       ripgrep: { path: `.runtime/bin/rg${target.exe}`, version: RIPGREP_VERSION },
       ffmpeg: ffmpegComponent,
+      tui: { path: PACKAGED_TUI_DIR, node: '.runtime/node' },
     },
     chromium: {
       included: false,
@@ -742,6 +747,40 @@ function detectPlaywrightVersion(stage, target) {
     try { return JSON.parse(fs.readFileSync(c, 'utf8')).version } catch { /* next */ }
   }
   return null
+}
+
+// hc-954: Desktop verifies an installed engine against files.tsv at every launch and keeps the
+// previous one for rollback, so the engine never builds a frontend in place
+// (apex_overlay/packaged_engine.py refuses). It ships the TUI compiled the way upstream's sealed
+// payloads ship it (scripts/build/agent.py plant_surfaces), and `hermes --tui` runs it on the bundled
+// Node. The npm tree that compiles it lives in a scratch copy of the source, never in the stage.
+export const PACKAGED_TUI_DIR = 'hermes_cli/tui_dist'
+
+export function buildPackagedTui({ repoRoot, sha, stage, tools, nodeExe, env }) {
+  const work = path.join(tools, 'tui-build')
+  rmrf(work)
+  const source = path.join(work, 'source')
+  fs.mkdirSync(source, { recursive: true })
+  const srcTar = path.join(work, 'src.tar')
+  run('git', ['-C', repoRoot, 'archive', '--format=tar', '-o', srcTar, sha])
+  run(tarBin(), ['-xf', srcTar, '-C', source])
+  const product = path.join(work, 'product')
+  run(nodeExe, [path.join(source, 'scripts/build/node-deps.mjs'), '--source', source, '--workspace', 'ui-tui'], { env })
+  run(nodeExe, [path.join(source, 'scripts/build/tui.mjs'), '--source', source, '--out', product], { env })
+  plantPackagedTui(product, stage)
+  rmrf(work)
+}
+
+// The product's dist/ plus its package.json ({"type":"module"}: entry.js is ESM), as plant_surfaces does.
+export function plantPackagedTui(product, stage) {
+  const destination = path.join(stage, ...PACKAGED_TUI_DIR.split('/'))
+  if (fs.existsSync(destination)) throw new Error(`${PACKAGED_TUI_DIR} already exists in the stage; the source tree must not carry a build`)
+  fs.cpSync(path.join(product, 'dist'), destination, { recursive: true })
+  fs.copyFileSync(path.join(product, 'package.json'), path.join(destination, 'package.json'))
+  const entry = path.join(destination, 'entry.js')
+  const type = JSON.parse(fs.readFileSync(path.join(destination, 'package.json'), 'utf8')).type
+  if (!fs.existsSync(entry) || !fs.statSync(entry).size || type !== 'module') throw new Error(`incomplete compiled TUI in ${destination}`)
+  log(`compiled TUI: ${PACKAGED_TUI_DIR}/entry.js`)
 }
 
 // The exact files fixup rewrites — verify must skip them (their content is
@@ -1049,6 +1088,7 @@ async function cmdSmoke(args) {
     if (!fs.existsSync(shim)) die(`agent-browser not found under the bundled npm prefix (${shim})`)
     log('agent-browser-ok (npm -g prefix)')
     proofs.push({ location: label, root, native_target: `${manifest.os}-${manifest.arch}`, imports: 'core/providers/native/extensions/document-dependencies',
+      tui: await probeBundledTui(root, manifest, probeEnv, log),
       backend: await probeBundledBackend(root, manifest, probeEnv, log) })
   }
 
