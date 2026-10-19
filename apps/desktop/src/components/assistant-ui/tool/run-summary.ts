@@ -1,3 +1,4 @@
+import { stepCopyFor } from '@/components/assistant-ui/process/turn-process'
 import { runtimeTranslations, translateNow } from '@/i18n'
 import { summarizeShellCommand } from '@/lib/summarize-command'
 import { firstStringField } from '@/lib/text'
@@ -69,16 +70,13 @@ function isPending(tool: ToolCallLike): boolean {
 }
 
 /**
- * How a tool reads while it is happening — "Editing", "Exploring". Shared with
- * the status line that covers the gap before a tool starts, so the same run is
- * described in the same words from the moment the model drafts it.
+ * How a tool reads while it is happening — 「正在下载视频」. Shared with the
+ * status line that covers the gap before a tool starts, so a step is described
+ * in the same words from the moment the model drafts it to the process line
+ * that names it once it runs (hc-973).
  */
 export function toolPresentVerb(toolName: string): string {
-  if (toolName === 'skill_view') {
-    return translateNow('assistant.tool.skillActivity.loading')
-  }
-
-  return runCopy()[toolCategory(toolName)].present
+  return stepCopyFor(toolName).running
 }
 
 /** The thing a tool acted on, as the header should name it. */

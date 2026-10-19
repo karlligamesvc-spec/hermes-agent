@@ -3,9 +3,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useEffect, useState } from 'react'
 import { MemoryRouter } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { $reasoningCollapsedByDefault } from '@/store/reasoning-disclosure'
+import { setToolViewMode } from '@/store/tool-view'
 
 import { stubThreadEnvironment, stubThreadViewportSize, ThreadRuntime } from '../test-utils'
 
@@ -482,7 +483,14 @@ describe('assistant-ui streaming renderer', () => {
   beforeEach(() => {
     resizeObservers.clear()
     $reasoningCollapsedByDefault.set(false)
+    // The thinking disclosure's own mechanics — the live preview, the
+    // collapsed-by-default preference — and each tool call's row exist in
+    // developer mode. Outside it a thought is a folded 「想了 N 秒」 chip and the
+    // calls are one process line (hc-973; the last test here, zh-process-copy).
+    setToolViewMode('technical')
   })
+
+  afterEach(() => setToolViewMode('product'))
 
   it('renders assistant text incrementally before completion', async () => {
     let controls: StreamingControls | undefined
@@ -791,6 +799,27 @@ describe('assistant-ui streaming renderer', () => {
     })
     expect(container.querySelector('[data-slot="aui_generated-image"]')).toBeNull()
     expect(container.textContent).not.toContain('"success":false')
+  })
+
+  it('outside developer mode, folds a live thought into a chip that stays folded as the turn settles', async () => {
+    setToolViewMode('product')
+
+    const { container, settle } = renderSettlingReasoning()
+    const toggle = within(container).getByRole('button', { name: /thinking/i })
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(container.querySelector('[data-slot="aui_thinking-body"]')).toBeNull()
+
+    settle()
+
+    await waitFor(() => {
+      expect(
+        within(container)
+          .getByRole('button', { name: /thought/i })
+          .getAttribute('aria-expanded')
+      ).toBe('false')
+    })
+    expect(container.querySelector('[data-slot="aui_reasoning-text"]')).toBeNull()
   })
 
   it('shows the command prompt and exit code for terminal calls', async () => {

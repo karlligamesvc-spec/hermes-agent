@@ -1,23 +1,42 @@
 import { type ThreadMessage } from '@assistant-ui/react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
-import { $activeSessionId } from '@/store/session'
+import { $activeSessionId, $gatewayState } from '@/store/session'
 import { clearDismissedToolRows } from '@/store/tool-dismiss'
-import { $toolDisclosureStates } from '@/store/tool-view'
+import { $toolDisclosureStates, setToolViewMode } from '@/store/tool-view'
+import {
+  REMIX_SKILL_SLUGS,
+  REMIX_TOOL_NAMES,
+  remixFailedTurn,
+  remixLiveTurn,
+  remixReloadedTurn,
+  remixRunningTurn
+} from '@/test/remix-turn'
 import { englishWords, readableText } from '@/test/zh-copy'
 
 import { createdAt, stubThreadEnvironment, stubThreadViewportSize, ThreadRuntime } from '../test-utils'
 
 import { Thread } from '.'
 
-// hc-953: the process area of a Chinese chat speaks Chinese. The 2026-10-18
-// short-video review saw "Thought for 3s", "Tool Search 4 results 33ms",
-// "Used 4 tools", "正在运行 Media Transcribe" and "已加载技能: social-media-research"
-// on a Chinese screen: English verbs and units, tool code names, skill slugs.
-// These render the real transcript at zh with Chinese data, so any Latin word
-// left on screen is the product's own copy.
+const submitted = vi.hoisted(() => [] as string[])
+
+vi.mock('@/app/chat/composer/focus', async importActual => ({
+  ...(await importActual<Record<string, unknown>>()),
+  requestComposerSubmit: (text: string) => {
+    submitted.push(text)
+
+    return true
+  }
+}))
+
+// hc-953 made the process area Chinese; hc-973 makes it say what was done
+// instead of how. Outside developer mode a whole 「拆爆款 + 仿写」 task is one line
+// — 「下载视频 → 识别语音 → 看关键词热度 → 搜同类作品」 — that opens onto steps in
+// plain words, each able to say where its data came from; thoughts fold to one
+// chip. No English word, tool code name, skill slug or millisecond count may
+// reach the screen. Developer mode adds each step's technical details.
 
 stubThreadEnvironment()
 stubThreadViewportSize()
@@ -46,30 +65,6 @@ function assistant(id: string, content: Part[], running = false): ThreadMessage 
   } as unknown as ThreadMessage
 }
 
-const toolSearch = (id: string) =>
-  tool(
-    id,
-    'tool_search',
-    { queries: ['抖音热榜'] },
-    { results: [{ name: '热榜' }, { name: '作品' }, { name: '账号' }, { name: '关键词' }], duration_s: 0.033 }
-  )
-
-// One finished turn the way the review saw it: a thought, the tool-search
-// bridge, three skills (one nobody has named yet), a bridged call reloaded from
-// history, platform tools and an MCP tool with no Chinese name.
-const SETTLED_TURN: Part[] = [
-  { type: 'reasoning', text: '先看看抖音家居类最近的热度。' },
-  toolSearch('search'),
-  tool('describe', 'tool_describe', { names: ['热榜'] }, { tools: [{ name: '热榜' }], duration_s: 0.004 }),
-  tool('skill-1', 'skill_view', { name: 'social-media-research' }, { success: true, content: '技能说明' }),
-  tool('skill-2', 'skill_view', { name: 'apexnodes/douyin-account-launch' }, { success: true, content: '技能说明' }),
-  tool('skill-3', 'skill_view', { name: 'a-skill-nobody-named-yet' }, { success: true, content: '技能说明' }),
-  tool('bridged', 'tool_call', { name: 'social_trending', arguments: { platform: '抖音' } }, { success: true }),
-  tool('download', 'social_download', { platform: '抖音' }, { success: true, title: '懒人好物' }),
-  tool('transcribe', 'media_transcribe', { platform: '抖音' }, { success: true, text: '大家好', duration_s: 126 }),
-  tool('mcp', 'mcp_shop__create_order', { title: '订单' }, { ok: true })
-]
-
 function renderZh(messages: ThreadMessage[]) {
   return render(
     <I18nProvider configClient={null} initialLocale="zh">
@@ -80,84 +75,251 @@ function renderZh(messages: ThreadMessage[]) {
   )
 }
 
+/** The process area: the turn's block, plus any thought or tool row that
+ *  rendered outside it. Everything in it is our copy except link targets. */
+function processText(container: HTMLElement): string {
+  const areas = [
+    ...container.querySelectorAll('[data-process-block], [data-slot="aui_thinking-disclosure"], [data-tool-row]')
+  ]
+
+  return areas
+    .map(area => {
+      const copy = area.cloneNode(true) as HTMLElement
+
+      // A link's text is the page it points at — data, like a search query.
+      copy.querySelectorAll('[data-process-link]').forEach(link => link.remove())
+
+      return readableText(copy)
+    })
+    .join('\n')
+}
+
+function expectNoMechanism(text: string) {
+  expect(englishWords(text)).toEqual([])
+
+  for (const name of [...REMIX_TOOL_NAMES, ...REMIX_SKILL_SLUGS]) {
+    expect(text).not.toContain(name)
+  }
+
+  expect(text).not.toMatch(/毫秒|\dms\b/)
+}
+
+async function openEverything(container: HTMLElement) {
+  fireEvent.click(await screen.findByRole('button', { name: '看步骤' }))
+  await waitFor(() => expect(container.querySelectorAll('[data-process-step]').length).toBeGreaterThan(0))
+
+  for (const toggle of container.querySelectorAll('[data-process-source-toggle]')) {
+    fireEvent.click(toggle)
+  }
+
+  fireEvent.click(screen.getByRole('button', { name: /想了|想过了/ }))
+}
+
 beforeEach(() => {
-  // Module-level copy (tool titles, the run summary) reads the runtime locale,
-  // which the app has already set to the user's language before any row paints.
+  // Module-level copy (tool titles, step facts) reads the runtime locale, which
+  // the app has already set to the user's language before any row paints.
   setRuntimeI18nLocale('zh')
+  setToolViewMode('product')
   $activeSessionId.set('session-zh')
+  $gatewayState.set('open')
   $toolDisclosureStates.set({})
   clearDismissedToolRows()
+  submitted.length = 0
 })
 
 afterEach(() => {
   cleanup()
   setRuntimeI18nLocale('en')
+  setToolViewMode('product')
   $activeSessionId.set(null)
   $toolDisclosureStates.set({})
 })
 
-describe('a finished turn in a Chinese chat', () => {
-  it('sums the run up in Chinese, naming skills instead of their slugs', async () => {
-    const { container } = renderZh([assistant('turn', SETTLED_TURN)])
+describe('a finished 拆爆款 + 仿写 task in a Chinese chat', () => {
+  it('is one line: what was done and how long it took', async () => {
+    const { container } = renderZh(remixLiveTurn())
 
-    await waitFor(() => expect(container.querySelector('[data-tool-summary]')).not.toBeNull())
-    const summary = container.querySelector('[data-tool-summary]')!
+    const status = await waitFor(() => {
+      const node = container.querySelector('[data-process-status]')
 
-    expect(summary.textContent).toContain('已加载技能：社媒调研，已加载技能：抖音起号，已加载技能，用了 6 个工具')
-    expect(englishWords(readableText(summary))).toEqual([])
+      expect(node).not.toBeNull()
+
+      return node!
+    })
+
+    expect(status.textContent).toContain('下载视频 → 识别语音 → 看关键词热度 → 搜同类作品')
+    expect(status.textContent).toContain('用时 2 分 10 秒')
+    expect(container.querySelectorAll('[data-process-block]')).toHaveLength(1)
+    // Steps, rows and every thought stay folded until asked for.
+    expect(container.querySelector('[data-process-step]')).toBeNull()
+    expect(container.querySelector('[data-tool-row]')).toBeNull()
+    expect(container.querySelector('[data-slot="aui_thinking-disclosure"]')).toBeNull()
+    expect(container.querySelector('[data-slot="aui_thinking-body"]')).toBeNull()
+    expectNoMechanism(processText(container))
   })
 
-  it('opens onto rows with Chinese titles, counts and durations', async () => {
-    const { container } = renderZh([assistant('turn', SETTLED_TURN)])
+  it('opens onto plain-language steps, where each step got its data, and the folded thoughts', async () => {
+    const { container } = renderZh(remixLiveTurn())
 
-    await waitFor(() => expect(container.querySelector('[data-tool-summary]')).not.toBeNull())
-    fireEvent.click(container.querySelector('[data-tool-summary] button')!)
-    await waitFor(() => expect(container.querySelectorAll('[data-tool-row]').length).toBeGreaterThan(5))
+    await openEverything(container)
 
-    const text = readableText(container)
+    const text = processText(container)
 
-    for (const expected of ['已思考', '已查找可用工具', '4 条结果', '33 毫秒', '已查看工具说明', '4 毫秒']) {
+    for (const expected of [
+      '下载了 1 个视频，1 分 43 秒，12.6 万赞',
+      '拿到逐字稿，360 字',
+      '看了「家居好物」的热度',
+      '找到 40 条作品',
+      '来源：抖音公开链接里的这条作品。只读公开数据，没有登录你的账号。',
+      '方式：把视频里的声音转成文字，共 1 分 43 秒音频。',
+      '来源：巨量算数（抖音官方数据）。',
+      '来源：抖音上的公开数据。',
+      '懒人好物、厨房收纳',
+      '拿到 40 条',
+      '用到的方法：视频脚本拆解、事实核验',
+      '想了 15 秒',
+      '先把视频拿下来转成文字'
+    ]) {
       expect(text).toContain(expected)
     }
 
-    for (const expected of ['已查看热榜', '已下载视频', '已转成逐字稿', '2 分 6 秒', '已使用工具']) {
-      expect(text).toContain(expected)
-    }
-
-    expect(englishWords(text)).toEqual([])
+    // Preparation is not a step: four steps, not eight.
+    expect(container.querySelectorAll('[data-process-step]')).toHaveLength(4)
+    // Sources link to the work they came from, titled.
+    expect(screen.getByRole('link', { name: /懒人好物盘点/ })).toBeTruthy()
+    expectNoMechanism(text)
   })
 
-  it('titles the reviewed "Tool Search 4 results 33ms" row in Chinese', async () => {
-    const { container } = renderZh([assistant('lone', [toolSearch('lone-search')])])
+  it('reads the same reloaded from history, through the tool_call bridge', async () => {
+    const { container } = renderZh(remixReloadedTurn())
 
-    await waitFor(() => expect(container.querySelector('[data-tool-row]')).not.toBeNull())
-    const row = container.querySelector('[data-tool-row]')!
+    await openEverything(container)
 
-    expect(row.textContent).toContain('已查找可用工具')
-    expect(row.textContent).toContain('4 条结果')
-    expect(row.textContent).toContain('33 毫秒')
-    expect(englishWords(readableText(row))).toEqual([])
+    const text = processText(container)
+
+    expect(container.querySelector('[data-process-status]')?.textContent).toContain(
+      '下载视频 → 识别语音 → 看关键词热度 → 搜同类作品'
+    )
+    expect(text).toContain('下载了 1 个视频，1 分 43 秒，12.6 万赞')
+    expect(text).toContain('用到的方法：视频脚本拆解、事实核验')
+    expectNoMechanism(text)
   })
 })
 
-describe('a turn still running in a Chinese chat', () => {
-  it('narrates live work in Chinese', async () => {
-    const { container } = renderZh([
-      assistant(
-        'live',
-        [
-          toolSearch('live-search'),
-          tool('live-download', 'social_download', { platform: '抖音' }),
-          tool('live-transcribe', 'media_transcribe', { platform: '抖音' })
-        ],
-        true
-      )
-    ])
+describe('the same task still running', () => {
+  it('names only the step in progress, and says it is a slow one', async () => {
+    const { container } = renderZh(remixRunningTurn())
 
-    expect(await screen.findAllByText(/正在下载|正在转成/)).not.toHaveLength(0)
-    expect(englishWords(readableText(container))).toEqual([])
+    const status = await waitFor(() => {
+      const node = container.querySelector('[data-process-status][data-state="running"]')
+
+      expect(node).not.toBeNull()
+
+      return node!
+    })
+
+    expect(status.textContent).toContain('正在识别语音…')
+    expect(status.textContent).toContain('第 2 步')
+    expect(container.querySelector('[data-process-slow-hint]')?.textContent).toBe('这一步要久一点，你可以先去忙别的。')
+    expectNoMechanism(processText(container))
+  })
+})
+
+describe('the same task stuck on a step', () => {
+  it('says which step, keeps what it got, and offers three ways on', async () => {
+    const { container } = renderZh(remixFailedTurn())
+
+    const alert = await screen.findByRole('alert')
+
+    expect(container.querySelector('[data-process-status]')?.textContent).toContain('识别语音没成功')
+    expect(container.querySelector('[data-process-status]')?.textContent).toContain('第 2 步，共 2 步')
+    // The tool's own message names a code name, so a plain one stands in.
+    expect(alert.textContent).toContain('这一步没有拿到结果。')
+    expect(alert.textContent).toContain('已经拿到的部分不会丢。')
+    // Stuck opens the steps by itself: the failed one is right there.
+    expect(container.querySelector('[data-process-step][data-state="failed"]')).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    fireEvent.click(screen.getByRole('button', { name: '换个办法' }))
+    fireEvent.click(screen.getByRole('button', { name: '先给我能出的部分' }))
+
+    expect(submitted).toEqual([
+      '再试一次「识别语音」这一步。',
+      '「识别语音」这一步没成功，换个办法继续。',
+      '「识别语音」先跳过，把已经拿到的部分整理给我。'
+    ])
+    expectNoMechanism(processText(container))
   })
 
+  it('keeps the buttons off while the gateway is down', async () => {
+    act(() => $gatewayState.set('closed'))
+    renderZh(remixFailedTurn())
+
+    expect(((await screen.findByRole('button', { name: '重试' })) as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('developer mode', () => {
+  it('adds each step’s technical details: code names, timings and the calls themselves', async () => {
+    setToolViewMode('technical')
+
+    const { container } = renderZh(remixLiveTurn())
+
+    // Developer mode opens the steps by itself.
+    await waitFor(() => expect(container.querySelectorAll('[data-process-tech]').length).toBe(4))
+
+    const tech = [...container.querySelectorAll('[data-process-tech]')].map(node => node.textContent ?? '').join('\n')
+
+    expect(tech).toContain('技术细节')
+    expect(tech).toContain('social_download · 13 秒')
+    expect(tech).toContain('media_transcribe · 2 分 6 秒')
+    // Preparation rides under the step it prepared, millisecond timings and all.
+    expect(tech).toContain('tool_search, tool_describe, skill_view, social_download')
+    expect(container.querySelectorAll('[data-tool-row]').length).toBeGreaterThan(4)
+  })
+
+  it('keeps the rows themselves in Chinese', async () => {
+    setToolViewMode('technical')
+
+    const { container } = renderZh(remixLiveTurn())
+
+    await waitFor(() => expect(container.querySelectorAll('[data-tool-row]').length).toBeGreaterThan(4))
+
+    const rows = [...container.querySelectorAll('[data-tool-row]')].map(row => readableText(row)).join('\n')
+
+    for (const expected of ['已查找可用工具', '2 条结果', '9 毫秒', '已下载视频', '已转成逐字稿']) {
+      expect(rows).toContain(expected)
+    }
+
+    expect(englishWords(rows)).toEqual([])
+  })
+})
+
+describe('tools nobody named', () => {
+  it('reads as plain work, never as its code name', async () => {
+    const { container } = renderZh([assistant('mcp', [tool('mcp', 'mcp_shop__create_order', { title: '订单' }, { ok: true })])])
+
+    await waitFor(() => expect(container.querySelector('[data-process-status]')).not.toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: '看步骤' }))
+
+    const text = processText(container)
+
+    expect(container.querySelector('[data-process-status]')?.textContent).toContain('处理')
+    expect(text).not.toContain('mcp_shop__create_order')
+    expect(englishWords(text)).toEqual([])
+  })
+
+  it('says 「正在处理」 while one runs', async () => {
+    const { container } = renderZh([assistant('mcp-live', [tool('mcp', 'mcp_shop__create_order', { title: '订单' })], true)])
+
+    await waitFor(() =>
+      expect(container.querySelector('[data-process-status]')?.textContent).toContain('正在处理…')
+    )
+    expect(englishWords(processText(container))).toEqual([])
+  })
+})
+
+describe('around the process area', () => {
   it('names a quiet wait in Chinese', async () => {
     const { container } = renderZh([assistant('quiet', [{ type: 'text', text: '好的，' }], true)])
 
@@ -170,42 +332,12 @@ describe('a turn still running in a Chinese chat', () => {
     expect(englishWords(readableText(container))).toEqual([])
   })
 
-  it('times a thought in progress in Chinese seconds', async () => {
+  it('folds a thought with no tool work into the same 「想了」 chip, never a live preview', async () => {
     const { container } = renderZh([assistant('thinking', [{ type: 'reasoning', text: '先想想用哪条视频。' }], true)])
 
-    expect(await screen.findByText('思考中')).toBeTruthy()
-    // The timer paints one cell per character: digits, a space, then 「秒」.
-    expect(readableText(container)).toMatch(/\d\s*秒/)
+    expect(await screen.findByText('正在想')).toBeTruthy()
+    expect(container.querySelector('[data-slot="aui_thinking-body"]')).toBeNull()
     expect(englishWords(readableText(container))).toEqual([])
-  })
-})
-
-describe('opened rows and notices in a Chinese chat', () => {
-  it('labels search results and command output in Chinese', async () => {
-    const { container } = renderZh([
-      assistant('opened', [
-        tool('web', 'web_search', { query: '收纳神器' }, { results: [{ title: '十款收纳神器', snippet: '厨房收纳' }] }),
-        tool('term', 'terminal', { command: '列出素材' }, { stdout: '素材一', stderr: '提示一条', exit_code: 0 })
-      ])
-    ])
-
-    await waitFor(() => expect(container.querySelector('[data-tool-summary]')).not.toBeNull())
-    fireEvent.click(container.querySelector('[data-tool-summary] button')!)
-    await waitFor(() => expect(container.querySelectorAll('[data-tool-row]')).toHaveLength(2))
-
-    for (const row of container.querySelectorAll('[data-tool-row] button[aria-expanded="false"]')) {
-      fireEvent.click(row)
-    }
-
-    await waitFor(() => expect(readableText(container)).toContain('搜索结果'))
-    const text = readableText(container)
-
-    expect(text).toContain('错误输出')
-    expect(text).toContain('退出码 0')
-    // The opened detail title-cases the result's own JSON field names
-    // ("results" → "Results"): tool data, listed as a residual for the
-    // process-area redesign. Every other Latin word would be our copy.
-    expect(englishWords(text).filter(word => word !== 'Results')).toEqual([])
   })
 
   it('reports a message to another assistant in Chinese', async () => {
@@ -217,6 +349,8 @@ describe('opened rows and notices in a Chinese chat', () => {
 
     expect(await screen.findByText('已给 helper 发消息')).toBeTruthy()
     expect(screen.getByText('helper 发来的消息')).toBeTruthy()
+    // A note to another assistant is its own card, not a step.
+    expect(container.querySelector('[data-process-block]')).toBeNull()
     // `helper` is the other assistant's profile name: data, not copy.
     expect(englishWords(readableText(container)).filter(word => word !== 'helper')).toEqual([])
   })
