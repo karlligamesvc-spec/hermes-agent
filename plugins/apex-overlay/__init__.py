@@ -62,6 +62,27 @@ def _apply_cn_im_seams() -> None:
             logger.warning("apex-overlay: %s seam failed to load", name, exc_info=True)
 
 
+# Seams that register on the plugin context itself (system prompt sections), so
+# their apply() takes ctx: each with the warning logged when it reports False.
+_CONTEXT_SEAMS = (
+    (
+        "user_profile_prompt",
+        "apex-overlay: hc-991 user profile prompt section did not register "
+        "(see prior warning). New local sessions will not carry the "
+        "account's 用户画像 (the first-use creator answers).",
+    ),
+)
+
+
+def _apply_context_seams(ctx) -> None:
+    for name, warning in _CONTEXT_SEAMS:
+        try:
+            if not importlib.import_module(f"apex_overlay.{name}").apply(ctx):
+                logger.warning(warning)
+        except Exception:
+            logger.warning("apex-overlay: %s seam failed to load", name, exc_info=True)
+
+
 def register(ctx) -> None:
     """Apply all apex_overlay seams. Called once during plugin discovery.
 
@@ -76,6 +97,8 @@ def register(ctx) -> None:
         doubao_tts.apply(ctx)
     except Exception:
         logger.warning("apex-overlay: doubao_tts seam failed to load", exc_info=True)
+
+    _apply_context_seams(ctx)
 
     try:
         from apex_overlay import provider_filter

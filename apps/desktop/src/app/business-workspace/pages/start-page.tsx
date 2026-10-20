@@ -17,6 +17,7 @@ import { listVideoWorkflowCatalog, startWorkflowGoal } from '../api/adapters'
 import { workflowDomainBridge } from '../api/bridge'
 import { $workflowDomainAccountScope } from '../api/read-revision'
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/business-goal-launcher'
+import { CreatorIntakeCards } from '../components/creator-intake-cards'
 import { BusinessStartShelf } from '../components/start-shelf'
 import { useVideoWorkflowCatalog } from '../hooks/use-workflow-domain-lists'
 import { analysisChatSubmitOptions } from '../video-analysis-chat-handoff'
@@ -393,6 +394,7 @@ export function BusinessStartHome({
       </header>
 
       <div className="apex-start-content" data-business-start-content="">
+        <CreatorIntakeCards />
         {selectedWorkflow && (
           <section
             aria-label={t.businessWorkspace.goalLauncher.confirmationEyebrow}
