@@ -18,6 +18,7 @@ import { workflowDomainBridge } from '../api/bridge'
 import { $workflowDomainAccountScope } from '../api/read-revision'
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/business-goal-launcher'
 import { CreatorIntakeCards } from '../components/creator-intake-cards'
+import { DailyIdeas } from '../components/daily-ideas'
 import { BusinessStartShelf } from '../components/start-shelf'
 import { useVideoWorkflowCatalog } from '../hooks/use-workflow-domain-lists'
 import { analysisChatSubmitOptions } from '../video-analysis-chat-handoff'
@@ -359,6 +360,8 @@ export function BusinessStartHome({
     }
   }
 
+  const launchDisabled = goalDisabled || domainStarting
+
   const videoReadinessMessage =
     connection?.mode === 'remote'
       ? t.businessWorkspace.goalLauncher.videoRemoteConnection
@@ -395,6 +398,7 @@ export function BusinessStartHome({
 
       <div className="apex-start-content" data-business-start-content="">
         <CreatorIntakeCards />
+        <DailyIdeas disabled={launchDisabled} onStart={onSubmitGoal} />
         {selectedWorkflow && (
           <section
             aria-label={t.businessWorkspace.goalLauncher.confirmationEyebrow}
@@ -433,7 +437,7 @@ export function BusinessStartHome({
         )}
         <BusinessGoalLauncher
           attachments={attachments}
-          disabled={goalDisabled || domainStarting}
+          disabled={launchDisabled}
           draft={goalDraft}
           model={model}
           onDraftChange={draft => {

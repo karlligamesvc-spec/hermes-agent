@@ -292,6 +292,11 @@ declare global {
         // platformOn, or APEXNODES_CREATOR_TIPS). Optional: an older main process
         // may not expose it (the process area then shows no tips).
         creatorTips?: (request: { platformOn: boolean }) => Promise<DesktopCreatorTipsResult>
+        // hc-995 今日点子: today's cards on the Start page, and 开做 / 不喜欢, when the
+        // section is on (desktop_features.daily_ideas, passed in as platformOn, or
+        // APEXNODES_DAILY_IDEAS). Optional: an older main process may not expose it
+        // (the Start page then shows no ideas).
+        dailyIdeas?: (request: DesktopDailyIdeasRequest) => Promise<DesktopDailyIdeasResult>
         // hc-512: live relay model-catalog state for the model menu. Optional:
         // an older main process may not expose it yet. `refresh: true`
         // re-probes now (menu open / user retry); a 401 kicks the key
@@ -1779,6 +1784,54 @@ export interface DesktopCreatorTipsResult {
   message?: 'FETCH_FAILED' | 'INVALID' | 'NOT_SIGNED_IN'
   ok: boolean
   tips: DesktopCreatorTip[]
+}
+
+// hc-995 今日点子: three ideas the user can shoot today, picked and worded by the
+// cloud (apex-nodes app/services/daily_ideas.py). `why` is the cloud's 依据 line.
+export type DesktopDailyIdeaKind = 'hot' | 'own' | 'structure'
+export type DesktopDailyIdeaDislikeReason = 'not_my_direction' | 'skip_trend' | 'too_hard'
+
+export interface DesktopDailyIdeaCard {
+  hook: string
+  how: string
+  id: string
+  kind: DesktopDailyIdeaKind
+  lowEdit: boolean
+  noFace: boolean
+  source: { label: string; observedAt: string | null; url: string | null }
+  started: boolean
+  /** What 开做 sends as the user's own words: script and storyboard first, nothing generated. */
+  startPrompt: string
+  title: string
+  why: string
+}
+
+export interface DesktopDailyIdeasPage {
+  cards: DesktopDailyIdeaCard[]
+  day: string
+  more: boolean
+  page: number
+  pending: boolean
+  profile: { complete: boolean; summary: string }
+}
+
+export type DesktopDailyIdeasRequest =
+  | { action: 'get'; page?: number; platformOn: boolean }
+  | {
+      action: 'feedback'
+      ideaId: string
+      kind: 'dislike' | 'start'
+      platformOn: boolean
+      reason?: DesktopDailyIdeaDislikeReason
+    }
+
+export interface DesktopDailyIdeasResult {
+  /** false: the section stays hidden (off here or in the cloud, or a cloud without the API). */
+  enabled: boolean
+  message?: 'FETCH_FAILED' | 'INVALID' | 'NOT_SIGNED_IN' | 'SESSION_EXPIRED'
+  needsSignIn?: boolean
+  ok: boolean
+  page: DesktopDailyIdeasPage | null
 }
 
 export interface DesktopManagedStatus {

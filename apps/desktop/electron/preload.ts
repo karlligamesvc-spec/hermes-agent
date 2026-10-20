@@ -263,6 +263,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     creatorProfile: request => ipcRenderer.invoke('hermes:managed:creatorProfile', request),
     // hc-995 creator tips: the cloud's tip catalog when tips are on (apex-creator-tips.ts).
     creatorTips: request => ipcRenderer.invoke('hermes:managed:creatorTips', request),
+    // hc-995 今日点子: today's cards, 开做 and 不喜欢 when the section is on (apex-daily-ideas.ts).
+    dailyIdeas: request => ipcRenderer.invoke('hermes:managed:dailyIdeas', request),
     // hc-512: live relay model-catalog state for the model menu ('ok' |
     // 'unauthorized' | 'unreachable' | 'unknown'); { refresh: true } re-probes.
     relayCatalog: opts => ipcRenderer.invoke('hermes:managed:relayCatalog', opts),
