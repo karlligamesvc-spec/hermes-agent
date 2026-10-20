@@ -162,7 +162,7 @@ export function readClarifyResult(result: unknown): ClarifyResult {
   }
 }
 
-const letterFor = (index: number): string => String.fromCharCode(65 + index)
+export const letterFor = (index: number): string => String.fromCharCode(65 + index)
 
 // The backend tags the agent's preferred option (`mark_recommended`) with an
 // English wire marker; the card shows the active locale's word for it, in
@@ -182,17 +182,17 @@ function ChoiceLabel({ choice }: { choice: string }) {
   )
 }
 
-const OPTION_ROW_CLASS =
+export const OPTION_ROW_CLASS =
   'flex w-full items-start gap-2 rounded-[0.25rem] px-1.5 py-1 text-left disabled:cursor-not-allowed disabled:opacity-50'
 
 // field-sizing on top of Textarea's shared chrome; kill min-h-16 for one-liners.
-const CLARIFY_TEXTAREA_CLASS = 'field-sizing-content max-h-40 min-h-0 resize-none'
+export const CLARIFY_TEXTAREA_CLASS = 'field-sizing-content max-h-40 min-h-0 resize-none'
 
 const CLARIFY_SHELL_CLASS = `${WIDGET_SHELL_CLASS} text-[length:var(--conversation-text-font-size)] text-(--ui-text-primary)`
 
 const CLARIFY_ICON_CLASS = 'mt-px size-4 shrink-0 text-(--ui-text-tertiary)'
 
-function ClarifyShell({ children, className, ...props }: ComponentProps<'div'>) {
+export function ClarifyShell({ children, className, ...props }: ComponentProps<'div'>) {
   return (
     <div className={cn(CLARIFY_SHELL_CLASS, className)} data-slot="clarify-inline" {...props}>
       {children}
@@ -214,7 +214,7 @@ function ClarifyLine({
   )
 }
 
-function KeyBadge({ char, preview, selected }: { char: string; preview?: boolean; selected: boolean }) {
+export function KeyBadge({ char, preview, selected }: { char: string; preview?: boolean; selected: boolean }) {
   return (
     <Kbd
       className={cn(
@@ -230,9 +230,9 @@ function KeyBadge({ char, preview, selected }: { char: string; preview?: boolean
 }
 
 /** A letter-badged option row. Shared by the live pending card (where a click
- * selects an answer) and the settled skip card (where a click drafts a
- * follow-up), so both stay visually identical. */
-function ChoiceButton({
+ * selects an answer), the settled skip card (where a click drafts a follow-up)
+ * and the Start page's first-use intake cards, so all stay visually identical. */
+export function ChoiceButton({
   active = false,
   char,
   choice,

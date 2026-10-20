@@ -32,6 +32,7 @@ import {
 import { overviewEvidence } from '../shared/analysis-video-overview'
 
 import { analysisAccountBoundary, canApplyManagedRenewal, managedAccountId, readAccount } from './apex-account-boundary'
+import { registerApexAccountReads } from './apex-account-reads'
 import {
   AGENT_STATE,
   detectClaude as detectClaudeAuth,
@@ -68,7 +69,6 @@ import { createAnalysisPlaybackStore, downloadAnalysisPlayback } from './apex-an
 import { fullVideoTranscript } from './apex-analysis-transcript'
 import { MAX_ANALYSIS_VIDEO_BYTES, uploadAnalysisVideo } from './apex-analysis-video-upload'
 import { deleteAnalysisWorkspace } from './apex-analysis-workspace'
-import { fetchAnnouncements, markAnnouncementRead } from './apex-announcements'
 import * as bundleDiskspace from './apex-bundle-diskspace'
 import { downloadWithResume } from './apex-bundle-download'
 import { applyBundleUpdate as applyRuntimeBundleUpdate } from './apex-bundle-install'
@@ -81,6 +81,7 @@ import {
   shouldApply as shouldApplyClientConfig
 } from './apex-client-config'
 import { guardConfigYamlOnArrival } from './apex-config-arrival'
+import { clearUserProfilePrompt } from './apex-creator-profile'
 import {
   bridgeResultUrl,
   buildInvalidTaskResult,
@@ -183,7 +184,6 @@ import {
 } from './apex-runtime-select'
 import { loadScenarioCatalog } from './apex-scenario-catalog'
 import { loginShellPathProbeArgs, parseLoginShellPath, resolveAugmentedPath } from './apex-shell-path'
-import { fetchMyTeam } from './apex-team'
 import {
   cancelWorkflowDomainRun,
   completeWorkflowDomainProject,
@@ -19606,6 +19606,7 @@ function writeManagedConfig(provisioned, renewal = false) {
   if (!renewal) {lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }}
 
   if (Boolean(previous.key) !== Boolean(key) || managedAccountId(previous.accessToken) !== managedAccountId(accessToken)) {
+    clearUserProfilePrompt(HERMES_HOME)
     broadcastManagedAccountChanged()
   }
 
@@ -19641,6 +19642,7 @@ function clearManagedRelayCredential() {
   modelMutationMetadata.markCredentialRecovery(false)
   unpersistedManagedRotation = false
   lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }
+  clearUserProfilePrompt(HERMES_HOME)
   broadcastManagedAccountChanged()
 }
 
@@ -23866,8 +23868,7 @@ ipcMain.handle('hermes:feishu:openBind', async () => {
 })
 
 // Signed-in account reads relayed with the stored login JWT, which never reaches
-// the renderer: hc-447 更新日志 (list + best-effort read receipt; ok:false shapes
-// in apex-announcements.ts) and hc-971 the account's team (apex-team.ts).
+// the renderer: 更新日志, team and creator profile (registered in apex-account-reads.ts).
 const apexAccountReads = {
   accessToken: () => String(resolveManagedConfig().accessToken || '').trim(),
   apiBase: () => resolveApexEndpoints(process.env).apiBase,
@@ -23876,11 +23877,7 @@ const apexAccountReads = {
   log: rememberLog
 }
 
-ipcMain.handle('hermes:announcements:list', async () => fetchAnnouncements(apexAccountReads))
-
-ipcMain.handle('hermes:announcements:markRead', async (_event, announcementId) => markAnnouncementRead(apexAccountReads, announcementId))
-
-ipcMain.handle('hermes:managed:team', async () => fetchMyTeam(apexAccountReads))
+registerApexAccountReads(ipcMain, apexAccountReads, HERMES_HOME)
 
 // list: display-only view of the local bindings (no network, no secret).
 ipcMain.handle('hermes:imEntry:list', async () => ({ channels: imEntryBoundList() }))

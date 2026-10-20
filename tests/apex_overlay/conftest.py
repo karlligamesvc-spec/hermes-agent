@@ -39,6 +39,8 @@ _SEAM_MODULES = (
     "cn_im_banners",
     # hc-539 IM ↔ local coding-agent passthrough.
     "im_passthrough",
+    # hc-991 first-use creator answers in each new Desktop session's prompt.
+    "user_profile_prompt",
 )
 
 

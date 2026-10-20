@@ -89,10 +89,14 @@ test.each([
 
 test('the shell exposes this read to the renderer and to nothing else', () => {
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
+  const registrar = readFileSync(join(__dirname, 'apex-account-reads.ts'), 'utf8')
   const preload = readFileSync(join(__dirname, 'preload.ts'), 'utf8')
 
-  assert.ok(main.includes("ipcMain.handle('hermes:managed:team', async () => fetchMyTeam(apexAccountReads))"))
+  // The handler sits with the other JWT-relayed account reads; main lends them the token.
+  assert.ok(registrar.includes("ipcMain.handle('hermes:managed:team', async () => fetchMyTeam(reads))"))
+  assert.ok(main.includes('registerApexAccountReads(ipcMain, apexAccountReads, HERMES_HOME)'))
   assert.ok(main.includes("accessToken: () => String(resolveManagedConfig().accessToken || '').trim(),"))
   assert.ok(preload.includes("team: () => ipcRenderer.invoke('hermes:managed:team'),"))
-  assert.equal(main.split("'hermes:managed:team'").length - 1, 1)
+  assert.equal(main.split("'hermes:managed:team'").length - 1, 0)
+  assert.equal(registrar.split("'hermes:managed:team'").length - 1, 1)
 })
