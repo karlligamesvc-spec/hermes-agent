@@ -105,6 +105,11 @@ def desktop_env(monkeypatch):
 @pytest.fixture
 def image_mod():
     module = _load_plugin("apexnodes-image-tools")
+    # hc-984: every image call reads the server's leg health first, with or without a
+    # model (tests/plugins/test_apexnodes_hc984_generation_errors.py). These tests are
+    # about what the generate request carries and how the result lands, so the health
+    # read answers "no verdict" here, which goes ahead without a request.
+    module._leg_health = lambda: None
     yield module
     sys.modules.pop(module.__name__, None)
 
