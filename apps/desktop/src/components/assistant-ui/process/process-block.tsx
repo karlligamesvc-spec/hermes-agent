@@ -23,10 +23,10 @@ import { cn } from '@/lib/utils'
 import { $gatewayState } from '@/store/session'
 import { $toolDisclosureOpen, $toolViewMode, setToolDisclosureOpen } from '@/store/tool-view'
 
+import { CreatorTipSlot } from './creator-tip'
 import {
   type CallState,
   hasSources,
-  isSlowTool,
   type ProcessCall,
   processKind,
   type ProcessStep,
@@ -559,11 +559,15 @@ function ProcessBody({ view }: { view: TurnView }) {
     <>
       <Header expanded={expanded} line={line} onToggle={toggle} span={process.span} toggleable={hasSteps} />
       {expanded && hasSteps && <StepsList devMode={devMode} process={process} turnKey={view.key} />}
-      {process.phase === 'running' && current && isSlowTool(current.toolName) && (
-        <p className={cn(NOTE_CLASS, 'm-0 ps-5')} data-process-slow-hint="">
-          {copy.slowHint}
-        </p>
-      )}
+      <CreatorTipSlot
+        current={current}
+        devMode={devMode}
+        linkClassName={LINK_BUTTON_CLASS}
+        noteClassName={NOTE_CLASS}
+        process={process}
+        slowHint={copy.slowHint}
+        turnKey={view.key}
+      />
       {process.phase === 'running' && <PendingApproval process={process} />}
       {process.phase === 'failed' && <FailureCard process={process} view={view} />}
       <ReasoningChip process={process} turnKey={view.key} />

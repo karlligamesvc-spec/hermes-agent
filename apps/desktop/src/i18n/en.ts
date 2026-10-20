@@ -772,7 +772,7 @@ export const en: Translations = {
       reactionsDesc: 'iMessage-style emoji tapbacks — react to messages, and Hermes can react to yours.',
       tipsTitle: 'In-App Tips',
       tipsDesc:
-        'A small bubble pointing at one part of the app, shown occasionally while idle and by APEX when it helps. Closing one retires it for good.',
+        'While you wait for a result, APEX says one line of creator know-how in the process area, and now and then points at part of the app with a small bubble. Each shows once; turning this off stops them all.',
       tipsReset: (count: number) => `Bring back ${count} closed ${count === 1 ? 'tip' : 'tips'}`,
       toursTitle: 'Guided Tours',
       toursDesc: 'Let APEX walk you through the app, dimming the screen and spotlighting each step.',

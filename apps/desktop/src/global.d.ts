@@ -287,6 +287,11 @@ declare global {
         // written with the stored login JWT. Optional: an older main process may
         // not expose it (the Start page then shows no cards).
         creatorProfile?: (request: DesktopCreatorProfileRequest) => Promise<DesktopCreatorProfileResult>
+        // hc-995 creator tips: the cloud's tip catalog, read only when tips are on
+        // (the admin client config's desktop_features.creator_tips, passed in as
+        // platformOn, or APEXNODES_CREATOR_TIPS). Optional: an older main process
+        // may not expose it (the process area then shows no tips).
+        creatorTips?: (request: { platformOn: boolean }) => Promise<DesktopCreatorTipsResult>
         // hc-512: live relay model-catalog state for the model menu. Optional:
         // an older main process may not expose it yet. `refresh: true`
         // re-probes now (menu open / user retry); a 401 kicks the key
@@ -1758,6 +1763,22 @@ export interface DesktopCreatorProfileResult {
   ok: boolean
   /** null: this account has no intake (installer-only, or a cloud without the API). */
   profile: DesktopCreatorProfile | null
+}
+
+// hc-995 creator tips: one line of creator know-how while a step runs. The cloud
+// owns the catalog (apex-nodes app/catalog/creator_tips.json); `steps` are the
+// tool names the process area shows as steps.
+export interface DesktopCreatorTip {
+  id: string
+  steps: string[]
+  text: { en: string; zh: string }
+}
+
+export interface DesktopCreatorTipsResult {
+  enabled: boolean
+  message?: 'FETCH_FAILED' | 'INVALID' | 'NOT_SIGNED_IN'
+  ok: boolean
+  tips: DesktopCreatorTip[]
 }
 
 export interface DesktopManagedStatus {

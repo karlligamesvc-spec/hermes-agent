@@ -261,6 +261,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     // hc-991 first-use creator intake: read or write the account's three answers
     // (apex-creator-profile.ts); main keeps the local agent's prompt copy in step.
     creatorProfile: request => ipcRenderer.invoke('hermes:managed:creatorProfile', request),
+    // hc-995 creator tips: the cloud's tip catalog when tips are on (apex-creator-tips.ts).
+    creatorTips: request => ipcRenderer.invoke('hermes:managed:creatorTips', request),
     // hc-512: live relay model-catalog state for the model menu ('ok' |
     // 'unauthorized' | 'unreachable' | 'unknown'); { refresh: true } re-probes.
     relayCatalog: opts => ipcRenderer.invoke('hermes:managed:relayCatalog', opts),

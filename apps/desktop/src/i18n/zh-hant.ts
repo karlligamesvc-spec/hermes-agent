@@ -467,7 +467,7 @@ export const zhHant = defineLocale({
       backdropTitle: '聊天背景',
       backdropDesc: '對話後方那張淡淡的雕像圖片。',
       tipsTitle: '應用程式內提示',
-      tipsDesc: '在閒置時或 APEX 判斷有幫助時，偶爾顯示一個指向介面局部的小氣泡。關閉後會永久收起該提示。',
+      tipsDesc: '等結果時，APEX 會在過程區說一句創作小貼士；閒置時偶爾用小氣泡指一下介面。每條只出現一次，關閉後都不再出現。',
       tipsReset: (count: number) => `恢復 ${count} 則已關閉的提示`,
       toursTitle: '導覽教學',
       toursDesc: '讓 APEX 逐步帶你熟悉應用程式；畫面會變暗，並逐項突顯目前步驟。',
