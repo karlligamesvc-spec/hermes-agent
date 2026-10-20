@@ -21,6 +21,8 @@ import { $autoSpeakReplies, setAutoSpeakReplies } from '@/store/voice-prefs'
 import { $wakeWord } from '@/store/wake-word'
 import { englishWords, readableText } from '@/test/zh-copy'
 
+import { generationModels } from './generation-models'
+import { composerPlainText } from './rich-editor'
 import type { ChatBarProps, ChatBarState } from './types'
 
 import { ChatBar } from '.'
@@ -46,6 +48,8 @@ const STATE: ChatBarState = {
 
 const DOUYIN_SHARE =
   '7.43 复制打开抖音，看看【小林的作品】租房党的厨房收纳 # 好物分享  https://v.douyin.com/iRNBho6u/ k@D.ub 03/15 qrK:/'
+
+const CHANNELS_SHARE = '我在看视频号的这条：https://weixin.qq.com/sph/AbCdEf12。你也看看'
 
 const XHS_SHARE =
   '【租房改造 - 小林 | 小红书 - 你的生活指南】 😆 AbCdEfGhIjK 😆 http://xhslink.com/a/AbCdEfGhIjK，复制本条信息，打开【小红书】App查看精彩内容！'
@@ -148,23 +152,10 @@ async function openSubmenu(name: string) {
   await settle()
 }
 
-/** What the open menus show a reader. */
+/** What the open menus show a reader — the image / video rows included: in
+ *  tier mode they name no model either (hc-960 exit 31, Kael 2026-10-20). */
 const menuText = () =>
-  [...window.document.querySelectorAll('[role="menu"]')]
-    .map(menu => {
-      const copy = menu.cloneNode(true) as HTMLElement
-
-      // The image / video rows name the generation model they will use — a
-      // product name, left to Kael with hc-960's exit 31 — so they are cut out.
-      copy
-        .querySelectorAll('[data-generation-model-icon]')
-        .forEach(icon => icon.closest('[role="menuitem"], [role="menuitemradio"]')?.remove())
-
-      copy.querySelectorAll('[data-generation-kind]').forEach(trigger => trigger.remove())
-
-      return readableText(copy)
-    })
-    .join('\n')
+  [...window.document.querySelectorAll('[role="menu"]')].map(menu => readableText(menu as HTMLElement)).join('\n')
 
 const toolbarButtons = () => {
   const root = window.document.querySelector('[data-slot="composer-layout"]')!
@@ -235,6 +226,15 @@ describe('paste-to-act on the chat composer', () => {
     expect(editor().querySelector('[data-ref-text]')).not.toBeNull()
   })
 
+  // Kael (2026-10-20): ordinary links stay web references, and Chinese glued
+  // onto one stays prose instead of riding into the chip.
+  it('ends an ordinary link’s chip where the Chinese starts', async () => {
+    await renderChatBar()
+    await paste('看这个https://example.com/post/1，写得好')
+
+    expect(composerPlainText(editor())).toBe('看这个@url:`https://example.com/post/1`，写得好')
+  })
+
   it('sends the chip’s request through the normal submit path and clears the draft', async () => {
     const { onSubmit } = await renderChatBar()
     await paste(DOUYIN_SHARE)
@@ -290,6 +290,32 @@ describe('paste-to-act on the chat composer', () => {
 
     expect(text).toBe('拆解这个视频为什么火')
     expect(options?.attachments?.map(item => item.path)).toEqual([clip.path])
+  })
+
+  // Kael (2026-10-20): a 视频号 video can't be downloaded from its link, so the
+  // strip says so up front instead of chips the assistant could only answer
+  // with "send me the file".
+  it('asks for a 视频号 video to be saved and dragged in, then acts on the video', async () => {
+    const { onSubmit } = await renderChatBar()
+    await paste(CHANNELS_SHARE)
+
+    const hint = () => window.document.querySelector('[data-slot="composer-paste-hint"]')
+
+    expect(hint()?.textContent).toBe('视频号的视频没法从链接下载：先把视频存到电脑，再拖进来')
+    expect(screen.queryByRole('group', { name: '用这条视频做什么' })).toBeNull()
+    expect(editor().querySelector('[data-ref-text]')).toBeNull()
+
+    const clip = video('/Users/me/Movies/视频号存下来的.mp4')
+
+    act(() => mainComposerScope.add(clip))
+    fireEvent.click(await screen.findByRole('button', { name: '转逐字稿' }))
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    const [text, options] = onSubmit.mock.calls[0]!
+
+    expect(text).toBe('把这个视频转成逐字稿')
+    expect(options?.attachments?.map(item => item.path)).toEqual([clip.path])
+    expect(hint()).toBeNull()
   })
 
   it('offers nothing for an ordinary link or a non-video file', async () => {
@@ -396,6 +422,11 @@ describe('attach · voice · send', () => {
     seen.push(advanced, approval, voice)
 
     expect(englishWords(seen.join('\n'))).toEqual([])
+
+    // The image / video rows name no generation model (hc-960 exit 31).
+    const generationLabels = [...generationModels('image'), ...generationModels('video')].map(model => model.label)
+
+    expect(generationLabels.filter(label => seen[0]!.includes(label))).toEqual([])
 
     // On an APEX account the tier lives in the assistant's settings (hc-960):
     // 高级 must not grow a model row back.

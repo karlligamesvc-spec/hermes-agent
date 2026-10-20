@@ -16,6 +16,7 @@ import {
   pasteActionRequest,
   type PasteActionSource,
   pasteActionSource,
+  type PasteActionTarget,
   pastedTextFor
 } from './paste-actions'
 import { useComposerScope } from './scope'
@@ -26,7 +27,8 @@ const ICONS: Record<PasteActionId, string> = { breakdown: 'flame', remix: 'penci
  * The three paste-to-act chips. No dismiss control, like the suggestion pills
  * beside them: the chips live exactly as long as their link sits in the draft
  * (or their video among the attachments), and typing past them is the way to
- * ignore them.
+ * ignore them. A 视频号 link gets a line saying to save the video and drag it
+ * in instead; once that video lands, the chips act on it.
  */
 export function PasteActionChips({
   disabled,
@@ -34,7 +36,7 @@ export function PasteActionChips({
   source
 }: {
   disabled: boolean
-  onPick: (action: PasteActionId) => void
+  onPick: (action: PasteActionId, target: PasteActionTarget) => void
   source: null | PasteActionSource
 }) {
   const copy = useComposerSimpleCopy().paste
@@ -43,7 +45,21 @@ export function PasteActionChips({
     return null
   }
 
-  const video = source.kind === 'link' ? copy.platforms[source.link.platform] : null
+  if (source.kind === 'save-first') {
+    return (
+      <div
+        className="inline-flex min-h-(--composer-control-size) max-w-full items-center gap-1.5 rounded-full border border-border/65 bg-(--composer-fill) px-2.5 text-xs text-(--ui-text-secondary) backdrop-blur-[0.75rem]"
+        data-slot="composer-paste-hint"
+        role="status"
+      >
+        <Codicon className="shrink-0 opacity-70" name="info" size="0.75rem" />
+        <span>{copy.saveFirst}</span>
+      </div>
+    )
+  }
+
+  const target = source
+  const video = target.kind === 'link' ? copy.platforms[target.link.platform] : null
 
   return (
     <div aria-label={copy.group} className="contents" data-slot="composer-paste-actions" role="group">
@@ -55,7 +71,7 @@ export function PasteActionChips({
             disabled={disabled}
             onClick={() => {
               triggerHaptic('selection')
-              onPick(action)
+              onPick(action, target)
             }}
             type="button"
           >
@@ -88,13 +104,14 @@ export function ComposerPasteActions({ disabled, onSend }: { disabled: boolean; 
   return (
     <PasteActionChips
       disabled={disabled}
-      onPick={action => {
-        if (source) {
-          const draft = composer.getState().text
-
-          onSend(pasteActionRequest(action, source, copy, { draft, pasted: pastedTextFor(scope.target) }))
-        }
-      }}
+      onPick={(action, target) =>
+        onSend(
+          pasteActionRequest(action, target, copy, {
+            draft: composer.getState().text,
+            pasted: pastedTextFor(scope.target)
+          })
+        )
+      }
       source={source}
     />
   )
@@ -115,17 +132,14 @@ export function DraftPasteActions({
   pasteKey: string
 }) {
   const copy = useComposerSimpleCopy().paste
-  const source = pasteActionSource(draft, attachments)
 
   return (
     <PasteActionChips
       disabled={disabled}
-      onPick={action => {
-        if (source) {
-          onSend(pasteActionRequest(action, source, copy, { draft, pasted: pastedTextFor(pasteKey) }))
-        }
-      }}
-      source={source}
+      onPick={(action, target) =>
+        onSend(pasteActionRequest(action, target, copy, { draft, pasted: pastedTextFor(pasteKey) }))
+      }
+      source={pasteActionSource(draft, attachments)}
     />
   )
 }

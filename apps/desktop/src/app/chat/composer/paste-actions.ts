@@ -140,18 +140,31 @@ export type PasteActionId = 'breakdown' | 'remix' | 'transcribe'
 
 export const PASTE_ACTIONS: readonly PasteActionId[] = ['transcribe', 'breakdown', 'remix']
 
-export type PasteActionSource = { kind: 'link'; link: ShortVideoLink } | { kind: 'video' }
+/** What a pick acts on: a link the tools can download, or a local video —
+ *  `replaces` is the 视频号 link that video stands in for. */
+export type PasteActionTarget = { kind: 'link'; link: ShortVideoLink } | { kind: 'video'; replaces?: ShortVideoLink }
 
-/** What the chips act on: a link in the draft first (the words the user is
- *  looking at), else a local video among the attachments. */
+/** `save-first`: a 视频号 link alone. Its videos have no downloadable stream
+ *  (`douyin_media.py`; `analysis_video_links.py` marks them `upload_required`),
+ *  so the strip says to save the video and drag it in instead of offering chips
+ *  that could only end in the assistant asking for the file (Kael, 2026-10-20). */
+export type PasteActionSource = PasteActionTarget | { kind: 'save-first'; link: ShortVideoLink }
+
+/** What the chips act on: a downloadable link in the draft first (the words
+ *  the user is looking at), else a local video among the attachments, else a
+ *  视频号 link to save first. */
 export function pasteActionSource(draft: string, attachments: readonly ComposerAttachment[]): null | PasteActionSource {
   const link = detectShortVideoLink(draft)
 
-  if (link) {
+  if (link && link.platform !== 'channels') {
     return { kind: 'link', link }
   }
 
-  return attachments.some(isLocalVideoAttachment) ? { kind: 'video' } : null
+  if (attachments.some(isLocalVideoAttachment)) {
+    return link ? { kind: 'video', replaces: link } : { kind: 'video' }
+  }
+
+  return link ? { kind: 'save-first', link } : null
 }
 
 export interface PasteActionPhrases {
@@ -169,24 +182,28 @@ export interface PasteActionPhrases {
  * exists to avoid. Whatever else the user typed follows on its own line so a
  * click never drops their words; the share text they pasted around the link
  * (`pasted`, when it is still in the draft) is left out — the link is the part
- * the tools need.
+ * the tools need. A video standing in for a 视频号 link drops that link's share
+ * text the same way: the file is what the tools work on.
  */
 export function pasteActionRequest(
   action: PasteActionId,
-  source: PasteActionSource,
+  source: PasteActionTarget,
   phrases: PasteActionPhrases,
   { draft, pasted }: { draft: string; pasted?: null | string }
 ): string {
+  const link = source.kind === 'link' ? source.link : source.replaces
   let rest = draft
-  let sentence = phrases.videoSentence[action]
 
-  if (source.kind === 'link') {
-    const { link } = source
+  if (link) {
     const shareText = pasted && pasted.includes(link.raw) && draft.includes(pasted) ? pasted : linkSpan(draft, link.raw)
 
     rest = draft.replace(shareText, ' ')
-    sentence = `${phrases.linkSentence[action](phrases.platforms[link.platform])}${phrases.linkSeparator}${link.url}`
   }
+
+  const sentence =
+    source.kind === 'link'
+      ? `${phrases.linkSentence[action](phrases.platforms[source.link.platform])}${phrases.linkSeparator}${source.link.url}`
+      : phrases.videoSentence[action]
 
   const note = rest
     .replace(/[ \t]+/g, ' ')

@@ -13,8 +13,17 @@ import { textBeforeCaret } from './text-utils'
 // An explicit scheme only — `example.com` bare is too easy to hit by accident
 // (a filename, a version, a sentence). Brackets and quotes fence a URL in prose;
 // parens don't, so they stay in and an unbalanced tail is trimmed below.
-const URL_RE = /https?:\/\/[^\s<>[\]{}"'`]+/gi
-const TYPED_URL_RE = /(?:^|\s)(https?:\/\/[^\s<>[\]{}"'`]+)$/i
+//
+// Chinese prose runs straight on from a link, so a link also ends at general
+// or full-width punctuation and at a CJK character glued to it ("…/page，看看",
+// "…/page看看") — the edges the short-video detector (paste-actions.ts) uses.
+// A CJK run right after `/ = ? # &` is a path segment or query value of its own
+// (`/wiki/中国`, `?wd=短视频`) and stays in.
+const URL_RE =
+  /https?:\/\/(?:[^\s<>[\]{}"'`\u2010-\u206f\u3000-\u303f\u3400-\u9fff\uff00-\uffef]|(?<=[/=?#&\u3400-\u9fff])[\u3400-\u9fff])+/gi
+
+const TYPED_URL_RE =
+  /(?:^|\s)(https?:\/\/(?:[^\s<>[\]{}"'`\u2010-\u206f\u3000-\u303f\u3400-\u9fff\uff00-\uffef]|(?<=[/=?#&\u3400-\u9fff])[\u3400-\u9fff])+)$/i
 
 /** A URL at the end of a sentence carries the punctuation that ended it. */
 function splitUrlTail(raw: string) {

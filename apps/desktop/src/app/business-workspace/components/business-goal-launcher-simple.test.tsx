@@ -125,6 +125,15 @@ describe('paste-to-act on the Start input', () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('把这个视频转成逐字稿'))
   })
 
+  it('asks for a 视频号 video to be saved and dragged in instead of offering the chips', () => {
+    const { goal } = renderLauncher()
+
+    paste(goal, '视频号这条不错 https://weixin.qq.com/sph/AbCdEf12')
+
+    expect(window.document.querySelector('[data-slot="composer-paste-hint"]')?.textContent).toBe(zh.paste.saveFirst)
+    expect(screen.queryByRole('group', { name: zh.paste.group })).toBeNull()
+  })
+
   it('keeps the goal typed by hand untouched when nothing is a video', () => {
     const { goal } = renderLauncher()
 

@@ -95,6 +95,12 @@ describe.each(CHINESE)('the %s simple-composer copy', locale => {
 })
 
 describe('the chip labels Kael set (2026-10-20)', () => {
+  it('tells a 视频号 link to save the video and drag it in, in zh and en', () => {
+    expect(COMPOSER_SIMPLE_COPY.zh.paste.saveFirst).toContain('先把视频存到电脑，再拖进来')
+    expect(COMPOSER_SIMPLE_COPY['zh-hant'].paste.saveFirst).toContain('先把影片存到電腦，再拖進來')
+    expect(COMPOSER_SIMPLE_COPY.en.paste.saveFirst).toMatch(/save the video to your computer, then drag it in/i)
+  })
+
   it('reads 转逐字稿 / 拆它为什么火 / 仿写成我的脚本 in zh', () => {
     expect(COMPOSER_SIMPLE_COPY.zh.paste.labels).toEqual({
       breakdown: '拆它为什么火',

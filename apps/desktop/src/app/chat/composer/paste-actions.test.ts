@@ -9,12 +9,23 @@ import {
   notePastedText,
   PASTE_ACTIONS,
   pasteActionRequest,
+  type PasteActionSource,
   pasteActionSource,
+  type PasteActionTarget,
   pastedTextFor,
   type ShortVideoPlatform
 } from './paste-actions'
 
 const zh = COMPOSER_SIMPLE_COPY.zh.paste
+
+/** A source the chips act on (not a 视频号 link waiting for its file). */
+function target(source: null | PasteActionSource): PasteActionTarget {
+  if (!source || source.kind === 'save-first') {
+    throw new Error(`no chips for this draft: ${JSON.stringify(source)}`)
+  }
+
+  return source
+}
 
 // Every link shape each platform's app or site hands out, bare and inside the
 // share text the app copies (hard rule 12: one row per platform per shape).
@@ -191,6 +202,9 @@ describe('isLocalVideoAttachment', () => {
   })
 })
 
+const CHANNELS_LINK = 'https://weixin.qq.com/sph/AbCdEf12'
+const CHANNELS_SHARE = `我在看视频号的这条：${CHANNELS_LINK}。你也看看`
+
 describe('pasteActionSource', () => {
   it('prefers the link the user is looking at over a video among the attachments', () => {
     const source = pasteActionSource('https://b23.tv/AbCd123', [file('/Users/me/a.mp4')])
@@ -208,33 +222,54 @@ describe('pasteActionSource', () => {
   it('offers nothing for plain words and ordinary files', () => {
     expect(pasteActionSource('帮我写个口播', [file('/Users/me/notes.txt')])).toBeNull()
   })
+
+  // 视频号 (Kael, 2026-10-20): no chips that could only end in the assistant
+  // asking for the file — the strip says to save the video and drag it in.
+  it.each(LINKS.filter(([platform]) => platform === 'channels'))(
+    'asks for the file first on a %s link: %j',
+    (_, text, url) => {
+      expect(pasteActionSource(text, [])).toMatchObject({ kind: 'save-first', link: { platform: 'channels', url } })
+    }
+  )
+
+  it('acts on the video once it lands beside a 视频号 link', () => {
+    expect(pasteActionSource(CHANNELS_SHARE, [file('/Users/me/Movies/视频号存下来的.mp4')])).toEqual({
+      kind: 'video',
+      replaces: { platform: 'channels', raw: CHANNELS_LINK, url: CHANNELS_LINK }
+    })
+  })
+
+  it('still offers the chips when a downloadable link comes first', () => {
+    expect(pasteActionSource(`https://b23.tv/AbCd123 ${CHANNELS_LINK}`, [])).toMatchObject({ kind: 'link' })
+  })
 })
 
 const DOUYIN_SHARE =
   '7.43 复制打开抖音，看看【小林的作品】租房党的厨房收纳  https://v.douyin.com/iRNBho6u/ k@D.ub 03/15 qrK:/'
 
 describe('pasteActionRequest', () => {
-  const douyin = pasteActionSource(DOUYIN_SHARE, [])!
+  // Read inside each test, so a broken detector fails tests, not collection.
+  const douyin = () => target(pasteActionSource(DOUYIN_SHARE, []))
 
   it.each([
     ['transcribe', '把这条抖音视频转成逐字稿：https://v.douyin.com/iRNBho6u/'],
     ['breakdown', '拆解这条抖音视频为什么火：https://v.douyin.com/iRNBho6u/'],
     ['remix', '照这条抖音视频的结构和节奏，仿写一个我的口播脚本：https://v.douyin.com/iRNBho6u/']
   ] as const)('%s: one sentence and the link, the share padding left out', (action, request) => {
-    expect(pasteActionRequest(action, douyin, zh, { draft: DOUYIN_SHARE, pasted: DOUYIN_SHARE })).toBe(request)
+    expect(pasteActionRequest(action, douyin(), zh, { draft: DOUYIN_SHARE, pasted: DOUYIN_SHARE })).toBe(request)
   })
 
   it('keeps what the user typed after the paste, on its own line', () => {
     const draft = `${DOUYIN_SHARE}\n重点看开头三秒`
 
-    expect(pasteActionRequest('breakdown', douyin, zh, { draft, pasted: DOUYIN_SHARE })).toBe(
+    expect(pasteActionRequest('breakdown', douyin(), zh, { draft, pasted: DOUYIN_SHARE })).toBe(
       '拆解这条抖音视频为什么火：https://v.douyin.com/iRNBho6u/\n重点看开头三秒'
     )
   })
 
   it('drops only the link when no paste was recorded, so no typed word is lost', () => {
     const draft = '帮我看看 https://b23.tv/AbCd123 这条'
-    const source = pasteActionSource(draft, [])!
+    const source = target(pasteActionSource(draft, []))
 
     expect(pasteActionRequest('transcribe', source, zh, { draft })).toBe(
       '把这条哔哩哔哩视频转成逐字稿：https://b23.tv/AbCd123\n帮我看看 这条'
@@ -243,7 +278,7 @@ describe('pasteActionRequest', () => {
 
   it('takes an older @url: chip out whole', () => {
     const draft = '@url:`https://v.douyin.com/iRNBho6u/` 这条'
-    const source = pasteActionSource(draft, [])!
+    const source = target(pasteActionSource(draft, []))
 
     expect(pasteActionRequest('transcribe', source, zh, { draft })).toBe(
       '把这条抖音视频转成逐字稿：https://v.douyin.com/iRNBho6u/\n这条'
@@ -251,8 +286,8 @@ describe('pasteActionRequest', () => {
   })
 
   it('sends a hand-typed link with its scheme, and Xiaohongshu’s http link as pasted', () => {
-    const typed = pasteActionSource('v.douyin.com/iRNBho6u/', [])!
-    const xhs = pasteActionSource('http://xhslink.com/a/AbCdEfGhIjK，复制本条信息', [])!
+    const typed = target(pasteActionSource('v.douyin.com/iRNBho6u/', []))
+    const xhs = target(pasteActionSource('http://xhslink.com/a/AbCdEfGhIjK，复制本条信息', []))
 
     expect(pasteActionRequest('transcribe', typed, zh, { draft: 'v.douyin.com/iRNBho6u/' })).toBe(
       '把这条抖音视频转成逐字稿：https://v.douyin.com/iRNBho6u/'
@@ -269,9 +304,22 @@ describe('pasteActionRequest', () => {
     )
   })
 
+  it('leaves a 视频号 share text out once its video stands in for it', () => {
+    const draft = `${CHANNELS_SHARE}\n重点看开头三秒`
+    const source = target(pasteActionSource(draft, [file('/Users/me/Movies/a.mp4')]))
+
+    expect(pasteActionRequest('transcribe', source, zh, { draft, pasted: CHANNELS_SHARE })).toBe(
+      '把这个视频转成逐字稿\n重点看开头三秒'
+    )
+  })
+
   it('never writes an @url: directive the gateway would fetch as a web page', () => {
-    for (const [, text] of LINKS) {
-      const source = pasteActionSource(text, [])!
+    for (const [platform, text] of LINKS) {
+      // A 视频号 link only ever reaches a request through its video.
+      const source =
+        platform === 'channels'
+          ? target(pasteActionSource(text, [file('/Users/me/a.mp4')]))
+          : target(pasteActionSource(text, []))
 
       for (const action of PASTE_ACTIONS) {
         expect(pasteActionRequest(action, source, zh, { draft: text, pasted: text })).not.toContain('@url:')

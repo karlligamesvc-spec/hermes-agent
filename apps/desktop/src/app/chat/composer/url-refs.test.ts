@@ -59,7 +59,8 @@ describe('linkifyUrls', () => {
 
 describe('linkifyUrls — short-video links (WP4 paste-to-act)', () => {
   it('leaves a Douyin / Xiaohongshu / Bilibili link as written and still chips the rest', () => {
-    const text = '抖音 https://v.douyin.com/iRNBho6u/ 小红书 http://xhslink.com/a/AbCdEfGhIjK，参考 https://example.com/a'
+    const text =
+      '抖音 https://v.douyin.com/iRNBho6u/ 小红书 http://xhslink.com/a/AbCdEfGhIjK，参考 https://example.com/a'
 
     expect(linkifyUrls(text)).toBe(
       '抖音 https://v.douyin.com/iRNBho6u/ 小红书 http://xhslink.com/a/AbCdEfGhIjK，参考 @url:`https://example.com/a`'
@@ -71,6 +72,39 @@ describe('linkifyUrls — short-video links (WP4 paste-to-act)', () => {
     expect(resolveExactLinkPaste('see https://example.com/one')).toBeNull()
 
     expect(linkifyUrls('see https://example.com/docs')).toBe('see @url:`https://example.com/docs`')
+  })
+})
+
+// Kael (2026-10-20): ordinary links stay `@url:` chips, and Chinese prose
+// glued to one stays prose instead of riding into the chip (and the page fetch).
+describe('linkifyUrls — Chinese prose around an ordinary link', () => {
+  it.each([
+    [
+      'a full-width comma',
+      '看这个https://example.com/post/1，写得好',
+      '看这个@url:`https://example.com/post/1`，写得好'
+    ],
+    ['a full stop', '链接是 https://example.com/a。', '链接是 @url:`https://example.com/a`。'],
+    ['Chinese glued to the path', 'https://example.com/post/1看看这个', '@url:`https://example.com/post/1`看看这个'],
+    ['Chinese glued to the host', '打开https://example.com看看', '打开@url:`https://example.com`看看'],
+    ['curly quotes', '“https://example.com/a”是官网', '“@url:`https://example.com/a`”是官网'],
+    ['full-width brackets', '官网：https://example.com/a（新版）', '官网：@url:`https://example.com/a`（新版）'],
+    ['an ellipsis', '先看 https://example.com/a…然后', '先看 @url:`https://example.com/a`…然后']
+  ])('ends the chip at %s', (_, text, chipped) => {
+    expect(linkifyUrls(text)).toBe(chipped)
+  })
+
+  it.each([
+    ['a path segment', 'https://zh.wikipedia.org/wiki/中国'],
+    ['a query value', 'https://www.baidu.com/s?wd=短视频&rn=10'],
+    ['a fragment', 'https://example.com/doc#第二章'],
+    ['a deeper path', 'https://example.com/分类/美食/列表']
+  ])('keeps Chinese that is %s', (_, url) => {
+    expect(linkifyUrls(`参考 ${url} 谢谢`)).toBe(`参考 @url:\`${url}\` 谢谢`)
+  })
+
+  it('takes a lone link with a Chinese comma as prose, not an exact link paste', () => {
+    expect(resolveExactLinkPaste('https://example.com/a，')).toBeNull()
   })
 })
 
@@ -195,6 +229,16 @@ describe('chipTypedUrlOnSpace', () => {
     const { editor, event } = spaceOn('https://', 8)
 
     expect(chipTypedUrlOnSpace(event)).toBe(false)
+
+    editor.remove()
+  })
+
+  it('leaves a link with Chinese typed straight on as text instead of chipping the Chinese', () => {
+    const text = 'see https://example.com/a好的'
+    const { editor, event } = spaceOn(text, text.length)
+
+    expect(chipTypedUrlOnSpace(event)).toBe(false)
+    expect(editor.querySelector('[data-ref-text]')).toBeNull()
 
     editor.remove()
   })

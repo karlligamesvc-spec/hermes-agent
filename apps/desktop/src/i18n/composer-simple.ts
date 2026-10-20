@@ -1,6 +1,7 @@
 /**
- * Copy for the simple composer (WP4): the "+" menu with its 高级 fold, and the
- * three chips a pasted short-video link or a dropped video offers.
+ * Copy for the simple composer (WP4): the "+" menu with its 高级 fold, the
+ * three chips a pasted short-video link or a dropped video offers, and the
+ * save-it-first line a 视频号 link gets instead.
  *
  * Kept beside the main catalogs instead of inside them: those files are past
  * the code-health size cap (they may only shrink), and a key zh lacks there
@@ -32,6 +33,8 @@ export interface ComposerSimpleCopy {
     /** The chip group's accessible name. */
     group: string
     labels: Record<PasteActionId, string>
+    /** Shown instead of the chips for a 视频号 link: it can't be downloaded. */
+    saveFirst: string
   }
   /** Native picker titles (Windows shows them in the dialog's title bar). */
   pickFilesTitle: string
@@ -59,6 +62,8 @@ const en: ComposerSimpleCopy = {
       transcribe: video => `Transcribe this ${video}`
     },
     linkSeparator: ': ',
+    saveFirst:
+      "WeChat Channels videos can't be downloaded from the link. Save the video to your computer, then drag it in",
     platforms: {
       bilibili: 'Bilibili video',
       channels: 'WeChat Channels video',
@@ -97,6 +102,7 @@ const zh: ComposerSimpleCopy = {
       transcribe: video => `把这条${video}转成逐字稿`
     },
     linkSeparator: '：',
+    saveFirst: '视频号的视频没法从链接下载：先把视频存到电脑，再拖进来',
     platforms: {
       bilibili: '哔哩哔哩视频',
       channels: '视频号视频',
@@ -135,6 +141,7 @@ const zhHant: ComposerSimpleCopy = {
       transcribe: video => `把這個${video}轉成逐字稿`
     },
     linkSeparator: '：',
+    saveFirst: '視訊號的影片沒辦法從連結下載：先把影片存到電腦，再拖進來',
     platforms: {
       bilibili: '嗶哩嗶哩影片',
       channels: '視訊號影片',

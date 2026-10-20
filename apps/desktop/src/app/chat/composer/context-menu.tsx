@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 
@@ -32,6 +33,7 @@ import {
 } from '@/lib/icons'
 import type { VendorKey } from '@/lib/model-vendor'
 import { cn } from '@/lib/utils'
+import { $modelTierMode } from '@/store/model-tiers'
 import { notifyError } from '@/store/notifications'
 
 import { AdvancedSubmenu, AttachRows, type ComposerAdvanced, type ComposerPickers } from './context-menu-advanced'
@@ -39,16 +41,16 @@ import { useComposerAttachmentProviders } from './contrib'
 import { GHOST_ICON_BTN } from './controls'
 import { requestComposerFocus, requestComposerInsert } from './focus'
 import {
+  defaultGenerationModel,
   type GenerationKind,
   type GenerationModel,
   type GenerationModelIconKey,
   generationModels,
   generationStarter,
-  previouslySelectedImageModel,
-  previouslySelectedVideoModel,
   saveImageGenerationModel,
   saveVideoGenerationModel,
-  selectedGenerationModel
+  selectedGenerationModel,
+  startupGenerationModel
 } from './generation-models'
 import { SkillBrowseDialog } from './skill-browse-dialog'
 import { type SkillScope, useSkillCatalog } from './skill-catalog'
@@ -91,22 +93,26 @@ export function ContextMenu({ advanced, pickers, state }: ContextMenuProps) {
   const [browseScope, setBrowseScope] = useState<SkillScope>('enabled')
   const [imageModel, setImageModel] = useState(() => selectedGenerationModel('image'))
   const [videoModel, setVideoModel] = useState(() => selectedGenerationModel('video'))
+  // hc-960 exit 31 (Kael, 2026-10-20): tier mode names no model, so the two
+  // generation rows lose their pickers and always run on the defaults.
+  const modelTierMode = useStore($modelTierMode)
   const attachmentProviders = useComposerAttachmentProviders()
 
   // Earlier releases only stored this choice in localStorage. Migrate that
-  // visible selection into the runtime preference as soon as chat is ready.
+  // visible selection into the runtime preference as soon as chat is ready
+  // (in tier mode, the default it gives way to).
   useEffect(() => {
     if (!state.tools.enabled) {
       return
     }
 
-    const image = previouslySelectedImageModel()
-    const video = previouslySelectedVideoModel()
+    const image = startupGenerationModel('image', modelTierMode)
+    const video = startupGenerationModel('video', modelTierMode)
 
     if (image) {void saveImageGenerationModel(image.id).catch(error => notifyError(error, t.settings.config.autosaveFailed))}
 
     if (video) {void saveVideoGenerationModel(video.id).catch(error => notifyError(error, t.settings.config.autosaveFailed))}
-  }, [state.tools.enabled, t.settings.config.autosaveFailed])
+  }, [modelTierMode, state.tools.enabled, t.settings.config.autosaveFailed])
 
   // Seed the composer with a generation opener and focus it, then close the
   // menu. Prefill (not auto-send) so the user finishes describing the idea —
@@ -120,9 +126,11 @@ export function ContextMenu({ advanced, pickers, state }: ContextMenuProps) {
   const chooseGenerationModel = async (kind: GenerationKind, id: string) => {
     try {
       const selected = await (kind === 'image' ? saveImageGenerationModel(id) : saveVideoGenerationModel(id))
+      const starter = kind === 'image' ? cap.generateImageStarter : cap.generateVideoStarter
 
       if (kind === 'image') {setImageModel(selected)} else {setVideoModel(selected)}
-      startGeneration(generationStarter(kind === 'image' ? cap.generateImageStarter : cap.generateVideoStarter, selected))
+      // Not even the opener names the model in tier mode.
+      startGeneration(modelTierMode ? starter : generationStarter(starter, selected))
     } catch (error) {
       notifyError(error, t.settings.config.autosaveFailed)
     }
@@ -243,22 +251,41 @@ export function ContextMenu({ advanced, pickers, state }: ContextMenuProps) {
           <DropdownMenuLabel className="px-2 pb-0.5 pt-0.5 text-[0.625rem] font-semibold uppercase tracking-wider text-(--ui-text-tertiary)">
             {cap.generateLabel}
           </DropdownMenuLabel>
-          <GenerationModelSubmenu
-            icon={ImageIcon}
-            kind="image"
-            label={cap.generateImage}
-            onSelect={id => chooseGenerationModel('image', id)}
-            selectedId={imageModel.id}
-            selectedLabel={imageModel.label}
-          />
-          <GenerationModelSubmenu
-            icon={Video}
-            kind="video"
-            label={cap.generateVideo}
-            onSelect={id => chooseGenerationModel('video', id)}
-            selectedId={videoModel.id}
-            selectedLabel={videoModel.label}
-          />
+          {modelTierMode ? (
+            <>
+              <GenerationRow
+                icon={ImageIcon}
+                kind="image"
+                label={cap.generateImage}
+                onSelect={() => void chooseGenerationModel('image', defaultGenerationModel('image').id)}
+              />
+              <GenerationRow
+                icon={Video}
+                kind="video"
+                label={cap.generateVideo}
+                onSelect={() => void chooseGenerationModel('video', defaultGenerationModel('video').id)}
+              />
+            </>
+          ) : (
+            <>
+              <GenerationModelSubmenu
+                icon={ImageIcon}
+                kind="image"
+                label={cap.generateImage}
+                onSelect={id => chooseGenerationModel('image', id)}
+                selectedId={imageModel.id}
+                selectedLabel={imageModel.label}
+              />
+              <GenerationModelSubmenu
+                icon={Video}
+                kind="video"
+                label={cap.generateVideo}
+                onSelect={id => chooseGenerationModel('video', id)}
+                selectedId={videoModel.id}
+                selectedLabel={videoModel.label}
+              />
+            </>
+          )}
 
           <DropdownMenuSeparator />
 
@@ -266,10 +293,12 @@ export function ContextMenu({ advanced, pickers, state }: ContextMenuProps) {
             <AdvancedSubmenu
               advanced={{
                 ...advanced,
-                onOpenScenarios: openScenarios && (() => {
-                  keepFocusAway.current = true
-                  openScenarios()
-                })
+                onOpenScenarios:
+                  openScenarios &&
+                  (() => {
+                    keepFocusAway.current = true
+                    openScenarios()
+                  })
               }}
             >
               {capabilityRows}
@@ -293,6 +322,21 @@ export function ContextMenuItem({ children, disabled, icon: Icon, onSelect }: Co
     <DropdownMenuItem className={CAPABILITY_ROW} disabled={disabled} onSelect={onSelect}>
       <Icon />
       <span>{children}</span>
+    </DropdownMenuItem>
+  )
+}
+
+/** A generation row with no model to pick (tier mode). */
+function GenerationRow({
+  icon: Icon,
+  kind,
+  label,
+  onSelect
+}: Pick<GenerationModelSubmenuProps, 'icon' | 'kind' | 'label'> & { onSelect: () => void }) {
+  return (
+    <DropdownMenuItem className={CAPABILITY_ROW} data-generation-kind={kind} onSelect={onSelect}>
+      <Icon />
+      <span>{label}</span>
     </DropdownMenuItem>
   )
 }
