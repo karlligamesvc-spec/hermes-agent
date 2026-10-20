@@ -1,8 +1,18 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
-import { ALLOWED_WINDOWS_SKIPS, nativeGreenRunProblems, WINDOWS_LOCKING_TEST } from './owned-cleanup-gate-tap.mjs'
+import {
+  ALLOWED_WINDOWS_SKIPS,
+  nativeGreenRunProblems,
+  privateTestCopy,
+  SMOKE_HELPER_IMPORT,
+  unresolvedRelativeImports,
+  WINDOWS_LOCKING_TEST,
+} from './owned-cleanup-gate-tap.mjs'
 
 const smokeTests = fs.readFileSync(new URL('./runtime-bundle-offline-smoke.node-test.mjs', import.meta.url), 'utf8')
 const gate = fs.readFileSync(new URL('./runtime-bundle-owned-cleanup-gate.mjs', import.meta.url), 'utf8')
@@ -62,7 +72,31 @@ test('the locking test and every allowed Windows skip are real titles in the smo
 })
 
 test('the Windows gate judges its positive run with this check, not a blanket skip count', () => {
-  assert.ok(gate.includes("import { nativeGreenRunProblems } from './owned-cleanup-gate-tap.mjs'"))
+  assert.match(gate, /^import \{[^}]*\bnativeGreenRunProblems\b[^}]*\} from '\.\/owned-cleanup-gate-tap\.mjs'$/m)
   assert.ok(gate.includes('assert.deepEqual(nativeGreenRunProblems(positive.stdout), []'))
   assert.ok(!gate.includes('/# skipped 0\\b/'), 'the blanket skip-count assertion is back')
+})
+
+const smokeTestPath = fileURLToPath(new URL('./runtime-bundle-offline-smoke.node-test.mjs', import.meta.url))
+
+test('the reversal copy sits next to the smoke tests and every other relative import resolves', () => {
+  const helper = path.join(os.tmpdir(), 'apex-owned-tree-reversal-x', 'helper-without-tree-kill.mjs')
+  const copy = privateTestCopy(smokeTestPath, smokeTests, helper, 'apex-owned-tree-reversal-x')
+  assert.equal(path.dirname(copy.path), path.dirname(smokeTestPath))
+  assert.ok(!copy.source.includes(SMOKE_HELPER_IMPORT), 'the helper import still points at the checkout helper')
+  assert.equal(copy.source.split(JSON.stringify(new URL(`file://${helper}`).href)).length - 1, 1)
+  assert.deepEqual(unresolvedRelativeImports(copy.path, copy.source, fs.existsSync), [])
+})
+
+test('a copy outside the scripts directory is caught: its relative imports stop resolving', () => {
+  // The first 0.17.60 reversal (run 39479066921) wrote the copy into a temp dir and failed to load it.
+  const misplaced = path.join(os.tmpdir(), 'apex-owned-tree-reversal-x', 'owned-lock-test.mjs')
+  assert.ok(unresolvedRelativeImports(misplaced, smokeTests, fs.existsSync).includes('../../../scripts/build-runtime-bundle.mjs'))
+})
+
+test('the gate builds its reversal copy with these helpers and removes it afterwards', () => {
+  assert.ok(gate.includes('privateTestCopy(testPath, tests.toString(\'utf8\'), copiedHelper, path.basename(workspace))'))
+  assert.ok(gate.includes('assert.deepEqual(unresolvedRelativeImports(privateTests.path, privateTests.source, fs.existsSync), []'))
+  assert.ok(gate.includes('fs.rmSync(copiedTests, { force: true })'))
+  assert.ok(!gate.includes("path.join(workspace, 'owned-lock-test.mjs')"), 'the copy is back in the temp workspace')
 })

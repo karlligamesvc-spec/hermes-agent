@@ -4,6 +4,9 @@
 // here with the place its Windows behavior is proven instead. Platform-independent, so it is tested on
 // every runner (owned-cleanup-gate-tap.node-test.mjs).
 
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+
 export const WINDOWS_LOCKING_TEST =
   'native Windows tree shutdown releases an actual locked uv.exe and cleanup fails closed while locked'
 
@@ -26,4 +29,30 @@ export function nativeGreenRunProblems(tap) {
   const lockingPassed = new RegExp(`^ok \\d+ - ${escapeRegExp(WINDOWS_LOCKING_TEST)}\\r?$`, 'm').test(tap)
   if (!lockingPassed) problems.push('Windows locking test cannot be skipped')
   return problems
+}
+
+// The smoke tests import the helper under test by this exact specifier; the reversal points it at a
+// mutated private copy of the helper.
+export const SMOKE_HELPER_IMPORT = "'../../../scripts/runtime-bundle-offline-smoke.mjs'"
+
+/**
+ * The reversal's private copy of the smoke tests. It sits next to the checkout file, so every other
+ * relative import and import.meta.url lookup resolves exactly as in the original (a copy in a temp dir
+ * broke on #422's `../../../scripts/build-runtime-bundle.mjs` import); only the helper import changes.
+ */
+export function privateTestCopy(testPath, testSource, privateHelperPath, suffix) {
+  if (testSource.split(SMOKE_HELPER_IMPORT).length - 1 !== 1) throw new Error('private test import must be unique')
+  return {
+    path: path.join(path.dirname(testPath), `.owned-lock-reversal-${suffix}.mjs`),
+    source: testSource.replace(SMOKE_HELPER_IMPORT, JSON.stringify(pathToFileURL(privateHelperPath).href)),
+  }
+}
+
+/** Relative module specifiers in `source`, as a file at `filePath` would import them, whose target is missing. */
+export function unresolvedRelativeImports(filePath, source, exists) {
+  const specifiers = [
+    ...source.matchAll(/\bfrom\s+['"](\.\.?\/[^'"]+)['"]/g),
+    ...source.matchAll(/\bimport\(\s*['"](\.\.?\/[^'"]+)['"]\s*\)/g),
+  ].map(match => match[1])
+  return specifiers.filter(specifier => !exists(path.resolve(path.dirname(filePath), specifier)))
 }
