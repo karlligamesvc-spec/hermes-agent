@@ -23,7 +23,6 @@ import { ProviderIcon } from '@/components/ui/provider-icon'
 import { useI18n } from '@/i18n'
 import { useComposerSimpleCopy } from '@/i18n/composer-simple'
 import {
-  CircleLetterA,
   type IconComponent,
   ImageIcon,
   MessageCircle,
@@ -327,7 +326,7 @@ function GenerationModelSubmenu({
   )
 }
 
-const GENERATION_ICON_SPECS: Record<Exclude<GenerationModelIconKey, 'agnes'>, { vendor: VendorKey }> = {
+const GENERATION_ICON_SPECS: Record<GenerationModelIconKey, { vendor: VendorKey }> = {
   gemini: { vendor: 'gemini' },
   'gpt-flare': { vendor: 'openai' },
   'gpt-sunburst': { vendor: 'openai' },
@@ -346,20 +345,6 @@ const GENERATION_ICON_SPECS: Record<Exclude<GenerationModelIconKey, 'agnes'>, { 
  * visually collide with the provider artwork.
  */
 export function GenerationModelIcon({ model }: { model: GenerationModel }) {
-  if (model.icon === 'agnes') {
-    return (
-      <span
-        aria-hidden="true"
-        className="inline-flex h-5 w-7 shrink-0 items-center justify-start"
-        data-generation-model-icon={model.icon}
-      >
-        <span className="inline-flex size-4.5 items-center justify-center rounded-[5px] bg-[#7456D8] text-white ring-1 ring-inset ring-black/10">
-          <CircleLetterA size={12} stroke={1.8} />
-        </span>
-      </span>
-    )
-  }
-
   const spec = GENERATION_ICON_SPECS[model.icon]
 
   return (
