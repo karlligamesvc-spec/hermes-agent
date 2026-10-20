@@ -2,7 +2,7 @@
 
 平台工具网关(DESKTOP-CLOUD-CAPABILITY-PARITY-PD;审计 hc-561 ①#15 桌面空位补齐):
 桌面文生图从无到有。默认走平台工具网关 ``/tools/v1/image/generate``(vendor key
-——agnes / Nano Banana——永不出云);``TOOLS_GATEWAY_DISABLED=1`` 时回退 Scheduler
+——chinaapi / Nano Banana——永不出云);``TOOLS_GATEWAY_DISABLED=1`` 时回退 Scheduler
 内网端点 ``/media/image-generate``(云端 P1 回退通道,与 cloud 副本同源)。
 
 图片生成是同步快活(相较文生视频),但仍可能几十秒;代理等待服务端返回。
@@ -179,7 +179,7 @@ def _desktop_image_model() -> str | None:
         return None
     try:
         # The strict preflight prevents the config loader's last-known-good
-        # fallback from silently routing a malformed picker to Agnes.
+        # fallback from silently routing a malformed picker to the platform default.
         require_readable_config_before_write(config_path)
         config = load_config_readonly()
         if not isinstance(config, dict) or "apex" not in config:
@@ -257,11 +257,16 @@ GENERATE_IMAGE_SCHEMA = {
             },
             "provider": {
                 "type": "string",
-                "enum": ["agnes", "agnes-overlay", "nanobanana-flash", "nanobanana-pro"],
+                # hc-990 (Kael, 2026-10-20): Agnes left every image candidate list and
+                # agnes-overlay became cover-overlay. Installed builds still send the old
+                # names; the ApexNodes server resolves them with a notice.
+                "enum": ["cover-overlay", "cover-template", "nanobanana-flash", "nanobanana-pro"],
                 "description": (
-                    "Optional legacy image engine. Leave empty when model is selected. "
-                    "agnes-overlay makes a text-free background and the server prints the title on top; "
-                    "nanobanana-pro/-flash render text inside the image. Empty means normal 配图."
+                    "Optional image engine; leave empty almost always, and always when model is selected. "
+                    "cover-overlay: the platform default model draws a text-free background and the server "
+                    "prints the title on top (title 100% correct). cover-template: a plain gradient card "
+                    "with the title, no image model, free. nanobanana-pro/-flash render text inside the "
+                    "image. Empty means normal 配图."
                 ),
             },
             "purpose": {
@@ -275,19 +280,19 @@ GENERATE_IMAGE_SCHEMA = {
             "title": {
                 "type": "string",
                 "description": (
-                    "Cover title — only used by provider=agnes-overlay. Printed on the image, so it "
-                    "renders 100% correctly (this is the free cover engine's whole point)."
+                    "Cover title for the cover engines (cover-overlay / cover-template). Printed on the "
+                    "image by the server, so it renders 100% correctly."
                 ),
             },
             "subtitle": {
                 "type": "string",
-                "description": "Optional smaller cover subtitle — only used by provider=agnes-overlay.",
+                "description": "Optional smaller cover subtitle, printed under the title (cover engines only).",
             },
             "template": {
                 "type": "string",
                 "enum": ["banner", "split", "corner"],
                 "description": (
-                    "Cover layout for provider=agnes-overlay. banner=大字居中, split=底部标题栏(公众号头图), "
+                    "Cover layout for the printed title. banner=大字居中, split=底部标题栏(公众号头图), "
                     "corner=左下角标(小红书笔记). Default banner."
                 ),
             },
@@ -366,7 +371,7 @@ def _handle_generate_image(args: dict, **_kwargs) -> str:
         # the plugin only forwards the provider string).
         "provider": str(args.get("provider") or "").strip() or None,
         "purpose": str(args.get("purpose") or "").strip() or None,
-        # hc-433: free-cover title/subtitle/layout (only meaningful for agnes-overlay).
+        # hc-433: cover title/subtitle/layout (only the cover engines print them).
         "title": str(args.get("title") or "").strip() or None,
         "subtitle": str(args.get("subtitle") or "").strip() or None,
         "template": str(args.get("template") or "").strip() or None,

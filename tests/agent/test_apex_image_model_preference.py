@@ -96,6 +96,16 @@ def test_the_picker_no_longer_offers_agnes_image_2_5(image_plugin):
     assert set(image_plugin.RETIRED_IMAGE_MODELS.values()) <= set(model["enum"])
 
 
+def test_the_desktop_plugin_offers_no_agnes_engine(image_plugin):
+    """hc-990 (Kael, 2026-10-20): Agnes left every image candidate list and agnes-overlay
+    became cover-overlay. The LLM-facing schema names neither; installed builds that still
+    send the old names are mapped by the ApexNodes server (its CI reads this enum)."""
+    schema = image_plugin.GENERATE_IMAGE_SCHEMA
+    provider = schema["parameters"]["properties"]["provider"]
+    assert provider["enum"] == ["cover-overlay", "cover-template", "nanobanana-flash", "nanobanana-pro"]
+    assert "agnes" not in json.dumps(schema, ensure_ascii=False).lower()
+
+
 @pytest.mark.parametrize(
     "invalid_yaml",
     ["apex: [unterminated\n", "apex: []\n", "apex:\n  generation_image_model: unknown\n"],
