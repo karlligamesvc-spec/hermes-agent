@@ -1,0 +1,151 @@
+"""apexnodes-next-steps on the fork's real hook path (「下一步」块, apex-next/1).
+
+The plugin is a byte-identical copy of apex-nodes ``app/runtime_plugins/apexnodes-next-steps``
+(apex-nodes CI compares the two); its behaviour tables live there. Here it runs through
+this runtime's own machinery, the way APEX Desktop loads it:
+
+* registered by a real ``PluginContext`` (both hook names are known hooks);
+* ``transform_llm_output`` fired by ``apply_llm_output_transform``: the Desktop chat
+  (``platform="desktop"``, what tui_gateway reports under ``HERMES_DESKTOP=1``) keeps the
+  block for the renderer, an IM channel on the Desktop's local gateway gets numbered text,
+  api_server only loses the block;
+* ``pre_llm_call`` collected by ``_collect_pre_llm_call_context``: a bare number after the
+  numbered text becomes the option's sentence, and a 选题库 message gets the file under
+  this runtime's ``get_hermes_home()``;
+* Desktop enables it: ``cli-config.yaml.example`` lists it next to the other standalone plugins.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import logging
+import sys
+import types
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+PLUGIN_DIR = REPO_ROOT / "plugins" / "apexnodes-next-steps"
+
+REPLY = (
+    "给你 5 个选题：\n1. 收纳避坑\n2. 小户型改造\n\n"
+    "<!-- apex:next\n"
+    "存进选题库 | 把这 5 个选题存进我的选题库\n"
+    "写成脚本 | 把第 1 个选题写成 60 秒口播脚本\n"
+    "做成发布包 | 把第 1 个选题做成发布包，我自己去发\n"
+    "-->"
+)
+VISIBLE = "给你 5 个选题：\n1. 收纳避坑\n2. 小户型改造"
+NUMBERED = VISIBLE + "\n\n接下来可以：\n1. 存进选题库\n2. 写成脚本\n3. 做成发布包\n回复数字就行。"
+
+
+def _load_plugin():
+    if "hermes_plugins" not in sys.modules:
+        namespace = types.ModuleType("hermes_plugins")
+        namespace.__path__ = []  # type: ignore[attr-defined]
+        sys.modules["hermes_plugins"] = namespace
+    name = "hermes_plugins.apexnodes_next_steps"
+    spec = importlib.util.spec_from_file_location(name, PLUGIN_DIR / "__init__.py", submodule_search_locations=[str(PLUGIN_DIR)])
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def plugin(monkeypatch, tmp_path, caplog):
+    from hermes_cli import plugins as plugins_mod
+    from hermes_cli.plugins import PluginContext, PluginManager, PluginManifest
+
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("NEXT_STEPS_DISABLE", raising=False)
+    manager = PluginManager()
+    monkeypatch.setattr(plugins_mod, "_plugin_manager", manager)
+    module = _load_plugin()
+    module._reset_state()
+    manifest = PluginManifest(name="apexnodes-next-steps", version="0.1.0", description="test", source="bundled")
+    with caplog.at_level(logging.WARNING, logger="hermes_cli.plugins"):
+        module.register(PluginContext(manifest, manager))
+    assert "unknown hook" not in caplog.text
+    yield module
+    module._reset_state()
+
+
+def _agent(platform: str, session_id: str = "s1"):
+    return SimpleNamespace(
+        session_id=session_id, model="m", platform=platform, _persist_disabled=False,
+        _parent_session_id=None, _user_id=None,
+    )
+
+
+def _transform(platform: str, session_id: str = "s1"):
+    from agent.turn_finalizer import apply_llm_output_transform
+
+    final, transformed, _ = apply_llm_output_transform(_agent(platform, session_id), REPLY, turn_id="t1", platform=platform)
+    return final, transformed
+
+
+def _pre_llm_context(platform: str, message: str, session_id: str = "s1") -> str:
+    from agent.turn_context import _collect_pre_llm_call_context
+
+    return _collect_pre_llm_call_context(
+        _agent(platform, session_id), effective_task_id="task", turn_id="t2",
+        original_user_message=message, messages=[], conversation_history=[],
+    )
+
+
+def test_both_hooks_are_known_to_this_runtime():
+    from hermes_cli.plugins import VALID_HOOKS
+
+    assert {"transform_llm_output", "pre_llm_call"} <= VALID_HOOKS
+
+
+def test_desktop_chat_platform_name_is_what_the_plugin_keeps(monkeypatch):
+    from tui_gateway.server import _resolve_session_platform
+
+    monkeypatch.setenv("HERMES_DESKTOP", "1")
+    monkeypatch.delenv("HERMES_DESKTOP_TERMINAL", raising=False)
+
+    assert _resolve_session_platform() == "desktop"
+
+
+def test_desktop_chat_keeps_the_block_for_the_renderer(plugin):
+    assert _transform("desktop") == (REPLY, False)
+    assert _pre_llm_context("desktop", "2") == ""
+
+
+@pytest.mark.parametrize("platform", ("weixin", "feishu", "wecom", "dingtalk", "qqbot"))
+def test_im_on_the_desktop_gateway_gets_numbered_text_and_the_number_maps_back(plugin, platform):
+    assert _transform(platform) == (NUMBERED, True)
+
+    context = _pre_llm_context(platform, "２")
+
+    assert context.startswith("【下一步】用户回复「２」，就是选了你上一条回复末尾编号里的第 2 项「写成脚本」")
+    assert "等于用户说了这句话：\n把第 1 个选题写成 60 秒口播脚本\n" in context
+    assert _pre_llm_context(platform, "2") == ""
+
+
+def test_api_server_only_loses_the_block(plugin):
+    assert _transform("api_server") == (VISIBLE, True)
+    assert _pre_llm_context("api_server", "1") == ""
+
+
+def test_topic_library_path_is_under_this_runtimes_home(plugin, tmp_path):
+    from hermes_constants import get_hermes_home
+
+    context = _pre_llm_context("desktop", "把这 5 个选题存进我的选题库")
+
+    path = Path(get_hermes_home()) / "apex" / "选题库.md"
+    assert str(path).startswith(str(tmp_path / "home"))
+    assert context.startswith(f"【选题库】这位用户的选题库是一个 Markdown 文件：{path}")
+
+
+def test_desktop_config_example_enables_the_plugin():
+    text = (REPO_ROOT / "cli-config.yaml.example").read_text(encoding="utf-8")
+    block = text.split("\nplugins:\n  enabled:\n", 1)[1].split("\n  clone_timeout_seconds:", 1)[0]
+    enabled = [line.strip()[2:] for line in block.splitlines() if line.startswith("    - ")]
+
+    assert "apexnodes-next-steps" in enabled
+    assert enabled[0] == "apex-overlay"

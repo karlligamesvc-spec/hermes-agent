@@ -13,6 +13,7 @@ import { ClarifyTool } from '@/components/assistant-ui/clarify-tool'
 import { ConnectorExecution, ConnectorTool } from '@/components/assistant-ui/connector-tool'
 import { MarkdownText, MarkdownTextContent } from '@/components/assistant-ui/markdown-text'
 import { McpSetupTool } from '@/components/assistant-ui/mcp-setup-tool'
+import { NextStepButtons } from '@/components/assistant-ui/next-steps'
 import {
   REASONING_BODY_CLASS,
   REASONING_CHIP_CLASS,
@@ -171,6 +172,7 @@ const TimelineMarkdownText: FC<TimelineTextPartProps> = ({ completedAt, timestam
   <>
     <TimelineTimestamp className="mb-0.5 block" completedAt={completedAt} timestamp={timestamp} />
     <MarkdownText />
+    <NextStepButtons />
   </>
 )
 

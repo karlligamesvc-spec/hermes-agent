@@ -30,6 +30,9 @@
  *                     files: [ { path, content } ] } ] }
  *   GET …/platform-skills?known_hash=<h>
  *     → may short-circuit to { manifest_hash, unchanged: true }
+ *   ?caps=next-steps (always sent): this build renders the 「下一步」 block, so the
+ *     skills keep the section that asks for it; without it the server drops that
+ *     section and hashes that variant separately.
  *   401 → expired/absent JWT; treated as "nothing to sync" (installed set stands).
  *
  * The persisted cache (userData/apex-platform-skills.json) is plain JSON
@@ -53,20 +56,25 @@ function trimTrailingSlash(value) {
   return String(value || '').replace(/\/+$/, '')
 }
 
+// What this build renders, sent as ?caps= so the server serves skills that use it.
+// `next-steps`: the 「下一步」 block (apex-nodes docs/NEXT-STEPS-BLOCK-PROTOCOL.md); a build
+// without it gets every SKILL.md minus that section, so its model never writes the block.
+const PLATFORM_SKILLS_CAPS = 'next-steps'
+
 /**
  * Build the platform-skills URL for an apiBase, optionally advertising the
  * manifest hash we already hold so the server can answer `{ unchanged: true }`.
  *
  * @param {string} apiBase e.g. https://api.apex-nodes.com
- * @param {string} [knownHash] included as ?known_hash=<h> when a non-empty string
+ * @param {string} [knownHash] included as &known_hash=<h> when a non-empty string
  * @returns {string}
  */
 function platformSkillsUrl(apiBase, knownHash?) {
   const base = trimTrailingSlash(apiBase)
   const known = typeof knownHash === 'string' ? knownHash.trim() : ''
-  const query = known ? `?known_hash=${encodeURIComponent(known)}` : ''
+  const query = known ? `&known_hash=${encodeURIComponent(known)}` : ''
 
-  return `${base}${PLATFORM_SKILLS_PATH}${query}`
+  return `${base}${PLATFORM_SKILLS_PATH}?caps=${PLATFORM_SKILLS_CAPS}${query}`
 }
 
 /**

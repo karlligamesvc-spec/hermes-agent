@@ -3,10 +3,7 @@ import { persistString, storedString } from '@/lib/storage'
 
 export type GenerationKind = 'image' | 'video'
 
-// 'agnes' no longer belongs to any listed model (hc-957). It stays in the union only
-// because context-menu.tsx still special-cases that icon; drop both together.
 export type GenerationModelIconKey =
-  | 'agnes'
   | 'gemini'
   | 'gpt-flare'
   | 'gpt-sunburst'

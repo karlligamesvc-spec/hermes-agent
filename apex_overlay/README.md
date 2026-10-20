@@ -54,6 +54,23 @@ Why a plugin over an in-place `import`:
 > line in the upstream file **only** if no clean patch point exists — still far
 > less than re-inlining the whole change.
 
+> **Never import a `gateway.*` target from `apply()` (hc-989).** `register()`
+> runs inside plugin discovery. On the gateway that is the `plugin-discovery`
+> thread, holding the discovery lock, while the main thread imports
+> `gateway.run` — whose module body bridges `auxiliary:` config through
+> discovery and so waits for that lock. A seam that imports `gateway.run` there
+> waits for the main thread's import lock: neither thread can move, and the
+> gateway hangs before it binds a port (cloud image v2026.8.31, 2026-10-20; with
+> the 10 s plugin-load deadline, apex-overlay is dropped instead). Patch gateway
+> modules through `post_import.when_imported(module, install)`: it patches at
+> once if the module is fully imported, otherwise on the importing thread right
+> after the module body finishes, before `import` returns, so nothing sees the
+> module unpatched. Every gateway seam has a case in
+> `tests/apex_overlay/test_discovery_import_deadlock.py`. The hc-989 audit of
+> every module the overlay touches during discovery found three whose own import
+> runs discovery: `gateway.run`, `model_tools` and `run_agent`. No seam may
+> import them from `apply()`.
+
 ### 3. A seam-test pins the patched symbol (this is mandatory)
 
 A monkey-patch is only safe if the thing it patches still exists with a
@@ -83,6 +100,7 @@ disarm into a **loud CI failure**, the prerequisite for trusting monkey-patch.
 | `cn_mirror_env` | Route runtime dependency downloads through China mirrors when configured (hc-476). |
 | `im_passthrough` | Route `/cc` and `/codex` into direct coding-agent sessions (hc-539). |
 | `region` | Provide the shared region-policy helpers used by the China-specific seams. |
+| `post_import` | Patch a module once it has finished importing, without importing it; every `gateway.*` seam goes through it so plugin discovery never waits on a gateway import (hc-989). |
 | `packaged_engine` | An engine installed by APEX Desktop never builds a frontend, and `hermes --tui` runs its shipped TUI on the bundled Node (hc-954). Hooked in place from `source_build.py` and `main_tui_launch.py`: plugin discovery runs too late on those paths. |
 
 `plugins/apex-overlay/__init__.py` is the authoritative registration order.
@@ -114,6 +132,7 @@ Seam-test: `tests/apex_overlay/test_provider_filter_seam.py`.
 - [ ] Call it from `plugins/apex-overlay/__init__.py:register()`.
 - [ ] Restore the upstream file to byte-for-byte upstream.
 - [ ] Write a seam-test pinning every patched symbol's existence + signature.
+- [ ] A `gateway.*` target goes through `post_import.when_imported`, never `importlib.import_module` in `apply()`, and gets a case in `test_discovery_import_deadlock.py`.
 - [ ] Verify with the CI runner (`scripts/run_tests_parallel.py`), not single pytest — per-file interpreter isolation is the real contract.
 
 ## Default narration (hc-906)
