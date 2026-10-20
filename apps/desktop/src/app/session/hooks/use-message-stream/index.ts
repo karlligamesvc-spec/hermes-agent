@@ -23,6 +23,7 @@ import {
   generatedImageEchoSources,
   stripGeneratedImageEchoes
 } from '@/lib/generated-images'
+import { stripNextStepBlocks } from '@/lib/next-steps'
 import { isTodoToolName, nextTodosFromToolEvent, parseTodoRevision } from '@/lib/todos'
 import type { ScopedServerRequest } from '@/store/gateway'
 import { dispatchNativeNotification } from '@/store/native-notifications'
@@ -799,7 +800,7 @@ export function useMessageStream({
       }
 
       dispatchNativeNotification({
-        body: text.slice(0, 140) || translateNow('notifications.native.turnDoneBody'),
+        body: stripNextStepBlocks(text).slice(0, 140) || translateNow('notifications.native.turnDoneBody'),
         kind: 'turnDone',
         sessionId,
         title: translateNow('notifications.native.turnDoneTitle')

@@ -1,0 +1,15 @@
+name: apexnodes-next-steps
+version: "0.1.0"
+description: >-
+  「下一步」块(协议 apex-next/1,docs/NEXT-STEPS-BLOCK-PROTOCOL.md)的文字层。
+  创作者技能在结果末尾写 <!-- apex:next ... --> 块(最多 3 项「按钮字 | 那句话」,
+  失败时只写 failed=那一步)。transform_llm_output:桌面端聊天原样保留给渲染层画按钮;
+  api_server / cron / webhook / subagent 只删块;其余出口(飞书、微信、企微、钉钉、QQ、
+  终端)删块并在末尾换成「接下来可以：1. … 回复数字就行。」,记住本会话编号。
+  pre_llm_call:紧接着的一条消息只是一个数字时,告诉模型用户选了哪一项、等于说了哪句话
+  (只用一次);消息提到「选题库」时附上选题库文件的绝对路径(HERMES_HOME/apex/选题库.md)
+  和读写规则。与 hermes-agent fork plugins/apexnodes-next-steps/ 逐字节相同。
+  NEXT_STEPS_DISABLE=1 只删块,不出编号、不注入。
+hooks:
+  - transform_llm_output
+  - pre_llm_call
