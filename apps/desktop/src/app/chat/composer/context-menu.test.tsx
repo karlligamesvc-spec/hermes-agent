@@ -50,13 +50,25 @@ const STATE: ChatBarState = {
   voice: { enabled: false, active: false }
 }
 
-function renderMenu() {
-  // The capability menu takes no attachment handlers — the router is the only
-  // context it needs (the connectors row navigates). What this file asserts is
-  // which skill rows the menu renders at all.
+// Without `advanced` the menu keeps its flat developer-mode zones; with it
+// (the everyday composer) zones 2–3 fold under one 高级 row. The router is the
+// only context either needs (the connectors row navigates).
+const ADVANCED = {
+  voice: {
+    autoSpeak: false,
+    disabled: false,
+    onDictate: vi.fn(),
+    onStartConversation: vi.fn(),
+    onToggleAutoSpeak: vi.fn(),
+    state: STATE,
+    voiceStatus: 'idle' as const
+  }
+}
+
+function renderMenu({ folded = false }: { folded?: boolean } = {}) {
   return render(
     <MemoryRouter>
-      <ContextMenu state={STATE} />
+      <ContextMenu advanced={folded ? ADVANCED : undefined} state={STATE} />
     </MemoryRouter>
   )
 }
@@ -65,7 +77,7 @@ function renderMenu() {
 // confirmed against this project's jsdom/testing-library setup, which has no
 // existing click-to-open coverage to crib from.
 function openMenu() {
-  const trigger = screen.getByRole('button', { name: 'Add' })
+  const trigger = screen.getByRole('button', { name: 'Add images, files and more' })
   fireEvent.pointerDown(trigger, { button: 0, pointerId: 1 })
   fireEvent.pointerUp(trigger, { button: 0, pointerId: 1 })
   fireEvent.click(trigger)
@@ -138,6 +150,29 @@ describe('ContextMenu — collapsed skill rows (hc-572 followup)', () => {
     openMenu()
     expect(await screen.findByText('13')).toBeTruthy()
     expect(screen.getByText('19')).toBeTruthy()
+  })
+})
+
+describe('ContextMenu — the everyday composer folds zones 2–3 under 高级 (WP4)', () => {
+  it('keeps the skill and connector rows one level down, counts and all', async () => {
+    getSkills.mockResolvedValue(CATALOG)
+    renderMenu({ folded: true })
+    openMenu()
+
+    expect(screen.queryByText('Enabled skills')).toBeNull()
+    expect(screen.queryByText('Connectors')).toBeNull()
+
+    const advanced = screen.getByRole('menuitem', { name: /^Advanced/ })
+
+    advanced.focus()
+    fireEvent.keyDown(advanced, { key: 'ArrowRight' })
+
+    expect(await screen.findByText('Enabled skills')).toBeTruthy()
+    expect(await screen.findByText('12')).toBeTruthy()
+    expect(screen.getByText('20')).toBeTruthy()
+    expect(screen.getByText('Connectors')).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: /^Approvals/ })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: /^Voice settings/ })).toBeTruthy()
   })
 })
 

@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
+import { COMPOSER_SIMPLE_COPY } from '@/i18n/composer-simple'
+import { chooseWorkflowFromAddMenu, stubMenuPointerApis } from '@/test/composer-add-menu'
 
 import type { WorkflowDomainBridge } from '../api/types'
 
@@ -39,6 +41,7 @@ function installBridge() {
   return bridge
 }
 
+beforeAll(stubMenuPointerApis)
 beforeEach(() => { installBridge() })
 afterEach(() => { Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: undefined }) })
 
@@ -48,7 +51,8 @@ async function chooseFromActualStart(brief: string) {
   </I18nProvider></MemoryRouter>)
   const goal = screen.getByRole('textbox', { name: '业务目标' })
   fireEvent.change(goal, { target: { value: brief } })
-  fireEvent.click(screen.getByRole('button', { name: '选择工作流' }))
+  // The workflow choice sits under "+" › 高级 (WP4: attach · voice · send).
+  await chooseWorkflowFromAddMenu(goal.closest('form')!, COMPOSER_SIMPLE_COPY.zh, '选择工作流')
   await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflows'))
   fireEvent.click(await screen.findByRole('button', { name: /竞品监控/ }))
   const dialog = screen.getByRole('dialog', { name: '竞品监控' })

@@ -6,6 +6,7 @@
  */
 import type { KeyboardEvent } from 'react'
 
+import { detectShortVideoLink } from './paste-actions'
 import { quoteRefValue, REF_RE, refChipElement, replaceBeforeCaret } from './rich-editor'
 import { textBeforeCaret } from './text-utils'
 
@@ -29,11 +30,23 @@ function splitUrlTail(raw: string) {
 /** A URL needs a host past the scheme to be worth chipping. */
 const hasHost = (url: string) => /^https?:\/\/[^/\s]/i.test(url)
 
+/** Douyin / Xiaohongshu / 视频号 / Kuaishou / Bilibili video links stay plain
+ *  text. An `@url:` chip makes the gateway fetch the page before the turn
+ *  (`context_references`), and those pages are the anti-bot walls the
+ *  download tool exists for; the tool wants the share text as pasted. The
+ *  chip also used to swallow the share text's tail ("…/AbC，复制本条信息…"). */
+const chipsAsUrlRef = (url: string) => hasHost(url) && !detectShortVideoLink(url)
+
 /** Rewrite bare links in `text` as `@url:` directives, leaving links that are
- *  already part of a directive alone. Returns `text` unchanged when there are
- *  none. */
+ *  already part of a directive alone, and short-video links as written.
+ *  Returns `text` unchanged when there are none. */
 export function linkifyUrls(text: string) {
   REF_RE.lastIndex = 0
+  // `matchAll` starts where the shared /g regex last stopped, and
+  // `resolveExactLinkPaste` (which a focused paste runs first) leaves it past the
+  // link it looked at — so the paste's own first link used to go unchipped, and
+  // whether one did depended on the previous paste.
+  URL_RE.lastIndex = 0
 
   const fenced = Array.from(text.matchAll(REF_RE)).map(match => {
     const start = match.index ?? 0
@@ -48,7 +61,7 @@ export function linkifyUrls(text: string) {
     const start = match.index ?? 0
     const { url } = splitUrlTail(match[0])
 
-    if (!hasHost(url) || fenced.some(span => start >= span.start && start < span.end)) {
+    if (!chipsAsUrlRef(url) || fenced.some(span => start >= span.start && start < span.end)) {
       continue
     }
 
@@ -150,7 +163,7 @@ export function chipTypedUrlOnSpace(event: KeyboardEvent<HTMLDivElement>) {
 
   const { trailing, url } = splitUrlTail(token)
 
-  if (!hasHost(url)) {
+  if (!chipsAsUrlRef(url)) {
     return false
   }
 

@@ -57,6 +57,23 @@ describe('linkifyUrls', () => {
   })
 })
 
+describe('linkifyUrls — short-video links (WP4 paste-to-act)', () => {
+  it('leaves a Douyin / Xiaohongshu / Bilibili link as written and still chips the rest', () => {
+    const text = '抖音 https://v.douyin.com/iRNBho6u/ 小红书 http://xhslink.com/a/AbCdEfGhIjK，参考 https://example.com/a'
+
+    expect(linkifyUrls(text)).toBe(
+      '抖音 https://v.douyin.com/iRNBho6u/ 小红书 http://xhslink.com/a/AbCdEfGhIjK，参考 @url:`https://example.com/a`'
+    )
+    expect(linkifyUrls('看 https://b23.tv/AbCd123')).toBe('看 https://b23.tv/AbCd123')
+  })
+
+  it('finds a paste’s first link even after resolveExactLinkPaste read another one', () => {
+    expect(resolveExactLinkPaste('see https://example.com/one')).toBeNull()
+
+    expect(linkifyUrls('see https://example.com/docs')).toBe('see @url:`https://example.com/docs`')
+  })
+})
+
 describe('resolveExactLinkPaste', () => {
   it('accepts a lone bare link', () => {
     expect(resolveExactLinkPaste('https://example.dev/a/b')).toBe('https://example.dev/a/b')
@@ -180,6 +197,14 @@ describe('chipTypedUrlOnSpace', () => {
     expect(chipTypedUrlOnSpace(event)).toBe(false)
 
     editor.remove()
+  })
+
+  it('leaves a typed short-video link as text', () => {
+    const text = '看看 https://v.douyin.com/iRNBho6u/'
+    const { editor, event } = spaceOn(text, text.length)
+
+    expect(chipTypedUrlOnSpace(event)).toBe(false)
+    expect(editor.querySelector('[data-ref-text]')).toBeNull()
   })
 
   it('leaves a modified space alone', () => {

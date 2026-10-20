@@ -4,11 +4,13 @@ import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
+import { useComposerSimpleCopy } from '@/i18n/composer-simple'
 import { triggerHaptic } from '@/lib/haptics'
 import { Ear, EarOff, iconSize, Loader2, MicOff, Square, Volume2, VolumeX } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import type { LiveTranscriptFragment } from '@/lib/voice-live'
 import { $hudMode, closeHud, resetHudLayout } from '@/store/hud'
+import { $toolViewMode } from '@/store/tool-view'
 import { $wakeWord, toggleWakeWord } from '@/store/wake-word'
 
 import { ACTIVE_ICON_BTN, GHOST_ICON_BTN, PRIMARY_ICON_BTN, SEND_ICON_BTN } from './control-classes'
@@ -19,7 +21,7 @@ import { useComposerScope } from './scope'
 import { StartVoiceButton } from './start-voice-button'
 import type { ChatBarState, VoiceStatus } from './types'
 import { VoiceConversationPanel } from './voice-conversation-panel'
-import { VoiceMenu } from './voice-menu'
+import { isDictating, VoiceMenu, type VoiceMenuItemsProps } from './voice-menu'
 
 // Re-exported: `context-menu.tsx` and other row neighbours have always reached
 // for these here, and the row is where they read as belonging.
@@ -85,32 +87,6 @@ export function ComposerControls({
   // Steer is just send: a payload keeps the Send affordance mid-turn. Stop
   // only when the composer is empty and a turn is running.
   const showStop = busy && !hasComposerPayload
-  // The HUD is a Spotlight bar a few hundred pixels wide, so the four separate
-  // voice toggles fold into one menu there and leave the row to the input. A
-  // narrow tile hits the same wall from the other direction and folds for the
-  // same reason — same controls, same state, different budget. Below that
-  // even the menu goes: at `minimal` the row is the send button and nothing
-  // else, which is the one thing that must survive every width.
-  const foldedVoice = homeStyle || hudMode || foldVoice
-
-  const voiceControls = foldedVoice ? (
-    <VoiceMenu
-      autoSpeak={autoSpeak}
-      disabled={disabled}
-      onDictate={onDictate}
-      onStartConversation={conversation.onStart}
-      onToggleAutoSpeak={onToggleAutoSpeak}
-      settingsTrigger={homeStyle}
-      state={state}
-      voiceStatus={voiceStatus}
-    />
-  ) : (
-    <>
-      <DictationButton disabled={disabled} onToggle={onDictate} state={state.voice} status={voiceStatus} />
-      <AutoSpeakButton active={autoSpeak} disabled={disabled} onToggle={onToggleAutoSpeak} />
-      <WakeWordButton disabled={disabled} />
-    </>
-  )
 
   return (
     <div className="ml-auto flex min-w-0 shrink items-center gap-(--composer-control-gap)">
@@ -123,7 +99,19 @@ export function ComposerControls({
               {compactModelPill ? null : <ReasoningPill disabled={disabled} model={state.model} />}
             </>
           )}
-          {conversation.active ? null : voiceControls}
+          {conversation.active ? null : (
+            <VoiceSettingsControls
+              autoSpeak={autoSpeak}
+              disabled={disabled}
+              folded={homeStyle || foldVoice}
+              onDictate={onDictate}
+              onStartConversation={conversation.onStart}
+              onToggleAutoSpeak={onToggleAutoSpeak}
+              settingsTrigger={homeStyle}
+              state={state}
+              voiceStatus={voiceStatus}
+            />
+          )}
         </>
       )}
       {!conversation.active && !minimal && !showVoicePrimary && (
@@ -164,6 +152,53 @@ export function ComposerControls({
           things you can press. */}
       {hudMode ? <HudWindowButtons /> : null}
     </div>
+  )
+}
+
+/**
+ * Dictation, spoken replies and the wake word.
+ *
+ * The everyday composer is attach · voice · send (WP4): these settings live in
+ * the "+" menu's 高级 › 语音设置, and the row shows them only while the mic is
+ * live — dictating, or the wake word listening — through the folded menu, whose
+ * trigger reports that state. Tucking the settings away must never hide that
+ * something is listening. Developer mode keeps the full row as it was.
+ *
+ * The HUD is a Spotlight bar a few hundred pixels wide, so the separate toggles
+ * fold into one menu there and leave the row to the input. A narrow tile hits
+ * the same wall from the other direction and folds for the same reason — same
+ * controls, same state, different budget. Below that even the menu goes: at
+ * `minimal` the row is the send button and nothing else, which is the one thing
+ * that must survive every width.
+ */
+function VoiceSettingsControls({
+  folded,
+  settingsTrigger,
+  ...items
+}: VoiceMenuItemsProps & { folded: boolean; settingsTrigger: boolean }) {
+  const hudMode = useStore($hudMode)
+  const developer = useStore($toolViewMode) === 'technical'
+  const wake = useStore($wakeWord)
+
+  if (!developer && !isDictating(items.state, items.voiceStatus) && !wake.listening) {
+    return null
+  }
+
+  if (!developer || folded || hudMode) {
+    return <VoiceMenu {...items} settingsTrigger={developer && settingsTrigger} />
+  }
+
+  return (
+    <>
+      <DictationButton
+        disabled={items.disabled}
+        onToggle={items.onDictate}
+        state={items.state.voice}
+        status={items.voiceStatus}
+      />
+      <AutoSpeakButton active={items.autoSpeak} disabled={items.disabled} onToggle={items.onToggleAutoSpeak} />
+      <WakeWordButton disabled={items.disabled} />
+    </>
   )
 }
 
@@ -349,17 +384,14 @@ function AutoSpeakButton({ active, disabled, onToggle }: { active: boolean; disa
 // ({started:false, reason}) keep the toggle off and put the reason/hint in
 // the tooltip.
 function WakeWordButton({ disabled, pausedForVoice = false }: { disabled: boolean; pausedForVoice?: boolean }) {
-  const { t } = useI18n()
-  const c = t.composer
+  const simple = useComposerSimpleCopy()
   const wake = useStore($wakeWord)
 
-  const phrase = wake.phrase || 'hey hermes'
-
   const label = pausedForVoice
-    ? c.wakeWordPausedVoice(phrase)
+    ? simple.wakeWordPausedVoice
     : wake.listening
-      ? c.wakeWordListening(phrase)
-      : c.wakeWordOff(phrase)
+      ? simple.wakeWordListening
+      : simple.wakeWordOff
 
   const tooltip = !pausedForVoice && wake.notice ? `${label} — ${wake.notice}` : label
 

@@ -5,6 +5,7 @@ import { droppedFileInlineRef } from '@/app/chat/composer/inline-refs'
 import { pasteSizeLabel } from '@/app/chat/composer/large-paste'
 import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { useI18n } from '@/i18n'
+import { composerSimpleCopyNow } from '@/i18n/composer-simple'
 import { attachmentId, contextPath, pathLabel } from '@/lib/chat-runtime'
 import { readDesktopFileDataUrlLocalFirst, selectDesktopPaths } from '@/lib/desktop-fs'
 import { desktopGit } from '@/lib/desktop-git'
@@ -398,7 +399,7 @@ export function useComposerActions({
   const pickContextPaths = useCallback(
     async (kind: 'file' | 'folder') => {
       const paths = await selectDesktopPaths({
-        title: kind === 'file' ? 'Add files as context' : 'Add folders as context',
+        title: kind === 'file' ? composerSimpleCopyNow().pickFilesTitle : composerSimpleCopyNow().pickFoldersTitle,
         defaultPath: currentCwd || undefined,
         directories: kind === 'folder'
       })

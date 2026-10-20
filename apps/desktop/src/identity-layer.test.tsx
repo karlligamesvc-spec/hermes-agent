@@ -514,7 +514,8 @@ describe('identity: the home zero-state is ours', () => {
         '例如：分析美国宠物用品市场，并生成选品报告和上架素材，也可以直接丢图片、视频、文件给我，我来帮你分析。'
       )
       expect(screen.getAllByRole('textbox')).toHaveLength(1)
-      expect(screen.getByRole('button', { name: '附加' }).hasAttribute('disabled')).toBe(false)
+      // WP4 (2026-10-20): the Start input's "+" is 附件 plus the 高级 fold.
+      expect(screen.getByRole('button', { name: '添加图片、文件和更多' }).hasAttribute('disabled')).toBe(false)
       expect(screen.getByRole('button', { name: '开始执行' })).toBeTruthy()
       expect(container.querySelector('[data-slot="composer-root"]')).toBeNull()
       expect(screen.getByRole('button', { name: /下载视频并转成逐字稿/ })).toBeTruthy()

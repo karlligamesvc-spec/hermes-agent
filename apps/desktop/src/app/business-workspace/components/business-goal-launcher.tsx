@@ -1,16 +1,21 @@
-import { type FormEvent, type KeyboardEvent, type ReactNode, useState } from 'react'
+import { useStore } from '@nanostores/react'
+import { type FormEvent, type KeyboardEvent, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useI18n } from '@/i18n'
 import { type ComposerAttachment, requestVoiceConversationStart } from '@/store/composer'
+import { $toolViewMode } from '@/store/tool-view'
 
 import { AttachmentList } from '../../chat/composer/attachments'
 import { SEND_ICON_BTN } from '../../chat/composer/control-classes'
 import { ModelPill } from '../../chat/composer/model-pill'
+import { DraftPasteActions } from '../../chat/composer/paste-action-chips'
+import { notePastedText } from '../../chat/composer/paste-actions'
 import { StartVoiceButton } from '../../chat/composer/start-voice-button'
 import type { ChatBarState } from '../../chat/composer/types'
+
+import { GoalLauncherAddMenu, type GoalLauncherWorkflow } from './goal-launcher-add-menu'
 
 export interface BusinessGoalLauncherProps {
   attachments?: ComposerAttachment[]
@@ -24,11 +29,16 @@ export interface BusinessGoalLauncherProps {
   onRemoveAttachment?: (id: string) => void
   onSubmit?: (goal: string) => Promise<boolean> | boolean
   submitBlockedReason?: string
-  workflowSelection?: ReactNode
+  /** The workflow choice: a footer button in developer mode, the "+" menu's
+   *  高级 row otherwise. */
+  workflow?: GoalLauncherWorkflow
 }
 
 export const BUSINESS_GOAL_INPUT_ID = 'business-goal-input'
 export const BUSINESS_GOAL_BLOCKED_REASON_ID = 'business-goal-blocked-reason'
+
+/** This input's paste-to-act key (the chat composers use their focus target). */
+const PASTE_KEY = 'business-start'
 
 /** Compact view onto ChatView's existing submit callback. */
 export function BusinessGoalLauncher({
@@ -43,30 +53,32 @@ export function BusinessGoalLauncher({
   onRemoveAttachment,
   onSubmit,
   submitBlockedReason,
-  workflowSelection
+  workflow
 }: BusinessGoalLauncherProps) {
   const { t } = useI18n()
   const copy = t.businessWorkspace.goalLauncher
+  const developer = useStore($toolViewMode) === 'technical'
   const [localDraft, setLocalDraft] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const controlled = draft !== undefined && onDraftChange !== undefined
   const goal = controlled ? draft : localDraft
   const setGoal = controlled ? onDraftChange : setLocalDraft
   const normalizedGoal = goal.trim()
+  const inputLocked = disabled || submitting
 
-  const canSubmit = Boolean(onSubmit) && !disabled && !submitting && !submitBlockedReason && normalizedGoal.length > 0
+  const canSubmit = Boolean(onSubmit) && !inputLocked && !submitBlockedReason && normalizedGoal.length > 0
 
-  const canPickAttachment = Boolean(onPickFiles || onPickFolders || onPickImages) && !disabled && !submitting
-
-  const submitGoal = async () => {
-    if (!canSubmit || !onSubmit) {
+  // A paste-to-act chip sends its own request in place of the typed goal (a
+  // dropped video needs no typed words first).
+  const submitGoal = async (text: string = normalizedGoal) => {
+    if (!onSubmit || inputLocked || submitBlockedReason || !text.trim()) {
       return
     }
 
     setSubmitting(true)
 
     try {
-      const accepted = await onSubmit(normalizedGoal)
+      const accepted = await onSubmit(text.trim())
 
       if (accepted !== false) {
         setGoal('')
@@ -107,6 +119,15 @@ export function BusinessGoalLauncher({
       <label className="sr-only" htmlFor={BUSINESS_GOAL_INPUT_ID}>
         {copy.label}
       </label>
+      <div className="mb-2 flex flex-wrap items-center gap-1.5 empty:hidden">
+        <DraftPasteActions
+          attachments={attachments}
+          disabled={inputLocked || !onSubmit || Boolean(submitBlockedReason)}
+          draft={goal}
+          onSend={request => void submitGoal(request)}
+          pasteKey={PASTE_KEY}
+        />
+      </div>
       {attachments.length > 0 && <AttachmentList attachments={attachments} onRemove={removeAttachment} />}
       <textarea
         aria-describedby={submitBlockedReason ? BUSINESS_GOAL_BLOCKED_REASON_ID : undefined}
@@ -116,10 +137,11 @@ export function BusinessGoalLauncher({
         autoCorrect="on"
         className="block min-h-[7rem] w-full resize-none overflow-y-auto border-0 bg-transparent p-0 text-[0.9375rem] leading-6 text-foreground outline-none placeholder:text-(--ui-text-tertiary) disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[8rem]"
         data-slot="business-goal-input"
-        disabled={disabled || submitting}
+        disabled={inputLocked}
         id={BUSINESS_GOAL_INPUT_ID}
         onChange={event => setGoal(event.target.value)}
         onKeyDown={handleKeyDown}
+        onPaste={event => notePastedText(PASTE_KEY, event.clipboardData.getData('text'))}
         placeholder={copy.placeholder}
         rows={2}
         spellCheck
@@ -148,43 +170,27 @@ export function BusinessGoalLauncher({
           <Codicon name={submitting ? 'loading' : 'send'} size="0.875rem" spinning={submitting} />
         </Button>
         <div className="order-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                aria-label={t.composer.attachLabel}
-                disabled={!canPickAttachment}
-                size="icon-sm"
-                title={t.composer.attachLabel}
-                type="button"
-                variant="ghost"
-              >
-                <Codicon name="add" size="0.875rem" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" side="top">
-              <DropdownMenuItem disabled={!onPickFiles} onSelect={() => onPickFiles?.()}>
-                <Codicon name="file" size="0.875rem" />
-                {t.composer.files}
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled={!onPickFolders} onSelect={() => onPickFolders?.()}>
-                <Codicon name="folder-opened" size="0.875rem" />
-                {t.composer.folder}
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled={!onPickImages} onSelect={() => onPickImages?.()}>
-                <Codicon name="file-media" size="0.875rem" />
-                {t.composer.images}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <GoalLauncherAddMenu
+            disabled={inputLocked}
+            pickers={{ onPickFiles, onPickFolders, onPickImages }}
+            workflow={developer ? undefined : workflow}
+          />
         </div>
-        {workflowSelection && <div className="order-2 min-w-0" data-start-workflow-selection="">{workflowSelection}</div>}
+        {developer && workflow && (
+          <div className="order-2 min-w-0" data-start-workflow-selection="">
+            <Button disabled={workflow.disabled} onClick={workflow.onChoose} size="inline" type="button" variant="text">
+              <Codicon name="workflow" size="0.875rem" />
+              <span className="truncate">{workflow.label}</span>
+            </Button>
+          </div>
+        )}
         {model && (
           <div className="order-2 ml-auto min-w-0">
-            <ModelPill disabled={disabled || submitting || !model.canSwitch} model={model} />
+            <ModelPill disabled={inputLocked || !model.canSwitch} model={model} />
           </div>
         )}
         <div className={`order-3 ${model ? '' : 'ml-auto'}`}>
-          <StartVoiceButton disabled={disabled || submitting} label={t.composer.startVoice} onStart={requestVoiceConversationStart} />
+          <StartVoiceButton disabled={inputLocked} label={t.composer.startVoice} onStart={requestVoiceConversationStart} />
         </div>
       </div>
     </form>

@@ -1,10 +1,11 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChatBarState } from '@/app/chat/composer/types'
 import { I18nProvider } from '@/i18n'
 import { $hudMode } from '@/store/hud'
+import { setToolViewMode } from '@/store/tool-view'
 import { applyWakeStartResult, applyWakeStatus, resetWakeWordState } from '@/store/wake-word'
 
 import { ComposerControls } from './controls'
@@ -55,9 +56,17 @@ async function expectShortcutTooltip(label: string, shortcut: string) {
   expect(tooltip.textContent).toContain(shortcut)
 }
 
+// The ladder below is the full row, which developer mode keeps as it was. The
+// everyday composer (WP4: attach · voice · send) moves these settings to the
+// "+" menu's 高级 › 语音设置 — see the block at the end of this file.
+beforeEach(() => {
+  setToolViewMode('technical')
+})
+
 afterEach(() => {
   cleanup()
   $hudMode.set(false)
+  setToolViewMode('product')
 })
 
 // The HUD is a Spotlight bar a few hundred pixels wide: the four voice
@@ -257,5 +266,67 @@ describe('Start-style main chat actions', () => {
     expect(dictate).toHaveBeenCalledTimes(1)
     expect(speak).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('menuitemcheckbox', { name: /voice activation/i })).toBeTruthy()
+  })
+})
+
+// WP4 (Kael 2026-10-20): outside developer mode the row is attach · voice ·
+// send. Dictation, read-aloud and the wake word live under 高级 › 语音设置, and
+// come back to the row only while the mic is live, on the folded trigger that
+// reports it — tucking the settings away must never hide that something is
+// listening.
+describe('the everyday row (product mode)', () => {
+  beforeEach(() => {
+    setToolViewMode('product')
+  })
+
+  afterEach(() => {
+    resetWakeWordState()
+  })
+
+  it.each([
+    ['the docked composer', {}],
+    ['the Start-style main chat', { homeStyle: true }],
+    ['a narrow tile', { foldVoice: true }]
+  ])('keeps the voice settings out of %s while nothing listens', (_, overrides) => {
+    applyWakeStatus({ available: true, enabled: true, listening: false, phrase: 'hey hermes' })
+    renderControls(overrides)
+
+    expect(screen.queryByLabelText('Voice dictation')).toBeNull()
+    expect(screen.queryByLabelText('Read replies aloud')).toBeNull()
+    expect(screen.queryByLabelText('APEX voice activation — off')).toBeNull()
+    expect(screen.queryByLabelText('Voice')).toBeNull()
+  })
+
+  it('keeps them out of the HUD too, with its way out still there', () => {
+    $hudMode.set(true)
+    renderControls()
+
+    expect(screen.queryByLabelText('Voice')).toBeNull()
+    expect(screen.getByLabelText('Exit HUD mode')).toBeTruthy()
+  })
+
+  it.each([
+    ['dictating', { voiceStatus: 'recording' as const }, 'Stop dictation'],
+    ['transcribing a dictation', { voiceStatus: 'transcribing' as const }, 'Transcribing dictation']
+  ])('shows the live mic while %s', (_, overrides, label) => {
+    renderControls(overrides)
+
+    expect(screen.getByLabelText(label)).toBeTruthy()
+  })
+
+  it('shows the live mic while the wake word listens, and the menu still turns it off', () => {
+    applyWakeStatus({ available: true, enabled: true, listening: true, phrase: 'hey hermes' })
+    renderControls({ homeStyle: true })
+
+    fireEvent.pointerDown(screen.getByLabelText('APEX voice activation — listening'), { button: 0, pointerId: 1 })
+
+    expect(screen.getByRole('menuitemcheckbox', { name: 'APEX voice activation — listening' })).toBeTruthy()
+  })
+
+  it('keeps voice and Send in the row', () => {
+    renderControls({ homeStyle: true })
+
+    expect(screen.getByRole('button', { name: 'Start voice conversation' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy()
   })
 })

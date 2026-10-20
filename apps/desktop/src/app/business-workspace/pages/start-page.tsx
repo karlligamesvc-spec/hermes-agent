@@ -450,10 +450,11 @@ export function BusinessStartHome({
           submitBlockedReason={
             templateAttachmentBlocked ? t.businessWorkspace.goalLauncher.workflowAttachmentsUnsupported : undefined
           }
-          workflowSelection={<Button disabled={domainStarting} onClick={openWorkflowSelection} size="inline" type="button" variant="text">
-            <Codicon name="workflow" size="0.875rem" />
-            <span className="truncate">{selectedWorkflow ? `${t.businessWorkspace.goalLauncher.confirmationTemplate}${selectedWorkflow.title}` : t.businessWorkspace.projects.chooseWorkflow}</span>
-          </Button>}
+          workflow={{
+            disabled: domainStarting,
+            label: selectedWorkflow ? `${t.businessWorkspace.goalLauncher.confirmationTemplate}${selectedWorkflow.title}` : t.businessWorkspace.projects.chooseWorkflow,
+            onChoose: openWorkflowSelection
+          }}
         />
         {homeVideoWorkflowSelected && !selectedWorkflow && (
           <p className="-mt-4 text-xs text-(--ui-text-secondary)" role="status">

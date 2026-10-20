@@ -12,7 +12,8 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Tip } from '@/components/ui/tooltip'
-import { useI18n } from '@/i18n'
+import { type Translations, useI18n } from '@/i18n'
+import { useComposerSimpleCopy } from '@/i18n/composer-simple'
 import { triggerHaptic } from '@/lib/haptics'
 import { AudioLines, Ear, EarOff, iconSize, Loader2, Square, Volume2, VolumeX } from '@/lib/icons'
 import { cn } from '@/lib/utils'
@@ -21,8 +22,7 @@ import { $wakeWord, toggleWakeWord } from '@/store/wake-word'
 import { ACTIVE_ICON_BTN, GHOST_ICON_BTN } from './control-classes'
 import type { ChatBarState, VoiceStatus } from './types'
 
-export interface VoiceMenuProps {
-  settingsTrigger?: boolean
+export interface VoiceMenuItemsProps {
   autoSpeak: boolean
   disabled: boolean
   state: ChatBarState
@@ -30,6 +30,22 @@ export interface VoiceMenuProps {
   onDictate: () => void
   onStartConversation: () => void
   onToggleAutoSpeak: () => void
+}
+
+export interface VoiceMenuProps extends VoiceMenuItemsProps {
+  settingsTrigger?: boolean
+}
+
+/** Whether this composer's mic is taking dictation (or finishing it). */
+export const isDictating = (state: ChatBarState, voiceStatus: VoiceStatus): boolean =>
+  state.voice.active || voiceStatus !== 'idle'
+
+function dictationLabel(c: Translations['composer'], voiceStatus: VoiceStatus): string {
+  return voiceStatus === 'recording'
+    ? c.stopDictation
+    : voiceStatus === 'transcribing'
+      ? c.transcribingDictation
+      : c.voiceDictation
 }
 
 /**
@@ -47,36 +63,21 @@ export interface VoiceMenuProps {
  * A collapsed menu that looked idle while the mic was hot would be a worse
  * trade than the space it saves.
  */
-export function VoiceMenu({
-  autoSpeak,
-  disabled,
-  state,
-  settingsTrigger = false,
-  voiceStatus,
-  onDictate,
-  onStartConversation,
-  onToggleAutoSpeak
-}: VoiceMenuProps) {
+export function VoiceMenu({ settingsTrigger = false, ...items }: VoiceMenuProps) {
+  const { autoSpeak, disabled, state, voiceStatus } = items
   const { t } = useI18n()
   const c = t.composer
+  const simple = useComposerSimpleCopy()
   const wake = useStore($wakeWord)
 
-  const phrase = wake.phrase || 'hey hermes'
-  const dictating = state.voice.active || voiceStatus !== 'idle'
+  const dictating = isDictating(state, voiceStatus)
   const wakeListening = wake.listening
   // Anything live keeps the trigger lit, so a folded menu can never look idle
   // while the mic is open.
   const active = dictating || wakeListening || autoSpeak
 
-  const dictationLabel =
-    voiceStatus === 'recording'
-      ? c.stopDictation
-      : voiceStatus === 'transcribing'
-        ? c.transcribingDictation
-        : c.voiceDictation
-
-  const wakeLabel = wakeListening ? c.wakeWordListening(phrase) : c.wakeWordOff(phrase)
-  const triggerLabel = dictating ? dictationLabel : wakeListening ? wakeLabel : c.voiceControls
+  const wakeLabel = wakeListening ? simple.wakeWordListening : simple.wakeWordOff
+  const triggerLabel = dictating ? dictationLabel(c, voiceStatus) : wakeListening ? wakeLabel : c.voiceControls
 
   return (
     <DropdownMenu>
@@ -103,62 +104,86 @@ export function VoiceMenu({
         </DropdownMenuTrigger>
       </Tip>
       <DropdownMenuContent align="end" className="min-w-52">
-        <DropdownMenuItem
-          className={dropdownMenuRow}
-          disabled={disabled}
-          onSelect={() => {
-            triggerHaptic('open')
-            onStartConversation()
-          }}
-        >
-          <AudioLines className={iconSize.sm} />
-          {c.startVoice}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        {/* Checkbox items, because all three are toggles the user is reading
-            the CURRENT state of — the reason they were pressed-state buttons
-            before. A plain row would fold that state away with the menu. */}
-        <DropdownMenuCheckboxItem
-          checked={dictating}
-          className={dropdownMenuRow}
-          disabled={disabled || !state.voice.enabled || voiceStatus === 'transcribing'}
-          onSelect={event => {
-            // Keep the menu open: dictation is a mode you watch, and closing
-            // on select hides the recording state the trigger just entered.
-            event.preventDefault()
-            triggerHaptic(dictating ? 'close' : 'open')
-            onDictate()
-          }}
-        >
-          {dictationLabel}
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuCheckboxItem
-          checked={autoSpeak}
-          className={dropdownMenuRow}
-          disabled={disabled}
-          onSelect={event => {
-            event.preventDefault()
-            triggerHaptic(autoSpeak ? 'close' : 'open')
-            onToggleAutoSpeak()
-          }}
-        >
-          {autoSpeak ? <Volume2 className={iconSize.sm} /> : <VolumeX className={iconSize.sm} />}
-          {autoSpeak ? c.stopSpeakingReplies : c.speakReplies}
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuCheckboxItem
-          checked={wakeListening}
-          className={dropdownMenuRow}
-          disabled={disabled || wake.pending}
-          onSelect={event => {
-            event.preventDefault()
-            triggerHaptic(wakeListening ? 'close' : 'open')
-            void toggleWakeWord()
-          }}
-        >
-          {wakeListening ? <Ear className={iconSize.sm} /> : <EarOff className={iconSize.sm} />}
-          {wakeLabel}
-        </DropdownMenuCheckboxItem>
+        <VoiceMenuItems {...items} />
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+/** The menu's rows — the folded voice menu above, and 高级 › 语音设置. */
+export function VoiceMenuItems({
+  autoSpeak,
+  disabled,
+  state,
+  voiceStatus,
+  onDictate,
+  onStartConversation,
+  onToggleAutoSpeak
+}: VoiceMenuItemsProps) {
+  const { t } = useI18n()
+  const c = t.composer
+  const simple = useComposerSimpleCopy()
+  const wake = useStore($wakeWord)
+  const dictating = isDictating(state, voiceStatus)
+  const wakeListening = wake.listening
+
+  return (
+    <>
+      <DropdownMenuItem
+        className={dropdownMenuRow}
+        disabled={disabled}
+        onSelect={() => {
+          triggerHaptic('open')
+          onStartConversation()
+        }}
+      >
+        <AudioLines className={iconSize.sm} />
+        {c.startVoice}
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      {/* Checkbox items, because all three are toggles the user is reading
+          the CURRENT state of — the reason they were pressed-state buttons
+          before. A plain row would fold that state away with the menu. */}
+      <DropdownMenuCheckboxItem
+        checked={dictating}
+        className={dropdownMenuRow}
+        disabled={disabled || !state.voice.enabled || voiceStatus === 'transcribing'}
+        onSelect={event => {
+          // Keep the menu open: dictation is a mode you watch, and closing
+          // on select hides the recording state the trigger just entered.
+          event.preventDefault()
+          triggerHaptic(dictating ? 'close' : 'open')
+          onDictate()
+        }}
+      >
+        {dictationLabel(c, voiceStatus)}
+      </DropdownMenuCheckboxItem>
+      <DropdownMenuCheckboxItem
+        checked={autoSpeak}
+        className={dropdownMenuRow}
+        disabled={disabled}
+        onSelect={event => {
+          event.preventDefault()
+          triggerHaptic(autoSpeak ? 'close' : 'open')
+          onToggleAutoSpeak()
+        }}
+      >
+        {autoSpeak ? <Volume2 className={iconSize.sm} /> : <VolumeX className={iconSize.sm} />}
+        {autoSpeak ? c.stopSpeakingReplies : c.speakReplies}
+      </DropdownMenuCheckboxItem>
+      <DropdownMenuCheckboxItem
+        checked={wakeListening}
+        className={dropdownMenuRow}
+        disabled={disabled || wake.pending}
+        onSelect={event => {
+          event.preventDefault()
+          triggerHaptic(wakeListening ? 'close' : 'open')
+          void toggleWakeWord()
+        }}
+      >
+        {wakeListening ? <Ear className={iconSize.sm} /> : <EarOff className={iconSize.sm} />}
+        {wakeListening ? simple.wakeWordListening : simple.wakeWordOff}
+      </DropdownMenuCheckboxItem>
+    </>
   )
 }

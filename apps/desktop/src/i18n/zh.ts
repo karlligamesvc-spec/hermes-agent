@@ -573,7 +573,7 @@ export const zh = defineLocale({
       colorMode: '颜色模式',
       colorModeDesc: '选择固定模式，或让 APEX 跟随系统设置。',
       toolViewTitle: '开发者模式',
-      toolViewDesc: '打开后，对话里的每一步会多出「技术细节」：工具代码名、耗时、原始参数和输出、代码和命令。',
+      toolViewDesc: '打开后，对话里的每一步会多出「技术细节」：工具代码名、耗时、原始参数和输出、代码和命令；输入框也会把场景、审批和语音设置直接摆在外面。',
       reasoningCollapsedTitle: '默认折叠推理过程',
       reasoningCollapsedDesc: '只在开发者模式下生效；平时推理总是收起成「想了 N 秒」，点开才看。',
       uiScaleTitle: '界面缩放',
