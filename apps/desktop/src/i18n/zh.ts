@@ -601,7 +601,7 @@ export const zh = defineLocale({
       backdropTitle: '聊天背景',
       backdropDesc: '对话后方那张淡淡的雕像图片。',
       tipsTitle: '应用内提示',
-      tipsDesc: '在空闲时或 APEX 判断有帮助时，偶尔显示一个指向界面局部的小气泡。关闭后将永久收起该提示。',
+      tipsDesc: '等结果时，APEX 会在过程区说一句创作小贴士；空闲时偶尔用小气泡指一下界面。每条只出一次，关闭后都不再出现。',
       tipsReset: (count: number) => `恢复 ${count} 条已关闭提示`,
       toursTitle: '引导教程',
       toursDesc: '让 APEX 逐步带你熟悉应用；界面会变暗，并逐项突出当前步骤。',

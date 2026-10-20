@@ -30,6 +30,7 @@ import { atom, computed } from 'nanostores'
 
 import { Codecs, persistentAtom } from '@/lib/persisted'
 import { TIP_CATALOG, type TipSide } from '@/lib/tips/catalog'
+import { $creatorTipsSeen, resetCreatorTipsLedger } from '@/store/creator-tips-ledger'
 import { mirrorDisplayToggle } from '@/store/display-toggles'
 
 /** Hours, not minutes. The catalog is ten tips and it should take weeks. */
@@ -103,19 +104,21 @@ export function setTipsEnabled(enabled: boolean): void {
 
 /** Forget every sighting and un-retire everything, and let the rotation start
  *  a fresh lap from a full deck rather than from wherever a six-hour cooldown
- *  had left it. */
+ *  had left it. The creator tips' ledger (hc-995) starts over with it. */
 export function resetTips(): void {
   $retiredTips.set([])
   $tipShownAt.set({})
   $lastTipId.set(null)
   $nextTipAt.set(null)
+  resetCreatorTipsLedger()
 }
 
-/** Catalog tips a Reset would bring back: shown once or ✕'d, counted once. */
-export const $spentTipCount = computed([$retiredTips, $tipShownAt], (retired, shownAt) => {
+/** Tips a Reset would bring back: catalog tips shown once or ✕'d, counted once,
+ *  plus the creator tips (hc-995) this device has shown. */
+export const $spentTipCount = computed([$retiredTips, $tipShownAt, $creatorTipsSeen], (retired, shownAt, creatorSeen) => {
   const ids = new Set([...retired, ...Object.keys(shownAt)])
 
-  return TIP_CATALOG.filter(def => ids.has(def.id)).length
+  return TIP_CATALOG.filter(def => ids.has(def.id)).length + creatorSeen.length
 })
 
 /** Put a tip on screen, replacing whatever was there. */

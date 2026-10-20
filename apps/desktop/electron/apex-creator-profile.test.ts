@@ -273,14 +273,15 @@ test('an oversized segment is not written (the runtime would drop it anyway)', (
   assert.equal(existsSync(promptFile()), false)
 })
 
-test('the registrar wires all four account reads, and main clears the copy on every account change', () => {
+test('the registrar wires every account read, and main clears the copy on every account change', () => {
   const channels: string[] = []
   registerApexAccountReads({ handle: channel => void channels.push(channel) }, deps(), home)
   assert.deepEqual(channels, [
     'hermes:announcements:list',
     'hermes:announcements:markRead',
     'hermes:managed:team',
-    'hermes:managed:creatorProfile'
+    'hermes:managed:creatorProfile',
+    'hermes:managed:creatorTips'
   ])
 
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
