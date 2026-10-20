@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { removeOwnedRuntimeTree } from '../../../scripts/runtime-bundle-offline-smoke.mjs'
+import { nativeGreenRunProblems } from './owned-cleanup-gate-tap.mjs'
 
 assert.equal(process.platform, 'win32', 'The executable-lock gate requires real native Windows')
 const args = process.argv.slice(2)
@@ -32,8 +33,7 @@ try {
   const positive = runFocused(testPath)
   proof.originalGreenExitCode = positive.status
   assert.equal(positive.status, 0, 'all original native focused tests must pass before reversal')
-  assert.match(positive.stdout, /# fail 0\b/)
-  assert.match(positive.stdout, /# skipped 0\b/, 'Windows locking test cannot be skipped')
+  assert.deepEqual(nativeGreenRunProblems(positive.stdout), [], 'native focused tests must pass, and only listed tests may skip on Windows')
   const anchor = "['/PID', String(child.pid), '/T', '/F']"
   const source = helper.toString('utf8')
   assert.equal(source.split(anchor).length - 1, 1, 'tree-kill executable anchor must be unique')
