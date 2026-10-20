@@ -301,7 +301,12 @@ const MANAGED_PLUGIN_NAMES = [
   // into the backend spawn env only then, hc-417/hc-444), so enabling them here
   // is inert on an unbound install.
   'apexnodes-feishu-doc-write',
-  'apexnodes-feishu-bitable-write'
+  'apexnodes-feishu-bitable-write',
+  // ApexNodes「下一步」块 (apex-next/1): keeps the block in the Desktop chat for the
+  // renderer, turns it into reply-a-number text on the local gateway's IM channels,
+  // and hands a 选题库 message the file under HERMES_HOME. Byte-identical to the
+  // apex-nodes cloud copy.
+  'apexnodes-next-steps'
 ]
 
 // Skills physically present in ~/.hermes/skills/ but kept INACTIVE by default

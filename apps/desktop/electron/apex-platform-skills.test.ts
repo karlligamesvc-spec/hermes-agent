@@ -49,15 +49,18 @@ const DOUYIN = {
 
 // ── URL building ────────────────────────────────────────────────────────────
 
-test('platformSkillsUrl: base only vs known_hash, trims slash + encodes', () => {
-  assert.equal(platformSkillsUrl('https://api.apex-nodes.com'), `https://api.apex-nodes.com${PLATFORM_SKILLS_PATH}`)
-  assert.equal(platformSkillsUrl('https://api.apex-nodes.com/'), `https://api.apex-nodes.com${PLATFORM_SKILLS_PATH}`)
+test('platformSkillsUrl: always advertises caps, adds known_hash when held, trims slash + encodes', () => {
+  // caps=next-steps: this build renders the 「下一步」 block, so the server includes the skill
+  // section that asks for it (an older build without it never gets that section).
+  const caps = '?caps=next-steps'
+  assert.equal(platformSkillsUrl('https://api.apex-nodes.com'), `https://api.apex-nodes.com${PLATFORM_SKILLS_PATH}${caps}`)
+  assert.equal(platformSkillsUrl('https://api.apex-nodes.com/'), `https://api.apex-nodes.com${PLATFORM_SKILLS_PATH}${caps}`)
   assert.equal(
-    platformSkillsUrl('https://api.apex-nodes.com', 'abc123'),
-    `https://api.apex-nodes.com${PLATFORM_SKILLS_PATH}?known_hash=abc123`
+    platformSkillsUrl('https://api.apex-nodes.com', 'abc 123'),
+    `https://api.apex-nodes.com${PLATFORM_SKILLS_PATH}${caps}&known_hash=abc%20123`
   )
-  // empty/whitespace knownHash → no query
-  assert.equal(platformSkillsUrl('https://x', '   '), `https://x${PLATFORM_SKILLS_PATH}`)
+  // empty/whitespace knownHash → caps only
+  assert.equal(platformSkillsUrl('https://x', '   '), `https://x${PLATFORM_SKILLS_PATH}${caps}`)
 })
 
 // ── name / path safety (security gate) ──────────────────────────────────────
@@ -304,7 +307,7 @@ test('fetchPlatformSkills: success → parsed, forwards bearer + known_hash', as
 
   assert.equal(parsed.manifestHash, 'm1')
   assert.equal(seen.options.bearer, 'jwt-123')
-  assert.match(seen.url, /\?known_hash=prev$/)
+  assert.match(seen.url, /\?caps=next-steps&known_hash=prev$/)
 })
 
 test('fetchPlatformSkills: fetch throws (e.g. 401) → null, fail-soft', async () => {

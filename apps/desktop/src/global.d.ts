@@ -283,6 +283,10 @@ declare global {
         // cloud with the stored login JWT. Optional: an older main process may
         // not expose it (the account menu then shows no team line).
         team?: () => Promise<DesktopTeamResult>
+        // hc-991 first-use creator intake: the account's three answers, read or
+        // written with the stored login JWT. Optional: an older main process may
+        // not expose it (the Start page then shows no cards).
+        creatorProfile?: (request: DesktopCreatorProfileRequest) => Promise<DesktopCreatorProfileResult>
         // hc-512: live relay model-catalog state for the model menu. Optional:
         // an older main process may not expose it yet. `refresh: true`
         // re-probes now (menu open / user retry); a 401 kicks the key
@@ -1718,6 +1722,42 @@ export interface DesktopTeamResult {
   needsSignIn?: boolean
   ok: boolean
   team: DesktopTeamSummary | null
+}
+
+// hc-991 first-use creator intake (apex-nodes creator_profile router). Stable ids;
+// each surface renders its own labels.
+export type DesktopCreatorContentType = 'drama' | 'knowledge' | 'other' | 'product_review' | 'store_visit' | 'vlog'
+export type DesktopCreatorPlatform = 'bilibili' | 'channels' | 'douyin' | 'kuaishou' | 'xiaohongshu'
+export type DesktopCreatorPainPoint = 'no_editing' | 'no_script' | 'no_shooting' | 'no_topic' | 'no_traffic'
+export type DesktopCreatorIntakeStep = 'content_type' | 'pain_point' | 'platforms'
+
+export interface DesktopCreatorProfile {
+  answers: {
+    contentType: DesktopCreatorContentType | null
+    contentTypeOther: string | null
+    painPoint: DesktopCreatorPainPoint | null
+    platforms: DesktopCreatorPlatform[]
+  }
+  intake: { completed: boolean; nextStep: DesktopCreatorIntakeStep | null; skipped: DesktopCreatorIntakeStep[] }
+}
+
+/** A key that is present sets that answer (null or [] clears it); an absent key is left alone. */
+export interface DesktopCreatorProfilePatch {
+  contentType?: DesktopCreatorContentType | null
+  contentTypeOther?: string | null
+  painPoint?: DesktopCreatorPainPoint | null
+  platforms?: DesktopCreatorPlatform[] | null
+  skip?: DesktopCreatorIntakeStep[]
+}
+
+export type DesktopCreatorProfileRequest = { action: 'get' } | { action: 'save'; patch: DesktopCreatorProfilePatch }
+
+export interface DesktopCreatorProfileResult {
+  message?: 'FETCH_FAILED' | 'INVALID' | 'NOT_SIGNED_IN' | 'SESSION_EXPIRED'
+  needsSignIn?: boolean
+  ok: boolean
+  /** null: this account has no intake (installer-only, or a cloud without the API). */
+  profile: DesktopCreatorProfile | null
 }
 
 export interface DesktopManagedStatus {

@@ -3,6 +3,7 @@ import { normalizeMathDelimiters } from '@assistant-ui/react-streamdown'
 import { isLikelyProseFence, sanitizeLanguageTag } from '@/lib/markdown-code'
 import { clampHtmlNestingDepth } from '@/lib/markdown-html-depth'
 import { mediaKind, mediaMarkdownHref } from '@/lib/media'
+import { stripNextStepBlocks } from '@/lib/next-steps'
 import { previewMarkdownHref } from '@/lib/preview-targets'
 import { stripPreviewTargets } from '@/lib/preview-targets'
 import { linkifySessionRefs } from '@/lib/session-refs'
@@ -624,7 +625,9 @@ function normalizeFenceBlocks(text: string): string {
 }
 
 export function preprocessMarkdown(text: string): string {
-  const cleaned = text.replace(REASONING_BLOCK_RE, '').replace(PREVIEW_MARKER_RE, '')
+  // The 「下一步」 block renders as buttons under the reply (components/assistant-ui/next-steps),
+  // never as text — including the unfinished block at the end of a reply still streaming.
+  const cleaned = stripNextStepBlocks(text.replace(REASONING_BLOCK_RE, '')).replace(PREVIEW_MARKER_RE, '')
   const scrubbed = scrubBacktickNoise(cleaned)
   const normalizedFences = normalizeFenceBlocks(scrubbed)
   const strippedEmptyFences = stripEmptyFenceBlocks(normalizedFences)

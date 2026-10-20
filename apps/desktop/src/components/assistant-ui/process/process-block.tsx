@@ -380,31 +380,49 @@ function FailureCard({ process, view }: { process: TurnProcess; view: TurnView }
         <span>{readableReason(failedCall?.error ?? '', copy, locale)}</span>
         <span>{copy.failure.keptNote}</span>
       </p>
-      {view.isLastTurn && (
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={!canAsk} onClick={() => ask(copy.failure.retryMessage(title))} size="sm" type="button">
-            {copy.failure.retry}
-          </Button>
-          <Button
-            disabled={!canAsk}
-            onClick={() => ask(copy.failure.anotherWayMessage(title))}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            {copy.failure.anotherWay}
-          </Button>
-          <Button
-            disabled={!canAsk}
-            onClick={() => ask(copy.failure.partialMessage(title))}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            {copy.failure.partial}
-          </Button>
-        </div>
-      )}
+      {view.isLastTurn && <FailureActions disabled={!canAsk} onAsk={ask} title={title} />}
+    </div>
+  )
+}
+
+/** The three ways on from a step that failed (retry / another way / what you have). Also the
+ *  fallback a creator skill asks for with `<!-- apex:next failed=… -->` (next-steps.tsx), so a
+ *  failure offers the same three buttons and sends the same sentences wherever it shows up. */
+export function FailureActions({
+  disabled,
+  onAsk,
+  title
+}: {
+  disabled: boolean
+  onAsk: (message: string) => void
+  title: string
+}) {
+  const { t } = useI18n()
+  const copy = t.assistant.tool.process.failure
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button disabled={disabled} onClick={() => onAsk(copy.retryMessage(title))} size="sm" type="button">
+        {copy.retry}
+      </Button>
+      <Button
+        disabled={disabled}
+        onClick={() => onAsk(copy.anotherWayMessage(title))}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        {copy.anotherWay}
+      </Button>
+      <Button
+        disabled={disabled}
+        onClick={() => onAsk(copy.partialMessage(title))}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        {copy.partial}
+      </Button>
     </div>
   )
 }

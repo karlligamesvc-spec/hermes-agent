@@ -11,6 +11,7 @@ import type { HermesConfigRecord } from '@/types/hermes'
 
 import { AboutSettingsBody } from './about-settings'
 import { CONTROL_TEXT, EMPTY_SELECT_VALUE, FIELD_DESCRIPTIONS, FIELD_LABELS } from './constants'
+import { CreatorProfileSettings } from './creator-profile-settings'
 import { fieldCopyForSchemaKey } from './field-copy'
 import { enumOptionsFor, getNested, prettyName, setNested } from './helpers'
 import { ListRow, SectionHeading, SettingsContent } from './primitives'
@@ -18,7 +19,8 @@ import { SoulEditor } from './soul-editor'
 
 const PERSONALITY_KEY = 'display.personality'
 
-// 个性化 — the consumer landing section. Top: the 人格 (personality) picker,
+// 个性化 — the consumer landing section. First the 创作档案 (the three first-use
+// creator answers, hc-991). Then the 人格 (personality) picker,
 // moved here from the former 对话 section (same config key, same option
 // source, saved through the same config API). Middle: the SOUL.md editor,
 // moved here from the old 个人资料 entry (which now opens the profile stats
@@ -76,7 +78,9 @@ export function PersonalizationSettings({ onConfigSaved }: { onConfigSaved?: () 
 
   return (
     <SettingsContent>
-      <div>
+      <CreatorProfileSettings />
+
+      <div className="mt-6">
         <SectionHeading icon={Sparkles} title={copy.personalityTitle} />
         <p className="p5-section-intro">{copy.personalityIntro}</p>
 

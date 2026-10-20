@@ -92,6 +92,11 @@ plugins:
     # 注入后端 spawn env(hc-417/hc-444),未绑定时这两条 enabled 是空转、工具自隐。
     - apexnodes-feishu-doc-write
     - apexnodes-feishu-bitable-write
+    # ApexNodes「下一步」块(apex-next/1,apex-nodes docs/NEXT-STEPS-BLOCK-PROTOCOL.md):
+    # 桌面聊天里的块原样留给渲染层画成按钮;本机网关接的 IM 换成「回复数字」的编号,
+    # 回数字等于发了那句话;提到「选题库」时附上 HERMES_HOME/apex/选题库.md 的路径。
+    # 与 apex-nodes app/runtime_plugins/apexnodes-next-steps 逐字节相同。
+    - apexnodes-next-steps
   # Deadline for each Git clone, fetch or checkout during plugin install. Default: 300
   # seconds. Subdirectory installs download only that folder.
   # Raise this for large repositories or slow connections. Maximum: 3600.
