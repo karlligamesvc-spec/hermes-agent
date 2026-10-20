@@ -1,0 +1,311 @@
+{
+  "protocol": "apex-next/1",
+  "note": "「下一步」块解析的共用样例。apex-nodes 插件(Python)和 APEX Desktop 渲染层(fork apps/desktop/src/lib/next-steps.fixtures.json,逐字节相同)都必须对每一条给出同样的 visible 与 block。期望值是手写的,不是用实现跑出来的。",
+  "cases": [
+    {
+      "id": "three-options",
+      "text": "给你 5 个选题：\n1. 收纳避坑\n2. 小户型改造\n\n<!-- apex:next\n存进选题库 | 把这 5 个选题存进我的选题库\n写成脚本 | 把第 1 个选题写成 60 秒口播脚本\n做成发布包 | 把第 1 个选题做成发布包，我自己去发\n-->\n",
+      "visible": "给你 5 个选题：\n1. 收纳避坑\n2. 小户型改造",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "存进选题库",
+            "把这 5 个选题存进我的选题库"
+          ],
+          [
+            "写成脚本",
+            "把第 1 个选题写成 60 秒口播脚本"
+          ],
+          [
+            "做成发布包",
+            "把第 1 个选题做成发布包，我自己去发"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "fullwidth-separator-list-markers-and-quotes",
+      "text": "正文\n\n<!-- apex:next\n1. 「写成脚本」｜「把第 2 个选题写成脚本」\n- 存进选题库 | 把它存进我的选题库\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成脚本",
+            "把第 2 个选题写成脚本"
+          ],
+          [
+            "存进选题库",
+            "把它存进我的选题库"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "more-than-three-keeps-first-three",
+      "text": "正文\n<!-- apex:next\n一 | 甲\n二 | 乙\n三 | 丙\n四 | 丁\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "一",
+            "甲"
+          ],
+          [
+            "二",
+            "乙"
+          ],
+          [
+            "三",
+            "丙"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "duplicate-label-kept-once",
+      "text": "正文\n<!-- apex:next\n写成脚本 | 写第 1 个\n写成脚本 | 写第 2 个\n存进选题库 | 存起来\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成脚本",
+            "写第 1 个"
+          ],
+          [
+            "存进选题库",
+            "存起来"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "over-long-label-dropped",
+      "text": "正文\n<!-- apex:next\n这个按钮上的字一共有十七个字太长了 | 照做\n写成脚本 | 把它写成脚本\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成脚本",
+            "把它写成脚本"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "empty-label-or-message-dropped",
+      "text": "正文\n<!-- apex:next\n | 没有按钮字\n没有那句话 |\n没有分隔符的一行\n写成脚本 | 把它写成脚本\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成脚本",
+            "把它写成脚本"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "separator-inside-message-splits-at-first",
+      "text": "正文\n<!-- apex:next\n写成脚本 | 把 A|B 两个选题都写成脚本\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成脚本",
+            "把 A|B 两个选题都写成脚本"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "first-option-on-opening-line-and-no-space-marker",
+      "text": "正文\n<!--apex:next 写成脚本|把它写成脚本\n存进选题库 | 把它存进我的选题库\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成脚本",
+            "把它写成脚本"
+          ],
+          [
+            "存进选题库",
+            "把它存进我的选题库"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "failed-single-line",
+      "text": "这条视频没生成出来：视频服务暂时不可用。脚本已经写好了。\n\n<!-- apex:next failed=生成视频 -->",
+      "visible": "这条视频没生成出来：视频服务暂时不可用。脚本已经写好了。",
+      "block": {
+        "failed": "生成视频",
+        "options": []
+      }
+    },
+    {
+      "id": "failed-quoted-title-ignores-options",
+      "text": "没转写出来。\n<!-- apex:next failed=\"识别语音\"\n写成脚本 | 这一行不算\n-->",
+      "visible": "没转写出来。",
+      "block": {
+        "failed": "识别语音",
+        "options": []
+      }
+    },
+    {
+      "id": "failed-empty-title-gets-default",
+      "text": "没成功。\n<!-- apex:next failed= -->",
+      "visible": "没成功。",
+      "block": {
+        "failed": "刚才那一步",
+        "options": []
+      }
+    },
+    {
+      "id": "two-blocks-last-wins-both-removed",
+      "text": "前半\n<!-- apex:next\n存进选题库 | 存前半\n-->\n后半\n<!-- apex:next\n写成脚本 | 写后半\n-->",
+      "visible": "前半\n\n后半",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成脚本",
+            "写后半"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "empty-last-block-falls-back-to-earlier-one",
+      "text": "前半\n<!-- apex:next\n存进选题库 | 存前半\n-->\n后半\n<!-- apex:next -->",
+      "visible": "前半\n\n后半",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "存进选题库",
+            "存前半"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "unterminated-tail-removed",
+      "text": "正文\n\n<!-- apex:next\n写成脚本 | 把它写成",
+      "visible": "正文",
+      "block": null
+    },
+    {
+      "id": "half-written-marker-removed",
+      "text": "正文\n<!-- ape",
+      "visible": "正文",
+      "block": null
+    },
+    {
+      "id": "unrelated-comment-left-alone",
+      "text": "正文 <!-- 备注 -->\n\n\n尾巴",
+      "visible": "正文 <!-- 备注 -->\n\n\n尾巴",
+      "block": null
+    },
+    {
+      "id": "no-block",
+      "text": "普通回复，没有块。",
+      "visible": "普通回复，没有块。",
+      "block": null
+    },
+    {
+      "id": "english-options",
+      "text": "Done.\n<!-- apex:next\nWrite script | Turn topic 1 into a 60-second script\n-->",
+      "visible": "Done.",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "Write script",
+            "Turn topic 1 into a 60-second script"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "block-only-message",
+      "text": "<!-- apex:next\n写成脚本 | 把它写成脚本\n-->",
+      "visible": "",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成脚本",
+            "把它写成脚本"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "cjk-glued-to-marker-is-still-a-block",
+      "text": "正文\n<!-- apex:next写成脚本 | 把它写成脚本\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成脚本",
+            "把它写成脚本"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "fullwidth-list-numbers-stripped",
+      "text": "正文\n<!-- apex:next\n１．写成脚本 | 把它写成脚本\n２. 存进选题库 | 把它存进我的选题库\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成脚本",
+            "把它写成脚本"
+          ],
+          [
+            "存进选题库",
+            "把它存进我的选题库"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "marker-glued-to-a-word-is-not-a-block",
+      "text": "正文 <!-- apex:nextstep 写成脚本 | x -->",
+      "visible": "正文 <!-- apex:nextstep 写成脚本 | x -->",
+      "block": null
+    },
+    {
+      "id": "block-inside-a-code-fence-leaves-no-empty-fence",
+      "text": "正文\n\n```text\n<!-- apex:next\n写成脚本 | 把它写成脚本\n-->\n```\n",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成脚本",
+            "把它写成脚本"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "other-empty-fences-left-alone-without-a-block",
+      "text": "正文\n\n```\n```\n",
+      "visible": "正文\n\n```\n```\n",
+      "block": null
+    }
+  ]
+}

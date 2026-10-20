@@ -1,6 +1,7 @@
 import { resolveGatewayWsUrl } from '@hermes/shared'
 
 import { getApiRequestConnection, getApiRequestProfile, speakText } from '@/hermes'
+import { createNextStepsSpeechFilter } from '@/lib/next-steps'
 import {
   cutSentences,
   directTtsConfig,
@@ -514,6 +515,34 @@ function openSpeechStream(wsUrl: string, options: VoicePlaybackOptions): SpeechS
 }
 
 /**
+ * A creator skill ends its reply with a 「下一步」 block (lib/next-steps), shown as buttons.
+ * Streamed speech hears it delta by delta, so hold it back until it closes and drop it.
+ */
+function withoutNextStepBlocks(session: SpeechStreamSession): SpeechStreamSession {
+  const filter = createNextStepsSpeechFilter()
+
+  return {
+    append: text => {
+      const speakable = filter.push(text)
+
+      if (speakable) {
+        session.append(speakable)
+      }
+    },
+    done: session.done,
+    finish: () => {
+      const rest = filter.flush()
+
+      if (rest) {
+        session.append(rest)
+      }
+
+      session.finish()
+    }
+  }
+}
+
+/**
  * Live-speak an in-progress reply: open a session, then `append` deltas and
  * `finish` when generation completes. Ladder: client-direct synthesis with
  * the profile's own TTS (lowest hops — reply text is already streaming here,
@@ -536,7 +565,7 @@ export async function startSpeechStream(options: VoicePlaybackOptions): Promise<
       }
     })
 
-    return session
+    return withoutNextStepBlocks(session)
   }
 
   const wsUrl = await resolveSpeakStreamUrl()
@@ -556,7 +585,7 @@ export async function startSpeechStream(options: VoicePlaybackOptions): Promise<
     }
   })
 
-  return session
+  return withoutNextStepBlocks(session)
 }
 
 /** One-shot playback of complete text over the streaming WS. */
