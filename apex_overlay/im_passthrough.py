@@ -110,6 +110,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Iterable, Optional
 
+from apex_overlay import post_import
+
 logger = logging.getLogger(__name__)
 
 # Upstream target we monkey-patch — centralized so the seam-test pins it.
@@ -1278,21 +1280,22 @@ def _wrap_handle_message(orig):
 def apply() -> bool:
     """Install the passthrough seam. Idempotent, fail-safe.
 
-    Returns True when the wrapper is in place (or already present), False if the
-    target symbol is missing (the seam-test turns that into a hard CI failure).
-    Never raises into plugin discovery.
+    Returns True when the wrapper is in place, already present, or armed for ``gateway.run``'s import
+    (hc-989: never imported from plugin discovery, where the gateway's main thread may be inside that
+    import waiting for discovery). False means the target symbol is missing (the seam-test turns that
+    into a hard CI failure). Never raises into plugin discovery.
     """
-    global _APPLIED
     if _APPLIED:
         return True
+    return post_import.when_imported(_TARGET_RUN_MODULE, _install)
 
-    import importlib
 
+def _install(run_mod) -> bool:
+    global _APPLIED
     try:
-        run_mod = importlib.import_module(_TARGET_RUN_MODULE)
         runner_cls = getattr(run_mod, _TARGET_RUNNER_CLASS)
         orig = getattr(runner_cls, _TARGET_METHOD)
-    except (ImportError, AttributeError) as exc:
+    except AttributeError as exc:
         logger.error(
             "apex_overlay: could not patch %s.%s.%s — IM passthrough (/cc, /codex) "
             "is NOT active. Upstream may have renamed/moved it. (%s)",

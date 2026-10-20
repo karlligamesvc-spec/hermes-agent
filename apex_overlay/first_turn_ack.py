@@ -77,6 +77,8 @@ from __future__ import annotations
 import functools
 import logging
 
+from apex_overlay import post_import
+
 logger = logging.getLogger(__name__)
 
 _SETTING = "first_turn_ack"
@@ -98,7 +100,9 @@ _ACK_DEFAULT_ON_PLATFORMS = frozenset(
 _DEFAULT_ACK_TEXT = "⏳ 收到，正在处理中…"  # "⏳ 收到，正在处理中…"
 _DEFAULT_COOLDOWN_SECONDS = 30.0
 
-_APPLIED = False
+_APPLIED = False  # True once both halves below are installed
+_RESOLVE_APPLIED = False
+_TURN_APPLIED = False
 _MARK_RESOLVE = "_apex_overlay_first_turn_ack_resolve"
 _MARK_TURN = "_apex_overlay_first_turn_ack_turn"
 
@@ -268,53 +272,62 @@ def _wrap_turn_method(orig):
 def apply() -> bool:
     """Install both halves of the first_turn_ack seam. Idempotent, fail-safe.
 
-    Returns True when both patches are in place (or already present), False if a
-    target symbol is missing (the seam-test turns that into a hard CI failure).
-    Never raises into plugin discovery.
+    Returns True when both patches are in place, already present, or armed for their module's import
+    (hc-989: neither ``gateway.display_config`` nor ``gateway.run`` is imported from plugin discovery,
+    where the gateway's main thread may be inside that import waiting for discovery). False means a
+    target symbol is missing (the seam-test turns that into a hard CI failure). Never raises into
+    plugin discovery.
     """
-    global _APPLIED
     if _APPLIED:
         return True
+    resolve_ok = post_import.when_imported(_TARGET_DISPLAY_MODULE, _install_resolve)
+    turn_ok = post_import.when_imported(_TARGET_RUN_MODULE, _install_turn)
+    return resolve_ok and turn_ok
 
-    import importlib
 
-    ok = True
+def _mark_applied() -> None:
+    global _APPLIED
+    _APPLIED = _RESOLVE_APPLIED and _TURN_APPLIED
+    if _APPLIED:
+        logger.debug("apex_overlay: first_turn_ack seam applied (both halves)")
 
-    # Patch 1: resolve_display_setting (default + bool coercion for first_turn_ack).
+
+def _install_resolve(display_mod) -> bool:
+    """Patch 1: resolve_display_setting (default + bool coercion for first_turn_ack)."""
+    global _RESOLVE_APPLIED
     try:
-        display_mod = importlib.import_module(_TARGET_DISPLAY_MODULE)
         orig_resolve = getattr(display_mod, _TARGET_RESOLVE_FN)
-        if not getattr(orig_resolve, _MARK_RESOLVE, False):
-            setattr(
-                display_mod, _TARGET_RESOLVE_FN,
-                _wrap_resolve_display_setting(orig_resolve),
-            )
-    except (ImportError, AttributeError) as exc:
+    except AttributeError as exc:
         logger.error(
             "apex_overlay: could not patch %s.%s — first_turn_ack default is NOT "
             "active (the ack still fires only if config sets it explicitly). "
             "Upstream may have renamed/moved it. (%s)",
             _TARGET_DISPLAY_MODULE, _TARGET_RESOLVE_FN, exc,
         )
-        ok = False
+        return False
+    if not getattr(orig_resolve, _MARK_RESOLVE, False):
+        setattr(display_mod, _TARGET_RESOLVE_FN, _wrap_resolve_display_setting(orig_resolve))
+    _RESOLVE_APPLIED = True
+    _mark_applied()
+    return True
 
-    # Patch 2: the turn-start method (send the ack before the first model call).
+
+def _install_turn(run_mod) -> bool:
+    """Patch 2: the turn-start method (send the ack before the first model call)."""
+    global _TURN_APPLIED
     try:
-        run_mod = importlib.import_module(_TARGET_RUN_MODULE)
         runner_cls = getattr(run_mod, _TARGET_RUNNER_CLASS)
         orig_turn = getattr(runner_cls, _TARGET_TURN_METHOD)
-        if not getattr(orig_turn, _MARK_TURN, False):
-            setattr(runner_cls, _TARGET_TURN_METHOD, _wrap_turn_method(orig_turn))
-    except (ImportError, AttributeError) as exc:
+    except AttributeError as exc:
         logger.error(
             "apex_overlay: could not patch %s.%s.%s — first_turn_ack SEND half is "
             "NOT active (no ack will be sent). Upstream may have renamed/moved it. "
             "(%s)",
             _TARGET_RUN_MODULE, _TARGET_RUNNER_CLASS, _TARGET_TURN_METHOD, exc,
         )
-        ok = False
-
-    _APPLIED = ok
-    if ok:
-        logger.debug("apex_overlay: first_turn_ack seam applied (both halves)")
-    return ok
+        return False
+    if not getattr(orig_turn, _MARK_TURN, False):
+        setattr(runner_cls, _TARGET_TURN_METHOD, _wrap_turn_method(orig_turn))
+    _TURN_APPLIED = True
+    _mark_applied()
+    return True

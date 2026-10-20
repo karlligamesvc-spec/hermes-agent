@@ -21,6 +21,8 @@ import logging
 import time
 from typing import Any, Callable, Optional
 
+from apex_overlay import post_import
+
 logger = logging.getLogger(__name__)
 
 _TARGET_RUN_MODULE = "gateway.run"
@@ -228,18 +230,23 @@ def _wrap_create_adapter(orig: Callable) -> Callable:
 
 
 def apply() -> bool:
-    """Install the v0.20 hc-384/385 cold-start seam. Idempotent and fail-safe."""
-    global _APPLIED
+    """Install the v0.20 hc-384/385 cold-start seam. Idempotent and fail-safe.
+
+    Never imports ``gateway.run`` from plugin discovery (hc-989): the gateway's main thread may be
+    inside that import, waiting for discovery. The wrapper lands as soon as the module body finishes,
+    before any ``GatewayRunner`` exists, so the first ``_create_adapter`` call is always wrapped.
+    """
     if _APPLIED:
         return True
+    return post_import.when_imported(_TARGET_RUN_MODULE, _install)
 
-    import importlib
 
+def _install(run_mod) -> bool:
+    global _APPLIED
     try:
-        run_mod = importlib.import_module(_TARGET_RUN_MODULE)
         runner_cls = getattr(run_mod, _TARGET_RUNNER_CLS)
         orig = getattr(runner_cls, _TARGET_CREATE_METHOD)
-    except (ImportError, AttributeError) as exc:
+    except AttributeError as exc:
         logger.error(
             "apex_overlay: gateway bootstrap seam target moved; Feishu may block startup (%s)",
             exc,
