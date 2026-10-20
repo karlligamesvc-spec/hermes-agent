@@ -342,7 +342,10 @@ def test_the_legacy_leg_answers_the_same_way(legacy_env, master, media, answer, 
 
 # ── an image without a model reads the leg it will land on ────────────────────
 
-ROUTES = {"illustration": "agnes", "cover": "agnes-overlay", "cover_without_title": "nanobanana-flash"}
+# Leg names as the ApexNodes server reports them since hc-990: the default model, the
+# ¥0 template a titled cover falls back to, and a nanobanana cover preference.
+DEFAULT_LEG = "chinaapi:gpt-image-2.5-flare"
+ROUTES = {"illustration": DEFAULT_LEG, "cover": "cover-template", "cover_without_title": "nanobanana-flash"}
 PAUSED = "图片生成最近连续几次都没成功，平台先暂停了它，大约 15 分钟后可以再试。"
 
 
@@ -357,7 +360,7 @@ def _leg(*, configured=True, healthy=True) -> dict:
 
 
 def _image_check(down: str | None = None, *, switched_off: str | None = None, routes=ROUTES) -> dict:
-    legs = {name: _leg() for name in ("agnes", "agnes-overlay", "nanobanana-flash", "seedream")}
+    legs = {name: _leg() for name in (DEFAULT_LEG, "cover-template", "nanobanana-flash", "seedream")}
     if down:
         legs[down] = _leg(healthy=False)
     if switched_off:
@@ -371,8 +374,8 @@ def _image_check(down: str | None = None, *, switched_off: str | None = None, ro
 @pytest.mark.parametrize(
     ("args", "down"),
     [
-        ({}, "agnes"),
-        ({"purpose": "cover", "title": "夏日上新"}, "agnes-overlay"),
+        ({}, DEFAULT_LEG),
+        ({"purpose": "cover", "title": "夏日上新"}, "cover-template"),
         ({"purpose": "cover"}, "nanobanana-flash"),
         ({"provider": "seedream"}, "seedream"),
     ],
@@ -388,7 +391,7 @@ def test_a_model_less_image_is_stopped_when_its_leg_is_down(desktop_env, server,
 
 
 def test_another_purpose_on_the_same_check_still_renders(desktop_env, server, image):
-    server.answer("/tools/v1/check", Answer(200, {"ok": True, "image": _image_check("agnes")}))
+    server.answer("/tools/v1/check", Answer(200, {"ok": True, "image": _image_check(DEFAULT_LEG)}))
     server.answer("/tools/v1/image/generate", Answer(200, {"data": {"ok": True}}))
 
     result = json.loads(image._handle_generate_image({"prompt": "封面", "purpose": "cover", "title": "夏日上新"}))
@@ -398,14 +401,14 @@ def test_another_purpose_on_the_same_check_still_renders(desktop_env, server, im
 
 
 def test_a_switched_off_default_leg_says_retrying_will_not_help(desktop_env, server, image):
-    server.answer("/tools/v1/check", Answer(200, {"ok": True, "image": _image_check(switched_off="agnes")}))
+    server.answer("/tools/v1/check", Answer(200, {"ok": True, "image": _image_check(switched_off=DEFAULT_LEG)}))
     assert json.loads(image._handle_generate_image({"prompt": "海报"}))["error"] == (
         "平台现在暂时关闭了图片生成，重新开放之前重试也不会成功。"
     )
 
 
 def test_the_legacy_leg_reads_purpose_legs_too(legacy_env, master, image):
-    master.answers = {"/media/image/check": (200, _image_check("agnes"))}
+    master.answers = {"/media/image/check": (200, _image_check(DEFAULT_LEG))}
     assert json.loads(image._handle_generate_image({"prompt": "海报"}))["error"] == PAUSED
     assert master.paths == ["/media/image/check"]
 
@@ -415,7 +418,7 @@ def test_the_legacy_leg_reads_purpose_legs_too(legacy_env, master, image):
 
 def test_an_english_user_hears_the_pause_and_the_crash_in_english(home, desktop_env, server, image):
     _language(home, "en")
-    server.answer("/tools/v1/check", Answer(200, {"ok": True, "image": _image_check("agnes")}))
+    server.answer("/tools/v1/check", Answer(200, {"ok": True, "image": _image_check(DEFAULT_LEG)}))
     assert json.loads(image._handle_generate_image({"prompt": "poster"}))["error"] == (
         "Image generation failed several times in a row and the platform paused it; try again in about 15 minutes."
     )
