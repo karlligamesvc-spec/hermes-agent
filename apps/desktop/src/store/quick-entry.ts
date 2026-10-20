@@ -102,6 +102,7 @@ export async function saveQuickEntrySettings(patch: { enabled?: boolean; shortcu
 /** A recent session the quick window can target (pushed by the primary). */
 export interface QuickEntrySessionOption {
   id: string
+  /** Title, else preview; empty when it has neither (the window names it). */
   title: string
 }
 
