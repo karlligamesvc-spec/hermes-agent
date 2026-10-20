@@ -142,14 +142,15 @@
 - `i18n/composer-simple.test.ts`：zh、zh-hant 新文案无英文且不等于 en；复用的 25 个旧键在 zh / zh-hant 里都是中文（缺键会回落英文，这里会红）；语音唤醒保持 APEX 身份；胶囊文案按 Kael 定的三句；en 唤醒词和 en.ts 逐字相同。
 - `app/chat/composer/url-refs.test.ts`、`paste-to-focus.test.ts`、`hooks/use-composer-actions.test.ts`：短视频链接不变引用（粘贴、⌘V、手打）、lastIndex 修复、选择框中文标题。
 - 改动的旧测试：`context-menu.test.tsx`（「+」的新名字；新增高级折叠用例）、`business-workspace.test.tsx` / `start-prototype-layout.test.tsx` / `start-template-entry.test.tsx`（工作流入口改走「+ › 高级」；锁定测试改为检查请求进行中「+」被禁用）、`identity-layer.test.tsx`（首页「+」的名字）。
+- 第二轮新增：`paste-actions.test.ts`（视频号两种链接都走「先存再拖」、视频拖进来后按视频、可下载链接在前时照常出胶囊、视频号分享文案不带进请求）；`simple-composer.test.tsx`（真实 ChatBar 粘贴视频号 → 提示原文、无胶囊、无引用 → 拖入视频 → 点胶囊发出「把这个视频转成逐字稿」带附件；普通链接紧贴中文时引用只到链接；三档模式下「+」菜单扫生成模型名）；`business-goal-launcher-simple.test.tsx`（首页视频号提示）；`composer-simple.test.ts`（zh / zh-hant / en 提示成对）；`url-refs.test.ts`（7 种中文边界、4 种留在链接里的汉字、带「，」的不算单个链接、手打紧贴中文不做引用）；`context-menu.test.tsx`（三档模式：无模型名无子菜单、点了用默认且开场白不写模型、启动时旧选择改回默认；孪生：开关没开时子菜单、模型名、旧选择都在）；`generation-models.test.ts`（`startupGenerationModel` 两种模式）。`simple-composer.test.tsx` 原来扫英文时把生成两行剪掉（当时带模型名），现在不剪，一起扫。
 
-反向验证：脚本在 scratchpad（不进仓库），共 46 条，46 条全红（第 35–46 条是第二轮新加的；表里的失败条数是第二轮在最终代码上把 46 条全部重跑的结果）。每条注入先断言锚点在文件里恰好命中一处，只跑该守卫的测试文件，要求变红，再还原。
+反向验证：脚本在 scratchpad（不进仓库），共 46 条，46 条全红（第 35–46 条是第二轮新加的；表里的失败条数是第二轮合入 fork main `23b56666f7` 之后，在最终代码上把 46 条全部重跑的结果）。每条注入先断言锚点在文件里恰好命中一处，只跑该守卫的测试文件，要求变红，再还原。
 
 过程里抓到一条空过的守卫：第一次跑第 16 条时 ChatBar 层测试全绿，只有 ⌘V 路径变红。查下去是现成 bug：`resolveExactLinkPaste` 让全局 `URL_RE` 停在它看过的链接后面，聚焦粘贴时 `linkifyUrls` 从那儿开始扫，所以第一个链接本来就不会变引用，「不变引用」的断言碰不到点子上。修了 bug、补了「普通链接仍变引用」的孪生测试后，同一注入从 1 条红变成 7 条红。
 
 | # | 注入的故障 | 跑的守卫 | 结果 |
 |---|---|---|---|
-| 1 | 去掉抖音短链 v.douyin.com | 识别单测、ChatBar 集成 | 红，3 条失败 |
+| 1 | 去掉抖音短链 v.douyin.com | 识别单测、ChatBar 集成 | 红，17 条失败 |
 | 2 | 去掉小红书 xhslink.com | 识别单测、ChatBar 集成 | 红，7 条失败 |
 | 3 | 去掉视频号 weixin.qq.com/sph | 识别单测 | 红，7 条失败 |
 | 4 | 去掉快手短链 v.kuaishou.com | 识别单测 | 红，4 条失败 |
@@ -206,7 +207,7 @@
 | `screenshots/01-paste-chips.jpg` | **粘贴后的选项**：聊天输入框里粘贴抖音分享文案，文字原样，上方三个胶囊 |
 | `screenshots/02-chip-tooltip.jpg` | 悬停「转逐字稿」：提示「把这条抖音视频转成逐字稿」 |
 | `screenshots/03-slim-composer.jpg` | **精简后的输入框**：只有「+」、语音、发送 |
-| `screenshots/04-plus-menu.jpg` | 「+」菜单：附件三行、生成、高级 |
+| `screenshots/04-plus-menu.jpg` | 「+」菜单：附件三行、生成、高级（第一轮截的，生成两行当时还带模型名；第二轮见 14） |
 | `screenshots/05-advanced.jpg` | 高级：场景…、审批方式、语音设置、技能、连接器、@ 提示 |
 | `screenshots/06-advanced-voice.jpg` | 高级 › 语音设置（APEX 语音唤醒：已关闭） |
 | `screenshots/07-advanced-approval.jpg` | 高级 › 审批方式（三档原样） |
@@ -214,5 +215,15 @@
 | `screenshots/09-developer-mode.jpg` | 开发者模式：改版前的整排按钮 |
 | `screenshots/10-start-paste-chips.jpg` | 首页输入框粘贴后：胶囊在框内顶部，底栏三样 |
 | `screenshots/11-dropped-video.jpg` | 拖入本地视频：附件上方三个胶囊（点「转逐字稿」后发出「把这个视频转成逐字稿」，附件一起带走，胶囊消失） |
+
+第二轮（Kael 10-20 定的三处）：
+
+| 文件 | 内容 |
+|---|---|
+| `screenshots/12-channels-save-first.jpg` | **视频号链接**：聊天输入框粘贴视频号分享文案，不出胶囊，上方直接说「视频号的视频没法从链接下载：先把视频存到电脑，再拖进来」 |
+| `screenshots/13-channels-video-dropped.jpg` | 视频拖进来以后：附件上方出现三个胶囊；点「转逐字稿」发出的是「把这个视频转成逐字稿」，视频号分享文案没带进去（harness 里核对过发出的文字） |
+| `screenshots/14-plus-menu-no-model-names.jpg` | **三档模式的「+」菜单**：生成下面只有「图片」「视频」，没有模型名，也没有选模型的子菜单 |
+| `screenshots/15-link-chinese-tail.jpg` | 普通链接「看这个https://example.com/post/1，写得好」：引用只到 `/post/1`，「，写得好」留在文字里 |
+| `screenshots/16-start-channels-save-first.jpg` | 首页输入框粘贴视频号链接：同一句提示，在框内顶部 |
 
 在真实浏览器里还确认了：高级 › 场景… 弹出后焦点留在搜索框（菜单关闭没有抢回「+」）；选一个场景，口令照旧填进输入框。
