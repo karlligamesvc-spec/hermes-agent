@@ -68,6 +68,8 @@ import string
 from functools import lru_cache
 from typing import Any, Optional
 
+from apex_overlay import post_import
+
 logger = logging.getLogger(__name__)
 
 # Upstream target we monkey-patch — centralized so the seam-test pins it.
@@ -299,21 +301,23 @@ def _wrap_init(orig):
 def apply() -> bool:
     """Install the banner filter seam onto upstream. Idempotent, fail-safe.
 
-    Returns True when ``BasePlatformAdapter.__init__`` is wrapped (or already was), False if the
-    target is missing (the seam-test turns that into a hard CI failure). Never raises into plugin
-    discovery.
+    Returns True when ``BasePlatformAdapter.__init__`` is wrapped, already was, or the wrap is armed for
+    ``gateway.platforms.base``'s import (hc-989: never imported from plugin discovery, where the
+    gateway's main thread may be inside a gateway import waiting for discovery; no adapter can exist
+    before that module has loaded). False means the target is missing (the seam-test turns that into
+    a hard CI failure). Never raises into plugin discovery.
     """
-    global _APPLIED
     if _APPLIED:
         return True
+    return post_import.when_imported(_TARGET_BASE_MODULE, _install)
 
-    import importlib
 
+def _install(base_mod) -> bool:
+    global _APPLIED
     try:
-        base_mod = importlib.import_module(_TARGET_BASE_MODULE)
         adapter_cls = getattr(base_mod, _TARGET_ADAPTER_CLASS)
         orig_init = adapter_cls.__dict__[_TARGET_INIT_METHOD]
-    except (ImportError, AttributeError, KeyError) as exc:
+    except (AttributeError, KeyError) as exc:
         logger.error(
             "apex_overlay: could not patch %s.%s.%s; the runtime's session banners will reach "
             "WeChat, WeCom, DingTalk, QQ and Feishu users. Upstream may have renamed it. (%s)",

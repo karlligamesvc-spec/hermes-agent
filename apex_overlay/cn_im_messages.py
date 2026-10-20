@@ -91,6 +91,8 @@ import functools
 import logging
 import re
 
+from apex_overlay import post_import
+
 logger = logging.getLogger(__name__)
 
 # Upstream targets we monkey-patch — centralized so the seam-test pins them.
@@ -103,7 +105,9 @@ _TARGET_BASE_MODULE = "gateway.platforms.base"
 _TARGET_ADAPTER_CLASS = "BasePlatformAdapter"
 _TARGET_SEND_METHOD = "_send_with_retry"
 
-_APPLIED = False
+_APPLIED = False  # True once both the gateway.run and the adapter-base patches are installed
+_RUN_APPLIED = False
+_BASE_APPLIED = False
 _MARK = "_apex_overlay_cn_im_localize"
 
 
@@ -396,25 +400,37 @@ def _wrap_send_with_retry(orig):
 def apply() -> bool:
     """Install the CN-IM localization seam onto upstream. Idempotent, fail-safe.
 
-    Returns True when all four choke points are wrapped (or already present),
-    False if any target symbol is missing (the seam-test turns that into a hard
-    CI failure). Never raises into plugin discovery.
+    Returns True when all four choke points are wrapped, already present, or armed for their module's
+    import (hc-989: ``gateway.run`` and ``gateway.platforms.base`` are never imported from plugin
+    discovery, where the gateway's main thread may be inside that import waiting for discovery).
+    False means a target symbol is missing (the seam-test turns that into a hard CI failure). Never
+    raises into plugin discovery.
     """
-    global _APPLIED
     if _APPLIED:
         return True
+    run_ok = post_import.when_imported(_TARGET_RUN_MODULE, _install_run)
+    base_ok = post_import.when_imported(_TARGET_BASE_MODULE, _install_base)
+    return run_ok and base_ok
 
-    import importlib
 
+def _mark_applied() -> None:
+    global _APPLIED
+    _APPLIED = _RUN_APPLIED and _BASE_APPLIED
+    if _APPLIED:
+        logger.debug("apex_overlay: CN-IM message localization seam applied")
+
+
+def _install_run(run_mod) -> bool:
+    """Choke points 1-3, all in ``gateway.run``."""
+    global _RUN_APPLIED
     ok = True
 
     # 1. _prepare_gateway_status_message (module function).
     try:
-        run_mod = importlib.import_module(_TARGET_RUN_MODULE)
         orig_prepare = getattr(run_mod, _TARGET_PREPARE_FN)
         if not getattr(orig_prepare, _MARK, False):
             setattr(run_mod, _TARGET_PREPARE_FN, _wrap_prepare_status(orig_prepare))
-    except (ImportError, AttributeError) as exc:
+    except AttributeError as exc:
         logger.error(
             "apex_overlay: could not patch %s.%s — CN-IM status localization is "
             "NOT active for gateway status callbacks. Upstream may have renamed "
@@ -425,7 +441,6 @@ def apply() -> bool:
 
     # 2 + 3. GatewayRunner methods.
     try:
-        run_mod = importlib.import_module(_TARGET_RUN_MODULE)
         runner_cls = getattr(run_mod, _TARGET_RUNNER_CLASS)
 
         orig_deliver = getattr(runner_cls, _TARGET_DELIVER_METHOD)
@@ -435,7 +450,7 @@ def apply() -> bool:
         orig_handle = getattr(runner_cls, _TARGET_HANDLE_METHOD)
         if not getattr(orig_handle, _MARK, False):
             setattr(runner_cls, _TARGET_HANDLE_METHOD, _wrap_handle_message(orig_handle))
-    except (ImportError, AttributeError) as exc:
+    except AttributeError as exc:
         logger.error(
             "apex_overlay: could not patch %s.%s.{%s,%s} — CN-IM localization of "
             "the no-home-channel notice / mid-run rejections is NOT active. "
@@ -445,23 +460,27 @@ def apply() -> bool:
         )
         ok = False
 
-    # 4. BasePlatformAdapter._send_with_retry (busy-ack / gateway-busy).
+    _RUN_APPLIED = ok
+    _mark_applied()
+    return ok
+
+
+def _install_base(base_mod) -> bool:
+    """Choke point 4: BasePlatformAdapter._send_with_retry (busy-ack / gateway-busy)."""
+    global _BASE_APPLIED
     try:
-        base_mod = importlib.import_module(_TARGET_BASE_MODULE)
         adapter_cls = getattr(base_mod, _TARGET_ADAPTER_CLASS)
         orig_send = getattr(adapter_cls, _TARGET_SEND_METHOD)
-        if not getattr(orig_send, _MARK, False):
-            setattr(adapter_cls, _TARGET_SEND_METHOD, _wrap_send_with_retry(orig_send))
-    except (ImportError, AttributeError) as exc:
+    except AttributeError as exc:
         logger.error(
             "apex_overlay: could not patch %s.%s.%s — CN-IM localization of the "
             "busy-ack / gateway-busy messages is NOT active. Upstream may have "
             "renamed it. (%s)",
             _TARGET_BASE_MODULE, _TARGET_ADAPTER_CLASS, _TARGET_SEND_METHOD, exc,
         )
-        ok = False
-
-    _APPLIED = ok
-    if ok:
-        logger.debug("apex_overlay: CN-IM message localization seam applied")
-    return ok
+        return False
+    if not getattr(orig_send, _MARK, False):
+        setattr(adapter_cls, _TARGET_SEND_METHOD, _wrap_send_with_retry(orig_send))
+    _BASE_APPLIED = True
+    _mark_applied()
+    return True
