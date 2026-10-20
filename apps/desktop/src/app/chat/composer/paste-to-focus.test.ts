@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { onComposerAttachImagesRequest, onComposerFocusRequest, onComposerInsertRequest } from './focus'
+import { getActiveComposer, onComposerAttachImagesRequest, onComposerFocusRequest, onComposerInsertRequest } from './focus'
+import { pastedTextFor } from './paste-actions'
 import { handleWindowPaste, routeClipboardToComposer } from './paste-to-focus'
 
 /** Minimal DataTransfer stand-in: text/plain + optional image file items. */
@@ -52,6 +53,19 @@ describe('routeClipboardToComposer', () => {
     off()
 
     expect(inserts[0]).toContain('@url:')
+  })
+
+  it('leaves a short-video share text plain and remembers it for the paste-to-act chips', async () => {
+    const share = '复制打开抖音，看看【小林的作品】 https://v.douyin.com/iRNBho6u/ k@D.ub'
+    const inserts: string[] = []
+    const off = onComposerInsertRequest(({ text }) => inserts.push(text))
+
+    routeClipboardToComposer(clipboard({ text: share }))
+    await flushBus()
+    off()
+
+    expect(inserts).toEqual([share])
+    expect(pastedTextFor(getActiveComposer())).toBe(share)
   })
 
   it('attaches clipboard images and pulls focus on an image-only paste', async () => {

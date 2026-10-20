@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { setRuntimeI18nLocale } from '@/i18n'
 import { $composerAttachments, type ComposerAttachment, updateComposerAttachment } from '@/store/composer'
 import { $connection } from '@/store/session'
 
@@ -321,6 +322,43 @@ describe('useComposerActions native image drops', () => {
         path: durablePath
       })
     )
+  })
+})
+
+// WP4 brought the file and folder pickers back to the "+" menu; Windows shows a
+// picker's title in its title bar, so it must read in the window's language.
+describe('the "+" pickers', () => {
+  // Later tests in this file lean on the bridge an earlier one installed; put
+  // back exactly what was there.
+  let bridge: typeof window.hermesDesktop
+
+  beforeEach(() => {
+    bridge = window.hermesDesktop
+  })
+
+  afterEach(() => {
+    setRuntimeI18nLocale('en')
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: bridge, writable: true })
+  })
+
+  it.each([
+    ['file', '选择要添加的文件或视频'],
+    ['folder', '选择要添加的文件夹']
+  ] as const)('titles the %s picker in Chinese', async (kind, title) => {
+    const selectPaths = vi.fn(async () => [])
+
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { selectPaths }, writable: true })
+    setRuntimeI18nLocale('zh')
+
+    const { result } = renderHook(() =>
+      useComposerActions({ activeSessionId: null, currentCwd: '', requestGateway: vi.fn() })
+    )
+
+    await act(async () => {
+      await result.current.pickContextPaths(kind)
+    })
+
+    expect(selectPaths).toHaveBeenCalledWith(expect.objectContaining({ title }))
   })
 })
 

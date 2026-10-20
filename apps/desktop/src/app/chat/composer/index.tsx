@@ -31,9 +31,6 @@ import { $threadScrolledUp } from '@/store/thread-scroll'
 import { $autoSpeakReplies } from '@/store/voice-prefs'
 import { useTheme } from '@/themes'
 
-import { ScenarioButton } from '../scenarios/scenario-button'
-
-import { ApprovalPill } from './approval-pill'
 import { AttachmentList } from './attachments'
 import {
   acceptsTriggerCompletion,
@@ -44,7 +41,6 @@ import {
   shouldDisableComposerInput,
   slashArgStage
 } from './composer-utils'
-import { ContextMenu } from './context-menu'
 import { COMPOSER_AREAS, runComposerMiddleware } from './contrib'
 import { ComposerControls } from './controls'
 import { ComposerDirectiveActions } from './directive-actions'
@@ -71,6 +67,8 @@ import { useSlashCompletions } from './hooks/use-slash-completions'
 import { useSessionStatusPresence } from './hooks/use-status-presence'
 import { shouldConvertPasteToAttachment } from './large-paste'
 import { ActionBadges } from './micro-actions'
+import { ComposerPasteActions } from './paste-action-chips'
+import { notePastedText } from './paste-actions'
 import { chipTypedPathOnSpace, pathifyRefs } from './path-refs'
 import { ProjectPicker } from './project-picker'
 import { QueuePanel } from './queue-panel'
@@ -88,6 +86,7 @@ import { ComposerStatusStack } from './status-stack'
 import { CodingStatusRow } from './status-stack/coding-row'
 import { SuggestionPills } from './suggestion-pills'
 import { extractClipboardImageBlobs, openDirectiveScope } from './text-utils'
+import { ComposerToolbarStart } from './toolbar-start'
 import { ComposerTriggerPopover } from './trigger-popover'
 import type { ChatBarProps } from './types'
 import { isRedoShortcut, isUndoShortcut } from './undo-history'
@@ -535,6 +534,10 @@ export function ChatBar({
     // preserved — only the edges are cleaned up.
     const pastedText = sanitizeComposerInput(event.clipboardData.getData('text').trim())
 
+    // A short-video share text offers the paste-to-act chips; remembering it
+    // lets a chip leave the app's padding ("复制打开抖音…") out of the request.
+    notePastedText(scope.target, pastedText)
+
     if (!pastedText) {
       event.preventDefault()
 
@@ -622,10 +625,10 @@ export function ChatBar({
     // A paste into an open `@url:`/`@file:` scope CONSUMES that scope instead of
     // stacking on it — the scope is the browse mode the user is pasting into,
     // not text they typed and want to keep (`@url:@url:\`https://…\``).
-    const scope = openDirectiveScope(event.currentTarget)
+    const directiveScope = openDirectiveScope(event.currentTarget)
 
     recordUndoPoint()
-    insertComposerContentsAtCaret(event.currentTarget, pathifyRefs(linkifyUrls(pastedText)), scope)
+    insertComposerContentsAtCaret(event.currentTarget, pathifyRefs(linkifyUrls(pastedText)), directiveScope)
     scheduleFlushEditorToDraft(event.currentTarget)
   }
 
@@ -1039,21 +1042,26 @@ export function ChatBar({
   // Keep the typed-stop interceptor in sync with the live conversation state.
   voiceStopRef.current = { active: voiceConversationActive, end: endConversation }
 
-  // hc-572: the "+" is the unified CAPABILITY menu (generate / skills /
-  // connectors), not an attachment picker — it takes no pick/paste/URL
-  // handlers. Those attachments still arrive by drag-and-drop and paste (the
-  // onDrop/onPaste handlers above), which is why the rows were dropped.
-  const contextMenu = <ContextMenu state={state} />
+  // Voice settings: the row's controls and the "+" menu's 高级 › 语音设置.
+  const voiceSettings = {
+    autoSpeak,
+    disabled,
+    onDictate: dictate,
+    onStartConversation: startConversation,
+    onToggleAutoSpeak: handleToggleAutoSpeak,
+    state,
+    voiceStatus
+  }
 
-  // Consequence of that: `openUrlDialog` has no trigger on this surface today.
-  // The dialog, its hook and the host `onAddUrl` stay wired rather than being
-  // deleted — they are upstream v0.19.0 code, and where a URL entry belongs
-  // under the capability menu is a product call, not a port call.
+  // The "+" menu has no URL row (hc-572 dropped it with the old pickers), so
+  // `openUrlDialog` has no trigger on this surface today. The dialog, its hook
+  // and the host `onAddUrl` stay wired rather than being deleted — they are
+  // upstream v0.19.0 code, and where a URL entry belongs is a product call.
   void openUrlDialog
 
   const controls = (
     <ComposerControls
-      autoSpeak={autoSpeak}
+      {...voiceSettings}
       busy={busy}
       canSubmit={canSubmit}
       compactModelPill={poppedOut || compactPill}
@@ -1068,16 +1076,11 @@ export function ChatBar({
         onToggleMute: conversation.toggleMute,
         status: conversation.status
       }}
-      disabled={disabled}
       foldVoice={foldVoice}
       hasComposerPayload={hasComposerPayload}
       hideModelPill={guidedChat}
       homeStyle={homeStyle}
       minimal={minimal}
-      onDictate={dictate}
-      onToggleAutoSpeak={handleToggleAutoSpeak}
-      state={state}
-      voiceStatus={voiceStatus}
     />
   )
 
@@ -1233,6 +1236,13 @@ export function ChatBar({
               5px transparent grab margin — so both strips carry the same inset
               and share one left edge with it. */}
           <div className={cn(composerFloatingStrip, 'px-[5px] pb-1.5 empty:hidden')}>
+            <ComposerPasteActions
+              disabled={inputDisabled}
+              onSend={request => {
+                loadIntoComposer(request, scope.attachments.$attachments.get())
+                submitDraft()
+              }}
+            />
             <ActionBadges sessionId={statusSessionId} />
             <SuggestionPills sessionId={statusSessionId} />
             <OnboardingSkip />
@@ -1432,18 +1442,13 @@ export function ChatBar({
                     data-layout={threeRow ? 'three-row' : 'compact'}
                     data-slot="composer-layout"
                   >
-                    <div
-                      className={cn(
-                        'flex items-center gap-(--composer-control-gap) [grid-area:menu]',
-                        !stackToolbar && 'translate-y-[3px] self-start'
-                      )}
-                      data-slot="composer-toolbar-start"
-                    >
-                      {contextMenu}
-                      <ScenarioButton disabled={disabled} />
-                      <ApprovalPill disabled={disabled} />
-                      <ContribSlot area={COMPOSER_AREAS.leading} />
-                    </div>
+                    <ComposerToolbarStart
+                      disabled={disabled}
+                      pickers={{ onPickFiles, onPickFolders, onPickImages }}
+                      stackToolbar={stackToolbar}
+                      state={state}
+                      voice={voiceSettings}
+                    />
                     <div className="min-w-0 [grid-area:input]" data-slot="composer-editor-row">
                       {input}
                     </div>

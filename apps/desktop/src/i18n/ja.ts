@@ -453,7 +453,7 @@ export const ja = defineLocale({
       colorMode: 'カラーモード',
       colorModeDesc: '固定モードを選ぶか、APEX をシステム設定に合わせます。',
       toolViewTitle: '開発者モード',
-      toolViewDesc: 'オンにすると、会話の各ステップに技術的な詳細（ツールのコード名、所要時間、生の引数と出力、コードとコマンド）が加わります。',
+      toolViewDesc: 'オンにすると、会話の各ステップに技術的な詳細（ツールのコード名、所要時間、生の引数と出力、コードとコマンド）が加わり、入力欄にもシナリオ・承認・音声設定のボタンが並びます。',
       reasoningCollapsedTitle: '思考ブロックをデフォルトで折りたたむ',
       reasoningCollapsedDesc: '開発者モードでのみ有効です。通常、推論は開くまで常に折りたたまれます。',
       uiScaleTitle: 'UI スケール',

@@ -716,7 +716,7 @@ export const en: Translations = {
       colorMode: 'Color Mode',
       colorModeDesc: 'Pick a fixed mode or let APEX follow your system setting.',
       toolViewTitle: 'Developer mode',
-      toolViewDesc: 'When on, each step in a chat also shows technical details: tool code names, timings, raw arguments and output, code and commands.',
+      toolViewDesc: 'When on, each step in a chat also shows technical details: tool code names, timings, raw arguments and output, code and commands. The composer also keeps scenarios, approvals and voice settings in its row.',
       reasoningCollapsedTitle: 'Collapse thinking by default',
       reasoningCollapsedDesc: 'Applies in developer mode only; otherwise thinking always stays folded until you open it.',
       uiScaleTitle: 'UI Scale',

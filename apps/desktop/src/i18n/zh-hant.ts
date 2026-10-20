@@ -439,7 +439,7 @@ export const zhHant = defineLocale({
       colorMode: '色彩模式',
       colorModeDesc: '選擇固定模式，或讓 APEX 跟隨系統設定。',
       toolViewTitle: '開發者模式',
-      toolViewDesc: '開啟後，對話裡的每一步會多出「技術細節」：工具代碼名、耗時、原始參數和輸出、程式碼和指令。',
+      toolViewDesc: '開啟後，對話裡的每一步會多出「技術細節」：工具代碼名、耗時、原始參數和輸出、程式碼和指令；輸入框也會把場景、審批和語音設定直接擺在外面。',
       reasoningCollapsedTitle: '預設摺疊推理過程',
       reasoningCollapsedDesc: '只在開發者模式下生效；平時推理總是收起成「想了 N 秒」，點開才看。',
       uiScaleTitle: '介面縮放',
