@@ -11,7 +11,12 @@ import { join } from 'node:path'
 
 import { describe, test } from 'vitest'
 
-import { clientConfigForRenderer, desktopFeatureInstallSwitches, envSwitch } from './apex-desktop-features'
+import {
+  clientConfigForRenderer,
+  desktopFeatureInstallSwitches,
+  desktopFeatureOnForLaunch,
+  envSwitch
+} from './apex-desktop-features'
 
 const STATE = {
   appliedVersion: 3,
@@ -46,6 +51,20 @@ describe('hc-1014 install switches for desktop_features', () => {
 
   test('no switch set: the platform decides', () => {
     assert.deepEqual(clientConfigForRenderer(STATE, {}).installSwitches, {})
+  })
+
+  // The same table src/store/single-thread.test.ts runs against the renderer's
+  // singleThreadSwitchFrom: main and renderer must settle the switch alike.
+  test.each([
+    [{}, { desktop_features: { single_thread: true } }, true],
+    [{}, { desktop_features: { single_thread: 'true' } }, false],
+    [{}, { desktop_features: { daily_ideas: true } }, false],
+    [{}, null, false],
+    [{ APEXNODES_SINGLE_THREAD: '1' }, null, true],
+    [{ APEXNODES_SINGLE_THREAD: '0' }, { desktop_features: { single_thread: true } }, false],
+    [{ APEXNODES_SINGLE_THREAD: 'maybe' }, { desktop_features: { single_thread: true } }, true]
+  ])('main settles env %j with payload %j as %j', (env, payload, expected) => {
+    assert.equal(desktopFeatureOnForLaunch('single_thread', env, payload), expected)
   })
 
   test('main answers hermes:clientConfig:get through clientConfigForRenderer with process.env', () => {

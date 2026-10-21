@@ -19,7 +19,7 @@
 | 状态 | 文件 |
 |---|---|
 | 开关关：开始页、侧栏「开始 ⌘N」、会话列表都在 | `screenshots/flag-off-start-and-sidebar.png` |
-| 开关开：一条对话跨两天；跨天画日期，同一天闲置超过 6 小时画「新的一段」 | `screenshots/flag-on-one-thread-two-days.png` |
+| 开关开：顶部胶囊只有 APEX 图标和名字；一条对话跨两天，跨天画日期，同一天闲置超过 6 小时画「新的一段」 | `screenshots/flag-on-one-thread-two-days.png` |
 | 开关开、还没有主线时：两句问候加 hc-991 的三张卡，没有开始页 | `screenshots/flag-on-first-open-empty-thread.png` |
 | 开关开：账户菜单「更早的对话」，列表里不含主线 | `screenshots/flag-on-earlier-conversations.png` |
 | 开关开：打开一条更早的对话，只读，输入框换成「回到对话」 | `screenshots/flag-on-earlier-conversation-read-only.png` |
@@ -72,7 +72,7 @@
 - **`restart-phrase-unanchored`**：测试里缺「从头来一遍字幕」这种情况。已补上这条用例，它属于「重做那一步」，不是新的一段。
 - **`cold-start-restores`**：测试传的是「配置还没回来」，根本走不到守卫。现在同时测「设置为开」和「还没回来」两种。
 
-之后新增了 5 条注入，覆盖标签栏「+」、命令面板新建会话、`/branch`。最终 57 条全部变红，没有一条未命中锚点：
+之后新增了 5 条注入，覆盖标签栏「+」、命令面板新建会话、`/branch`。最终 57 条全部变红，没有一条未命中锚点（后来又加了 5 条，见表尾）：
 
 | # | 注入（撤掉或改坏什么） | 文件 | 结果 | 变红的测试（节选） |
 |---|---|---|---|---|
@@ -133,6 +133,14 @@
 | 55 | `palette-not-filtered` | `src/app/command-palette/index.tsx` | RED | hc-1014 the seams stay wired the tab strip "+" and the command palette read the one-conversation guard |
 | 56 | `slash-branch-forks` | `src/app/single-thread/composer-middleware.ts` | RED | hc-1014 composer middleware: segments of the thread /branch is refused: the one thread has no second conversation to branch into |
 | 57 | `keybinds-bypass-guard` | `src/app/hooks/use-keybinds.ts` | RED | hc-1014 the seams stay wired ⌘T and the new-window shortcut go through the one-conversation guard |
+
+| 58 | `pill-with-switch-off` | `src/app/single-thread/thread-header.tsx` | RED | hc-1014 the header over the one thread the switch off → pill: false（共 2 条） |
+| 59 | `pill-on-earlier-conversation` | `src/app/single-thread/thread-header.tsx` | RED | hc-1014 the header over the one thread an earlier conversation (keeps its title) → pill: true |
+| 60 | `header-ungated` | `src/app/chat/index.tsx` | RED | hc-1014 the seams stay wired the chat view reads the single-thread splash, the gated composer and the gated header |
+| 61 | `main-resolver-install-ignored` | `electron/apex-desktop-features.ts` | RED | hc-1014 install switches for desktop_features main settles env {"APEXNODES_SINGLE_THREAD":"1"} with payload null as true（共 2 条） |
+| 62 | `main-resolver-literal-relaxed` | `electron/apex-desktop-features.ts` | RED | hc-1014 install switches for desktop_features main settles env {} with payload {"desktop_features":{"single_thread":"true"}} as false |
+
+第 58–62 条是后来补的：顶部胶囊和主进程开关的最终值函数（`desktopFeatureOnForLaunch`），单独跑了一轮，结果在 `hc-1014-inject-output-header.json`。合计 62/62 变红。
 
 ## 其他检查
 

@@ -199,8 +199,14 @@ describe('hc-1014 switch on, product mode: one conversation', () => {
 })
 
 describe('hc-1014 the seams stay wired', () => {
-  it('the chat view reads the single-thread splash and the gated composer', () => {
+  it('the chat view reads the single-thread splash, the gated composer and the gated header', () => {
     const chat = source('app', 'chat', 'index.tsx')
+
+    // Off the thread (and with the switch off) the header is today's ChatHeader with the same props.
+    expect(chat).toContain(
+      'return useSingleThreadHeader(props.selectedSessionId) ? <SingleThreadHeader /> : <ChatHeader {...props} />'
+    )
+    expect(chat).toMatch(/\{isPrimary && \(\n\s+<PrimaryChatHeader\n/)
 
     expect(chat).toContain('const introSplash = useStore($introSplashShown)')
     expect(chat).toContain("import { ChatBar, ChatBarFallback } from '../single-thread/composer-gate'")

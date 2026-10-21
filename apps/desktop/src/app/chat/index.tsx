@@ -61,6 +61,7 @@ import { isAuxiliaryWindow, isWatchWindow } from '@/store/windows'
 import { primaryRouteSelectedSessionId, routeSessionId } from '../routes'
 import { titlebarHeaderBaseClass, titlebarHeaderShadowClass, titlebarHeaderTitleClass } from '../shell/titlebar'
 import { ChatBar, ChatBarFallback } from '../single-thread/composer-gate'
+import { SingleThreadHeader, useSingleThreadHeader } from '../single-thread/thread-header'
 
 import { ChatDropOverlay } from './chat-drop-overlay'
 import { ChatSwapOverlay, ChatSyncBadge } from './chat-swap-overlay'
@@ -191,6 +192,11 @@ function ChatHeader({
       </div>
     </header>
   )
+}
+
+/** The primary chat's header: the single-thread pill over the one thread (hc-1014), today's header everywhere else. */
+function PrimaryChatHeader(props: ChatHeaderProps) {
+  return useSingleThreadHeader(props.selectedSessionId) ? <SingleThreadHeader /> : <ChatHeader {...props} />
 }
 
 interface ChatRuntimeBoundaryProps {
@@ -714,7 +720,7 @@ const ChatViewContent = memo(function ChatViewContent({
       {/* Tiles get their chrome from the layout zone (chip strip); the modal
           prompt overlays stay active-session-scoped in the primary surface. */}
       {isPrimary && (
-        <ChatHeader
+        <PrimaryChatHeader
           activeSessionId={activeSessionId}
           isRoutedSessionView={isRoutedSessionView}
           onDeleteSelectedSession={onDeleteSelectedSession}

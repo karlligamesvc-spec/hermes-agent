@@ -58,6 +58,36 @@ export function desktopFeatureInstallSwitches(env: Record<string, string | undef
   return switches
 }
 
+/**
+ * A feature's final value in main for this launch — the same rule the renderer
+ * applies (src/store/single-thread.ts `singleThreadSwitchFrom`): this install's
+ * switch wins when set, else only the platform's literal `true` turns it on.
+ * Sync and pure; main passes `process.env` and the cached client-config payload.
+ */
+export function desktopFeatureOnForLaunch(
+  feature: string,
+  env: Record<string, string | undefined>,
+  clientConfigPayload: unknown
+): boolean {
+  const install = desktopFeatureInstallSwitches(env)[feature]
+
+  if (typeof install === 'boolean') {
+    return install
+  }
+
+  const features =
+    clientConfigPayload && typeof clientConfigPayload === 'object' && !Array.isArray(clientConfigPayload)
+      ? (clientConfigPayload as { desktop_features?: unknown }).desktop_features
+      : null
+
+  return Boolean(
+    features &&
+    typeof features === 'object' &&
+    !Array.isArray(features) &&
+    (features as Record<string, unknown>)[feature] === true
+  )
+}
+
 /** What `hermes:clientConfig:get` answers: the cached state as stored, and this install's switches. */
 export function clientConfigForRenderer(
   state: ClientConfigStateLike,

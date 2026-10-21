@@ -14,6 +14,8 @@ import { getRuntimeI18nLocale } from './runtime'
 import type { Locale } from './types'
 
 export interface SingleThreadChatCopy {
+  /** The assistant's default name, in the header pill (decision 4: just APEX). */
+  assistantName: string
   /** Sidebar row that opens the thread. */
   thread: string
   greeting: string
@@ -46,6 +48,7 @@ const EN_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 const en: SingleThreadChatCopy = {
+  assistantName: 'APEX',
   thread: 'Chat',
   greeting: 'Hi, I’m APEX. I help you make short videos.',
   greetingHint:
@@ -67,6 +70,7 @@ const en: SingleThreadChatCopy = {
 }
 
 const zh: SingleThreadChatCopy = {
+  assistantName: 'APEX',
   thread: '对话',
   greeting: '你好，我是 APEX，帮你做短视频的。',
   greetingHint: '我们就在这一个对话里聊，不用开新的。想换个话题，直接说「从头来」。',
@@ -87,6 +91,7 @@ const zh: SingleThreadChatCopy = {
 }
 
 const zhHant: SingleThreadChatCopy = {
+  assistantName: 'APEX',
   thread: '對話',
   greeting: '你好，我是 APEX，幫你做短影音的。',
   greetingHint: '我們就在這一個對話裡聊，不用開新的。想換個話題，直接說「從頭來」。',
