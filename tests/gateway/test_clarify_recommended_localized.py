@@ -1,4 +1,5 @@
-"""A Chinese chat reads the agent's pick as 「（推荐）」, never as "(Recommended)".
+"""A Chinese chat reads the agent's pick as 「（推荐）」, never as "(Recommended)", and a question
+with no better answer (``recommended: false``) shows no label at all.
 
 ``clarify_tool`` tags the first choice with an English wire marker, and every messaging adapter
 renders whatever choices the gateway hands it. Real ``clarify_tool`` + real
@@ -21,6 +22,7 @@ from tools.clarify_tool import clarify_tool
 
 SESSION = "sk-clarify-zh"
 QUESTION = [{"question": "你手上有什么素材？", "choices": ["先出样片", "只要脚本"]}]
+SITUATION = [{"question": "你主要拍什么内容？", "choices": ["口播", "剧情", "带货"], "recommended": False}]
 
 
 class _TextAdapter(BasePlatformAdapter):
@@ -121,6 +123,24 @@ def test_native_card_shows_the_chinese_label_and_its_press_answers_bare(language
     response = _ask(adapter, loop, monkeypatch)
     assert adapter.card_choices == [["先出样片（推荐）", "只要脚本"]]
     assert response["user_response"] == "先出样片"
+
+
+def test_text_prompt_for_a_question_with_no_better_answer_labels_nothing(language, loop, monkeypatch):
+    language("zh")
+    adapter = _TextAdapter(reply="1")
+    response = _ask(adapter, loop, monkeypatch, SITUATION)
+    assert "  1. 口播\n  2. 剧情\n  3. 带货\n" in adapter.sent_text[0]
+    assert "推荐" not in adapter.sent_text[0]
+    assert "Recommended" not in adapter.sent_text[0]
+    assert response["user_response"] == "口播"
+
+
+def test_native_card_for_a_question_with_no_better_answer_labels_nothing(language, loop, monkeypatch):
+    language("zh")
+    adapter = _CardAdapter()
+    response = _ask(adapter, loop, monkeypatch, SITUATION)
+    assert adapter.card_choices == [["口播", "剧情", "带货"]]
+    assert response["user_response"] == "口播"
 
 
 def test_english_chat_keeps_the_english_label(language, loop, monkeypatch):

@@ -200,6 +200,21 @@ describe('first-use creator intake cards (hc-991)', () => {
     expect(patches).toEqual([{ skip: ['content_type'] }, { skip: ['platforms'] }, { skip: ['pain_point'] }])
   })
 
+  // hc-965: the three cards ask about the user's own situation, where no option
+  // is better than another. Their rows are the clarify card's, which label only a
+  // choice the backend marked, so none of them may read 「推荐」.
+  it('labels no option as recommended on any of the three cards', async () => {
+    install(cloud().bridge)
+    const { container } = renderCards()
+
+    for (const title of ['你主要做什么内容？', '主要发在哪个平台？', '现在最头疼的是哪件事？']) {
+      await screen.findByRole('heading', { name: title })
+      expect(screen.getAllByRole('button', { name: /^[A-E]/ })).toHaveLength(5)
+      expect(container.textContent).not.toMatch(/推荐|Recommended/)
+      fireEvent.click(screen.getByRole('button', { name: '先跳过' }))
+    }
+  })
+
   it('a failed save keeps the card and says so', async () => {
     const fake = cloud()
     install(fake.bridge)

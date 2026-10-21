@@ -9,12 +9,17 @@ terminal needed — mirrors tests/hermes_cli/test_cli_approval_ui.py.
 """
 
 import json
+import os
 import threading
 import time
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from cli import HermesCLI
 from agent.i18n import t
+from tests.waiting import wait_until
+from tools.clarify_tool import clarify_tool
 
 
 def _make_cli_stub():
@@ -396,3 +401,32 @@ class TestClarifyBellOnPrompt:
     def test_bell_on_prompt_rings_and_off_is_silent(self):
         assert "\a" in self._run_clarify(True)
         assert "\a" not in self._run_clarify(False)
+
+
+class TestClarifyPanelRecommendedLabel:
+    """The panel prints each choice as the tool sent it: "(Recommended)" on the first one by default,
+    on none for a question with no better answer (``recommended: false``)."""
+
+    @pytest.mark.parametrize(("extra", "first_row"), [
+        ({}, "1. Vlogs (Recommended)"),
+        ({"recommended": False}, "1. Vlogs"),
+    ])
+    def test_panel_labels_only_what_the_tool_labelled(self, extra, first_row):
+        cli = _make_cli_stub()
+        result = {}
+        question = {"question": "What do you film?", "choices": ["Vlogs", "Skits"], **extra}
+        thread = threading.Thread(
+            target=lambda: result.update(value=clarify_tool([question], callback=cli._clarify_callback)),
+            daemon=True)
+        thread.start()
+        state = wait_until(lambda: cli._clarify_state, what="the clarify panel")
+
+        with patch("hermes_cli.cli_tui_mixin.shutil.get_terminal_size", return_value=os.terminal_size((100, 40))):
+            panel = "".join(text for _style, text in cli._get_clarify_display_fragments())
+        rows = [line.strip(" │❯") for line in panel.splitlines()]
+        assert first_row in rows and "2. Skits" in rows
+        assert panel.count("Recommended") == first_row.count("Recommended")
+
+        cli._clarify_batch_enter(state)  # Enter on the highlighted first choice
+        thread.join(timeout=5)
+        assert json.loads(result["value"])["responses"][0]["user_response"] == "Vlogs"

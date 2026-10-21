@@ -166,7 +166,9 @@ export const letterFor = (index: number): string => String.fromCharCode(65 + ind
 
 // The backend tags the agent's preferred option (`mark_recommended`) with an
 // English wire marker; the card shows the active locale's word for it, in
-// tertiary text so the option itself still reads first.
+// tertiary text so the option itself still reads first. A question with no
+// better answer (`recommended: false`) arrives unmarked: never label a choice
+// by its position.
 function ChoiceLabel({ choice }: { choice: string }) {
   const { t } = useI18n()
   const bare = bareChoice(choice)
