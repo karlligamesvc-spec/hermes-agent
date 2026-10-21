@@ -52,7 +52,7 @@
 // electron-free and unit-testable, and neither imports this module, so there is
 // no cycle.
 import { applyConfigYamlKeys } from './apex-client-config'
-import { managedConfigModel, managedDefaultModel, managedModelDisplay } from './apex-model-tiers'
+import { managedConfigModel, managedModelDisplay, TIER_DEFAULT_MANAGED_MODEL } from './apex-model-tiers'
 import {
   auditManagedRelayKeyAnchors,
   locateManagedKeyAnchors,
@@ -89,14 +89,19 @@ const DEFAULT_API_BASE = 'https://api.apex-nodes.com'
 // The runtime appends `/chat/completions`, hence the base ends at `/relay/v1`.
 const DEFAULT_RELAY_BASE_URL = 'https://apex-nodes.com/relay/v1'
 
-// Default for new APEX installations. Existing selections are preserved by the
-// model mutation/preferences path; changing this seed does not migrate them.
-const DEFAULT_MANAGED_MODEL = 'deepseek-flash'
+// Default for new APEX installations: the Flash tier alias, with tiers on or
+// off (hc-1010). The relay maps it to the platform model behind Flash (catalog
+// `upstream_model`), so swapping that model is a server-side edit, not a
+// desktop release. Existing selections are preserved by the model
+// mutation/preferences path; changing this seed does not migrate them.
+const DEFAULT_MANAGED_MODEL = TIER_DEFAULT_MANAGED_MODEL
 
-// A branded id keeps startup discovery from selecting the built-in DeepSeek
-// provider (which would require a separate user API key). The relay resolves
-// the APEX alias to the platform model and enforces entitlement server-side.
-const MANAGED_MODEL_DISPLAY = `${DEFAULT_MANAGED_MODEL}-APEX`
+// The id WRITTEN to config. It must collide with no built-in catalog, or
+// startup discovery selects the built-in DeepSeek provider (which would require
+// a separate user API key). The alias already collides with none, and the
+// relay checks it against the plan's allowed list verbatim, so it is written
+// as-is — never with the `-APEX` suffix a raw-id default needed.
+const MANAGED_MODEL_DISPLAY = DEFAULT_MANAGED_MODEL
 
 // The runtime treats the relay as a generic OpenAI-compatible endpoint, so the
 // provider slug is the same `custom` the local/custom BYOK flow uses. Reusing
@@ -1125,12 +1130,10 @@ function resolveApexEndpoints(env: any = {}) {
   const authBase = trimTrailingSlash(env.APEXNODES_AUTH_BASE || DEFAULT_AUTH_BASE)
   const apiBase = trimTrailingSlash(env.APEXNODES_API_BASE || DEFAULT_API_BASE)
   const relayBaseUrl = trimTrailingSlash(env.APEXNODES_RELAY_BASE_URL || DEFAULT_RELAY_BASE_URL)
-  // hc-960: once tiers are on, a new install starts on the Flash alias.
-  const defaultModel = managedDefaultModel(env, DEFAULT_MANAGED_MODEL)
-  const model = String(env.APEXNODES_MANAGED_MODEL || defaultModel).trim() || defaultModel
+  const model = String(env.APEXNODES_MANAGED_MODEL || DEFAULT_MANAGED_MODEL).trim() || DEFAULT_MANAGED_MODEL
   // The display id is what gets WRITTEN to config (collision-free with built-in
   // catalogs — see MANAGED_MODEL_DISPLAY); precedence in managedModelDisplay.
-  const modelDisplay = managedModelDisplay(env, model, MANAGED_MODEL_DISPLAY)
+  const modelDisplay = managedModelDisplay(env, model)
 
   return {
     authBase,
@@ -1314,13 +1317,14 @@ function isLoginStateTruthEnabled(env: any = {}) {
  * without a credential would 401 every request, which is worse than falling back
  * to BYOK; callers gate on `resolveManagedRelayCredential` first.
  *
- * The written model id is the ApexNodes display name (`MANAGED_MODEL_DISPLAY`,
- * env-overridable), NOT the raw routed id — the raw `deepseek-v4-pro` collides
+ * The written model id is `MANAGED_MODEL_DISPLAY` (the Flash tier alias,
+ * env-overridable), NEVER a raw routed id — the raw `deepseek-v4-pro` collides
  * with the built-in DeepSeek catalog and gets the agent init mis-routed to the
  * keyless built-in `deepseek` provider (see MANAGED_MODEL_DISPLAY above). The
- * relay routes by DB truth and ignores this id, so it is safe + cosmetic on the
- * wire; locally it is the collision-free anchor that keeps resolution on the
- * relay's custom endpoint.
+ * relay routes the id only when the account's plan allows it and otherwise
+ * falls back to the account's default, so a stale id can never escalate;
+ * locally it is the collision-free anchor that keeps resolution on the relay's
+ * custom endpoint.
  *
  * Also returns a `custom_providers` entry registering the relay as a named
  * custom provider (`{name, base_url, api_key, model}` — Hermes' native shape).

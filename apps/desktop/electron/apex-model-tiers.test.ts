@@ -93,25 +93,35 @@ describe('the tier switch', () => {
 })
 
 describe('the managed default model', () => {
-  test('stays the pre-tier seed while the switch is off', () => {
-    const endpoints = resolveApexEndpoints({})
-
-    assert.equal(DEFAULT_MANAGED_MODEL, 'deepseek-flash')
-    assert.equal(endpoints.model, DEFAULT_MANAGED_MODEL)
-    assert.equal(endpoints.modelDisplay, MANAGED_MODEL_DISPLAY)
-  })
-
-  test('is the Flash alias, written without the -APEX sentinel, once tiers are on', () => {
-    const endpoints = resolveApexEndpoints({ APEXNODES_MODEL_TIERS: '1' })
+  // hc-1010: the default is the Flash alias whether or not tiers are on, so the
+  // model behind it is chosen by the relay's catalog alone.
+  test.each([
+    ['tiers off (no switch)', {}],
+    ['tiers off (explicit opt-out)', { APEXNODES_MODEL_TIERS: '0' }],
+    ['tiers on', { APEXNODES_MODEL_TIERS: '1' }]
+  ])('is the Flash alias, written without the -APEX sentinel, with %s', (_label, env) => {
+    const endpoints = resolveApexEndpoints(env)
 
     assert.equal(TIER_DEFAULT_MANAGED_MODEL, 'apex-flash')
+    assert.equal(DEFAULT_MANAGED_MODEL, 'apex-flash')
+    assert.equal(MANAGED_MODEL_DISPLAY, 'apex-flash')
     assert.equal(endpoints.model, 'apex-flash')
     assert.equal(endpoints.modelDisplay, 'apex-flash')
 
-    const block = buildManagedModelConfig('sk-test', { APEXNODES_MODEL_TIERS: '1' })
+    const block = buildManagedModelConfig('sk-test', env)
 
     assert.equal(block.default, 'apex-flash')
     assert.equal(block.custom_providers[0].model, 'apex-flash')
+  })
+
+  test('a routed-model override keeps a written alias bare and brands a raw id', () => {
+    assert.equal(resolveApexEndpoints({ APEXNODES_MANAGED_MODEL: 'apex-pro' }).modelDisplay, 'apex-pro')
+    assert.equal(resolveApexEndpoints({ APEXNODES_MANAGED_MODEL: 'APEX-Pro ' }).modelDisplay, 'apex-pro')
+    assert.equal(
+      resolveApexEndpoints({ APEXNODES_MANAGED_MODEL: 'deepseek-v4-pro' }).modelDisplay,
+      'deepseek-v4-pro-APEX'
+    )
+    assert.equal(resolveApexEndpoints({ APEXNODES_MANAGED_MODEL: '   ' }).modelDisplay, 'apex-flash')
   })
 
   test('honors a server-sent tier alias only when tiers are on', () => {
@@ -119,7 +129,16 @@ describe('the managed default model', () => {
 
     assert.equal(buildManagedModelConfig('sk-test', on, { model: 'apex-pro' }).default, 'apex-pro')
     assert.equal(buildManagedModelConfig('sk-test', on, { model: 'deepseek-v4-pro' }).default, 'apex-flash')
-    assert.equal(buildManagedModelConfig('sk-test', {}, { model: 'apex-pro' }).default, MANAGED_MODEL_DISPLAY)
+    assert.equal(buildManagedModelConfig('sk-test', {}, { model: 'apex-pro' }).default, 'apex-flash')
+  })
+
+  test('an older server’s -APEX default is still written as sent, in both modes', () => {
+    for (const env of [{}, { APEXNODES_MODEL_TIERS: '1' }]) {
+      const block = buildManagedModelConfig('sk-test', env, { model: 'deepseek-flash-APEX' })
+
+      assert.equal(block.default, 'deepseek-flash-APEX')
+      assert.equal(block.custom_providers[0].model, 'deepseek-flash-APEX')
+    }
   })
 
   test('aliases match the renderer twin', () => {
