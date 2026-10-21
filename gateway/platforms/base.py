@@ -4357,12 +4357,11 @@ class BasePlatformAdapter(ABC):
                 await asyncio.sleep(human_delay)
             try:
                 record_delivery(await _send_one(path, is_voice=is_voice, media_tag=media_tag))
-            except Exception as err:
+            except Exception as err:  # a raise is as undelivered as success=False: same notice (hc-1012)
                 record_delivery(SendResult(success=False, error=str(err)))
-                if media_tag:
-                    logger.warning("[%s] Error sending media: %s", self.name, err)
-                else:
-                    logger.error("[%s] Error sending local file %s: %s", self.name, path, err)
+                logger.log(logging.WARNING if media_tag else logging.ERROR, "[%s] Error sending %s: %s",
+                           self.name, "media" if media_tag else f"local file {path}", err)
+                await self._notify_media_delivery_failure(chat_id, path, is_voice=is_voice, metadata=metadata)
 
     async def _send_image_batch(
         self, event: MessageEvent, images: list, metadata: dict[str, Any], human_delay: float,
