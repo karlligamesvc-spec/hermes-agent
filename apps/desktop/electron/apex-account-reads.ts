@@ -2,8 +2,9 @@
  * apex-account-reads.ts — the signed-in account reads main relays with the
  * stored login JWT, which never reaches the renderer: hc-447 更新日志 (list +
  * best-effort read receipt), hc-971 the account's team, the hc-991
- * first-use creator profile (read and written) and the hc-995 creator-tip
- * catalog. Each handler's request and ok:false shapes live in its own module;
+ * first-use creator profile (read and written), the hc-995 creator-tip
+ * catalog and the hc-995 今日点子 (read, 开做 and 不喜欢). Each handler's
+ * request and ok:false shapes live in its own module;
  * this file only registers them, so main.ts holds one call instead of one
  * handler per read.
  */
@@ -11,6 +12,7 @@
 import { fetchAnnouncements, markAnnouncementRead } from './apex-announcements'
 import { type CreatorProfileDeps, creatorProfileRequest } from './apex-creator-profile'
 import { type CreatorTipsCache, fetchCreatorTips } from './apex-creator-tips'
+import { dailyIdeasRequest } from './apex-daily-ideas'
 import { fetchMyTeam } from './apex-team'
 
 export interface IpcHandleRegistry {
@@ -33,5 +35,8 @@ export function registerApexAccountReads(
   const creatorTips: CreatorTipsCache = { hash: '', tips: [] }
   ipcMain.handle('hermes:managed:creatorTips', async (_event, request) =>
     fetchCreatorTips(reads, process.env, creatorTips, request)
+  )
+  ipcMain.handle('hermes:managed:dailyIdeas', async (_event, request) =>
+    dailyIdeasRequest(reads, process.env, request)
   )
 }

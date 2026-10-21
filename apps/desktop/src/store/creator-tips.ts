@@ -20,6 +20,7 @@
 import { atom } from 'nanostores'
 
 import type { DesktopCreatorTip } from '@/global'
+import { desktopFeatureOn } from '@/lib/desktop-features'
 import { $creatorTipsDay, $creatorTipsSeen, type CreatorTipsDay } from '@/store/creator-tips-ledger'
 import { $tipsEnabled } from '@/store/tips'
 
@@ -128,17 +129,7 @@ export function dismissCreatorTip(turnKey: string): void {
 
 /** The admin client config's switch: only a literal `true` turns tips on. */
 export function creatorTipsOnInClientConfig(payload: unknown): boolean {
-  const features =
-    payload && typeof payload === 'object' && !Array.isArray(payload)
-      ? (payload as { desktop_features?: unknown }).desktop_features
-      : null
-
-  return Boolean(
-    features &&
-      typeof features === 'object' &&
-      !Array.isArray(features) &&
-      (features as Record<string, unknown>).creator_tips === true
-  )
+  return desktopFeatureOn(payload, 'creator_tips')
 }
 
 let loading: null | Promise<void> = null
