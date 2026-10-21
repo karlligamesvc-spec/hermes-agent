@@ -1,23 +1,13 @@
-/**
- * hc-1014 identity guard (hard rule 11) for the single-thread shell.
- *
- * Switch OFF (and developer mode with it on): the sidebar, the account menu, a
- * transcript spanning two days and the history page are byte-identical to the
- * goldens under `__identity__/single-thread-shell/`, which were recorded on
- * fork main 4ee99a81d6 with the same harness (render.tsx) before any
- * single-thread code existed. A diff there means the off path moved: fix the
- * code; re-record only for a change that is meant to reach every user.
- *
- * Switch ON in product mode: no Start page, no session list, no new-chat
- * button, one row into the conversation, 「更早的对话」 for old sessions, and
- * date / 「新的一段」 lines joining the segments into one timeline.
- */
+// First, before any app module: pin the zone the goldens were recorded in (CI
+// runs in UTC, and a date formatter cached at import would keep the old zone).
+import './__identity__/single-thread-shell/time-zone'
+
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { stubThreadEnvironment, stubThreadViewportSize, ThreadRuntime } from '@/components/assistant-ui/test-utils'
 import { Thread } from '@/components/assistant-ui/thread'
@@ -37,6 +27,24 @@ import {
   transcriptHtml,
   TWO_DAY_TRANSCRIPT
 } from './__identity__/single-thread-shell/render'
+/**
+ * hc-1014 identity guard (hard rule 11) for the single-thread shell.
+ *
+ * The harness pins America/Los_Angeles, the zone the goldens were recorded
+ * in (time-zone.ts): fixtures are local wall-clock times and CI runs in UTC.
+ *
+ * Switch OFF (and developer mode with it on): the sidebar, the account menu, a
+ * transcript spanning two days and the history page are byte-identical to the
+ * goldens under `__identity__/single-thread-shell/`, which were recorded on
+ * fork main 4ee99a81d6 with the same harness (render.tsx) before any
+ * single-thread code existed. A diff there means the off path moved: fix the
+ * code; re-record only for a change that is meant to reach every user.
+ *
+ * Switch ON in product mode: no Start page, no session list, no new-chat
+ * button, one row into the conversation, 「更早的对话」 for old sessions, and
+ * date / 「新的一段」 lines joining the segments into one timeline.
+ */
+import { restoreRecordingTimeZone } from './__identity__/single-thread-shell/time-zone'
 
 vi.mock('@/hermes', async importActual => ({
   ...(await importActual<Record<string, unknown>>()),
@@ -57,6 +65,8 @@ beforeEach(() => {
   setSingleThreadFlagForTest(false)
   setToolViewMode('product')
 })
+
+afterAll(restoreRecordingTimeZone)
 
 afterEach(() => {
   cleanup()

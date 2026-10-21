@@ -31,6 +31,12 @@
 `src/__identity__/single-thread-shell/` 下的 golden 是在 fork main 4ee99a81d6 上录的。录制用的是同一个 `render.tsx`，那时还没有任何单线代码：
 
 - 时钟固定在 2026-10-21 12:00，React、Radix、dnd-kit 生成的 id 都做了归一。
+- 时区固定为录制时的 America/Los_Angeles（`time-zone.ts`），在测试文件里最先导入，跑完恢复。原因是夹具用的是本地钟点，侧栏 `<time datetime>` 输出的是 UTC 时刻：
+  - 第一版没固定，CI 跑在 UTC，`datetime` 从 `16:10Z` 变成 `09:10Z`，两条侧栏守卫因此挂了；
+  - 这是环境差异，不是回归，golden 一个字节没改；
+  - 用固定时区后的 harness 在干净的 main 上，分别以 TZ=UTC 和 TZ=Asia/Shanghai 重录，四份文件都和已提交的逐字节相同；
+  - 本分支在 UTC、Asia/Shanghai、America/New_York、America/Los_Angeles、Europe/London 五个时区下都是 23/23；
+  - 撤掉固定后，TZ=UTC 下这两条重新变红。
 - 连录两次逐字节相同。
 - 录制时 main 的开发者模式渲染和产品模式逐字节相同，所以开发者模式也和这份 golden 比。
 

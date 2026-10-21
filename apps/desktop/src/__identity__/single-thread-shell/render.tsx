@@ -6,6 +6,9 @@
  * using only APIs that main already had: the same file recorded the goldens
  * there.
  */
+// First: the recording time zone, before any app module or fixture (time-zone.ts).
+import './time-zone'
+
 import { type ThreadMessage } from '@assistant-ui/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen } from '@testing-library/react'
