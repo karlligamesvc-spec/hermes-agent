@@ -33,7 +33,7 @@ import {
 } from '@/lib/icons'
 import type { VendorKey } from '@/lib/model-vendor'
 import { cn } from '@/lib/utils'
-import { $modelTierMode } from '@/store/model-tiers'
+import { $modelChoiceHidden } from '@/store/model-choice'
 import { notifyError } from '@/store/notifications'
 
 import { AdvancedSubmenu, AttachRows, type ComposerAdvanced, type ComposerPickers } from './context-menu-advanced'
@@ -94,8 +94,9 @@ export function ContextMenu({ advanced, pickers, state }: ContextMenuProps) {
   const [imageModel, setImageModel] = useState(() => selectedGenerationModel('image'))
   const [videoModel, setVideoModel] = useState(() => selectedGenerationModel('video'))
   // hc-960 exit 31 (Kael, 2026-10-20): tier mode names no model, so the two
-  // generation rows lose their pickers and always run on the defaults.
-  const modelTierMode = useStore($modelTierMode)
+  // generation rows lose their pickers and always run on the defaults; so does
+  // single-thread mode on an APEX account (hc-1015).
+  const modelChoiceHidden = useStore($modelChoiceHidden)
   const attachmentProviders = useComposerAttachmentProviders()
 
   // Earlier releases only stored this choice in localStorage. Migrate that
@@ -106,13 +107,13 @@ export function ContextMenu({ advanced, pickers, state }: ContextMenuProps) {
       return
     }
 
-    const image = startupGenerationModel('image', modelTierMode)
-    const video = startupGenerationModel('video', modelTierMode)
+    const image = startupGenerationModel('image', modelChoiceHidden)
+    const video = startupGenerationModel('video', modelChoiceHidden)
 
     if (image) {void saveImageGenerationModel(image.id).catch(error => notifyError(error, t.settings.config.autosaveFailed))}
 
     if (video) {void saveVideoGenerationModel(video.id).catch(error => notifyError(error, t.settings.config.autosaveFailed))}
-  }, [modelTierMode, state.tools.enabled, t.settings.config.autosaveFailed])
+  }, [modelChoiceHidden, state.tools.enabled, t.settings.config.autosaveFailed])
 
   // Seed the composer with a generation opener and focus it, then close the
   // menu. Prefill (not auto-send) so the user finishes describing the idea —
@@ -130,7 +131,7 @@ export function ContextMenu({ advanced, pickers, state }: ContextMenuProps) {
 
       if (kind === 'image') {setImageModel(selected)} else {setVideoModel(selected)}
       // Not even the opener names the model in tier mode.
-      startGeneration(modelTierMode ? starter : generationStarter(starter, selected))
+      startGeneration(modelChoiceHidden ? starter : generationStarter(starter, selected))
     } catch (error) {
       notifyError(error, t.settings.config.autosaveFailed)
     }
@@ -251,7 +252,7 @@ export function ContextMenu({ advanced, pickers, state }: ContextMenuProps) {
           <DropdownMenuLabel className="px-2 pb-0.5 pt-0.5 text-[0.625rem] font-semibold uppercase tracking-wider text-(--ui-text-tertiary)">
             {cap.generateLabel}
           </DropdownMenuLabel>
-          {modelTierMode ? (
+          {modelChoiceHidden ? (
             <>
               <GenerationRow
                 icon={ImageIcon}

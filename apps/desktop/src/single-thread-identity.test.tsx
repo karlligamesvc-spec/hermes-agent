@@ -18,12 +18,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChatBar } from '@/app/chat/composer'
 import type { ChatBarState } from '@/app/chat/composer/types'
-import { createdAt, stubThreadEnvironment, stubThreadViewportSize, ThreadRuntime } from '@/components/assistant-ui/test-utils'
+import {
+  createdAt,
+  stubThreadEnvironment,
+  stubThreadViewportSize,
+  ThreadRuntime
+} from '@/components/assistant-ui/test-utils'
 import { Thread } from '@/components/assistant-ui/thread'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
 import { $authState } from '@/store/auth'
 import { clearSessionDraft } from '@/store/composer'
 import { $activeSessionId, $gatewayState } from '@/store/session'
+import { $singleThreadFlag } from '@/store/single-thread'
 import { clearDismissedToolRows } from '@/store/tool-dismiss'
 import { $toolDisclosureStates, setToolViewMode } from '@/store/tool-view'
 import { remixFailedTurn, remixLiveTurn, remixRunningTurn } from '@/test/remix-turn'
@@ -67,7 +73,13 @@ function thoughtTurn(): ThreadMessage[] {
       ],
       status: { type: 'complete', reason: 'stop' },
       createdAt,
-      metadata: { unstable_state: null, unstable_annotations: [], unstable_data: [], steps: [], custom: { durationS: 9 } }
+      metadata: {
+        unstable_state: null,
+        unstable_annotations: [],
+        unstable_data: [],
+        steps: [],
+        custom: { durationS: 9 }
+      }
     } as unknown as ThreadMessage
   ]
 }
@@ -194,6 +206,21 @@ describe('single_thread off: the message area is unchanged', () => {
     const container = await renderThread(remixLiveTurn())
 
     await expect(messageArea(container)).toMatchFileSnapshot(`${GOLDEN}/thread-finished-developer.html`)
+  })
+})
+
+describe('single_thread on: developer mode is still the chat it was', () => {
+  it('a finished turn in developer mode, against the same golden', async () => {
+    $singleThreadFlag.set(true)
+    setToolViewMode('technical')
+
+    try {
+      const container = await renderThread(remixLiveTurn())
+
+      await expect(messageArea(container)).toMatchFileSnapshot(`${GOLDEN}/thread-finished-developer.html`)
+    } finally {
+      $singleThreadFlag.set(false)
+    }
   })
 })
 

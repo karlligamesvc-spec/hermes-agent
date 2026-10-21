@@ -160,7 +160,7 @@ import {
   syncManagedRelayConfigYaml
 } from './apex-managed'
 import { ManagedCredentialLifetime, managedProvisionCommitToken, ManagedRelayRecoveryCoordinator, provisionManagedRelayForCurrentAccount } from './apex-managed-recovery'
-import { applyModelTierSwitches, healManagedModelTier, modelTierStatus } from './apex-model-tiers'
+import { applyDesktopFeatureSwitches, healManagedModelTier, modelTierStatus } from './apex-model-tiers'
 import { normalizeStoredPluginsState, syncPlatformPlugins } from './apex-platform-plugins'
 import {
   applyPlatformSkills,
@@ -20663,7 +20663,7 @@ function readClientConfigState() {
   }
 }
 
-applyModelTierSwitches(process.env, readClientConfigState().payload, rememberLog) // hc-960: before app.whenReady
+applyDesktopFeatureSwitches(process.env, readClientConfigState().payload, rememberLog) // hc-960/hc-1015: before app.whenReady
 
 function writeClientConfigState(next) {
   fs.mkdirSync(path.dirname(DESKTOP_CLIENT_CONFIG_PATH), { recursive: true })

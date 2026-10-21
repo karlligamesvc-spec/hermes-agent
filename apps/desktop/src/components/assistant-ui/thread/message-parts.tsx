@@ -42,6 +42,7 @@ import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
 import { $reasoningCollapsedByDefault } from '@/store/reasoning-disclosure'
 import { $gatewayState } from '@/store/session'
+import { useSingleThreadMode } from '@/store/single-thread'
 import { $toolViewMode } from '@/store/tool-view'
 
 type TimelineToolCallProps = ToolCallMessagePartProps & { completedAt?: number; timestamp?: number }
@@ -356,6 +357,8 @@ const ReasoningAccordionGroup: FC<{ children?: ReactNode; endIndex: number; star
   // hc-973: a turn with tool work shows its thoughts once, folded into its
   // process block (「想了 8 秒」), not as one chip per reasoning stretch.
   const foldedIntoProcess = useTurnAnchor() !== ''
+  // hc-1015: single-thread mode shows no thoughts at all (decision 6).
+  const singleThread = useSingleThreadMode()
 
   const pending = useAuiState(
     s =>
@@ -394,7 +397,7 @@ const ReasoningAccordionGroup: FC<{ children?: ReactNode; endIndex: number; star
     }, undefined)
   )
 
-  if (!hasContent || foldedIntoProcess) {
+  if (!hasContent || foldedIntoProcess || singleThread) {
     return null
   }
 

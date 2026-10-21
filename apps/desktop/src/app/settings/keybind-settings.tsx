@@ -29,7 +29,8 @@ import {
   resetAllBindings,
   resetBinding
 } from '@/store/keybinds'
-import { MODEL_TIER_HIDDEN_KEYBIND_ACTIONS, useModelTierMode } from '@/store/model-tiers'
+import { useModelChoiceHidden } from '@/store/model-choice'
+import { MODEL_TIER_HIDDEN_KEYBIND_ACTIONS } from '@/store/model-tiers'
 
 import { SettingsContent } from './primitives'
 
@@ -42,10 +43,10 @@ export function KeybindSettings() {
   useContributions(KEYBINDS_AREA)
 
   // hc-960: the model-picker chord is inert on an APEX account, so unlisted.
-  const modelTierMode = useModelTierMode()
+  const modelChoiceHidden = useModelChoiceHidden()
 
   const actionList = allKeybindActions().filter(
-    action => !(modelTierMode && MODEL_TIER_HIDDEN_KEYBIND_ACTIONS.has(action.id))
+    action => !(modelChoiceHidden && MODEL_TIER_HIDDEN_KEYBIND_ACTIONS.has(action.id))
   )
 
   const [query, setQuery] = useState('')
