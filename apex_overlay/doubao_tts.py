@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import json
+import logging
 import os
 import tempfile
 import urllib.error
@@ -13,8 +15,62 @@ from dotenv import dotenv_values
 
 from agent.tts_provider import TTSProvider
 
+logger = logging.getLogger(__name__)
+
 PUBLIC_BASE = "https://api.apex-nodes.com/api/v1"
 MAX_AUDIO_BYTES = 18 * 1024 * 1024
+# The Scheduler route accepts 0.5–2.0 (app/routers/tts.py); the tool itself clamps to 0.25–4.0.
+MIN_SPEED, MAX_SPEED = 0.5, 2.0
+
+# hc-1007: what the model reads while Doubao is the active provider. Upstream's text names
+# Edge and OpenAI, and on 0.17.58 a model cutting a video wrote its own edge-tts code and then
+# used macOS `say` instead of calling this tool (2026-10-21; Scheduler saw no TTS call).
+NARRATION_DESCRIPTION = (
+    "把文字合成语音，默认用 APEX 平台的豆包配音（seed-tts-2.0，中文女声）。"
+    "视频配音、旁白、口播、朗读一律调用本工具：它返回音频文件（MEDIA: 路径），"
+    "在 Hypit、ffmpeg 或脚本里直接引用这个文件。"
+    "不要在终端或代码里自己用 edge-tts、gTTS、pyttsx3、macOS say 或其他系统声音代替。"
+    "本工具失败时把错误告诉用户，不要换别的声音顶上。"
+    "长文按原顺序自动分段合成，不用自己拆。声音由用户的设置决定，不由你选择。"
+)
+
+
+def narration_parameters(parameters: dict, home: str) -> dict:
+    params = copy.deepcopy(parameters)
+    props = params["properties"]
+    props["text"]["description"] = "要读出来的文字。"
+    props["output_path"]["description"] = (
+        f"可选：音频保存路径，比如剪辑工程里的 narration.mp3；豆包配音总是存成 .mp3。不填就存到 {home}/audio_cache/。"
+    )
+    props["speed"]["description"] = "可选：语速倍数，1.0 为正常，范围 0.5–2.0，超出按边界处理。"
+    props["instructions"]["description"] = "豆包配音不使用这个参数，不用填。"
+    return params
+
+
+def install_narration_schema(tts_tool) -> bool:
+    """While Doubao is the active provider, show the model the Chinese narration description."""
+    from hermes_constants import display_hermes_home
+    from tools.registry import registry
+
+    entry = registry.get_entry("text_to_speech")
+    if entry is None:
+        return False
+    original = entry.dynamic_schema_overrides
+    if getattr(original, "_apex_doubao_schema", False):
+        return True
+
+    def overrides():
+        result = dict(original() or {}) if original is not None else {}
+        # An explicitly chosen BYOK provider keeps upstream's description.
+        if tts_tool._get_provider(tts_tool._load_tts_config()) != "doubao":
+            return result
+        parameters = result.get("parameters") or tts_tool.TTS_SCHEMA["parameters"]
+        return {**result, "description": NARRATION_DESCRIPTION,
+                "parameters": narration_parameters(parameters, display_hermes_home())}
+
+    overrides._apex_doubao_schema = True
+    entry.dynamic_schema_overrides = overrides
+    return True
 
 
 def connection() -> tuple[str, str]:
@@ -52,7 +108,7 @@ class DoubaoTTS(TTSProvider):
         key, base = connection()
         if not key:
             raise ValueError('请先登录 APEX，再生成豆包配音。')
-        payload = {'text': text, 'speed': 1.0 if speed is None else speed}
+        payload = {'text': text, 'speed': 1.0 if speed is None else min(MAX_SPEED, max(MIN_SPEED, float(speed)))}
         if voice:
             payload['voice'] = voice
         request = urllib.request.Request(
@@ -98,6 +154,11 @@ def apply(ctx) -> None:
 
     tts_tool.DEFAULT_PROVIDER = 'doubao'
     tts_tool_delivery.PROVIDER_MAX_TEXT_LENGTH['doubao'] = 2000
+    try:
+        if not install_narration_schema(tts_tool):
+            logger.warning("apex-overlay: text_to_speech is not registered; the model keeps upstream's description")
+    except Exception:
+        logger.warning("apex-overlay: Doubao narration description did not apply", exc_info=True)
     if getattr(tts_tool._dispatch_to_plugin_provider, '_apex_doubao_guard', False):
         ctx.register_tts_provider(DoubaoTTS())
         return

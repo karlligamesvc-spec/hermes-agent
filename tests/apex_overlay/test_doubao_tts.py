@@ -10,6 +10,16 @@ from apex_overlay import doubao_tts as adapter
 AUDIO = b'ID3\x04\x00\x00test-audio'
 
 
+@pytest.fixture
+def tts_entry(monkeypatch):
+    """apply() wraps the real text_to_speech entry; put it back after each test."""
+    from tools import tts_tool  # registers text_to_speech
+    from tools.registry import registry
+    entry = registry.get_entry('text_to_speech')
+    monkeypatch.setattr(entry, 'dynamic_schema_overrides', entry.dynamic_schema_overrides)
+    return entry
+
+
 def test_provider_uses_platform_and_writes_real_audio_atomically(monkeypatch, tmp_path):
     monkeypatch.setattr(adapter, 'connection', lambda: ('platform-key', 'https://api.apex-nodes.com/api/v1'))
     class Response:
@@ -41,7 +51,7 @@ def test_network_failure_leaves_no_fake_audio_or_system_fallback(monkeypatch, tm
     assert not any(p.is_file() for p in tmp_path.iterdir())
 
 
-def test_default_dispatch_and_missing_plugin_fail_closed(monkeypatch):
+def test_default_dispatch_and_missing_plugin_fail_closed(monkeypatch, tts_entry):
     from tools import tts_tool, tts_tool_delivery
     monkeypatch.setattr(tts_tool, '_load_tts_config', tts_tool._load_tts_config)
     monkeypatch.setattr(tts_tool, 'DEFAULT_PROVIDER', 'edge')
@@ -107,8 +117,16 @@ assert result['success'],result
 assert result['provider']=='doubao'
 assert Path(result['file_path']).read_bytes()==audio
 assert calls==['你好。']
+from tools.registry import registry
+schema=registry.get_definitions({'text_to_speech'},quiet=True)[0]['function']
+assert schema['description'].startswith('把文字合成语音，默认用 APEX 平台的豆包配音'),schema['description']
+assert 'edge-tts' in schema['description'] and 'say' in schema['description']
+assert '0.5–2.0' in schema['parameters']['properties']['speed']['description']
+assert str(home) in schema['parameters']['properties']['output_path']['description']
 (home/'config.yaml').write_text('plugins:\n  enabled:\n    - apex-overlay\ntts:\n  provider: openai\n',encoding='utf-8')
 assert tts_tool._load_tts_config()['provider']=='openai'
+upstream=tts_tool._tts_schema_overrides()
+assert registry.get_entry('text_to_speech').dynamic_schema_overrides()=={**upstream}
 server.shutdown()
 '''
     env = {**os.environ, 'HERMES_HOME': str(tmp_path / 'profile'), 'TOOLS_GATEWAY_KEY': 'only-this-profile'}
@@ -117,7 +135,7 @@ server.shutdown()
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_registration_failure_still_blocks_edge_fallback(monkeypatch):
+def test_registration_failure_still_blocks_edge_fallback(monkeypatch, tts_entry):
     from tools import tts_tool, tts_tool_delivery
     monkeypatch.setattr(tts_tool, '_load_tts_config', tts_tool._load_tts_config)
     monkeypatch.setattr(tts_tool, 'DEFAULT_PROVIDER', 'edge')
@@ -130,3 +148,53 @@ def test_registration_failure_still_blocks_edge_fallback(monkeypatch):
     assert tts_tool._get_provider({}) == 'doubao'
     with pytest.raises(ValueError, match='未切换其他声音'):
         tts_tool._dispatch_to_plugin_provider('你好', 'out.mp3', 'doubao', {})
+
+
+def test_model_reads_chinese_narration_text_only_while_doubao_is_active(monkeypatch, tts_entry):
+    # hc-1007: upstream's description names Edge; the model must read the Doubao narration rule.
+    from tools import tts_tool, tts_tool_delivery
+    monkeypatch.setattr(tts_tool, '_load_tts_config', tts_tool._load_tts_config)
+    monkeypatch.setattr(tts_tool, 'DEFAULT_PROVIDER', 'edge')
+    monkeypatch.setattr(tts_tool, '_dispatch_to_plugin_provider', tts_tool._dispatch_to_plugin_provider)
+    monkeypatch.setattr(tts_tool_delivery, 'PROVIDER_MAX_TEXT_LENGTH', dict(tts_tool_delivery.PROVIDER_MAX_TEXT_LENGTH))
+    upstream = tts_entry.dynamic_schema_overrides()
+    assert 'edge' in tts_tool.TTS_SCHEMA['description']
+    adapter.apply(SimpleNamespace(register_tts_provider=lambda provider: None))
+    wrapped = tts_entry.dynamic_schema_overrides
+    adapter.apply(SimpleNamespace(register_tts_provider=lambda provider: None))
+    assert tts_entry.dynamic_schema_overrides is wrapped  # re-apply does not stack wrappers
+
+    config = {}
+    monkeypatch.setattr(tts_tool, '_load_tts_config', lambda: dict(config))
+    shown = tts_entry.dynamic_schema_overrides()
+    assert shown['description'] == adapter.NARRATION_DESCRIPTION
+    for phrase in ('豆包配音', '视频配音、旁白、口播、朗读一律调用本工具', 'edge-tts', 'pyttsx3', 'macOS say', '不要换别的声音顶上'):
+        assert phrase in shown['description']
+    props = shown['parameters']['properties']
+    assert set(props) == set(tts_tool.TTS_SCHEMA['parameters']['properties'])
+    assert shown['parameters']['required'] == ['text']
+    assert '0.5–2.0' in props['speed']['description']
+    assert 'Edge' not in json.dumps(shown, ensure_ascii=False)
+    assert 'edge/openai' in tts_tool.TTS_SCHEMA['description']  # the static schema is untouched
+
+    config['provider'] = 'openai'  # explicit BYOK keeps upstream's text
+    assert tts_entry.dynamic_schema_overrides() == upstream
+
+
+@pytest.mark.parametrize('speed, sent', [(None, 1.0), (1.25, 1.25), (0.25, 0.5), (4.0, 2.0)])
+def test_speed_stays_inside_what_scheduler_accepts(monkeypatch, tmp_path, speed, sent):
+    monkeypatch.setattr(adapter, 'connection', lambda: ('key', 'https://api.apex-nodes.com/api/v1'))
+    seen = []
+    class Response:
+        headers = Message()
+        headers['Content-Type'] = 'audio/mpeg'
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self, limit): return AUDIO
+    class Opener:
+        def open(self, request, timeout):
+            seen.append(json.loads(request.data)['speed'])
+            return Response()
+    monkeypatch.setattr(adapter.urllib.request, 'build_opener', lambda *args: Opener())
+    adapter.DoubaoTTS().synthesize('你好', str(tmp_path / 'out.mp3'), speed=speed)
+    assert seen == [sent]
