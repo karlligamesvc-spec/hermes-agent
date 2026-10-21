@@ -2240,14 +2240,22 @@ class WeixinAdapter(BasePlatformAdapter):
         caption: Optional[str] = None,
         reply_to: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        **kwargs,
     ) -> SendResult:
+        # hc-1012: the gateway's delivery loops pass is_voice=...; without
+        # **kwargs that raised TypeError and the audio never left (fork main
+        # already accepts it).
+        del kwargs
         if not self._send_session or not self._token:
             return SendResult(success=False, error="Not connected")
 
         # Native outbound Weixin voice bubbles are not proven-working in the
         # upstream reference implementation. Prefer a reliable file attachment
         # fallback so users at least receive playable audio, even for .silk.
-        fallback_caption = caption or "[voice message as attachment]"
+        # hc-1012: catalog text as on fork main, so zh hosts show 「[语音消息作为附件]」.
+        from agent.i18n import t
+
+        fallback_caption = caption or t("platform.weixin.voice_as_attachment")
         try:
             message_id = await self._send_file(
                 chat_id,

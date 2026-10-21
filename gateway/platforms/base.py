@@ -4968,16 +4968,27 @@ class BasePlatformAdapter(ABC):
         attachments. When the subsequent upload returns ``success=False`` (for
         example Discord accepted the message but attached nothing), the user
         must see a failure notice instead of a silent drop (#66797).
+        A send that raises gets the same notice (hc-1012).
+
+        hc-1012: the text comes from the ``gateway.notify.*`` catalog (as on
+        fork main), so hosted assistants with ``display.language: zh`` show it
+        in Chinese.
         """
+        from agent.i18n import t
+
         ext = Path(media_path).suffix.lower()
         _VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".3gp"}
         if is_voice or should_send_media_as_audio(self.platform, ext, is_voice=is_voice):
-            text = "⚠️ Couldn't deliver the audio attachment."
+            text = t("gateway.notify.media_delivery_failed", kind=t("gateway.notify.media_kind.audio"))
         elif ext in _VIDEO_EXTS:
-            text = "⚠️ Couldn't deliver the video attachment."
+            text = t("gateway.notify.media_delivery_failed", kind=t("gateway.notify.media_kind.video"))
         else:
             file_name = os.path.basename(media_path)
-            text = f"⚠️ Couldn't deliver the file attachment ({file_name})."
+            text = t(
+                "gateway.notify.media_delivery_failed_with_name",
+                kind=t("gateway.notify.media_kind.file"),
+                file_name=file_name,
+            )
         try:
             notice = await self.send(chat_id=chat_id, content=text, metadata=metadata)
             if not notice.success:
@@ -6988,6 +6999,14 @@ class BasePlatformAdapter(ABC):
                             )
                     except Exception as media_err:
                         logger.warning("[%s] Error sending media: %s", self.name, media_err)
+                        # hc-1012: a send that raises is as undelivered as one
+                        # that returns success=False; tell the user either way.
+                        await self._notify_media_delivery_failure(
+                            event.source.chat_id,
+                            media_path,
+                            is_voice=is_voice,
+                            metadata=_final_thread_metadata,
+                        )
 
                 # Send auto-detected local non-image files as native attachments
                 for file_path in _non_image_local:
@@ -7021,6 +7040,11 @@ class BasePlatformAdapter(ABC):
                             )
                     except Exception as file_err:
                         logger.error("[%s] Error sending local file %s: %s", self.name, file_path, file_err)
+                        await self._notify_media_delivery_failure(
+                            event.source.chat_id,
+                            file_path,
+                            metadata=_final_thread_metadata,
+                        )
 
                 # A3 (#29346): if a non-empty response produced nothing
                 # deliverable, fail loudly rather than dropping it in silence.

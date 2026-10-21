@@ -20,6 +20,14 @@ approval:
   blocklist_message: "このコマンドは無条件ブロックリストに含まれており、承認できません。"
 
 gateway:
+  notify:
+    media_kind:
+      audio: "音声"
+      video: "動画"
+      file: "ファイル"
+      image: "画像"
+    media_delivery_failed: "⚠️ {kind}の添付ファイルを配信できませんでした。"
+    media_delivery_failed_with_name: "⚠️ {kind}の添付ファイル ({file_name}) を配信できませんでした。"
   approval_expired: "⚠️ 承認の有効期限が切れました（エージェントはもう待機していません）。エージェントに再試行を依頼してください。"
   draining:         "⏳ 再起動前に {count} 個のアクティブエージェントの終了を待っています..."
   goal_cleared:     "✓ 目標をクリアしました。"
@@ -456,3 +464,7 @@ Future messages in this room will use that transcript until `/reset` or another 
     session_db_unavailable_prefix: "セッションデータベースが利用できません"
     session_not_found:           "データベースにセッションが見つかりません。"
     warn_passthrough:            "⚠️ {error}"
+
+platform:
+  weixin:
+    voice_as_attachment: "[音声メッセージを添付ファイルとして送信]"

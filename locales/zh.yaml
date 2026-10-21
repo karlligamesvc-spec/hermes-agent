@@ -20,6 +20,14 @@ approval:
   blocklist_message: "此命令位于无条件拦截列表中，无法被批准。"
 
 gateway:
+  notify:
+    media_kind:
+      audio: "音频"
+      video: "视频"
+      file: "文件"
+      image: "图片"
+    media_delivery_failed: "⚠️ 无法发送{kind}附件。"
+    media_delivery_failed_with_name: "⚠️ 无法发送{kind}附件（{file_name}）。"
   approval_expired: "⚠️ 批准已过期（代理不再等待）。请让代理重试。"
   draining:         "⏳ 正在等待 {count} 个活跃代理结束后重启..."
   goal_cleared:     "✓ 目标已清除。"
@@ -456,3 +464,7 @@ Future messages in this room will use that transcript until `/reset` or another 
     session_db_unavailable_prefix: "会话数据库不可用"
     session_not_found:           "数据库中未找到该会话。"
     warn_passthrough:            "⚠️ {error}"
+
+platform:
+  weixin:
+    voice_as_attachment: "[语音消息作为附件]"

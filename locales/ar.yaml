@@ -25,6 +25,14 @@ approval:
   blocklist_message: "هذا الأمر مدرج في قائمة الحظر غير المشروطة ولا يمكن الموافقة عليه."
 
 gateway:
+  notify:
+    media_kind:
+      audio: "صوت"
+      video: "فيديو"
+      file: "ملف"
+      image: "صورة"
+    media_delivery_failed: "⚠️ تعذّر إرسال المرفق من نوع {kind}."
+    media_delivery_failed_with_name: "⚠️ تعذّر إرسال المرفق من نوع {kind} ({file_name})."
   context:
     header:                "🧠 **Context Window**"
     model:                 "Model: `{model}`"
@@ -458,3 +466,7 @@ gateway:
     session_db_unavailable_prefix: "قاعدة بيانات الجلسات غير متاحة"
     session_not_found:           "لم يُعثر على الجلسة في قاعدة البيانات."
     warn_passthrough:            "⚠️ {error}"
+
+platform:
+  weixin:
+    voice_as_attachment: "[رسالة صوتية كمرفق]"

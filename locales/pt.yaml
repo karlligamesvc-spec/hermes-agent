@@ -20,6 +20,14 @@ approval:
   blocklist_message: "Este comando está na lista de bloqueio incondicional e não pode ser aprovado."
 
 gateway:
+  notify:
+    media_kind:
+      audio: "áudio"
+      video: "vídeo"
+      file: "arquivo"
+      image: "imagem"
+    media_delivery_failed: "⚠️ Não foi possível entregar o anexo de {kind}."
+    media_delivery_failed_with_name: "⚠️ Não foi possível entregar o anexo de {kind} ({file_name})."
   approval_expired: "⚠️ A aprovação expirou (o agente já não está à espera). Peça ao agente para tentar novamente."
   draining:         "⏳ A aguardar que {count} agente(s) ativo(s) terminem antes de reiniciar..."
   goal_cleared:     "✓ Objetivo removido."
@@ -456,3 +464,7 @@ Future messages in this room will use that transcript until `/reset` or another 
     session_db_unavailable_prefix: "Base de dados de sessões indisponível"
     session_not_found:           "Sessão não encontrada na base de dados."
     warn_passthrough:            "⚠️ {error}"
+
+platform:
+  weixin:
+    voice_as_attachment: "[mensagem de voz como anexo]"

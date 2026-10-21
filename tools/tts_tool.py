@@ -3231,16 +3231,12 @@ def _text_to_speech_single(
             file_path = _configured_command_tts_output_path(
                 file_path, command_provider_config
             )
-        from agent.file_safety import is_write_approval_required, is_write_denied
-
-        if is_write_denied(str(file_path)) or is_write_approval_required(str(file_path)):
-            return json.dumps({
-                "success": False,
-                "error": (
-                    f"output_path targets a protected credential or system path: "
-                    f"{file_path}. Choose a normal audio output location."
-                ),
-            }, ensure_ascii=False)
+        # hc-1012: no protected-path check here. text_to_speech_tool() is the
+        # only caller; it checks a caller-supplied output_path once and
+        # otherwise passes its own default (<HERMES_HOME>/cache/audio). Checking
+        # that default again rejected it wherever HERMES_HOME sits outside
+        # HERMES_WRITE_SAFE_ROOT (hosted containers: /home/hermes/.hermes vs
+        # /opt/data), so every first call failed. Fork main checks once too.
     else:
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         out_dir = Path(DEFAULT_OUTPUT_DIR)

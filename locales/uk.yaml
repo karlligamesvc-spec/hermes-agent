@@ -20,6 +20,14 @@ approval:
   blocklist_message: "Ця команда є в безумовному списку блокування, її не можна схвалити."
 
 gateway:
+  notify:
+    media_kind:
+      audio: "аудіо"
+      video: "відео"
+      file: "файл"
+      image: "зображення"
+    media_delivery_failed: "⚠️ Не вдалося доставити вкладення ({kind})."
+    media_delivery_failed_with_name: "⚠️ Не вдалося доставити вкладення ({kind}: {file_name})."
   approval_expired: "⚠️ Час схвалення минув (агент більше не очікує). Попросіть агента спробувати ще раз."
   draining:         "⏳ Очікування завершення {count} активних агент(ів) перед перезапуском..."
   goal_cleared:     "✓ Ціль очищено."
@@ -456,3 +464,7 @@ Future messages in this room will use that transcript until `/reset` or another 
     session_db_unavailable_prefix: "База даних сеансів недоступна"
     session_not_found:           "Сеанс не знайдено в базі даних."
     warn_passthrough:            "⚠️ {error}"
+
+platform:
+  weixin:
+    voice_as_attachment: "[голосове повідомлення як вкладення]"

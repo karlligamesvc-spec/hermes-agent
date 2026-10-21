@@ -20,6 +20,14 @@ approval:
   blocklist_message: "Questo comando è nella lista di blocco incondizionata e non può essere approvato."
 
 gateway:
+  notify:
+    media_kind:
+      audio: "audio"
+      video: "video"
+      file: "file"
+      image: "immagine"
+    media_delivery_failed: "⚠️ Impossibile recapitare l'allegato {kind}."
+    media_delivery_failed_with_name: "⚠️ Impossibile recapitare l'allegato {kind} ({file_name})."
   approval_expired: "⚠️ Approvazione scaduta (l'agente non è più in attesa). Chiedi all'agente di riprovare."
   draining:         "⏳ Attendo il completamento di {count} agente/i attivo/i prima di riavviare..."
   goal_cleared:     "✓ Obiettivo cancellato."
@@ -456,3 +464,7 @@ Future messages in this room will use that transcript until `/reset` or another 
     session_db_unavailable_prefix: "Database delle sessioni non disponibile"
     session_not_found:           "Sessione non trovata nel database."
     warn_passthrough:            "⚠️ {error}"
+
+platform:
+  weixin:
+    voice_as_attachment: "[messaggio vocale come allegato]"

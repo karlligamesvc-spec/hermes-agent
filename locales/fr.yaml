@@ -20,6 +20,14 @@ approval:
   blocklist_message: "Cette commande est sur la liste de blocage inconditionnel et ne peut pas être approuvée."
 
 gateway:
+  notify:
+    media_kind:
+      audio: "audio"
+      video: "vidéo"
+      file: "fichier"
+      image: "image"
+    media_delivery_failed: "⚠️ Impossible de livrer la pièce jointe ({kind})."
+    media_delivery_failed_with_name: "⚠️ Impossible de livrer la pièce jointe ({kind}) ({file_name})."
   approval_expired: "⚠️ Approbation expirée (l'agent n'attend plus). Demandez à l'agent de réessayer."
   draining:         "⏳ Vidage de {count} agent(s) actif(s) avant redémarrage..."
   goal_cleared:     "✓ Objectif effacé."
@@ -456,3 +464,7 @@ Future messages in this room will use that transcript until `/reset` or another 
     session_db_unavailable_prefix: "Base de données de sessions indisponible"
     session_not_found:           "Session introuvable dans la base de données."
     warn_passthrough:            "⚠️ {error}"
+
+platform:
+  weixin:
+    voice_as_attachment: "[message vocal en pièce jointe]"

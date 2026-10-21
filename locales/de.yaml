@@ -20,6 +20,14 @@ approval:
   blocklist_message: "Dieser Befehl steht auf der unbedingten Sperrliste und kann nicht genehmigt werden."
 
 gateway:
+  notify:
+    media_kind:
+      audio: "Audio"
+      video: "Video"
+      file: "Datei"
+      image: "Bild"
+    media_delivery_failed: "⚠️ Der {kind}-Anhang konnte nicht zugestellt werden."
+    media_delivery_failed_with_name: "⚠️ Der {kind}-Anhang ({file_name}) konnte nicht zugestellt werden."
   approval_expired: "⚠️ Genehmigung abgelaufen (Agent wartet nicht mehr). Bitten Sie den Agenten, es erneut zu versuchen."
   draining:         "⏳ Warte auf {count} aktive(n) Agent(en) vor dem Neustart..."
   goal_cleared:     "✓ Ziel gelöscht."
@@ -456,3 +464,7 @@ Future messages in this room will use that transcript until `/reset` or another 
     session_db_unavailable_prefix: "Session-Datenbank nicht verfügbar"
     session_not_found:           "Session nicht in der Datenbank gefunden."
     warn_passthrough:            "⚠️ {error}"
+
+platform:
+  weixin:
+    voice_as_attachment: "[Sprachnachricht als Anhang]"
