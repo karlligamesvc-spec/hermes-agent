@@ -62,6 +62,8 @@ vi.mock('../chat', () => ({
   }
 }))
 vi.mock('../chat/sidebar', () => ({ ChatSidebar: () => null }))
+vi.mock('../single-thread/sidebar', () => ({ SingleThreadSidebar: () => null }))
+vi.mock('../single-thread/use-single-thread-shell', () => ({ useSingleThreadShell: () => undefined }))
 vi.mock('../right-sidebar/terminal/chrome', () => ({ TerminalPaneChrome: () => null }))
 vi.mock('../shell/hooks/use-status-snapshot', () => ({ useStatusSnapshot: () => ({}) }))
 vi.mock('../shell/hooks/use-statusbar-items', () => ({
