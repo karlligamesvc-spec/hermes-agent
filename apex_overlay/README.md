@@ -150,6 +150,16 @@ plugins, network errors and invalid audio fail without silently switching to
 Edge or OS speech. An explicitly configured provider remains respected.
 The APEX real-time Qwen voice transport is a separate feature.
 
+hc-1007: while Doubao is the active provider, the model reads a Chinese
+`text_to_speech` description (`NARRATION_DESCRIPTION`): every voice-over,
+narration and read-aloud goes through this tool, and the model must not write
+its own edge-tts / gTTS / pyttsx3 / macOS `say` code instead. Upstream's text
+names Edge and OpenAI; on 0.17.58 a model cutting a video did exactly that
+(2026-10-21). The wrapper sits on the registry entry's
+`dynamic_schema_overrides`, so an explicit BYOK provider still shows
+upstream's description. Speed is clamped to the 0.5–2.0 the Scheduler route
+accepts.
+
 Requires the companion Scheduler route before rollout. This change alone does
 not publish a Desktop installer or change the production runtime pin.
 
