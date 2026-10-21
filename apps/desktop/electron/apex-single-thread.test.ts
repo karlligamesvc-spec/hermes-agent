@@ -12,7 +12,7 @@ import { join } from 'node:path'
 
 import { describe, test } from 'vitest'
 
-import { clientConfigForRenderer } from './apex-desktop-features'
+import { clientConfigForRenderer, desktopFeatureOnForLaunch } from './apex-desktop-features'
 import { DEFAULT_RELAY_BASE_URL } from './apex-managed'
 import {
   applyDesktopFeatureSwitches,
@@ -24,7 +24,6 @@ import {
   applySingleThreadSwitch,
   isSingleThreadActive,
   SINGLE_THREAD_ACTIVE_ENV,
-  singleThreadFromClientConfig,
   singleThreadOnForLaunch
 } from './apex-single-thread'
 
@@ -43,7 +42,26 @@ describe('the switch for this launch', () => {
     [[], false],
     [null, false]
   ])('reads the platform payload %j as %s', (payload, on) => {
-    assert.equal(singleThreadFromClientConfig(payload), on)
+    assert.equal(singleThreadOnForLaunch({}, payload), on)
+  })
+
+  test('is hc-1014’s decision itself: the same answer for every install value and payload', () => {
+    // hard rule 12: one rule for the switch. A second implementation here could
+    // drift from hc-1014's; this pins the two together over the whole grid.
+    const installs = [undefined, '1', '0', 'true', 'off', 'maybe', '']
+    const payloads = [ON, OFF, { desktop_features: { single_thread: 'true' } }, null, [], { desktop_features: [] }]
+
+    for (const value of installs) {
+      for (const payload of payloads) {
+        const env: Record<string, string | undefined> = value === undefined ? {} : { [INSTALL]: value }
+
+        assert.equal(
+          singleThreadOnForLaunch(env, payload),
+          desktopFeatureOnForLaunch('single_thread', env, payload),
+          `${INSTALL}=${String(value)} with ${JSON.stringify(payload)}`
+        )
+      }
+    }
   })
 
   test.each([
