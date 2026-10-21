@@ -14,6 +14,7 @@
  * `installSwitches` (electron/apex-desktop-features.ts).
  */
 
+import { useStore } from '@nanostores/react'
 import { atom, computed } from 'nanostores'
 
 import type { DesktopClientConfigState } from '@/global'
@@ -38,6 +39,10 @@ export const $singleThreadMode = computed(
 
 export function isSingleThreadMode(): boolean {
   return $singleThreadMode.get()
+}
+
+export function useSingleThreadMode(): boolean {
+  return useStore($singleThreadMode)
 }
 
 /** The switch for one cached client-config state: an install switch wins, else the platform's literal `true`. */
@@ -84,3 +89,7 @@ export function setSingleThreadFlagForTest(on: boolean): void {
   reading = null
   settle(on)
 }
+
+// Read as soon as anything in the window imports the switch, so readers outside
+// React (slash commands, keybindings) see the settled value too.
+void loadSingleThreadFlag()
