@@ -44,11 +44,14 @@ ASR 族:
 视频生成族:
   POST {base}/tools/v1/video/generate → {"data": {...}, "cost_cents": int}
                                                            ← generate_video
+  GET  {base}/tools/v1/check → image/video 段带 hc-945 的逐链路健康(legs)
+                                                           ← 生成前预检(hc-969)
 
 错误语义(全部显式降级文案,不静默吞):
-  401 key 失效→提示重新登录;402 配额/余额;429 限流(本客户端带有限退避重试);
-  503 按 download resolve / ASR / 其他能力分段,不向用户暴露供应商细节;
-  其余透传 detail。
+  401 key 失效→提示重新登录;402 配额/余额;429 限流(本客户端带有限退避重试,
+  日限 429 除外);503 按 download resolve / ASR / 图片视频生成 / 其他能力分段,
+  不向用户暴露供应商细节;其余透传 detail。图片/视频生成只在能自己恢复的失败上
+  提示再试(hc-969,见 media_error_message)。
 ──────────────────────────────────────────────────────────────────────────────
 
 模式解析(insight:云端 P1 回退通道 = 旧 master 内网端点,PD §8):
@@ -68,6 +71,7 @@ Agent API key 解析(桌面与云同一把 key 的两种落点):
 from __future__ import annotations
 
 import logging
+import math
 import mimetypes
 import os
 import re
@@ -76,6 +80,7 @@ import subprocess
 import sys
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -84,8 +89,11 @@ import httpx
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "DAILY_LIMIT_CODES",
     "DESKTOP_SPAWN_ENV_CONTRACT",
     "GATEWAY_PUBLIC_BASE",
+    "MEDIA_IMAGE",
+    "MEDIA_VIDEO",
     "SOCIAL_PLATFORMS",
     "SOURCE_CONFIG",
     "SOURCE_ENV",
@@ -102,10 +110,13 @@ __all__ = [
     "gateway_disabled",
     "guess_media_content_type",
     "media_cache_dir",
+    "media_error_message",
+    "media_unavailable_reason",
     "missing_credential_error",
     "request_json",
     "resolve_agent_api_key",
     "stale_credential_message",
+    "tools_check",
     "transcribe_upload",
     "unwrap",
     "use_gateway",
@@ -195,12 +206,190 @@ _ASR_DIRECT_VERDICT_STATUSES = frozenset({401, 402, 413, 429})
 
 
 class GatewayError(RuntimeError):
-    """网关调用失败——message 即面向用户的显式降级文案(中文,不静默)。"""
+    """网关调用失败——message 即面向用户的显式降级文案(中文,不静默)。
 
-    def __init__(self, message: str, *, status: int | None = None, code: str | None = None):
+    ``vendor_code`` 是 503 ``vendor_unavailable`` 背后服务端自己的 code(hc-969)。"""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        code: str | None = None,
+        vendor_code: str | None = None,
+    ):
         super().__init__(message)
         self.status = status
         self.code = code
+        self.vendor_code = vendor_code
+
+
+# ---------------------------------------------------------------------------
+# 面向用户的报错:中英两版(hc-984)
+# ---------------------------------------------------------------------------
+# Every sentence this client (and the apexnodes image/video tools through it) writes
+# itself, as (zh, en). The language is the user's: HERMES_LANGUAGE, then
+# display.language in config.yaml (the Desktop writes zh by default and the user can
+# switch to English), Chinese unless that is English. The hosted copies in apex-nodes
+# use the same rule (hc-961 sets zh there). The server's own sentences are passed on
+# as they are. ``{label}`` / ``{Label}`` name the media (图片/视频, image/video).
+_COPY: dict[str, tuple[str, str]] = {
+    "credential_missing_desktop": (
+        "尚未登录 ApexNodes 账号,平台工具(图片/视频生成、图片 OCR、媒体转写)不可用。"
+        "请打开 设置 → 账户 完成登录;登录后本对话直接重试即可,无需其他配置。",
+        "You are not signed in to ApexNodes, so platform tools (image/video generation, image OCR, "
+        "media transcription) are unavailable. Open Settings → Account and sign in; then simply try "
+        "again in this chat, nothing else to set up.",
+    ),
+    "credential_missing_container": (
+        "本环境没有平台凭据,平台工具不可用。请为容器注入 {env_key}(或 API_SERVER_KEY),再重启 Agent 容器。",
+        "This environment has no platform credential, so platform tools are unavailable. Inject "
+        "{env_key} (or API_SERVER_KEY) into the container and restart the Agent container.",
+    ),
+    "credential_stale_config": (
+        "平台凭据被服务端拒绝(401);当前用的是 config.yaml 里的备用副本,它可能已经过期。"
+        "请先把 APEX 更新到最新版并重启(桌面端会在启动时自动换发凭据);若更新后仍然如此,"
+        "再到 设置 → 账户 重新登录一次。",
+        "The server rejected the platform credential (401). The one in use is the backup copy in "
+        "config.yaml, which may have expired. Update APEX to the latest version and restart it (the "
+        "Desktop re-issues the credential at start-up); if it still happens, sign in again under "
+        "Settings → Account.",
+    ),
+    "credential_stale_desktop": (
+        "平台凭据被服务端拒绝(401)。请到 设置 → 账户 重新登录一次以换发凭据;"
+        "若刚登录过仍然如此,请重启 APEX(启动时会自动换发)。",
+        "The server rejected the platform credential (401). Sign in again under Settings → Account "
+        "to get a new one; if you just did, restart APEX (it re-issues the credential at start-up).",
+    ),
+    "credential_stale_container": (
+        "平台凭据被服务端拒绝(401):该 Agent Key 可能已轮换或被停用,请管理员重新下发 Agent Key 后重启容器。",
+        "The server rejected the platform credential (401): this Agent Key may have been rotated or "
+        "disabled. An admin needs to issue a new Agent Key and restart the container.",
+    ),
+    "quota_402": (
+        "平台工具额度不足(402):套餐配额已用尽或余额不足,请升级套餐/充值后再试。",
+        "Not enough platform tool quota (402): the plan's allowance or the balance has run out. "
+        "Upgrade the plan or top up, then try again.",
+    ),
+    "too_large_413": (
+        "文件超过平台大小上限(413),本次未能处理。",
+        "The file is over the platform's size limit (413) and was not processed.",
+    ),
+    "rate_limited_429": (
+        "平台工具请求过于频繁(429):已自动退避重试仍被限流,请稍等 1-2 分钟再试。",
+        "Too many platform tool requests (429): still rate-limited after backing off. Wait 1-2 "
+        "minutes and try again.",
+    ),
+    "download_unavailable_503": (
+        "视频链接解析/下载服务暂不可用(503),请稍后重试或直接上传视频文件。",
+        "The video link resolving/download service is unavailable right now (503). Try again later "
+        "or upload the video file directly.",
+    ),
+    "asr_unavailable_503": (
+        "视频转写服务暂不可用(503),请稍后重试或先提供已有文字稿。",
+        "The video transcription service is unavailable right now (503). Try again later or provide "
+        "an existing transcript first.",
+    ),
+    "capability_unavailable_503": (
+        "平台能力暂不可用(503),请稍后重试。",
+        "This platform capability is unavailable right now (503). Try again later.",
+    ),
+    "gateway_error_status": ("平台工具网关返回错误(HTTP {status})", "The platform tool gateway returned an error (HTTP {status})"),
+    "with_detail": ("{message}(详情: {detail})", "{message} (details: {detail})"),
+    "gateway_unconfigured": (
+        "平台工具网关未配置(缺 {env_base},亦未检测到桌面登录凭证),无法调用平台能力。",
+        "The platform tool gateway is not configured ({env_base} is missing and no Desktop sign-in "
+        "was found), so platform capabilities cannot be called.",
+    ),
+    "network_error": (
+        "无法连接平台服务(网络错误):{error}。请检查网络/代理后重试;凭据本身没有问题。",
+        "Could not reach the platform service (network error): {error}. Check the network or proxy "
+        "and try again; the credential itself is fine.",
+    ),
+    # hc-984: no retry promise for an answer nobody could read.
+    "gateway_unreadable": (
+        "平台工具网关的回答读不出来,这次没有结果。",
+        "The platform tool gateway sent an answer that could not be read; there is no result this time.",
+    ),
+    "media_daily_limit": ("今天的{label}生成额度用完了，明天恢复。", "Today's {label} generation quota is used up; it comes back tomorrow."),
+    "media_switched_off": (
+        "平台现在暂时关闭了{label}生成，重新开放之前重试也不会成功。",
+        "The platform has switched {label} generation off for now; retrying will not work until it is back.",
+    ),
+    "media_not_configured": (
+        "平台还没有开通{label}生成服务，重试也不会成功。",
+        "The platform has not set up {label} generation; retrying will not help.",
+    ),
+    "media_auth_failed": (
+        "平台的{label}生成服务配置出了问题，要等平台修好才能用，重试也不会成功。",
+        "The platform's {label} generation setup is broken and works again only once the platform "
+        "fixes it; retrying will not help.",
+    ),
+    "media_no_reason": ("{label}生成服务出了问题，没有说明原因。", "The {label} generation service had a problem without saying why."),
+    "media_no_reason_status": (
+        "{label}生成服务出错了({status}),没有说明原因。",
+        "The {label} generation service failed ({status}) without saying why.",
+    ),
+    "media_unreadable": (
+        "{label}生成服务的回答读不出来，这次没有结果。",
+        "The {label} generation service sent an answer that could not be read; there is no result this time.",
+    ),
+    "media_paused_model": (
+        "你选的{label}模型最近连续几次都没生成成功，平台先暂停了它，{when}；"
+        "现在也可以在输入框的「+」菜单里换一个{label}模型。",
+        "The {label} model you picked failed several times in a row and the platform paused it; "
+        "{when}. You can also pick another {label} model from the \"+\" menu in the input box now.",
+    ),
+    "media_paused": (
+        "{label}生成最近连续几次都没成功，平台先暂停了它，{when}。",
+        "{Label} generation failed several times in a row and the platform paused it; {when}.",
+    ),
+    "when_minutes": ("大约 {minutes} 分钟后可以再试", "try again in about {minutes} minutes"),
+    "when_later": ("过一会儿可以再试", "try again in a while"),
+    "media_unreachable": ("无法连接{label}生成服务: {reason}", "Could not reach the {label} generation service: {reason}"),
+    "media_not_object": ("generate_{media} 的参数必须是 JSON 对象。", "generate_{media} expects a JSON object argument."),
+    "media_missing_prompt": ("请提供{label}描述", "Please describe the {label}."),
+    "media_failed": ("{label}生成失败: {reason}", "{Label} generation failed: {reason}"),
+    "media_setting_malformed": ("当前{label}模型设置格式无效", "The current {label} model setting is malformed"),
+    "media_setting_unknown": ("当前{label}模型设置不是可用的模型", "The current {label} model setting is not an available model"),
+    "media_setting_unreadable": ("无法读取当前{label}模型设置", "Could not read the current {label} model setting"),
+}
+
+# (zh, en) media names for ``{label}``.
+_MEDIA_NAMES = {"image": ("图片", "image"), "video": ("视频", "video")}
+
+
+def _configured_display_language() -> str:
+    """``display.language`` as the user's config.yaml says it, or "" when it says nothing.
+
+    Read raw (``read_raw_config_readonly``: no defaults merged): the merged runtime config
+    fills in the upstream default (``en``), which would make every unset home English
+    instead of the APEX default."""
+    try:
+        from hermes_cli.config import read_raw_config_readonly
+
+        config = read_raw_config_readonly()  # {} for a missing or unparseable file
+    except (ImportError, OSError, ValueError):  # outside the runtime / unreadable: the default
+        return ""
+    display = config.get("display") if isinstance(config, dict) else None
+    language = display.get("language") if isinstance(display, dict) else None
+    return language if isinstance(language, str) else ""
+
+
+def ui_language() -> str:
+    """``en`` when the user's language is English, otherwise ``zh`` (the APEX default)."""
+    configured = (os.getenv("HERMES_LANGUAGE") or "").strip() or _configured_display_language()
+    return "en" if configured.strip().lower().startswith("en") else "zh"
+
+
+def say(key: str, *, media: str | None = None, **fields: Any) -> str:
+    """One sentence from :data:`_COPY` in the user's language (hc-984)."""
+    zh, en = _COPY[key]
+    english = ui_language() == "en"
+    if media is not None:
+        name = _MEDIA_NAMES[media][1 if english else 0]
+        fields = {"label": name, "Label": name.capitalize() if english else name, "media": media, **fields}
+    return (en if english else zh).format(**fields)
 
 
 # ---------------------------------------------------------------------------
@@ -305,15 +494,9 @@ def missing_credential_error() -> GatewayError:
     反复点击而毫无变化(hc-604 现场:agent 把「缺失」转述成「过期+请重新登录」)。
     """
     if _is_desktop():
-        message = (
-            "尚未登录 ApexNodes 账号,平台工具(图片/视频生成、图片 OCR、媒体转写)不可用。"
-            "请打开 设置 → 账户 完成登录;登录后本对话直接重试即可,无需其他配置。"
-        )
+        message = say("credential_missing_desktop")
     else:
-        message = (
-            "本环境没有平台凭据,平台工具不可用。"
-            f"请为容器注入 {ENV_KEY}(或 API_SERVER_KEY),再重启 Agent 容器。"
-        )
+        message = say("credential_missing_container", env_key=ENV_KEY)
     return GatewayError(message, status=None, code="credential_missing")
 
 
@@ -323,20 +506,10 @@ def stale_credential_message(source: str) -> str:
         # env 没注入,读到的是 config.yaml 里的副本。桌面端 0.17.1 及更早只同步
         # model.api_key、漏掉 custom_providers 条目(hc-595 盲区),于是聊天正常
         # 而工具 401——此时「重新登录」并不会修好那份副本,更新/重启才会。
-        return (
-            "平台凭据被服务端拒绝(401);当前用的是 config.yaml 里的备用副本,"
-            "它可能已经过期。请先把 APEX 更新到最新版并重启(桌面端会在启动时自动换发凭据);"
-            "若更新后仍然如此,再到 设置 → 账户 重新登录一次。"
-        )
+        return say("credential_stale_config")
     if _is_desktop():
-        return (
-            "平台凭据被服务端拒绝(401)。请到 设置 → 账户 重新登录一次以换发凭据;"
-            "若刚登录过仍然如此,请重启 APEX(启动时会自动换发)。"
-        )
-    return (
-        "平台凭据被服务端拒绝(401):该 Agent Key 可能已轮换或被停用,"
-        "请管理员重新下发 Agent Key 后重启容器。"
-    )
+        return say("credential_stale_desktop")
+    return say("credential_stale_container")
 
 
 _capability_version_cache: str | None = None
@@ -387,19 +560,38 @@ def _server_detail(response: httpx.Response) -> str:
     return str(detail or "").strip()[:300]
 
 
-def _server_code(response: httpx.Response) -> str | None:
+def _server_sentence(response: httpx.Response) -> str:
+    """The server's own sentence for a failed call: JSON ``detail.message`` or a string
+    ``detail``; "" otherwise (hc-984).
+
+    Unlike :func:`_server_detail` it never falls back to the raw body or a bare code, so
+    an nginx HTML page or a plain "Internal Server Error" is never relayed to the user
+    as the reason."""
+    try:
+        body = response.json()
+    except ValueError:  # JSONDecodeError / UnicodeDecodeError: not JSON, no sentence
+        return ""
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(detail, dict):
+        return str(detail.get("message") or "").strip()
+    return detail.strip() if isinstance(detail, str) else ""
+
+
+def _server_code(response: httpx.Response, key: str = "code") -> str | None:
     """服务端机器可读的 detail.code(如 ``asr_no_speech``);没有就 None。
 
     hc-926:此前 HTTP 错误只保留了文案,调用方分不出「素材没有人声」这类正常结论
-    与真故障,只能一律报 tool_error。"""
+    与真故障,只能一律报 tool_error。hc-969:``key="vendor_code"`` 取 503
+    ``vendor_unavailable`` 背后的原 code——视频整体关停和上游繁忙都以
+    ``vendor_unavailable`` 到达,只有它分得开。"""
     try:
         body = response.json()
     except ValueError:  # JSONDecodeError / UnicodeDecodeError: no machine-readable code
         return None
     detail = body.get("detail") if isinstance(body, dict) else None
-    if not isinstance(detail, dict) or not detail.get("code"):
+    if not isinstance(detail, dict) or not detail.get(key):
         return None
-    return str(detail["code"]).strip() or None
+    return str(detail[key]).strip() or None
 
 
 def _error_from_response(
@@ -410,26 +602,32 @@ def _error_from_response(
 ) -> GatewayError:
     status = response.status_code
     detail = _server_detail(response)
+    code = _server_code(response)
+    vendor_code = _server_code(response, "vendor_code")
+    media = _MEDIA_GENERATE_PATHS.get(path)
+    honest = media_error_message(media, status, vendor_code or code, _server_sentence(response)) if media else None
+    if honest is not None:
+        return GatewayError(honest, status=status, code=code, vendor_code=vendor_code)
     if status == 401:
         # hc-604:按凭据来源分流。此前无论来源一律「请重新登录」,而现场最常见的
         # 一种(env 未注入 → 读到 config.yaml 里的陈副本)恰恰是重新登录修不好的。
         message = stale_credential_message(source)
     elif status == 402:
-        message = "平台工具额度不足(402):套餐配额已用尽或余额不足,请升级套餐/充值后再试。"
+        message = say("quota_402")
     elif status == 413:
         # hc-560 话术纪律:中性一句;不指引用户本地抽音轨/压缩/装工具/切文件。
-        message = "文件超过平台大小上限(413),本次未能处理。"
+        message = say("too_large_413")
     elif status == 429:
-        message = "平台工具请求过于频繁(429):已自动退避重试仍被限流,请稍等 1-2 分钟再试。"
+        message = say("rate_limited_429")
     elif status == 503:
         if path.startswith("/tools/v1/social/") and path.endswith("/download"):
-            message = "视频链接解析/下载服务暂不可用(503),请稍后重试或直接上传视频文件。"
+            message = say("download_unavailable_503")
         elif path.startswith("/tools/v1/asr/"):
-            message = "视频转写服务暂不可用(503),请稍后重试或先提供已有文字稿。"
+            message = say("asr_unavailable_503")
         else:
-            message = "平台能力暂不可用(503),请稍后重试。"
+            message = say("capability_unavailable_503")
     else:
-        message = f"平台工具网关返回错误(HTTP {status})"
+        message = say("gateway_error_status", status=status)
     # 413 不拼服务端 detail:旧版云端的 413 文案带「请在本地抽音轨并压缩」类
     # 自救指引(hc-560 已改中性,但客户端不应依赖服务端版本),中性一句已完整。
     redact_outage_detail = status == 503 and (
@@ -437,8 +635,8 @@ def _error_from_response(
         or path.startswith("/tools/v1/asr/")
     )
     if detail and status != 413 and not redact_outage_detail:
-        message = f"{message}(详情: {detail})"
-    return GatewayError(message, status=status, code=_server_code(response))
+        message = say("with_detail", message=message, detail=detail)
+    return GatewayError(message, status=status, code=code, vendor_code=vendor_code)
 
 
 def _retry_after_seconds(response: httpx.Response, attempt: int) -> float:
@@ -470,10 +668,7 @@ def request_json(
     if not key:
         raise missing_credential_error()
     if not base:
-        raise GatewayError(
-            f"平台工具网关未配置(缺 {ENV_BASE},亦未检测到桌面登录凭证),无法调用平台能力。",
-            code="gateway_unconfigured",
-        )
+        raise GatewayError(say("gateway_unconfigured", env_base=ENV_BASE), code="gateway_unconfigured")
     headers = {
         "Authorization": f"Bearer {key}",
         "X-Capability-Version": capability_version(),
@@ -494,11 +689,13 @@ def request_json(
         except httpx.HTTPError as exc:
             # 第三类:网络失败。既不是「没配过」也不是「凭据失效」——绝不在这里
             # 提登录,否则用户会为一次断网去反复重登。
-            raise GatewayError(
-                f"无法连接平台服务(网络错误):{exc}。请检查网络/代理后重试;凭据本身没有问题。",
-                code="network_unreachable",
-            ) from exc
-        if response.status_code == 429 and attempt < _MAX_429_RETRIES:
+            raise GatewayError(say("network_error", error=exc), code="network_unreachable") from exc
+        if (
+            response.status_code == 429
+            and attempt < _MAX_429_RETRIES
+            # hc-969: a daily limit holds until tomorrow; backing off only makes the user wait.
+            and _server_code(response) not in DAILY_LIMIT_CODES
+        ):
             delay = _retry_after_seconds(response, attempt)
             attempt += 1
             logger.info("gateway 429 on %s — backoff %.1fs (attempt %d)", path, delay, attempt)
@@ -506,12 +703,16 @@ def request_json(
             continue
         if response.status_code >= 400:
             raise _error_from_response(response, source, path=path)
+        # hc-984: an answer nobody could read is said as such, with no retry promise
+        # (it used to say "请稍后重试" for it, on every tool).
+        media = _MEDIA_GENERATE_PATHS.get(path)
+        unreadable = say("media_unreadable", media=media) if media else say("gateway_unreadable")
         try:
             body = response.json()
         except Exception as exc:
-            raise GatewayError("平台工具网关返回了无法解析的响应,请稍后重试。") from exc
+            raise GatewayError(unreadable, code="unreadable_answer") from exc
         if not isinstance(body, dict):
-            raise GatewayError("平台工具网关返回了意外的响应格式,请稍后重试。")
+            raise GatewayError(unreadable, code="unreadable_answer")
         return body
 
 
@@ -522,6 +723,163 @@ def unwrap(response_body: dict[str, Any]) -> dict[str, Any]:
     if "cost_cents" in response_body and "cost_cents" not in out:
         out["cost_cents"] = response_body.get("cost_cents")
     return out
+
+
+# ---------------------------------------------------------------------------
+# 图片/视频生成:链路健康预检 + 如实错误(hc-969)
+# ---------------------------------------------------------------------------
+#
+# 2026-10-18 评测:桌面端生图、生视频全部失败,用户却被告知「服务繁忙,请稍后重试」,
+# 白等很久。服务端 hc-945/hc-948 已如实报错并按链路记健康;这里是桌面这一侧:
+#   * 生成前读 /tools/v1/check 的逐链路健康,链路关停或连续失败就当场说清楚,不再
+#     发出一个注定要等几分钟才失败的请求。Kael 2026-10-19 拍板:工具保留(check_fn
+#     不隐藏),只说「暂时不可用」——隐藏会让助手以为自己不会做,而不是今天暂时不行;
+#   * 只有能自己恢复的失败才让用户再试:日限说「明天恢复」,关停/未开通说「重试也
+#     不会成功」,其余 503 用服务端逐 code 写好的那句(hc-945 起已如实)。
+
+MEDIA_IMAGE = "image"
+MEDIA_VIDEO = "video"
+_MEDIA_GENERATE_PATHS = {
+    "/tools/v1/image/generate": MEDIA_IMAGE,
+    "/tools/v1/video/generate": MEDIA_VIDEO,
+}
+
+# 429 codes that hold until tomorrow: request_json answers them on the first
+# response instead of backing off, and the user hears when it comes back.
+DAILY_LIMIT_CODES = frozenset({"image_daily_limit_reached", "video_daily_limit_reached"})
+
+
+def _media_switched_off(media: str) -> str:
+    return say("media_switched_off", media=media)
+
+
+# Statuses whose generic sentence is Desktop guidance the server cannot give (sign in
+# again, top up, the file is too large, back off): a generation keeps those.
+_GENERIC_GUIDANCE_STATUSES = frozenset({401, 402, 413, 429})
+
+
+def media_error_message(media: str, status: int | None, code: str | None, detail: str = "") -> str | None:
+    """The honest sentence for a failed image/video generation, or None to let the
+    generic status table answer.
+
+    ``code`` is the server's own code: ``vendor_code`` behind a gateway 503, or
+    ``detail.code`` from the legacy master endpoints, so both legs say the same
+    thing. Only a failure that can clear by itself invites another try. ``detail``
+    is the server's own sentence, never a raw body or a bare code.
+
+    hc-984: every other status (a 422 rejection, a 500 crash in the platform's own code,
+    a gateway's empty 502) is the server's sentence too, or says it gave none; it used
+    to come out as "平台工具网关返回错误(HTTP n)(详情: …)", and a bare 500 as
+    "(详情: Internal Server Error)". Same rule as the hosted copies in apex-nodes."""
+    if status == 429 and code in DAILY_LIMIT_CODES:
+        return say("media_daily_limit", media=media)
+    if status in _GENERIC_GUIDANCE_STATUSES:
+        return None
+    if status != 503:
+        return detail or say(
+            "media_no_reason_status", media=media, status=f"HTTP {status}" + (f", {code}" if code else "")
+        )
+    if code == "video_generation_unavailable":
+        # hc-948 rollback lever: the whole capability is off until an operator reopens it.
+        return _media_switched_off(media)
+    if code == "provider_not_configured":
+        return say("media_not_configured", media=media)
+    if code == "provider_auth_failed":
+        return say("media_auth_failed", media=media)
+    # Busy, timeouts, failed jobs: the server's sentence says whether trying again
+    # helps (hc-945 rewrote them per code), so it is not wrapped in a retry promise.
+    return detail or say("media_no_reason", media=media)
+
+
+def tools_check(*, timeout: float = 5) -> dict[str, Any] | None:
+    """``GET /tools/v1/check``; None when it cannot be read.
+
+    A check that cannot be read never stops a generation: the call goes ahead and
+    reports its own outcome."""
+    try:
+        return request_json("GET", "/tools/v1/check", timeout=timeout)
+    except GatewayError:
+        logger.info("tools check unreadable; generating without a leg-health verdict")
+        return None
+
+
+def _image_leg_name(section: dict[str, Any], provider: str | None, purpose: str | None, title: str | None) -> str | None:
+    """hc-984: the leg an image call without a model lands on: the named provider's, or
+    the one the server routes its purpose to (``purpose_legs``; a cover with and without
+    a title can differ). None when the check cannot say (a server before hc-984)."""
+    if provider:
+        return provider.strip().lower()
+    routes = section.get("purpose_legs")
+    if not isinstance(routes, dict):
+        return None
+    if (purpose or "").strip().lower() == "cover":
+        return routes.get("cover" if (title or "").strip() else "cover_without_title")
+    return routes.get("illustration")
+
+
+def _leg_view(
+    section: dict[str, Any],
+    media: str,
+    model: str | None,
+    *,
+    provider: str | None = None,
+    purpose: str | None = None,
+    title: str | None = None,
+) -> tuple[Any, Any]:
+    """The (entry, health) pair that describes the leg this call will use.
+
+    A selected model is its own leg (``legs["chinaapi:<model>"]``, health fields at
+    the top). A video call without a model renders on the default leg, which the
+    section describes flat (``serving`` on /tools/v1/check, ``ok`` on the legacy
+    check, health under ``health``). An image call without a model reads the leg its
+    provider or purpose lands on (hc-984)."""
+    legs = section.get("legs")
+    if model:
+        entry = legs.get(f"chinaapi:{model}") if isinstance(legs, dict) else None
+        return entry, entry
+    if media == MEDIA_VIDEO:
+        return section, section.get("health")
+    name = _image_leg_name(section, provider, purpose, title)
+    entry = legs.get(name) if name and isinstance(legs, dict) else None
+    return entry, entry
+
+
+def media_unavailable_reason(
+    media: str,
+    model: str | None,
+    read_check: Callable[[], Any],
+    *,
+    provider: str | None = None,
+    purpose: str | None = None,
+    title: str | None = None,
+) -> str | None:
+    """Why this generation should not start, read from hc-945's leg health; None = go ahead.
+
+    ``read_check`` returns the ``image``/``video`` block of /tools/v1/check, or the
+    legacy /media/{image,video}/check body; both carry the same per-leg health. hc-984:
+    an image without a model is read too, on the leg its provider or purpose lands on
+    (``purpose_legs``); before, it was not checked and waited out its request when that
+    leg was down. Anything short of a clear "this leg is not serving" goes ahead: an
+    older server without leg health or ``purpose_legs``, a model the server does not
+    list, an unreadable check."""
+    section = read_check()
+    if not isinstance(section, dict):
+        return None
+    entry, health = _leg_view(section, media, model, provider=provider, purpose=purpose, title=title)
+    if not isinstance(entry, dict) or not isinstance(health, dict):
+        return None
+    if entry.get("serving", entry.get("ok")) is not False:
+        return None
+    if entry.get("configured") is False:
+        return _media_switched_off(media)
+    if health.get("healthy") is not False:
+        return None
+    seconds = health.get("retry_after_seconds")
+    if isinstance(seconds, (int, float)) and not isinstance(seconds, bool) and seconds > 0:
+        when = say("when_minutes", minutes=max(1, math.ceil(seconds / 60)))
+    else:
+        when = say("when_later")
+    return say("media_paused_model" if model else "media_paused", media=media, when=when)
 
 
 # ---------------------------------------------------------------------------

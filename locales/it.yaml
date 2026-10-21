@@ -737,6 +737,12 @@ gateway:
     unknown_mode: "Modalità sconosciuta `{arg}`. Usa `/busy queue`, `/busy steer` o `/busy interrupt`."
     save_failed: "Impossibile salvare la modalità input quando occupato nella configurazione. Modalità invariata."
     set: "Modalità input quando occupato impostata su **`{mode}`** (salvata).\n_{behavior}_"
+  onboarding:
+    busy_queue: "💡 Suggerimento — Ho messo in coda il tuo messaggio invece di interrompere. Invia `/busy interrupt` per far sì che i nuovi messaggi fermino subito l'attività corrente, oppure `/busy status` per controllare. Questo avviso non comparirà più."
+    busy_steer: "💡 Suggerimento — Ho indirizzato il tuo messaggio nell'esecuzione corrente; arriverà dopo la prossima chiamata a uno strumento, senza interrompere. Invia `/busy interrupt` o `/busy queue` per cambiare, oppure `/busy status` per controllare. Questo avviso non comparirà più."
+    busy_redirect: "💡 Suggerimento — Ho reindirizzato l'esecuzione corrente in base al tuo messaggio. Il lavoro completato resta nel contesto e `/stop` annulla comunque l'attività. Invia `/busy queue` per attendere un turno separato, oppure `/busy status` per controllare. Questo avviso non comparirà più."
+    busy_interrupt: "💡 Suggerimento — Ho appena interrotto l'attività corrente per risponderti. Invia `/busy queue` per mettere invece in coda i messaggi successivi dopo l'attività corrente, `/busy steer` per inserirli durante l'esecuzione senza interrompere, oppure `/busy status` per controllare. Questo avviso non comparirà più."
+    tool_progress: "💡 Suggerimento — Quello strumento ha richiesto un po' di tempo e sto mostrando ogni passaggio. Se i messaggi di avanzamento ti sembrano troppi, invia `/verbose` per cambiare modalità (all → new → off). Questo avviso non comparirà più."
   pause:
     resumed: "▶️ Ripreso — il nuovo lavoro viene di nuovo accettato."
     not_paused: "Hermes non era in pausa."
@@ -795,6 +801,7 @@ gateway:
   unknown_command: "Comando sconosciuto `/{command}`. Digita /commands per vedere quelli disponibili, oppure reinvia senza la barra iniziale per mandarlo come messaggio normale."
   session:
     auto_reset_notice: "◐ Sessione reimpostata dopo l'interruzione. Cronologia della conversazione cancellata.\nUsa /resume per sfogliare e ripristinare una sessione precedente.\n"
+    auto_reset_plain_notice: "La conversazione precedente è stata cancellata."
     auto_reset_context_exhausted: "\n\n🔄 Sessione reimpostata automaticamente — la conversazione ha superato la dimensione massima del contesto e non poteva essere compressa ulteriormente. Il tuo prossimo messaggio avvierà una nuova sessione."
     info_model: "◆ Modello: `{model}`"
     info_provider: "◆ Provider: {provider}"

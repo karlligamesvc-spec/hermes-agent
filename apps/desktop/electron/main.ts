@@ -32,6 +32,7 @@ import {
 import { overviewEvidence } from '../shared/analysis-video-overview'
 
 import { analysisAccountBoundary, canApplyManagedRenewal, managedAccountId, readAccount } from './apex-account-boundary'
+import { registerApexAccountReads } from './apex-account-reads'
 import {
   AGENT_STATE,
   detectClaude as detectClaudeAuth,
@@ -68,7 +69,6 @@ import { createAnalysisPlaybackStore, downloadAnalysisPlayback } from './apex-an
 import { fullVideoTranscript } from './apex-analysis-transcript'
 import { MAX_ANALYSIS_VIDEO_BYTES, uploadAnalysisVideo } from './apex-analysis-video-upload'
 import { deleteAnalysisWorkspace } from './apex-analysis-workspace'
-import { announcementReadUrl, announcementsListUrl, parseAnnouncementsResponse } from './apex-announcements'
 import * as bundleDiskspace from './apex-bundle-diskspace'
 import { downloadWithResume } from './apex-bundle-download'
 import { applyBundleUpdate as applyRuntimeBundleUpdate } from './apex-bundle-install'
@@ -81,6 +81,7 @@ import {
   shouldApply as shouldApplyClientConfig
 } from './apex-client-config'
 import { guardConfigYamlOnArrival } from './apex-config-arrival'
+import { clearUserProfilePrompt } from './apex-creator-profile'
 import {
   bridgeResultUrl,
   buildInvalidTaskResult,
@@ -19605,6 +19606,7 @@ function writeManagedConfig(provisioned, renewal = false) {
   if (!renewal) {lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }}
 
   if (Boolean(previous.key) !== Boolean(key) || managedAccountId(previous.accessToken) !== managedAccountId(accessToken)) {
+    clearUserProfilePrompt(HERMES_HOME)
     broadcastManagedAccountChanged()
   }
 
@@ -19640,6 +19642,7 @@ function clearManagedRelayCredential() {
   modelMutationMetadata.markCredentialRecovery(false)
   unpersistedManagedRotation = false
   lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }
+  clearUserProfilePrompt(HERMES_HOME)
   broadcastManagedAccountChanged()
 }
 
@@ -20646,71 +20649,6 @@ async function fetchAndStoreFeishuCredentials() {
     agentName: parsed.agentName,
     domain: parsed.domain,
     credentialStatus: parsed.credentialStatus
-  }
-}
-
-// ── hc-447: 更新日志 (changelog) content fetch ───────────────────────────────
-// Fetch the signed-in user's product-update announcements from the cloud
-// (hc-446 content source; same feed the web /app/whats-new page reads).
-// Authenticates with the STORED login JWT — no re-login needed for a user
-// already signed in to managed. NEVER throws; a fetch failure resolves
-// ok:false with a message the renderer maps to copy. An empty `items` array
-// with ok:true is a normal, expected state (no published announcements yet —
-// ANNOUNCEMENTS_ENABLED gates IM dispatch, not this read) — the renderer
-// shows "no announcements yet", not an error.
-async function fetchAnnouncements() {
-  const managed = resolveManagedConfig()
-  const token = String(managed.accessToken || '').trim()
-
-  if (!token) {
-    // No stored JWT → the panel prompts sign-in. Not an error — an expected
-    // pre-condition for a user who hasn't signed in to managed yet.
-    return { ok: false, needsSignIn: true, items: [], message: 'NOT_SIGNED_IN' }
-  }
-
-  const endpoints = resolveApexEndpoints(process.env)
-  let body
-
-  try {
-    body = await apexAuthGetJson(announcementsListUrl(endpoints.apiBase), { bearer: token })
-  } catch (error: any) {
-    if (error && error.statusCode === 401) {
-      return { ok: false, needsSignIn: true, items: [], message: 'SESSION_EXPIRED' }
-    }
-
-    rememberLog(`[announcements] list fetch failed: ${error && error.message ? error.message : error}`)
-
-    return { ok: false, items: [], message: 'FETCH_FAILED' }
-  }
-
-  return { ok: true, items: parseAnnouncementsResponse(body) }
-}
-
-// Best-effort read receipt for one announcement — fired from the renderer once
-// the changelog panel has actually shown an unread item (mirrors the web
-// /app/whats-new page's "mark read when scrolled into view" semantic per
-// app/services/announcement_service.py's mark_read docstring). Never throws;
-// a failure is silently swallowed since this is a receipt, not a gate — the
-// list itself already rendered from the successful GET.
-async function markAnnouncementRead(announcementId) {
-  const managed = resolveManagedConfig()
-  const token = String(managed.accessToken || '').trim()
-  const id = String(announcementId || '').trim()
-
-  if (!token || !id) {
-    return { ok: false }
-  }
-
-  const endpoints = resolveApexEndpoints(process.env)
-
-  try {
-    await apexAuthPostJson(announcementReadUrl(endpoints.apiBase, id), { body: {}, bearer: token })
-
-    return { ok: true }
-  } catch (error: any) {
-    rememberLog(`[announcements] mark-read failed (ignored): ${error && error.message ? error.message : error}`)
-
-    return { ok: false }
   }
 }
 
@@ -23929,15 +23867,17 @@ ipcMain.handle('hermes:feishu:openBind', async () => {
   return { ok: opened, url }
 })
 
-// ── hc-447: 更新日志 (changelog) entry point (renderer surface) ─────────────
-// list: the published announcements for the signed-in user (see
-// fetchAnnouncements above for the ok:false shapes — needsSignIn / fetch
-// failure / a genuinely empty feed, the last of which is ok:true with
-// items:[]). markRead: best-effort read receipt, fired once the panel has
-// shown an item; the renderer does not gate its UI on the result.
-ipcMain.handle('hermes:announcements:list', async () => fetchAnnouncements())
+// Signed-in account reads relayed with the stored login JWT, which never reaches
+// the renderer: 更新日志, team and creator profile (registered in apex-account-reads.ts).
+const apexAccountReads = {
+  accessToken: () => String(resolveManagedConfig().accessToken || '').trim(),
+  apiBase: () => resolveApexEndpoints(process.env).apiBase,
+  getJson: (url, opts) => apexAuthGetJson(url, opts),
+  postJson: (url, opts) => apexAuthPostJson(url, opts),
+  log: rememberLog
+}
 
-ipcMain.handle('hermes:announcements:markRead', async (_event, announcementId) => markAnnouncementRead(announcementId))
+registerApexAccountReads(ipcMain, apexAccountReads, HERMES_HOME)
 
 // list: display-only view of the local bindings (no network, no secret).
 ipcMain.handle('hermes:imEntry:list', async () => ({ channels: imEntryBoundList() }))

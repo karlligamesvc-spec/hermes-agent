@@ -1,4 +1,5 @@
 import type { AssistantToolOverrides } from './define-locale'
+import { zhProcess } from './zh-process'
 
 // Measure word + noun for a tool result count, keyed by the English counting
 // noun the tool row derives (fallback-model `countMetric`). Unlisted nouns
@@ -130,6 +131,7 @@ export const zhAssistantTool: AssistantToolOverrides = {
   searchResults: '搜索结果',
   stdoutLabel: '输出',
   stderrLabel: '错误输出',
+  process: zhProcess,
   // No code name reaches a Chinese screen: every tool a Desktop user can
   // meet is named here, and anything unlisted reads as a plain tool use
   // (titleTemplates.runningTool / unknownToolDone).
@@ -252,6 +254,7 @@ export const zhAssistantTool: AssistantToolOverrides = {
     'product-research': '选品调研',
     'professional-writing': '专业写作',
     'proposal-writer': '方案撰写',
+    'publish-package': '发布包',
     'quote-message-writer': '报价话术',
     'real-estate-listing-copy': '房源文案',
     'refund-negotiation': '退款协商',
@@ -269,6 +272,7 @@ export const zhAssistantTool: AssistantToolOverrides = {
     'spreadsheet-quality-check': '表格数据检查',
     'spreadsheet-workbench': '电子表格制作',
     'text-polish': '文字润色',
+    'topic-library': '选题库',
     'topic-research': '选题研究',
     'video-generation': '视频生成',
     'video-script-breakdown': '视频脚本拆解',

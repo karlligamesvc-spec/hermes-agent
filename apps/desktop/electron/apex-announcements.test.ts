@@ -5,10 +5,10 @@
  * Run with: npx vitest run electron/apex-announcements.test.ts
  * (Wired into npm test:desktop:platforms in package.json.)
  *
- * These are the pure helpers behind the bridge: URL building and response
- * parsing/normalization. Auth transport (the stored login JWT, safeStorage)
- * lives in main.ts and is exercised there; here we prove the pure
- * shaping/gating logic.
+ * These are the helpers behind the bridge: URL building, response
+ * parsing/normalization, and (since hc-971 moved them out of main.ts) the two
+ * reads, run here against a stand-in transport. The real transport and the
+ * stored login JWT still live in main.ts.
  */
 
 import assert from 'node:assert/strict'
@@ -19,6 +19,8 @@ import {
   announcementReadUrl,
   ANNOUNCEMENTS_LIST_PATH,
   announcementsListUrl,
+  fetchAnnouncements,
+  markAnnouncementRead,
   normalizeAnnouncement,
   parseAnnouncementsResponse
 } from './apex-announcements'
@@ -126,4 +128,63 @@ test('parseAnnouncementsResponse fails soft to an empty list on garbage (never t
 
 test('parseAnnouncementsResponse returns an empty list for a genuinely empty feed (not an error state)', () => {
   assert.deepEqual(parseAnnouncementsResponse({ items: [], total: 0 }), [])
+})
+
+// ── the two reads (moved from main.ts by hc-971; behaviour unchanged) ───────
+
+function reads(overrides: Record<string, unknown> = {}) {
+  const calls: { bearer: string; body?: object; url: string }[] = []
+  const logs: string[] = []
+
+  return {
+    accessToken: () => 'jwt-1',
+    apiBase: () => 'https://api.apex-nodes.com',
+    getJson: async (url: string, opts: { bearer: string }) => {
+      calls.push({ bearer: opts.bearer, url })
+
+      return { items: [{ body: 'b', id: 'a1', level: 'major', title: 't' }] }
+    },
+    log: (line: string) => {
+      logs.push(line)
+    },
+    postJson: async (url: string, opts: { body: object; bearer: string }) => {
+      calls.push({ bearer: opts.bearer, body: opts.body, url })
+
+      return { ok: true }
+    },
+    ...overrides,
+    calls,
+    logs
+  }
+}
+
+const failWith = (statusCode?: number) => async () => {
+  throw Object.assign(new Error('boom'), statusCode === undefined ? {} : { statusCode })
+}
+
+test('fetchAnnouncements lists with the stored JWT and normalizes the rows', async () => {
+  const d = reads()
+  const result = await fetchAnnouncements(d)
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.items.map(item => item && item.id), ['a1'])
+  assert.deepEqual(d.calls, [{ bearer: 'jwt-1', url: `https://api.apex-nodes.com${ANNOUNCEMENTS_LIST_PATH}` }])
+})
+
+test('fetchAnnouncements: no JWT, an expired session and a failure each have their own shape', async () => {
+  assert.deepEqual(await fetchAnnouncements(reads({ accessToken: () => '' })), { ok: false, needsSignIn: true, items: [], message: 'NOT_SIGNED_IN' })
+  assert.deepEqual(await fetchAnnouncements(reads({ getJson: failWith(401) })), { ok: false, needsSignIn: true, items: [], message: 'SESSION_EXPIRED' })
+  const failing = reads({ getJson: failWith(500) })
+  assert.deepEqual(await fetchAnnouncements(failing), { ok: false, items: [], message: 'FETCH_FAILED' })
+  assert.equal(failing.logs.length, 1)
+})
+
+test('markAnnouncementRead posts once and swallows failures', async () => {
+  const d = reads()
+
+  assert.deepEqual(await markAnnouncementRead(d, ' a1 '), { ok: true })
+  assert.deepEqual(d.calls, [{ bearer: 'jwt-1', body: {}, url: `https://api.apex-nodes.com${ANNOUNCEMENTS_LIST_PATH}/a1/read` }])
+  assert.deepEqual(await markAnnouncementRead(reads(), ''), { ok: false })
+  assert.deepEqual(await markAnnouncementRead(reads({ accessToken: () => '' }), 'a1'), { ok: false })
+  assert.deepEqual(await markAnnouncementRead(reads({ postJson: failWith(500) }), 'a1'), { ok: false })
 })

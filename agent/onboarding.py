@@ -15,6 +15,7 @@ import logging
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
+from agent.i18n import t
 from agent.onboarding_record import observe_tool_result
 
 logger = logging.getLogger(__name__)
@@ -29,27 +30,14 @@ PROFILE_BUILD_FLAG = "profile_build_offered"
 
 # Busy-input hints are keyed by the effective busy_input_mode that was just
 # applied so the message matches reality; "interrupt" is the default branch.
-_BUSY_INPUT_HINTS_GATEWAY = {
-    "queue": (
-        "💡 First-time tip — I queued your message instead of interrupting. Send `/busy interrupt` to make new messages "
-        "stop the current task immediately, or `/busy status` to check. This notice won't appear again."
-    ),
-    "steer": (
-        "💡 First-time tip — I steered your message into the current run; it will arrive after the next tool "
-        "call instead of interrupting. Send `/busy interrupt` or `/busy queue` to change this, or `/busy "
-        "status` to check. This notice won't appear again."
-    ),
-    "redirect": (
-        "💡 First-time tip — I redirected the current run using your message. Completed work stays in "
-        "context, and `/stop` still cancels the task. Send `/busy queue` to wait for a separate turn, or "
-        "`/busy status` to check. This notice won't appear again."
-    ),
+# The gateway copy is catalog keys, rendered in the active language (the CLI copy stays English).
+BUSY_INPUT_HINT_KEYS_GATEWAY = {
+    "queue": "gateway.onboarding.busy_queue",
+    "steer": "gateway.onboarding.busy_steer",
+    "redirect": "gateway.onboarding.busy_redirect",
+    "interrupt": "gateway.onboarding.busy_interrupt",
 }
-_BUSY_INPUT_HINT_GATEWAY_DEFAULT = (
-    "💡 First-time tip — I just interrupted my current task to answer you. Send `/busy queue` to queue "
-    "follow-ups for after the current task instead, `/busy steer` to inject them mid-run without "
-    "interrupting, or `/busy status` to check. This notice won't appear again."
-)
+TOOL_PROGRESS_HINT_KEY_GATEWAY = "gateway.onboarding.tool_progress"
 
 _BUSY_INPUT_HINTS_CLI = {
     "queue": (
@@ -73,7 +61,7 @@ _BUSY_INPUT_HINT_CLI_DEFAULT = (
 
 def busy_input_hint_gateway(mode: str) -> str:
     """Hint shown the first time a user messages while the agent is busy (markdown)."""
-    return _BUSY_INPUT_HINTS_GATEWAY.get(mode, _BUSY_INPUT_HINT_GATEWAY_DEFAULT)
+    return t(BUSY_INPUT_HINT_KEYS_GATEWAY.get(mode, BUSY_INPUT_HINT_KEYS_GATEWAY["interrupt"]))
 
 
 def busy_input_hint_cli(mode: str) -> str:
@@ -82,8 +70,7 @@ def busy_input_hint_cli(mode: str) -> str:
 
 
 def tool_progress_hint_gateway() -> str:
-    return ("💡 First-time tip — that tool took a while and I'm streaming every step. If the progress messages "
-            "feel noisy, send `/verbose` to cycle modes (all → new → off). This notice won't appear again.")
+    return t(TOOL_PROGRESS_HINT_KEY_GATEWAY)
 
 
 def tool_progress_hint_cli() -> str:
@@ -231,10 +218,12 @@ def mark_seen(config_path: Path, flag: str) -> bool:
 
 __all__ = [
     "BUSY_INPUT_FLAG",
+    "BUSY_INPUT_HINT_KEYS_GATEWAY",
     "OPENCLAW_RESIDUE_FLAG",
     "PLAIN_INTRO_NOTE",
     "PROFILE_BUILD_FLAG",
     "TOOL_PROGRESS_FLAG",
+    "TOOL_PROGRESS_HINT_KEY_GATEWAY",
     "busy_input_hint_cli",
     "busy_input_hint_gateway",
     "detect_openclaw_residue",

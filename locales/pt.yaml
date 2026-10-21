@@ -737,6 +737,12 @@ gateway:
     unknown_mode: "Modo desconhecido `{arg}`. Use `/busy queue`, `/busy steer` ou `/busy interrupt`."
     save_failed: "Não foi possível salvar o modo de entrada quando ocupado na configuração. Modo inalterado."
     set: "Modo de entrada quando ocupado definido como **`{mode}`** (salvo).\n_{behavior}_"
+  onboarding:
+    busy_queue: "💡 Dica — Coloquei sua mensagem na fila em vez de interromper. Envie `/busy interrupt` para que novas mensagens parem a tarefa atual imediatamente, ou `/busy status` para verificar. Este aviso não aparecerá novamente."
+    busy_steer: "💡 Dica — Direcionei sua mensagem para a execução atual; ela chegará após a próxima chamada de ferramenta, sem interromper. Envie `/busy interrupt` ou `/busy queue` para mudar isso, ou `/busy status` para verificar. Este aviso não aparecerá novamente."
+    busy_redirect: "💡 Dica — Redirecionei a execução atual com base na sua mensagem. O trabalho concluído permanece no contexto, e `/stop` ainda cancela a tarefa. Envie `/busy queue` para aguardar um turno separado, ou `/busy status` para verificar. Este aviso não aparecerá novamente."
+    busy_interrupt: "💡 Dica — Acabei de interromper minha tarefa atual para responder a você. Envie `/busy queue` para enfileirar as próximas mensagens para depois da tarefa atual, `/busy steer` para injetá-las durante a execução sem interromper, ou `/busy status` para verificar. Este aviso não aparecerá novamente."
+    tool_progress: "💡 Dica — Essa ferramenta demorou um pouco e estou transmitindo cada etapa. Se as mensagens de progresso parecerem excessivas, envie `/verbose` para alternar os modos (all → new → off). Este aviso não aparecerá novamente."
   pause:
     resumed: "▶️ Retomado — novo trabalho é aceito novamente."
     not_paused: "O Hermes não estava pausado."
@@ -795,6 +801,7 @@ gateway:
   unknown_command: "Comando desconhecido `/{command}`. Digite /commands para ver os disponíveis ou reenvie sem a barra inicial para mandar como mensagem comum."
   session:
     auto_reset_notice: "◐ Sessão reiniciada após ser interrompida. Histórico da conversa limpo.\nUse /resume para navegar e restaurar uma sessão anterior.\n"
+    auto_reset_plain_notice: "A conversa anterior foi limpa."
     auto_reset_context_exhausted: "\n\n🔄 Sessão reiniciada automaticamente — a conversa excedeu o tamanho máximo de contexto e não pôde ser comprimida mais. Sua próxima mensagem iniciará uma nova sessão."
     info_model: "◆ Modelo: `{model}`"
     info_provider: "◆ Fornecedor: {provider}"

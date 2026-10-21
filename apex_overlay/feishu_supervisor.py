@@ -85,6 +85,8 @@ import sys
 import time
 from typing import Any, Dict, Optional
 
+from apex_overlay import post_import
+
 logger = logging.getLogger(__name__)
 
 # Upstream symbols this seam binds against. Centralized so the seam-test can
@@ -773,22 +775,27 @@ def apply() -> bool:
     reintroduce the multi-second lark_oapi import upstream deferred on
     purpose).
 
-    Idempotent and fail-safe: returns ``True`` if applied (or already present),
+    hc-989: ``gateway.platform_registry`` is never imported from plugin
+    discovery (the gateway's main thread may be inside a gateway import waiting
+    for discovery); when it is not loaded yet the wrap is armed and lands the
+    moment the registry module finishes importing, before anything can call it.
+
+    Idempotent and fail-safe: returns ``True`` if applied, armed (or already present),
     ``False`` if the registry class/method is missing (the seam-test turns that
     into a hard CI failure; at runtime platform creation keeps working with
     stock upstream behavior and the plugin warns). Never raises.
     """
-    global _APPLIED
     if _APPLIED:
         return True
+    return post_import.when_imported(_TARGET_REGISTRY_MODULE, _install)
 
-    import importlib
 
+def _install(reg_mod) -> bool:
+    global _APPLIED
     try:
-        reg_mod = importlib.import_module(_TARGET_REGISTRY_MODULE)
         registry_cls = getattr(reg_mod, _TARGET_REGISTRY_CLS)
         orig = getattr(registry_cls, _TARGET_FACTORY_METHOD)
-    except (ImportError, AttributeError) as exc:
+    except AttributeError as exc:
         logger.error(
             "apex_overlay: could not load %s.%s.%s — hc-384 Feishu "
             "self-reconnect + hc-385 heartbeat are NOT active (the lark SDK's "

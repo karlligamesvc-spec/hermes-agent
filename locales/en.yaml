@@ -746,6 +746,13 @@ gateway:
     unknown_mode: "Unknown mode `{arg}`. Use `/busy queue`, `/busy steer`, or `/busy interrupt`."
     save_failed: "Busy input mode could not be saved to config. Mode unchanged."
     set: "Busy input mode set to **`{mode}`** (saved).\n_{behavior}_"
+  onboarding:
+    # First-time tips appended to a gateway reply once per install (agent/onboarding.py).
+    busy_queue: "💡 First-time tip — I queued your message instead of interrupting. Send `/busy interrupt` to make new messages stop the current task immediately, or `/busy status` to check. This notice won't appear again."
+    busy_steer: "💡 First-time tip — I steered your message into the current run; it will arrive after the next tool call instead of interrupting. Send `/busy interrupt` or `/busy queue` to change this, or `/busy status` to check. This notice won't appear again."
+    busy_redirect: "💡 First-time tip — I redirected the current run using your message. Completed work stays in context, and `/stop` still cancels the task. Send `/busy queue` to wait for a separate turn, or `/busy status` to check. This notice won't appear again."
+    busy_interrupt: "💡 First-time tip — I just interrupted my current task to answer you. Send `/busy queue` to queue follow-ups for after the current task instead, `/busy steer` to inject them mid-run without interrupting, or `/busy status` to check. This notice won't appear again."
+    tool_progress: "💡 First-time tip — that tool took a while and I'm streaming every step. If the progress messages feel noisy, send `/verbose` to cycle modes (all → new → off). This notice won't appear again."
   pause:
     resumed: "▶️ Resumed — new work is accepted again."
     not_paused: "Hermes wasn't paused."
@@ -816,6 +823,7 @@ gateway:
   unknown_command: "Unknown command `/{command}`. Type /commands to see what's available, or resend without the leading slash to send as a regular message."
   session:
     auto_reset_notice: "◐ Session reset after being stopped. Conversation history cleared.\nUse /resume to browse and restore a previous session.\n"
+    auto_reset_plain_notice: "Your previous conversation has been cleared."
     auto_reset_context_exhausted: "\n\n🔄 Session auto-reset — the conversation exceeded the maximum context size and could not be compressed further. Your next message will start a fresh session."
     info_model: "◆ Model: `{model}`"
     info_provider: "◆ Provider: {provider}"

@@ -203,6 +203,13 @@ def _parse(result: str) -> dict:
     return json.loads(result)
 
 
+# hc-969: generate_video reads /tools/v1/check before rendering; a serving default leg.
+VIDEO_CHECK_SERVING = {
+    "ok": True,
+    "video": {"configured": True, "serving": True, "health": {"state": "ok", "healthy": True}},
+}
+
+
 # ---------------------------------------------------------------------------
 # 桌面形态冒烟:vendor env 全空 + 仅网关配置 → 三插件注册成功
 # ---------------------------------------------------------------------------
@@ -525,6 +532,7 @@ class TestGatewayCallSurface:
         self, desktop_env, fake_httpx, video_mod, monkeypatch, tmp_path
     ):
         gateway_module = _gateway_module()
+        fake_httpx.responses.append(FakeResponse(200, VIDEO_CHECK_SERVING))
         fake_httpx.responses.append(
             FakeResponse(
                 200,
@@ -550,7 +558,8 @@ class TestGatewayCallSurface:
         monkeypatch.setattr(gateway_module, "download_media", fake_download)
         raw = video_mod._handle_generate_video({"prompt": "一只猫在弹钢琴"})
         result = _parse(raw)
-        request = fake_httpx.requests[0]
+        check, request = fake_httpx.requests
+        assert (check.method, check.url) == ("GET", f"{GATEWAY_BASE}/tools/v1/check")
         assert request.url == f"{GATEWAY_BASE}/tools/v1/video/generate"
         assert request.json["prompt"] == "一只猫在弹钢琴"
         assert request.headers["X-Capability-Version"]
@@ -565,6 +574,7 @@ class TestGatewayCallSurface:
         self, desktop_env, fake_httpx, video_mod, monkeypatch
     ):
         gateway_module = _gateway_module()
+        fake_httpx.responses.append(FakeResponse(200, VIDEO_CHECK_SERVING))
         fake_httpx.responses.append(
             FakeResponse(
                 200,
@@ -1065,7 +1075,11 @@ class TestGatewayDisabledFallback:
         self, legacy_env, fake_urlopen, fake_httpx, video_mod
     ):
         video_mod._handle_generate_video({"prompt": "x"})
-        assert fake_urlopen[0].full_url == "http://master.test/api/v1/media/video-generate"
+        # hc-969: the legacy leg reads /media/video/check first, then renders.
+        assert [request.full_url for request in fake_urlopen] == [
+            "http://master.test/api/v1/media/video/check",
+            "http://master.test/api/v1/media/video-generate",
+        ]
         assert not fake_httpx.requests
 
     def test_no_gateway_config_at_all_behaves_like_before_migration(self, social_mod):

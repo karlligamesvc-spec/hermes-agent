@@ -2,6 +2,8 @@
 // of tool rows, run summaries and skill activity, kept beside the contract so
 // neither file outgrows its size cap.
 
+import type { ProcessCopy } from './types-process'
+
 export type ToolTitleKey =
   | 'browser_click'
   | 'browser_fill'
@@ -167,4 +169,6 @@ export interface AssistantToolCopy {
   searchResults: string
   stdoutLabel: string
   stderrLabel: string
+  /** The status line, steps and sources a turn's tool work reads as (hc-973). */
+  process: ProcessCopy
 }

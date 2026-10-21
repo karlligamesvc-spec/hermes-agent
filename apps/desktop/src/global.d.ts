@@ -279,6 +279,19 @@ declare global {
       // user's cloud account. See electron/apex-managed.cjs.
       managed: {
         status: () => Promise<DesktopManagedStatus>
+        // hc-971: the light team the signed-in account belongs to, read from the
+        // cloud with the stored login JWT. Optional: an older main process may
+        // not expose it (the account menu then shows no team line).
+        team?: () => Promise<DesktopTeamResult>
+        // hc-991 first-use creator intake: the account's three answers, read or
+        // written with the stored login JWT. Optional: an older main process may
+        // not expose it (the Start page then shows no cards).
+        creatorProfile?: (request: DesktopCreatorProfileRequest) => Promise<DesktopCreatorProfileResult>
+        // hc-995 creator tips: the cloud's tip catalog, read only when tips are on
+        // (the admin client config's desktop_features.creator_tips, passed in as
+        // platformOn, or APEXNODES_CREATOR_TIPS). Optional: an older main process
+        // may not expose it (the process area then shows no tips).
+        creatorTips?: (request: { platformOn: boolean }) => Promise<DesktopCreatorTipsResult>
         // hc-512: live relay model-catalog state for the model menu. Optional:
         // an older main process may not expose it yet. `refresh: true`
         // re-probes now (menu open / user retry); a 401 kicks the key
@@ -1700,6 +1713,73 @@ export interface BackendExit {
 // / agentAuth / runtime / shellUpdate / worktrees); these are the payload
 // shapes the renderer imports from '@/global'.
 // ---------------------------------------------------------------------------
+
+// hc-971: the light team (apex-nodes hc-955) the signed-in account belongs to.
+// Display only; `team: null` whenever there is none or it cannot be confirmed.
+export interface DesktopTeamSummary {
+  isAdmin: boolean
+  name: string
+  status: 'active' | 'pending'
+}
+
+export interface DesktopTeamResult {
+  message?: 'FETCH_FAILED' | 'NOT_SIGNED_IN' | 'SESSION_EXPIRED'
+  needsSignIn?: boolean
+  ok: boolean
+  team: DesktopTeamSummary | null
+}
+
+// hc-991 first-use creator intake (apex-nodes creator_profile router). Stable ids;
+// each surface renders its own labels.
+export type DesktopCreatorContentType = 'drama' | 'knowledge' | 'other' | 'product_review' | 'store_visit' | 'vlog'
+export type DesktopCreatorPlatform = 'bilibili' | 'channels' | 'douyin' | 'kuaishou' | 'xiaohongshu'
+export type DesktopCreatorPainPoint = 'no_editing' | 'no_script' | 'no_shooting' | 'no_topic' | 'no_traffic'
+export type DesktopCreatorIntakeStep = 'content_type' | 'pain_point' | 'platforms'
+
+export interface DesktopCreatorProfile {
+  answers: {
+    contentType: DesktopCreatorContentType | null
+    contentTypeOther: string | null
+    painPoint: DesktopCreatorPainPoint | null
+    platforms: DesktopCreatorPlatform[]
+  }
+  intake: { completed: boolean; nextStep: DesktopCreatorIntakeStep | null; skipped: DesktopCreatorIntakeStep[] }
+}
+
+/** A key that is present sets that answer (null or [] clears it); an absent key is left alone. */
+export interface DesktopCreatorProfilePatch {
+  contentType?: DesktopCreatorContentType | null
+  contentTypeOther?: string | null
+  painPoint?: DesktopCreatorPainPoint | null
+  platforms?: DesktopCreatorPlatform[] | null
+  skip?: DesktopCreatorIntakeStep[]
+}
+
+export type DesktopCreatorProfileRequest = { action: 'get' } | { action: 'save'; patch: DesktopCreatorProfilePatch }
+
+export interface DesktopCreatorProfileResult {
+  message?: 'FETCH_FAILED' | 'INVALID' | 'NOT_SIGNED_IN' | 'SESSION_EXPIRED'
+  needsSignIn?: boolean
+  ok: boolean
+  /** null: this account has no intake (installer-only, or a cloud without the API). */
+  profile: DesktopCreatorProfile | null
+}
+
+// hc-995 creator tips: one line of creator know-how while a step runs. The cloud
+// owns the catalog (apex-nodes app/catalog/creator_tips.json); `steps` are the
+// tool names the process area shows as steps.
+export interface DesktopCreatorTip {
+  id: string
+  steps: string[]
+  text: { en: string; zh: string }
+}
+
+export interface DesktopCreatorTipsResult {
+  enabled: boolean
+  message?: 'FETCH_FAILED' | 'INVALID' | 'NOT_SIGNED_IN'
+  ok: boolean
+  tips: DesktopCreatorTip[]
+}
 
 export interface DesktopManagedStatus {
   runtimePending?: boolean

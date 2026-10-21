@@ -16,6 +16,15 @@ including Bash. Chromium and optional browser downloads retain their existing
 first-use behavior; embedding the engine does not make every browser tool
 available offline.
 
+The archive leaves out what no installed engine reads: the pytest suite,
+contributor metadata, docs-site images, Desktop QA evidence, Node's C headers,
+agent-browser builds no launcher on the target can select, and the repo's npm
+build trees (the TUI ships compiled in `hermes_cli/tui_dist`, and every other
+frontend build refuses inside an installed engine).
+`BUNDLE_EXCLUDED_PATHS` in `scripts/build-runtime-bundle.mjs` is the list, and
+`apps/desktop/scripts/runtime-bundle-slim.node-test.mjs` keeps every path a
+runtime reader needs out of it.
+
 The native build runs extraction, fixup, per-file verification, real imports,
 CLI/tool probes, relocation and the probes again. Windows Bash is executed with
 a PATH containing only its bundled directories. Mac Mach-O executables and
@@ -29,6 +38,19 @@ resource archive's size, SHA256, native target, full source stamp and required
 executables. Missing, unlocked, wrong-source or wrong-architecture payloads
 reject packaging. The final synchronized job also compares the embedded engine
 commit and label across both platform workflows.
+
+An installed engine is never a frontend build tree: Desktop keeps the previous one
+for rollback, and reinstalling a version already on disk re-verifies every file
+and rejects a changed tree. (Desktop also starts a verify at every launch, but
+through the engine link the builder's main-module check fails, so that verify
+exits without hashing anything; fixing it is a separate decision.) The archive
+carries the compiled TUI at `hermes_cli/tui_dist` (built from the pinned source
+in a scratch copy with the bundled Node; upstream's sealed payloads use the same
+layout), and `hermes --tui` runs it on `.runtime/node`. Every other frontend build
+(`hermes dashboard`, `hermes --tui --dev`, `hermes desktop`, an update's product
+builds) refuses inside an installed engine before it downloads anything
+(`apex_overlay/packaged_engine.py`). The native smoke checks at both locations
+that the TUI resolves to the shipped build and loads on the bundled Node.
 
 Native build command (the Mac invocation requires the existing signing
 certificate and Apple API key file variables):

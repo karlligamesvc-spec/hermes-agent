@@ -12,6 +12,26 @@ import pytest
 PLUGIN = Path(__file__).resolve().parents[2] / "plugins/apexnodes-image-tools/__init__.py"
 
 
+def _fake_transports(captured, answer):
+    """Fake legacy ``_request`` and gateway ``request_json``. hc-969's leg-health read
+    gets an empty body (no verdict, the call goes ahead); the generation call records
+    its payload and answers ``answer(payload)``."""
+
+    def legacy(_method, path, payload=None, timeout=None):
+        if path.endswith("/check"):
+            return {}
+        captured.append(payload)
+        return answer(payload)
+
+    def gateway(_method, path, payload=None, *, timeout=None):
+        if path == "/tools/v1/check":
+            return {}
+        captured.append(payload)
+        return {"data": answer(payload)}
+
+    return legacy, gateway
+
+
 @pytest.fixture
 def image_plugin():
     spec = importlib.util.spec_from_file_location("apex_image_model_preference_test", PLUGIN)
@@ -40,22 +60,14 @@ def test_bundled_image_plugin_uses_picker_on_gateway_and_legacy(
     if explicit:
         args["model"] = explicit
     captured = []
+    fake_legacy, fake_gateway = _fake_transports(captured, lambda _payload: {"ok": True, "model": expected})
 
     monkeypatch.setattr(image_plugin, "_use_gateway", lambda: False)
-    monkeypatch.setattr(
-        image_plugin,
-        "_request",
-        lambda _method, _path, payload: captured.append(payload) or {"ok": True, "model": expected},
-    )
+    monkeypatch.setattr(image_plugin, "_request", fake_legacy)
     assert json.loads(image_plugin._handle_generate_image(args))["model"] == expected
 
     monkeypatch.setattr(image_plugin, "_use_gateway", lambda: True)
-    monkeypatch.setattr(
-        image_plugin._gateway,
-        "request_json",
-        lambda _method, _path, payload, timeout: captured.append(payload)
-        or {"data": {"ok": True, "model": expected}},
-    )
+    monkeypatch.setattr(image_plugin._gateway, "request_json", fake_gateway)
     assert json.loads(image_plugin._handle_generate_image(args))["model"] == expected
     assert [payload["model"] for payload in captured] == [expected, expected]
 
@@ -67,13 +79,9 @@ def test_a_saved_agnes_image_2_5_moves_to_gpt_image_2_5_flare(image_plugin, monk
         "apex:\n  generation_image_model: agnes-image-2.5-flash\n", encoding="utf-8"
     )
     captured = []
+    _fake_legacy, fake_gateway = _fake_transports(captured, lambda payload: {"ok": True, "model": payload["model"]})
     monkeypatch.setattr(image_plugin, "_use_gateway", lambda: True)
-    monkeypatch.setattr(
-        image_plugin._gateway,
-        "request_json",
-        lambda _method, _path, payload, timeout: captured.append(payload)
-        or {"data": {"ok": True, "model": payload["model"]}},
-    )
+    monkeypatch.setattr(image_plugin._gateway, "request_json", fake_gateway)
 
     result = json.loads(image_plugin._handle_generate_image({"prompt": "西高地犬"}))
 
@@ -86,6 +94,16 @@ def test_the_picker_no_longer_offers_agnes_image_2_5(image_plugin):
     assert "agnes-image-2.5-flash" not in model["enum"]
     assert "Agnes" not in model["description"]
     assert set(image_plugin.RETIRED_IMAGE_MODELS.values()) <= set(model["enum"])
+
+
+def test_the_desktop_plugin_offers_no_agnes_engine(image_plugin):
+    """hc-990 (Kael, 2026-10-20): Agnes left every image candidate list and agnes-overlay
+    became cover-overlay. The LLM-facing schema names neither; installed builds that still
+    send the old names are mapped by the ApexNodes server (its CI reads this enum)."""
+    schema = image_plugin.GENERATE_IMAGE_SCHEMA
+    provider = schema["parameters"]["properties"]["provider"]
+    assert provider["enum"] == ["cover-overlay", "cover-template", "nanobanana-flash", "nanobanana-pro"]
+    assert "agnes" not in json.dumps(schema, ensure_ascii=False).lower()
 
 
 @pytest.mark.parametrize(

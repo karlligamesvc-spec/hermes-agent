@@ -10,6 +10,9 @@ export const LATIN_ALLOWED = new Set([
   'AI',
   'APEX',
   'GEO',
+  // Creator terms Chinese creators write in Latin: the Vlog content type and B 站 (Bilibili).
+  'B',
+  'Vlog',
   // Platforms and services, named the way their users know them.
   'GitHub',
   'Instagram',

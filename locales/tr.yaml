@@ -737,6 +737,12 @@ gateway:
     unknown_mode: "Bilinmeyen mod `{arg}`. `/busy queue`, `/busy steer` veya `/busy interrupt` kullanın."
     save_failed: "Meşgul giriş modu yapılandırmaya kaydedilemedi. Mod değişmedi."
     set: "Meşgul giriş modu **`{mode}`** olarak ayarlandı (kaydedildi).\n_{behavior}_"
+  onboarding:
+    busy_queue: "💡 İlk kullanım ipucu — Mesajınızı kesmek yerine sıraya aldım. Yeni mesajların mevcut görevi hemen durdurması için `/busy interrupt`, kontrol etmek için `/busy status` gönderin. Bu bildirim bir daha görünmeyecek."
+    busy_steer: "💡 İlk kullanım ipucu — Mesajınızı mevcut çalışmaya yönlendirdim; kesinti yapmadan bir sonraki araç çağrısından sonra ulaşacak. Bunu değiştirmek için `/busy interrupt` veya `/busy queue`, kontrol etmek için `/busy status` gönderin. Bu bildirim bir daha görünmeyecek."
+    busy_redirect: "💡 İlk kullanım ipucu — Mevcut çalışmayı mesajınıza göre yeniden yönlendirdim. Tamamlanan işler bağlamda kalır ve `/stop` görevi yine iptal eder. Ayrı bir tur beklemek için `/busy queue`, kontrol etmek için `/busy status` gönderin. Bu bildirim bir daha görünmeyecek."
+    busy_interrupt: "💡 İlk kullanım ipucu — Size yanıt vermek için mevcut görevimi az önce kestim. Takip mesajlarını mevcut görevden sonraya sıralamak için `/busy queue`, kesinti olmadan çalışma sırasında eklemek için `/busy steer`, kontrol etmek için `/busy status` gönderin. Bu bildirim bir daha görünmeyecek."
+    tool_progress: "💡 İlk kullanım ipucu — Bu araç biraz uzun sürdü ve her adımı canlı gösteriyorum. İlerleme mesajları fazla geliyorsa modlar arasında geçiş yapmak için `/verbose` gönderin (all → new → off). Bu bildirim bir daha görünmeyecek."
   pause:
     resumed: "▶️ Devam ediliyor — yeni işler yeniden kabul ediliyor."
     not_paused: "Hermes duraklatılmamıştı."
@@ -795,6 +801,7 @@ gateway:
   unknown_command: "Bilinmeyen komut `/{command}`. Kullanılabilir komutları görmek için /commands yazın veya normal mesaj olarak göndermek için baştaki eğik çizgi olmadan yeniden gönderin."
   session:
     auto_reset_notice: "◐ Oturum durdurulduktan sonra sıfırlandı. Konuşma geçmişi temizlendi.\nÖnceki bir oturuma göz atıp geri yüklemek için /resume kullanın.\n"
+    auto_reset_plain_notice: "Önceki konuşma temizlendi."
     auto_reset_context_exhausted: "\n\n🔄 Oturum otomatik sıfırlandı — konuşma en büyük bağlam boyutunu aştı ve daha fazla sıkıştırılamadı. Bir sonraki mesajınız yeni bir oturum başlatacak."
     info_model: "◆ Model: `{model}`"
     info_provider: "◆ Sağlayıcı: {provider}"

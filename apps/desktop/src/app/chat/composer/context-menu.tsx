@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useStore } from '@nanostores/react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { IM_ENTRY_ROUTE } from '@/app/routes'
@@ -21,8 +22,8 @@ import {
 import { Kbd } from '@/components/ui/kbd'
 import { ProviderIcon } from '@/components/ui/provider-icon'
 import { useI18n } from '@/i18n'
+import { useComposerSimpleCopy } from '@/i18n/composer-simple'
 import {
-  CircleLetterA,
   type IconComponent,
   ImageIcon,
   MessageCircle,
@@ -32,22 +33,24 @@ import {
 } from '@/lib/icons'
 import type { VendorKey } from '@/lib/model-vendor'
 import { cn } from '@/lib/utils'
+import { $modelTierMode } from '@/store/model-tiers'
 import { notifyError } from '@/store/notifications'
 
+import { AdvancedSubmenu, AttachRows, type ComposerAdvanced, type ComposerPickers } from './context-menu-advanced'
 import { useComposerAttachmentProviders } from './contrib'
 import { GHOST_ICON_BTN } from './controls'
 import { requestComposerFocus, requestComposerInsert } from './focus'
 import {
+  defaultGenerationModel,
   type GenerationKind,
   type GenerationModel,
   type GenerationModelIconKey,
   generationModels,
   generationStarter,
-  previouslySelectedImageModel,
-  previouslySelectedVideoModel,
   saveImageGenerationModel,
   saveVideoGenerationModel,
-  selectedGenerationModel
+  selectedGenerationModel,
+  startupGenerationModel
 } from './generation-models'
 import { SkillBrowseDialog } from './skill-browse-dialog'
 import { type SkillScope, useSkillCatalog } from './skill-catalog'
@@ -70,32 +73,46 @@ import type { ChatBarState } from './types'
 // ./contrib) keeps its zone at the bottom: it carries whatever a PLUGIN
 // registers, not the fixed attachment chrome the followup removed, so dropping
 // it would break an extension point rather than simplify the menu.
-export function ContextMenu({ state }: ContextMenuProps) {
+//
+// WP4 (2026-10-20) brought the pickers back as the "附件" of attach · voice ·
+// send — first-time creators don't know they can drag a video in — and, with
+// `advanced`, folds zones 2–3 plus the toolbar's old settings (scenarios,
+// approvals, voice) into one 高级 row. Without `advanced` (developer mode) the
+// menu keeps its flat zones and those settings stay in the toolbar.
+export function ContextMenu({ advanced, pickers, state }: ContextMenuProps) {
   const { t } = useI18n()
   const c = t.composer
   const cap = c.capabilities
+  const simple = useComposerSimpleCopy()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
+  // A pick that opens another popover (scenarios) must not have the closing
+  // menu hand focus back to "+": that would steal it from the popover's search.
+  const keepFocusAway = useRef(false)
   const [browseOpen, setBrowseOpen] = useState(false)
   const [browseScope, setBrowseScope] = useState<SkillScope>('enabled')
   const [imageModel, setImageModel] = useState(() => selectedGenerationModel('image'))
   const [videoModel, setVideoModel] = useState(() => selectedGenerationModel('video'))
+  // hc-960 exit 31 (Kael, 2026-10-20): tier mode names no model, so the two
+  // generation rows lose their pickers and always run on the defaults.
+  const modelTierMode = useStore($modelTierMode)
   const attachmentProviders = useComposerAttachmentProviders()
 
   // Earlier releases only stored this choice in localStorage. Migrate that
-  // visible selection into the runtime preference as soon as chat is ready.
+  // visible selection into the runtime preference as soon as chat is ready
+  // (in tier mode, the default it gives way to).
   useEffect(() => {
     if (!state.tools.enabled) {
       return
     }
 
-    const image = previouslySelectedImageModel()
-    const video = previouslySelectedVideoModel()
+    const image = startupGenerationModel('image', modelTierMode)
+    const video = startupGenerationModel('video', modelTierMode)
 
     if (image) {void saveImageGenerationModel(image.id).catch(error => notifyError(error, t.settings.config.autosaveFailed))}
 
     if (video) {void saveVideoGenerationModel(video.id).catch(error => notifyError(error, t.settings.config.autosaveFailed))}
-  }, [state.tools.enabled, t.settings.config.autosaveFailed])
+  }, [modelTierMode, state.tools.enabled, t.settings.config.autosaveFailed])
 
   // Seed the composer with a generation opener and focus it, then close the
   // menu. Prefill (not auto-send) so the user finishes describing the idea —
@@ -109,9 +126,11 @@ export function ContextMenu({ state }: ContextMenuProps) {
   const chooseGenerationModel = async (kind: GenerationKind, id: string) => {
     try {
       const selected = await (kind === 'image' ? saveImageGenerationModel(id) : saveVideoGenerationModel(id))
+      const starter = kind === 'image' ? cap.generateImageStarter : cap.generateVideoStarter
 
       if (kind === 'image') {setImageModel(selected)} else {setVideoModel(selected)}
-      startGeneration(generationStarter(kind === 'image' ? cap.generateImageStarter : cap.generateVideoStarter, selected))
+      // Not even the opener names the model in tier mode.
+      startGeneration(modelTierMode ? starter : generationStarter(starter, selected))
     } catch (error) {
       notifyError(error, t.settings.config.autosaveFailed)
     }
@@ -131,26 +150,100 @@ export function ContextMenu({ state }: ContextMenuProps) {
     loadFailed: t.skills.skillsLoadFailed
   })
 
+  // Zones 2–3 — skills, connectors, plugin rows and the @ tip. Flat in
+  // developer mode; under 高级 otherwise.
+  const capabilityRows = (
+    <>
+      {/* Zone 2 — skills, collapsed into two rows (enabled / unused). Both
+          open the same search/browse dialog, defaulting to that row's half. */}
+      <DropdownMenuItem className={CAPABILITY_ROW} onSelect={() => openBrowse('enabled')}>
+        <Sparkles className="text-primary!" />
+        <span className="min-w-0 flex-1 truncate">{cap.enabledLabel}</span>
+        {catalog.skills ? (
+          <span className="text-[0.7rem] tabular-nums text-(--ui-text-tertiary)">{catalog.enabled.length}</span>
+        ) : null}
+        <Codicon className="text-(--ui-text-tertiary)" name="chevron-right" size="0.875rem" />
+      </DropdownMenuItem>
+      <DropdownMenuItem className={CAPABILITY_ROW} onSelect={() => openBrowse('disabled')}>
+        <Package />
+        <span className="min-w-0 flex-1 truncate">{cap.unused}</span>
+        {catalog.skills ? (
+          <span className="text-[0.7rem] tabular-nums text-(--ui-text-tertiary)">{catalog.disabled.length}</span>
+        ) : null}
+        <Codicon className="text-(--ui-text-tertiary)" name="chevron-right" size="0.875rem" />
+      </DropdownMenuItem>
+
+      {/* Zone 3 — connectors (IM channels). */}
+      <DropdownMenuItem className={CAPABILITY_ROW} onSelect={() => navigate(IM_ENTRY_ROUTE)}>
+        <MessageCircle />
+        <span className="min-w-0 flex-1 truncate">{cap.connectors}</span>
+        <span className="truncate text-[0.7rem] text-(--ui-text-tertiary)">{cap.connectorsHint}</span>
+        <Codicon className="text-(--ui-text-tertiary)" name="chevron-right" size="0.875rem" />
+      </DropdownMenuItem>
+
+      {attachmentProviders.length > 0 && <DropdownMenuSeparator />}
+      {attachmentProviders.map(provider => (
+        <DropdownMenuItem
+          className={CAPABILITY_ROW}
+          key={provider.key}
+          onSelect={() => void provider.run({ insertText: text => requestComposerInsert(text, { target: 'main' }) })}
+        >
+          <Codicon name={provider.icon ?? 'plug'} size="0.875rem" />
+          <span>{provider.label}</span>
+        </DropdownMenuItem>
+      ))}
+
+      <DropdownMenuSeparator />
+
+      <div className="px-2 py-1 text-[0.7rem] text-muted-foreground/80">
+        {c.tipPre}
+        <Kbd size="sm">@</Kbd>
+        {c.tipPost}
+      </div>
+    </>
+  )
+
+  const openScenarios = advanced?.onOpenScenarios
+  const canAttach = Boolean(pickers?.onPickFiles || pickers?.onPickFolders || pickers?.onPickImages)
+
   return (
     <>
       <DropdownMenu onOpenChange={setMenuOpen} open={menuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
-            aria-label={state.tools.label}
+            aria-label={simple.addMenu}
             className={cn(
               GHOST_ICON_BTN,
               'data-[state=open]:bg-(--chrome-action-hover) data-[state=open]:text-foreground'
             )}
+            data-slot="composer-add-menu"
             disabled={!state.tools.enabled}
             size="icon"
-            title={state.tools.label}
+            title={simple.addMenu}
             type="button"
             variant="ghost"
           >
             <Codicon name="add" size="0.875rem" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className={cn('w-64', composerPanelCard)} side="top" sideOffset={6}>
+        <DropdownMenuContent
+          align="start"
+          className={cn('w-64', composerPanelCard)}
+          onCloseAutoFocus={event => {
+            if (keepFocusAway.current) {
+              keepFocusAway.current = false
+              event.preventDefault()
+            }
+          }}
+          side="top"
+          sideOffset={6}
+        >
+          {canAttach && (
+            <>
+              <AttachRows {...pickers} />
+              <DropdownMenuSeparator />
+            </>
+          )}
           {/* Zone 1 — generate image / video. The generation entry lives in the
               unified "+" menu: picking one injects a stage-0 opener into the
               composer and kicks off the ladder (no param/model chips here — the
@@ -158,73 +251,61 @@ export function ContextMenu({ state }: ContextMenuProps) {
           <DropdownMenuLabel className="px-2 pb-0.5 pt-0.5 text-[0.625rem] font-semibold uppercase tracking-wider text-(--ui-text-tertiary)">
             {cap.generateLabel}
           </DropdownMenuLabel>
-          <GenerationModelSubmenu
-            icon={ImageIcon}
-            kind="image"
-            label={cap.generateImage}
-            onSelect={id => chooseGenerationModel('image', id)}
-            selectedId={imageModel.id}
-            selectedLabel={imageModel.label}
-          />
-          <GenerationModelSubmenu
-            icon={Video}
-            kind="video"
-            label={cap.generateVideo}
-            onSelect={id => chooseGenerationModel('video', id)}
-            selectedId={videoModel.id}
-            selectedLabel={videoModel.label}
-          />
+          {modelTierMode ? (
+            <>
+              <GenerationRow
+                icon={ImageIcon}
+                kind="image"
+                label={cap.generateImage}
+                onSelect={() => void chooseGenerationModel('image', defaultGenerationModel('image').id)}
+              />
+              <GenerationRow
+                icon={Video}
+                kind="video"
+                label={cap.generateVideo}
+                onSelect={() => void chooseGenerationModel('video', defaultGenerationModel('video').id)}
+              />
+            </>
+          ) : (
+            <>
+              <GenerationModelSubmenu
+                icon={ImageIcon}
+                kind="image"
+                label={cap.generateImage}
+                onSelect={id => chooseGenerationModel('image', id)}
+                selectedId={imageModel.id}
+                selectedLabel={imageModel.label}
+              />
+              <GenerationModelSubmenu
+                icon={Video}
+                kind="video"
+                label={cap.generateVideo}
+                onSelect={id => chooseGenerationModel('video', id)}
+                selectedId={videoModel.id}
+                selectedLabel={videoModel.label}
+              />
+            </>
+          )}
 
           <DropdownMenuSeparator />
 
-          {/* Zone 2 — skills, collapsed into two rows (enabled / unused). Both
-              open the same search/browse dialog, defaulting to that row's half. */}
-          <DropdownMenuItem className={CAPABILITY_ROW} onSelect={() => openBrowse('enabled')}>
-            <Sparkles className="text-primary!" />
-            <span className="min-w-0 flex-1 truncate">{cap.enabledLabel}</span>
-            {catalog.skills ? (
-              <span className="text-[0.7rem] tabular-nums text-(--ui-text-tertiary)">{catalog.enabled.length}</span>
-            ) : null}
-            <Codicon className="text-(--ui-text-tertiary)" name="chevron-right" size="0.875rem" />
-          </DropdownMenuItem>
-          <DropdownMenuItem className={CAPABILITY_ROW} onSelect={() => openBrowse('disabled')}>
-            <Package />
-            <span className="min-w-0 flex-1 truncate">{cap.unused}</span>
-            {catalog.skills ? (
-              <span className="text-[0.7rem] tabular-nums text-(--ui-text-tertiary)">{catalog.disabled.length}</span>
-            ) : null}
-            <Codicon className="text-(--ui-text-tertiary)" name="chevron-right" size="0.875rem" />
-          </DropdownMenuItem>
-
-          {/* Zone 3 — connectors (IM channels). */}
-          <DropdownMenuItem className={CAPABILITY_ROW} onSelect={() => navigate(IM_ENTRY_ROUTE)}>
-            <MessageCircle />
-            <span className="min-w-0 flex-1 truncate">{cap.connectors}</span>
-            <span className="truncate text-[0.7rem] text-(--ui-text-tertiary)">{cap.connectorsHint}</span>
-            <Codicon className="text-(--ui-text-tertiary)" name="chevron-right" size="0.875rem" />
-          </DropdownMenuItem>
-
-          {attachmentProviders.length > 0 && <DropdownMenuSeparator />}
-          {attachmentProviders.map(provider => (
-            <DropdownMenuItem
-              className={CAPABILITY_ROW}
-              key={provider.key}
-              onSelect={() =>
-                void provider.run({ insertText: text => requestComposerInsert(text, { target: 'main' }) })
-              }
+          {advanced ? (
+            <AdvancedSubmenu
+              advanced={{
+                ...advanced,
+                onOpenScenarios:
+                  openScenarios &&
+                  (() => {
+                    keepFocusAway.current = true
+                    openScenarios()
+                  })
+              }}
             >
-              <Codicon name={provider.icon ?? 'plug'} size="0.875rem" />
-              <span>{provider.label}</span>
-            </DropdownMenuItem>
-          ))}
-
-          <DropdownMenuSeparator />
-
-          <div className="px-2 py-1 text-[0.7rem] text-muted-foreground/80">
-            {c.tipPre}
-            <Kbd size="sm">@</Kbd>
-            {c.tipPost}
-          </div>
+              {capabilityRows}
+            </AdvancedSubmenu>
+          ) : (
+            capabilityRows
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -245,6 +326,21 @@ export function ContextMenuItem({ children, disabled, icon: Icon, onSelect }: Co
   )
 }
 
+/** A generation row with no model to pick (tier mode). */
+function GenerationRow({
+  icon: Icon,
+  kind,
+  label,
+  onSelect
+}: Pick<GenerationModelSubmenuProps, 'icon' | 'kind' | 'label'> & { onSelect: () => void }) {
+  return (
+    <DropdownMenuItem className={CAPABILITY_ROW} data-generation-kind={kind} onSelect={onSelect}>
+      <Icon />
+      <span>{label}</span>
+    </DropdownMenuItem>
+  )
+}
+
 function GenerationModelSubmenu({
   icon: Icon,
   kind,
@@ -255,7 +351,7 @@ function GenerationModelSubmenu({
 }: GenerationModelSubmenuProps) {
   return (
     <DropdownMenuSub>
-      <DropdownMenuSubTrigger className={CAPABILITY_ROW}>
+      <DropdownMenuSubTrigger className={CAPABILITY_ROW} data-generation-kind={kind}>
         <Icon />
         <span className="min-w-0 flex-1 truncate">{label}</span>
         <span className="max-w-28 truncate text-[0.7rem] text-(--ui-text-tertiary)">{selectedLabel}</span>
@@ -274,7 +370,7 @@ function GenerationModelSubmenu({
   )
 }
 
-const GENERATION_ICON_SPECS: Record<Exclude<GenerationModelIconKey, 'agnes'>, { vendor: VendorKey }> = {
+const GENERATION_ICON_SPECS: Record<GenerationModelIconKey, { vendor: VendorKey }> = {
   gemini: { vendor: 'gemini' },
   'gpt-flare': { vendor: 'openai' },
   'gpt-sunburst': { vendor: 'openai' },
@@ -293,20 +389,6 @@ const GENERATION_ICON_SPECS: Record<Exclude<GenerationModelIconKey, 'agnes'>, { 
  * visually collide with the provider artwork.
  */
 export function GenerationModelIcon({ model }: { model: GenerationModel }) {
-  if (model.icon === 'agnes') {
-    return (
-      <span
-        aria-hidden="true"
-        className="inline-flex h-5 w-7 shrink-0 items-center justify-start"
-        data-generation-model-icon={model.icon}
-      >
-        <span className="inline-flex size-4.5 items-center justify-center rounded-[5px] bg-[#7456D8] text-white ring-1 ring-inset ring-black/10">
-          <CircleLetterA size={12} stroke={1.8} />
-        </span>
-      </span>
-    )
-  }
-
   const spec = GENERATION_ICON_SPECS[model.icon]
 
   return (
@@ -328,6 +410,11 @@ interface ContextMenuItemProps {
 }
 
 interface ContextMenuProps {
+  /** Present outside developer mode: zones 2–3 and the toolbar's settings
+   *  fold into one 高级 row. */
+  advanced?: ComposerAdvanced
+  /** The attach rows ("附件"); absent on a surface that can't attach. */
+  pickers?: ComposerPickers
   state: ChatBarState
 }
 

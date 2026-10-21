@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { I18nProvider } from '@/i18n'
+import { COMPOSER_SIMPLE_COPY } from '@/i18n/composer-simple'
 import { en } from '@/i18n/en'
 import { ja } from '@/i18n/ja'
 import { zh } from '@/i18n/zh'
@@ -26,6 +27,7 @@ import { $composerAttachments, clearSessionDraft, mainComposerScope, stashSessio
 import { $cronJobs } from '@/store/cron'
 import { $selectedStoredSessionId, setSessions, setSessionsLoading } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
+import { chooseWorkflowFromAddMenu, openAddMenu } from '@/test/composer-add-menu'
 
 import { TasksView } from '../tasks'
 
@@ -445,7 +447,8 @@ describe('hc-685 business workspace identity', () => {
     expect(startHome?.classList.contains('text-left')).toBe(true)
     expect(headingColumn?.closest('[data-business-start-home]')).toBe(startHome)
     expect(launcherColumn?.parentElement).toBe(startHome)
-    expect(goal.closest('form')?.querySelector('[data-start-workflow-selection]')).toBeTruthy()
+    expect(goal.closest('form')?.querySelector('[data-start-workflow-selection]')).toBeNull() // WP4: under + › Advanced
+    await chooseWorkflowFromAddMenu(goal.closest('form')!, COMPOSER_SIMPLE_COPY.en, 'Workflow: Competitor monitoring')
     expect(screen.queryByText(/Local test data/)).toBeNull()
   })
 
@@ -2191,23 +2194,18 @@ describe('hc-685 business workspace identity', () => {
     expect(screen.getAllByRole('textbox')).toHaveLength(1)
     expect(screen.getByText('launch-brief.pdf')).toBeTruthy()
 
-    const openAttachmentMenu = () => {
-      const trigger = screen.getByRole('button', { name: '附加' })
-      fireEvent.pointerDown(trigger, { button: 0, pointerId: 1 })
-      fireEvent.pointerUp(trigger, { button: 0, pointerId: 1 })
-      fireEvent.click(trigger)
-    }
+    const openAttachmentMenu = () => openAddMenu(window.document.body, COMPOSER_SIMPLE_COPY.zh.addMenu)
 
     openAttachmentMenu()
-    fireEvent.click(screen.getByRole('menuitem', { name: '文件…' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '添加文件或视频' }))
     expect(onPickFiles).toHaveBeenCalledTimes(1)
 
     openAttachmentMenu()
-    fireEvent.click(screen.getByRole('menuitem', { name: '文件夹…' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '添加文件夹' }))
     expect(onPickFolders).toHaveBeenCalledTimes(1)
 
     openAttachmentMenu()
-    fireEvent.click(screen.getByRole('menuitem', { name: '图片…' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '添加图片' }))
     expect(onPickImages).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole('button', { name: '移除 launch-brief.pdf' }))
@@ -2391,10 +2389,10 @@ describe('hc-685 business workspace identity', () => {
       .filter(element => !element.hasAttribute('disabled') && element.tabIndex >= 0)
       .map(element => element.getAttribute('aria-label'))
 
-    expect(keyboardOrder).toEqual(['业务目标', '开始执行', '附加', '开始语音对话'])
+    expect(keyboardOrder).toEqual(['业务目标', '开始执行', '添加图片、文件和更多', '开始语音对话'])
   })
 
-  it('keeps the compact Start composer editable with workflow selection in its footer', () => {
+  it('keeps the compact Start composer editable with workflow selection under "+" › 高级', async () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <I18nProvider configClient={null} initialLocale="zh">
@@ -2408,7 +2406,8 @@ describe('hc-685 business workspace identity', () => {
 
     expect(goal.getAttribute('rows')).toBe('2')
     expect(content?.querySelector('form')).toBe(goal.closest('form'))
-    expect(goal.closest('form')?.querySelector('[data-business-goal-footer] [data-start-workflow-selection]')).toBeTruthy()
+    expect(goal.closest('form')?.querySelector('[data-start-workflow-selection]')).toBeNull()
+    await chooseWorkflowFromAddMenu(goal.closest('form')!, COMPOSER_SIMPLE_COPY.zh, '选择工作流')
   })
 
   it('preserves the draft for a rejected goal and leaves Shift+Enter to the textarea', async () => {

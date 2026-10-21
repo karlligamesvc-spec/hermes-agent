@@ -37,7 +37,7 @@ import { $activeSessionId, $yoloActive, setYoloActive } from '@/store/session'
 // permissive tier stays session-local. A legacy config where an older build
 // left approvals.mode=off still renders as "full", and picking manual/smart
 // from there re-homes the global mode to the chosen tier.
-type ApprovalTier = 'full' | 'manual' | 'smart'
+export type ApprovalTier = 'full' | 'manual' | 'smart'
 
 const TIERS = ['manual', 'smart', 'full'] as const
 
@@ -48,8 +48,9 @@ const PILL = cn(
   'text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-foreground'
 )
 
-export function ApprovalPill({ disabled }: { disabled: boolean }) {
-  const t = useI18n().t.composer.approvalMode
+/** The live tier and the one way to change it — shared by the pill (developer
+ *  mode) and the composer's 高级 › 审批方式 rows, so both write the same way. */
+export function useApprovalTier(): { select: (next: ApprovalTier) => Promise<void>; tier: ApprovalTier } {
   const { requestGateway } = useGatewayRequest()
   const yoloActive = useStore($yoloActive)
   const sessionId = useStore($activeSessionId)
@@ -59,7 +60,6 @@ export function ApprovalPill({ disabled }: { disabled: boolean }) {
   // the status bar uses so both surfaces can never disagree.
   useStore($approvalModes)
   const approvalMode = approvalModeForProfile(profile)
-  const [open, setOpen] = useState(false)
 
   // "full" whenever approvals are effectively bypassed — either the global mode
   // is off, or a per-session yolo override (status-bar zap) is armed for this
@@ -68,8 +68,6 @@ export function ApprovalPill({ disabled }: { disabled: boolean }) {
     yoloActive || approvalMode === 'off' ? 'full' : approvalMode === 'smart' ? 'smart' : 'manual'
 
   async function select(next: ApprovalTier) {
-    setOpen(false)
-
     if (next === tier) {
       return
     }
@@ -102,6 +100,37 @@ export function ApprovalPill({ disabled }: { disabled: boolean }) {
     await applyApprovalMode(requestGateway, profile, next === 'smart' ? 'smart' : 'manual')
   }
 
+  return { select, tier }
+}
+
+/** The three tiers as radio rows, each with its one-line description. */
+export function ApprovalTierItems({ onSelect, tier }: { onSelect: (next: ApprovalTier) => void; tier: ApprovalTier }) {
+  const t = useI18n().t.composer.approvalMode
+
+  return (
+    <DropdownMenuRadioGroup onValueChange={value => onSelect(value as ApprovalTier)} value={tier}>
+      {TIERS.map(value => {
+        const Icon = TIER_ICON[value]
+
+        return (
+          <DropdownMenuRadioItem className="items-start gap-2 py-1.5" key={value} value={value}>
+            <Icon className="mt-0.5 size-4 shrink-0 text-(--ui-text-tertiary)" />
+            <span className="flex flex-col gap-0.5">
+              <span className="text-foreground">{t[value].label}</span>
+              <span className="text-(--ui-text-tertiary)">{t[value].desc}</span>
+            </span>
+          </DropdownMenuRadioItem>
+        )
+      })}
+    </DropdownMenuRadioGroup>
+  )
+}
+
+export function ApprovalPill({ disabled }: { disabled: boolean }) {
+  const t = useI18n().t.composer.approvalMode
+  const { select, tier } = useApprovalTier()
+  const [open, setOpen] = useState(false)
+
   const TriggerIcon = TIER_ICON[tier]
 
   return (
@@ -122,21 +151,13 @@ export function ApprovalPill({ disabled }: { disabled: boolean }) {
       </DropdownMenuTrigger>
       {/* Wide enough that each tier's one-line description never wraps. */}
       <DropdownMenuContent align="start" className="w-96" side="top" sideOffset={8}>
-        <DropdownMenuRadioGroup onValueChange={value => void select(value as ApprovalTier)} value={tier}>
-          {TIERS.map(value => {
-            const Icon = TIER_ICON[value]
-
-            return (
-              <DropdownMenuRadioItem className="items-start gap-2 py-1.5" key={value} value={value}>
-                <Icon className="mt-0.5 size-4 shrink-0 text-(--ui-text-tertiary)" />
-                <span className="flex flex-col gap-0.5">
-                  <span className="text-foreground">{t[value].label}</span>
-                  <span className="text-(--ui-text-tertiary)">{t[value].desc}</span>
-                </span>
-              </DropdownMenuRadioItem>
-            )
-          })}
-        </DropdownMenuRadioGroup>
+        <ApprovalTierItems
+          onSelect={next => {
+            setOpen(false)
+            void select(next)
+          }}
+          tier={tier}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   )

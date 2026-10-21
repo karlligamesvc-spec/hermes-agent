@@ -3,10 +3,7 @@ import { persistString, storedString } from '@/lib/storage'
 
 export type GenerationKind = 'image' | 'video'
 
-// 'agnes' no longer belongs to any listed model (hc-957). It stays in the union only
-// because context-menu.tsx still special-cases that icon; drop both together.
 export type GenerationModelIconKey =
-  | 'agnes'
   | 'gemini'
   | 'gpt-flare'
   | 'gpt-sunburst'
@@ -66,13 +63,16 @@ function storedModelId(kind: GenerationKind): null | string {
 export const generationModels = (kind: GenerationKind): readonly GenerationModel[] =>
   kind === 'image' ? IMAGE_GENERATION_MODELS : VIDEO_GENERATION_MODELS
 
-export function selectedGenerationModel(kind: GenerationKind): GenerationModel {
+export function defaultGenerationModel(kind: GenerationKind): GenerationModel {
   const models = generationModels(kind)
+
+  return models.find(model => model.id === DEFAULT_MODEL_IDS[kind]) ?? models[0]
+}
+
+export function selectedGenerationModel(kind: GenerationKind): GenerationModel {
   const stored = storedModelId(kind)
 
-  return (
-    models.find(model => model.id === stored) ?? models.find(model => model.id === DEFAULT_MODEL_IDS[kind]) ?? models[0]
-  )
+  return generationModels(kind).find(model => model.id === stored) ?? defaultGenerationModel(kind)
 }
 
 export function selectGenerationModel(kind: GenerationKind, id: string): GenerationModel {
@@ -97,6 +97,18 @@ export function previouslySelectedVideoModel(): GenerationModel | null {
   const stored = storedModelId('video')
 
   return VIDEO_GENERATION_MODELS.find(model => model.id === stored) ?? null
+}
+
+/**
+ * The model the composer's start-up migration writes into the runtime
+ * preference, or null when nothing was ever picked. Tier mode has no picker and
+ * always uses the defaults (hc-960 exit 31, Kael 2026-10-20), so a pick made
+ * before it gives way to the default instead of running unseen.
+ */
+export function startupGenerationModel(kind: GenerationKind, tierMode: boolean): GenerationModel | null {
+  const previous = kind === 'image' ? previouslySelectedImageModel() : previouslySelectedVideoModel()
+
+  return previous && (tierMode ? defaultGenerationModel(kind) : previous)
 }
 
 async function saveGenerationModel(kind: GenerationKind, id: string): Promise<GenerationModel> {

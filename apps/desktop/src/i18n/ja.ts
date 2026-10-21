@@ -452,10 +452,10 @@ export const ja = defineLocale({
         'デスクトップ専用の表示設定です。モードは明るさ、テーマはアクセントカラーとチャット面のスタイルを制御します。',
       colorMode: 'カラーモード',
       colorModeDesc: '固定モードを選ぶか、APEX をシステム設定に合わせます。',
-      toolViewTitle: 'ツール呼び出しの表示',
-      toolViewDesc: 'プロダクト表示は生のツールペイロードを隠し、テクニカル表示は入出力をすべて表示します。',
+      toolViewTitle: '開発者モード',
+      toolViewDesc: 'オンにすると、会話の各ステップに技術的な詳細（ツールのコード名、所要時間、生の引数と出力、コードとコマンド）が加わり、入力欄にもシナリオ・承認・音声設定のボタンが並びます。',
       reasoningCollapsedTitle: '思考ブロックをデフォルトで折りたたむ',
-      reasoningCollapsedDesc: 'ストリーミング中の推論を、開くまで折りたたんだまま利用できるようにします。',
+      reasoningCollapsedDesc: '開発者モードでのみ有効です。通常、推論は開くまで常に折りたたまれます。',
       uiScaleTitle: 'UI スケール',
       uiScaleDesc: (percent: number) =>
         `アプリ全体の文字と UI を拡大縮小します。Cmd/Ctrl と +、-、0 でも変更できます。現在: ${percent}%`,
@@ -482,7 +482,7 @@ export const ja = defineLocale({
       backdropDesc: '会話の背後に表示される淡い彫像の画像。',
       tipsTitle: 'アプリ内ヒント',
       tipsDesc:
-        '操作に役立つ場面やアイドル時に、APEX が画面の一部を指す小さなヒントを表示します。閉じたヒントは今後表示されません。',
+        '結果を待つ間、APEX が処理エリアで制作のヒントを一言伝え、アイドル時にはときどき画面の一部を指す小さなヒントを表示します。各ヒントは一度だけで、オフにするとすべて止まります。',
       tipsReset: (count: number) => `閉じたヒント ${count} 件を復元`,
       toursTitle: 'ガイドツアー',
       toursDesc: '画面を暗くして現在の手順を強調しながら、APEX がアプリを順番に案内します。',
@@ -499,10 +499,10 @@ export const ja = defineLocale({
       resumeLastSessionTitle: '起動時に前回のチャットを再開',
       resumeLastSessionDesc:
         'オンの場合、コールドスタート時に直近のチャットを再び開きます。オフにすると常に新しいチャットから始まります。',
-      product: 'プロダクト',
-      productDesc: '読みやすいツール活動と簡潔な要約を表示します。',
-      technical: 'テクニカル',
-      technicalDesc: '生のツール引数、結果、低レベルの詳細を含めます。',
+      product: 'オフ',
+      productDesc: 'わかりやすい言葉のステップだけを表示します。',
+      technical: 'オン',
+      technicalDesc: '各ステップに技術的な詳細を加えます。',
       themeTitle: 'テーマ',
       themeDesc: 'デスクトップ専用のパレットです。選択したモードの上に適用されます。',
       themeProfileNote: profile =>

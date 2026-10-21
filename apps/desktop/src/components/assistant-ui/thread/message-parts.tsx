@@ -13,15 +13,24 @@ import { ClarifyTool } from '@/components/assistant-ui/clarify-tool'
 import { ConnectorExecution, ConnectorTool } from '@/components/assistant-ui/connector-tool'
 import { MarkdownText, MarkdownTextContent } from '@/components/assistant-ui/markdown-text'
 import { McpSetupTool } from '@/components/assistant-ui/mcp-setup-tool'
+import { NextStepButtons } from '@/components/assistant-ui/next-steps'
+import {
+  REASONING_BODY_CLASS,
+  REASONING_CHIP_CLASS,
+  reasoningLabel
+} from '@/components/assistant-ui/process/process-block'
+import { ProcessToolGroupSlot } from '@/components/assistant-ui/process/tool-group-slot'
+import { useTurnAnchor } from '@/components/assistant-ui/process/turn-state'
 import { AgentDeliveryNotice, deliveryTargetFromCommand } from '@/components/assistant-ui/thread/agent-delivery'
 import { TimelineTimestamp } from '@/components/assistant-ui/thread/timeline-timestamp'
 import { DelegateTool } from '@/components/assistant-ui/tool/delegate'
-import { ToolFallback, ToolGroupSlot } from '@/components/assistant-ui/tool/fallback'
+import { ToolFallback } from '@/components/assistant-ui/tool/fallback'
 import { formatElapsed, useElapsedSeconds, useMeasuredDuration } from '@/components/chat/activity-timer'
 import { ActivityTimerText } from '@/components/chat/activity-timer-text'
 import { GenLadderCard } from '@/components/chat/gen-ladder-card'
 import { GeneratedImage } from '@/components/chat/generated-image-result'
 import { SCAFFOLD_LABEL_CLASS, SCAFFOLD_META_CLASS, ScaffoldRow } from '@/components/chat/scaffold-row'
+import { DisclosureCaret } from '@/components/ui/disclosure-caret'
 import { useI18n } from '@/i18n'
 import { connectorCalls } from '@/lib/connector-tools'
 import { genLadderCardFromResult } from '@/lib/gen-ladder'
@@ -33,6 +42,7 @@ import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
 import { $reasoningCollapsedByDefault } from '@/store/reasoning-disclosure'
 import { $gatewayState } from '@/store/session'
+import { $toolViewMode } from '@/store/tool-view'
 
 type TimelineToolCallProps = ToolCallMessagePartProps & { completedAt?: number; timestamp?: number }
 
@@ -162,6 +172,7 @@ const TimelineMarkdownText: FC<TimelineTextPartProps> = ({ completedAt, timestam
   <>
     <TimelineTimestamp className="mb-0.5 block" completedAt={completedAt} timestamp={timestamp} />
     <MarkdownText />
+    <NextStepButtons />
   </>
 )
 
@@ -177,6 +188,9 @@ const ThinkingDisclosure: FC<{
 }> = ({ children, completedAt, messageRunning = false, pending = false, timestamp, timerKey }) => {
   const { t } = useI18n()
   const reasoningCollapsedByDefault = useStore($reasoningCollapsedByDefault)
+  // hc-973: outside developer mode a thought is a folded 「想了 8 秒」 chip and
+  // never a live preview scrolling inside the reply.
+  const folded = useStore($toolViewMode) !== 'technical'
   // `null` = no explicit user toggle yet. Live reasoning remains visible by
   // default, unless the user opts into the low-jitter collapsed presentation.
   const [userOpen, setUserOpen] = useState<boolean | null>(null)
@@ -197,7 +211,7 @@ const ThinkingDisclosure: FC<{
 
   // The collapsed-by-default preference outranks the latch: it opts out of
   // live previews entirely, so there is nothing to hold open.
-  const showPreview = !reasoningCollapsedByDefault && (pending || sawLivePreview)
+  const showPreview = !folded && !reasoningCollapsedByDefault && (pending || sawLivePreview)
   const open = userOpen ?? showPreview
   const isPreview = userOpen === null && showPreview
 
@@ -258,6 +272,37 @@ const ThinkingDisclosure: FC<{
     // DOM after expand/collapse (refs are conditionally rendered on `open`).
   }, [isPreview, open])
 
+  if (folded) {
+    return (
+      <div
+        className="grid min-w-0 gap-1"
+        data-conversation-scaffold=""
+        data-slot="aui_thinking-disclosure"
+        ref={enterRef}
+      >
+        <span className="flex min-w-0 items-center gap-1.5">
+          <button
+            aria-expanded={open}
+            className={REASONING_CHIP_CLASS}
+            onClick={() => setUserOpen(!open)}
+            type="button"
+          >
+            <span className={cn(pending && 'shimmer')}>
+              {reasoningLabel(t.assistant.tool.process.reasoning, pending, thoughtFor)}
+            </span>
+            <DisclosureCaret open={open} size="0.625rem" />
+          </button>
+          <TimelineTimestamp className={SCAFFOLD_META_CLASS} completedAt={completedAt} timestamp={timestamp} />
+        </span>
+        {open && (
+          <div className={REASONING_BODY_CLASS} data-slot="aui_thinking-body" ref={scrollRef}>
+            <div ref={contentRef}>{children}</div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div
       className="text-[length:var(--conversation-tool-font-size)] text-(--ui-text-tertiary)"
@@ -308,6 +353,9 @@ const ReasoningAccordionGroup: FC<{ children?: ReactNode; endIndex: number; star
 }) => {
   const messageId = useAuiState(s => s.message.id)
   const messageRunning = useAuiState(s => s.message.status?.type === 'running')
+  // hc-973: a turn with tool work shows its thoughts once, folded into its
+  // process block (「想了 8 秒」), not as one chip per reasoning stretch.
+  const foldedIntoProcess = useTurnAnchor() !== ''
 
   const pending = useAuiState(
     s =>
@@ -346,7 +394,7 @@ const ReasoningAccordionGroup: FC<{ children?: ReactNode; endIndex: number; star
     }, undefined)
   )
 
-  if (!hasContent) {
+  if (!hasContent || foldedIntoProcess) {
     return null
   }
 
@@ -396,6 +444,6 @@ export const MESSAGE_PARTS_COMPONENTS = {
   Reasoning: ReasoningTextPart,
   ReasoningGroup: ReasoningAccordionGroup,
   Text: TimelineMarkdownText,
-  ToolGroup: ToolGroupSlot,
+  ToolGroup: ProcessToolGroupSlot,
   tools: { Fallback: ChainToolFallback }
 } as const

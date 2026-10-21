@@ -30,6 +30,14 @@ def _use_gateway() -> bool:
     return _gateway is not None and _gateway.use_gateway()
 
 
+def _say(key: str, fallback: str, **fields: Any) -> str:
+    """hc-984: the gateway's (zh, en) sentence in the user's language; its Chinese twin
+    on a bare copy without the gateway module."""
+    if _gateway is not None:
+        return _gateway.say(key, media=_gateway.MEDIA_VIDEO, **fields)
+    return fallback.format(**fields)
+
+
 # The Scheduler holds the request open while it submits→polls→downloads the
 # render, so the proxy must wait longer than the server-side poll budget.
 # hc-941: register() reports it as execution_timeout, or the runtime's shared
@@ -81,35 +89,76 @@ def _request(method: str, path: str, payload: dict[str, Any] | None = None, time
     request = urllib.request.Request(f"{_api_base()}{path}", data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
+            raw = response.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
-        raw = exc.read().decode("utf-8", errors="replace")
-        try:
-            detail = json.loads(raw).get("detail", raw)
-        except json.JSONDecodeError:
-            detail = raw
-        if isinstance(detail, dict):
-            message = detail.get("message") or detail.get("code") or "视频生成服务繁忙,请稍后重试"
-        else:
-            message = str(detail or "视频生成服务繁忙,请稍后重试")
-        raise RuntimeError(message) from exc
+        code, message = _error_detail(exc.read().decode("utf-8", errors="replace"))
+        # hc-969: same honest table as the gateway leg; an error the server did not
+        # explain is no longer reported as "繁忙,请稍后重试".
+        honest = (
+            _gateway.media_error_message(_gateway.MEDIA_VIDEO, exc.code, code, message) if _gateway else None
+        )
+        raise RuntimeError(
+            honest
+            or message
+            or _say("media_no_reason_status", "视频生成服务出错了({status}),没有说明原因。", status=f"HTTP {exc.code}")
+        ) from exc
     except urllib.error.URLError as exc:
-        raise RuntimeError(f"无法连接视频生成服务: {exc.reason}") from exc
+        raise RuntimeError(_say("media_unreachable", "无法连接视频生成服务: {reason}", reason=exc.reason)) from exc
+    # hc-984: an answer that cannot be read is said as such instead of crashing the tool.
+    try:
+        body = json.loads(raw)
+    except ValueError as exc:
+        raise RuntimeError(_say("media_unreadable", "视频生成服务的回答读不出来，这次没有结果。")) from exc
+    if not isinstance(body, dict):
+        raise RuntimeError(_say("media_unreadable", "视频生成服务的回答读不出来，这次没有结果。"))
+    return body
+
+
+def _error_detail(raw: str) -> tuple[str | None, str]:
+    """``(code, message)`` from an error answer's ``detail`` (hc-984).
+
+    A body that is not JSON (an HTML gateway page, plain text) or a validation list
+    used to be relayed raw, and a bare code was passed off as the reason; they now
+    read as "no reason given"."""
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        return None, ""
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(detail, str):
+        return None, detail.strip()
+    if isinstance(detail, dict):
+        return str(detail.get("code") or "").strip() or None, str(detail.get("message") or "").strip()
+    return None, ""
 
 
 def _legacy_check() -> bool:
+    # hc-969: ``ok`` also folds in the hc-948 off switch and hc-945 leg health. The
+    # tool stays offered through both (the handler says why it cannot run); only a
+    # platform with no key or model hides it.
     try:
         data = _request("GET", "/media/video/check", timeout=5)
-        return bool(data.get("ok") and data.get("api_key_configured") and data.get("model"))
+        return bool(data.get("api_key_configured") and data.get("model"))
     except Exception:
         return False
 
 
 def _check() -> bool:
     # 网关模式:可用性=配置齐(base+key);额度/限流/上游故障在调用时显式报错。
+    # hc-969:链路关停或连续失败也不隐藏工具,由 _handle_generate_video 当场说明。
     if _use_gateway():
         return bool(_gateway.agent_api_key())
     return _legacy_check()
+
+
+def _leg_health() -> dict[str, Any] | None:
+    """hc-969: the server's health view of the video legs; None when unreadable."""
+    if _use_gateway():
+        return (_gateway.tools_check() or {}).get("video")
+    try:
+        return _request("GET", "/media/video/check", timeout=5)
+    except (RuntimeError, OSError, ValueError):
+        return None
 
 
 GENERATE_VIDEO_SCHEMA = {
@@ -203,16 +252,16 @@ def _desktop_video_model() -> str | None:
             return None
         apex = config["apex"]
         if not isinstance(apex, dict):
-            raise RuntimeError("当前视频模型设置格式无效")
+            raise RuntimeError(_say("media_setting_malformed", "当前视频模型设置格式无效"))
         if "generation_video_model" not in apex:
             return None
         model = apex["generation_video_model"]
         allowed = GENERATE_VIDEO_SCHEMA["parameters"]["properties"]["model"]["enum"]
         if not isinstance(model, str) or model not in allowed:
-            raise RuntimeError("当前视频模型设置不是可用的模型")
+            raise RuntimeError(_say("media_setting_unknown", "当前视频模型设置不是可用的模型"))
         return model
     except (OSError, ValueError, RuntimeError) as exc:
-        raise RuntimeError(f"无法读取当前视频模型设置: {exc}") from exc
+        raise RuntimeError(f"{_say('media_setting_unreadable', '无法读取当前视频模型设置')}: {exc}") from exc
 
 
 def _localize_gateway_video(result: dict[str, Any], prompt: str) -> str:
@@ -242,14 +291,23 @@ def _localize_gateway_video(result: dict[str, Any], prompt: str) -> str:
 
 def _handle_generate_video(args: dict, **_kwargs) -> str:
     if not isinstance(args, dict):
-        return tool_error("generate_video expects a JSON object argument")
+        return tool_error(_say("media_not_object", "generate_video 的参数必须是 JSON 对象。"))
     prompt = str(args.get("prompt") or "").strip()
     if not prompt:
-        return tool_error("请提供视频描述")
+        return tool_error(_say("media_missing_prompt", "请提供视频描述"))
     try:
         selected_model = _desktop_video_model() or str(args.get("model") or "").strip() or None
     except RuntimeError as exc:
-        return tool_error(f"视频生成失败: {exc}")
+        return tool_error(_say("media_failed", "视频生成失败: {reason}", reason=exc))
+    # hc-969: a leg the server reports switched off or failing is said now, instead of
+    # a render request that waits minutes to fail.
+    unavailable = (
+        _gateway.media_unavailable_reason(_gateway.MEDIA_VIDEO, selected_model, _leg_health)
+        if _gateway
+        else None
+    )
+    if unavailable:
+        return tool_error(unavailable)
     payload = {
         "prompt": prompt,
         "aspect_ratio": str(args.get("aspect_ratio") or "landscape").strip() or "landscape",
@@ -266,12 +324,12 @@ def _handle_generate_video(args: dict, **_kwargs) -> str:
                 "POST", "/tools/v1/video/generate", payload, timeout=_VIDEO_REQUEST_TIMEOUT
             )
         except _gateway.GatewayError as exc:
-            return tool_error(f"视频生成失败: {exc}")
+            return tool_error(_say("media_failed", "视频生成失败: {reason}", reason=exc))
         return _localize_gateway_video(_gateway.unwrap(response), prompt)
     try:
         return tool_result(**_request("POST", "/media/video-generate", payload))
     except RuntimeError as exc:
-        return tool_error(f"视频生成失败: {exc}")
+        return tool_error(_say("media_failed", "视频生成失败: {reason}", reason=exc))
 
 
 def register(ctx):

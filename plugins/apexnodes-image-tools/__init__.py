@@ -2,7 +2,7 @@
 
 平台工具网关(DESKTOP-CLOUD-CAPABILITY-PARITY-PD;审计 hc-561 ①#15 桌面空位补齐):
 桌面文生图从无到有。默认走平台工具网关 ``/tools/v1/image/generate``(vendor key
-——agnes / Nano Banana——永不出云);``TOOLS_GATEWAY_DISABLED=1`` 时回退 Scheduler
+——chinaapi / Nano Banana——永不出云);``TOOLS_GATEWAY_DISABLED=1`` 时回退 Scheduler
 内网端点 ``/media/image-generate``(云端 P1 回退通道,与 cloud 副本同源)。
 
 图片生成是同步快活(相较文生视频),但仍可能几十秒;代理等待服务端返回。
@@ -29,6 +29,14 @@ except Exception:  # pragma: no cover - 仅在裸拷贝部署等异常形态出�
 
 def _use_gateway() -> bool:
     return _gateway is not None and _gateway.use_gateway()
+
+
+def _say(key: str, fallback: str, **fields: Any) -> str:
+    """hc-984: the gateway's (zh, en) sentence in the user's language; its Chinese twin
+    on a bare copy without the gateway module."""
+    if _gateway is not None:
+        return _gateway.say(key, media=_gateway.MEDIA_IMAGE, **fields)
+    return fallback.format(**fields)
 
 
 # 图片渲染是同步调用,但多图/付费档可能耗时数十秒——给足超时余量。
@@ -79,35 +87,76 @@ def _request(method: str, path: str, payload: dict[str, Any] | None = None, time
     request = urllib.request.Request(f"{_api_base()}{path}", data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
+            raw = response.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
-        raw = exc.read().decode("utf-8", errors="replace")
-        try:
-            detail = json.loads(raw).get("detail", raw)
-        except json.JSONDecodeError:
-            detail = raw
-        if isinstance(detail, dict):
-            message = detail.get("message") or detail.get("code") or "图片生成服务繁忙,请稍后重试"
-        else:
-            message = str(detail or "图片生成服务繁忙,请稍后重试")
-        raise RuntimeError(message) from exc
+        code, message = _error_detail(exc.read().decode("utf-8", errors="replace"))
+        # hc-969: same honest table as the gateway leg; an error the server did not
+        # explain is no longer reported as "繁忙,请稍后重试".
+        honest = (
+            _gateway.media_error_message(_gateway.MEDIA_IMAGE, exc.code, code, message) if _gateway else None
+        )
+        raise RuntimeError(
+            honest
+            or message
+            or _say("media_no_reason_status", "图片生成服务出错了({status}),没有说明原因。", status=f"HTTP {exc.code}")
+        ) from exc
     except urllib.error.URLError as exc:
-        raise RuntimeError(f"无法连接图片生成服务: {exc.reason}") from exc
+        raise RuntimeError(_say("media_unreachable", "无法连接图片生成服务: {reason}", reason=exc.reason)) from exc
+    # hc-984: an answer that cannot be read is said as such instead of crashing the tool.
+    try:
+        body = json.loads(raw)
+    except ValueError as exc:
+        raise RuntimeError(_say("media_unreadable", "图片生成服务的回答读不出来，这次没有结果。")) from exc
+    if not isinstance(body, dict):
+        raise RuntimeError(_say("media_unreadable", "图片生成服务的回答读不出来，这次没有结果。"))
+    return body
+
+
+def _error_detail(raw: str) -> tuple[str | None, str]:
+    """``(code, message)`` from an error answer's ``detail`` (hc-984).
+
+    A body that is not JSON (an HTML gateway page, plain text) or a validation list
+    used to be relayed raw, and a bare code was passed off as the reason; they now
+    read as "no reason given"."""
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        return None, ""
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(detail, str):
+        return None, detail.strip()
+    if isinstance(detail, dict):
+        return str(detail.get("code") or "").strip() or None, str(detail.get("message") or "").strip()
+    return None, ""
 
 
 def _legacy_check() -> bool:
+    # hc-969: ``ok`` also folds in hc-945 leg health. The tool stays offered while a
+    # leg is failing (the handler says why it cannot run); only a platform with no
+    # key or model hides it.
     try:
         data = _request("GET", "/media/image/check", timeout=5)
-        return bool(data.get("ok") and data.get("api_key_configured") and data.get("model"))
+        return bool(data.get("api_key_configured") and data.get("model"))
     except Exception:
         return False
 
 
 def _check() -> bool:
     # 网关模式:可用性=配置齐(base+key);额度/限流/上游故障在调用时显式报错。
+    # hc-969:链路关停或连续失败也不隐藏工具,由 _handle_generate_image 当场说明。
     if _use_gateway():
         return bool(_gateway.agent_api_key())
     return _legacy_check()
+
+
+def _leg_health() -> dict[str, Any] | None:
+    """hc-969: the server's health view of the image legs; None when unreadable."""
+    if _use_gateway():
+        return (_gateway.tools_check() or {}).get("image")
+    try:
+        return _request("GET", "/media/image/check", timeout=5)
+    except (RuntimeError, OSError, ValueError):
+        return None
 
 
 # hc-957 (Kael, 2026-10-19): Agnes Image 2.5 left the Desktop picker and the model
@@ -130,14 +179,14 @@ def _desktop_image_model() -> str | None:
         return None
     try:
         # The strict preflight prevents the config loader's last-known-good
-        # fallback from silently routing a malformed picker to Agnes.
+        # fallback from silently routing a malformed picker to the platform default.
         require_readable_config_before_write(config_path)
         config = load_config_readonly()
         if not isinstance(config, dict) or "apex" not in config:
             return None
         apex = config["apex"]
         if not isinstance(apex, dict):
-            raise RuntimeError("当前图片模型设置格式无效")
+            raise RuntimeError(_say("media_setting_malformed", "当前图片模型设置格式无效"))
         if "generation_image_model" not in apex:
             return None
         model = apex["generation_image_model"]
@@ -145,10 +194,10 @@ def _desktop_image_model() -> str | None:
             model = RETIRED_IMAGE_MODELS.get(model, model)
         allowed = GENERATE_IMAGE_SCHEMA["parameters"]["properties"]["model"]["enum"]
         if not isinstance(model, str) or model not in allowed:
-            raise RuntimeError("当前图片模型设置不是可用的模型")
+            raise RuntimeError(_say("media_setting_unknown", "当前图片模型设置不是可用的模型"))
         return model
     except (OSError, ValueError, RuntimeError) as exc:
-        raise RuntimeError(f"无法读取当前图片模型设置: {exc}") from exc
+        raise RuntimeError(f"{_say('media_setting_unreadable', '无法读取当前图片模型设置')}: {exc}") from exc
 
 
 GENERATE_IMAGE_SCHEMA = {
@@ -208,11 +257,16 @@ GENERATE_IMAGE_SCHEMA = {
             },
             "provider": {
                 "type": "string",
-                "enum": ["agnes", "agnes-overlay", "nanobanana-flash", "nanobanana-pro"],
+                # hc-990 (Kael, 2026-10-20): Agnes left every image candidate list and
+                # agnes-overlay became cover-overlay. Installed builds still send the old
+                # names; the ApexNodes server resolves them with a notice.
+                "enum": ["cover-overlay", "cover-template", "nanobanana-flash", "nanobanana-pro"],
                 "description": (
-                    "Optional legacy image engine. Leave empty when model is selected. "
-                    "agnes-overlay makes a text-free background and the server prints the title on top; "
-                    "nanobanana-pro/-flash render text inside the image. Empty means normal 配图."
+                    "Optional image engine; leave empty almost always, and always when model is selected. "
+                    "cover-overlay: the platform default model draws a text-free background and the server "
+                    "prints the title on top (title 100% correct). cover-template: a plain gradient card "
+                    "with the title, no image model, free. nanobanana-pro/-flash render text inside the "
+                    "image. Empty means normal 配图."
                 ),
             },
             "purpose": {
@@ -226,19 +280,19 @@ GENERATE_IMAGE_SCHEMA = {
             "title": {
                 "type": "string",
                 "description": (
-                    "Cover title — only used by provider=agnes-overlay. Printed on the image, so it "
-                    "renders 100% correctly (this is the free cover engine's whole point)."
+                    "Cover title for the cover engines (cover-overlay / cover-template). Printed on the "
+                    "image by the server, so it renders 100% correctly."
                 ),
             },
             "subtitle": {
                 "type": "string",
-                "description": "Optional smaller cover subtitle — only used by provider=agnes-overlay.",
+                "description": "Optional smaller cover subtitle, printed under the title (cover engines only).",
             },
             "template": {
                 "type": "string",
                 "enum": ["banner", "split", "corner"],
                 "description": (
-                    "Cover layout for provider=agnes-overlay. banner=大字居中, split=底部标题栏(公众号头图), "
+                    "Cover layout for the printed title. banner=大字居中, split=底部标题栏(公众号头图), "
                     "corner=左下角标(小红书笔记). Default banner."
                 ),
             },
@@ -299,14 +353,14 @@ def _localize_gateway_image(result: dict[str, Any], prompt: str) -> str:
 
 def _handle_generate_image(args: dict, **_kwargs) -> str:
     if not isinstance(args, dict):
-        return tool_error("generate_image expects a JSON object argument")
+        return tool_error(_say("media_not_object", "generate_image 的参数必须是 JSON 对象。"))
     prompt = str(args.get("prompt") or "").strip()
     if not prompt:
-        return tool_error("请提供图片描述")
+        return tool_error(_say("media_missing_prompt", "请提供图片描述"))
     try:
         selected_model = _desktop_image_model() or str(args.get("model") or "").strip() or None
     except RuntimeError as exc:
-        return tool_error(f"图片生成失败: {exc}")
+        return tool_error(_say("media_failed", "图片生成失败: {reason}", reason=exc))
     payload = {
         "prompt": prompt,
         "aspect_ratio": str(args.get("aspect_ratio") or "square").strip() or "square",
@@ -317,23 +371,39 @@ def _handle_generate_image(args: dict, **_kwargs) -> str:
         # the plugin only forwards the provider string).
         "provider": str(args.get("provider") or "").strip() or None,
         "purpose": str(args.get("purpose") or "").strip() or None,
-        # hc-433: free-cover title/subtitle/layout (only meaningful for agnes-overlay).
+        # hc-433: cover title/subtitle/layout (only the cover engines print them).
         "title": str(args.get("title") or "").strip() or None,
         "subtitle": str(args.get("subtitle") or "").strip() or None,
         "template": str(args.get("template") or "").strip() or None,
     }
+    # hc-969: a leg the server reports switched off or failing is said now, instead of
+    # a request that waits to fail. hc-984: with or without a model.
+    unavailable = (
+        _gateway.media_unavailable_reason(
+            _gateway.MEDIA_IMAGE,
+            selected_model,
+            _leg_health,
+            provider=payload["provider"],
+            purpose=payload["purpose"],
+            title=payload["title"],
+        )
+        if _gateway
+        else None
+    )
+    if unavailable:
+        return tool_error(unavailable)
     if _use_gateway():
         try:
             response = _gateway.request_json(
                 "POST", "/tools/v1/image/generate", payload, timeout=_IMAGE_REQUEST_TIMEOUT
             )
         except _gateway.GatewayError as exc:
-            return tool_error(f"图片生成失败: {exc}")
+            return tool_error(_say("media_failed", "图片生成失败: {reason}", reason=exc))
         return _localize_gateway_image(_gateway.unwrap(response), prompt)
     try:
         return tool_result(**_request("POST", "/media/image-generate", payload))
     except RuntimeError as exc:
-        return tool_error(f"图片生成失败: {exc}")
+        return tool_error(_say("media_failed", "图片生成失败: {reason}", reason=exc))
 
 
 def register(ctx):

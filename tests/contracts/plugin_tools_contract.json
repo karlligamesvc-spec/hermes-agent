@@ -1,7 +1,7 @@
 {
  "contract_name": "apexnodes-plugin-tools-parity",
- "contract_version": 9,
- "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948",
+ "contract_version": 10,
+ "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948, hc-969",
  "sync_policy": {
   "copies": [
    "hermes-cloud: tests/contracts/plugin_tools_contract.json (source of truth)",
@@ -730,10 +730,12 @@
    },
    "endpoints": {
     "legacy": [
-     "/media/video-generate"
+     "/media/video-generate",
+     "/media/video/check"
     ],
     "gateway": [
-     "/tools/v1/video/generate"
+     "/tools/v1/video/generate",
+     "/tools/v1/check"
     ]
    },
    "behaviors": {

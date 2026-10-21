@@ -737,6 +737,12 @@ gateway:
     unknown_mode: "Unbekannter Modus `{arg}`. Verwenden Sie `/busy queue`, `/busy steer` oder `/busy interrupt`."
     save_failed: "Eingabemodus bei Beschäftigung konnte nicht in der Konfiguration gespeichert werden. Modus unverändert."
     set: "Eingabemodus bei Beschäftigung auf **`{mode}`** gesetzt (gespeichert).\n_{behavior}_"
+  onboarding:
+    busy_queue: "💡 Einmaliger Tipp — Ich habe Ihre Nachricht eingereiht, statt zu unterbrechen. Senden Sie `/busy interrupt`, damit neue Nachrichten die aktuelle Aufgabe sofort stoppen, oder `/busy status` zum Prüfen. Dieser Hinweis erscheint nicht erneut."
+    busy_steer: "💡 Einmaliger Tipp — Ich habe Ihre Nachricht in den aktuellen Lauf gelenkt; sie kommt nach dem nächsten Tool-Aufruf an, statt zu unterbrechen. Senden Sie `/busy interrupt` oder `/busy queue`, um das zu ändern, oder `/busy status` zum Prüfen. Dieser Hinweis erscheint nicht erneut."
+    busy_redirect: "💡 Einmaliger Tipp — Ich habe den aktuellen Lauf anhand Ihrer Nachricht umgelenkt. Erledigte Arbeit bleibt im Kontext, und `/stop` bricht die Aufgabe weiterhin ab. Senden Sie `/busy queue`, um auf einen eigenen Zug zu warten, oder `/busy status` zum Prüfen. Dieser Hinweis erscheint nicht erneut."
+    busy_interrupt: "💡 Einmaliger Tipp — Ich habe gerade meine aktuelle Aufgabe unterbrochen, um Ihnen zu antworten. Senden Sie `/busy queue`, um Folgenachrichten stattdessen nach der aktuellen Aufgabe einzureihen, `/busy steer`, um sie ohne Unterbrechung in den laufenden Lauf einzuspeisen, oder `/busy status` zum Prüfen. Dieser Hinweis erscheint nicht erneut."
+    tool_progress: "💡 Einmaliger Tipp — Dieses Tool hat eine Weile gebraucht, und ich zeige jeden Schritt live an. Wenn Ihnen die Fortschrittsmeldungen zu viel sind, senden Sie `/verbose`, um die Modi durchzuschalten (all → new → off). Dieser Hinweis erscheint nicht erneut."
   pause:
     resumed: "▶️ Fortgesetzt — neue Arbeit wird wieder angenommen."
     not_paused: "Hermes war nicht pausiert."
@@ -795,6 +801,7 @@ gateway:
   unknown_command: "Unbekannter Befehl `/{command}`. Geben Sie /commands ein, um die verfügbaren Befehle zu sehen, oder senden Sie die Nachricht ohne führenden Schrägstrich erneut, um sie als normale Nachricht zu senden."
   session:
     auto_reset_notice: "◐ Sitzung nach dem Stopp zurückgesetzt. Konversationsverlauf gelöscht.\nVerwenden Sie /resume, um eine frühere Sitzung zu durchsuchen und wiederherzustellen.\n"
+    auto_reset_plain_notice: "Die vorherige Konversation wurde gelöscht."
     auto_reset_context_exhausted: "\n\n🔄 Sitzung automatisch zurückgesetzt — die Konversation hat die maximale Kontextgröße überschritten und konnte nicht weiter komprimiert werden. Ihre nächste Nachricht startet eine neue Sitzung."
     info_model: "◆ Modell: `{model}`"
     info_provider: "◆ Anbieter: {provider}"

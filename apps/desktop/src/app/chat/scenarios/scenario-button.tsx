@@ -7,9 +7,27 @@ import { triggerHaptic } from '@/lib/haptics'
 import { Sparkles } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
+import type { ScenarioCatalog } from './catalog'
 import { insertScenarioPrefill } from './pick'
 import { ScenarioMenu } from './scenario-menu'
 import { useScenarioCatalog } from './use-scenario-catalog'
+
+/** The scenario menu wired to the composer: a pick prefills the 口令 and says
+ *  so, letting whoever opened the menu close it. Shared by the ✦ pill below
+ *  and the composer's 高级 › 场景 row. */
+export function ScenarioPicker({ catalog, onPicked }: { catalog: ScenarioCatalog; onPicked: () => void }) {
+  return (
+    <ScenarioMenu
+      catalog={catalog}
+      onPick={item => {
+        if (insertScenarioPrefill(item)) {
+          triggerHaptic('selection')
+          onPicked()
+        }
+      }}
+    />
+  )
+}
 
 // Matches the composer's other pills (ApprovalPill / ModelPill) so the ✦ button
 // sits flush in the control row.
@@ -51,15 +69,7 @@ export function ScenarioButton({ disabled }: { disabled: boolean }) {
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80 overflow-hidden p-0" side="top" sideOffset={8}>
-        <ScenarioMenu
-          catalog={catalog}
-          onPick={item => {
-            if (insertScenarioPrefill(item)) {
-              triggerHaptic('selection')
-              setOpen(false)
-            }
-          }}
-        />
+        <ScenarioPicker catalog={catalog} onPicked={() => setOpen(false)} />
       </PopoverContent>
     </Popover>
   )

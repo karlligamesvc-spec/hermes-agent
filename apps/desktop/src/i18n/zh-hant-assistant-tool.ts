@@ -1,4 +1,5 @@
 import type { AssistantToolOverrides } from './define-locale'
+import { zhHantProcess } from './zh-hant-process'
 
 // 工具結果計數的量詞與名詞，以工具列推導出的英文計數名詞為鍵
 // （fallback-model `countMetric`）。未列出的名詞一律讀作「項」，不外露英文。
@@ -133,6 +134,7 @@ export const zhHantAssistantTool: AssistantToolOverrides = {
   searchResults: '搜尋結果',
   stdoutLabel: '輸出',
   stderrLabel: '錯誤輸出',
+  process: zhHantProcess,
   toolNames: {
     tool_search: { done: '已尋找可用工具', pending: '正在尋找可用工具', pendingAction: '正在尋找' },
     tool_describe: { done: '已查看工具說明', pending: '正在查看工具說明', pendingAction: '正在查看' },
@@ -250,6 +252,7 @@ export const zhHantAssistantTool: AssistantToolOverrides = {
     'product-research': '選品調研',
     'professional-writing': '專業寫作',
     'proposal-writer': '提案撰寫',
+    'publish-package': '發布包',
     'quote-message-writer': '報價話術',
     'real-estate-listing-copy': '房源文案',
     'refund-negotiation': '退款協商',
@@ -267,6 +270,7 @@ export const zhHantAssistantTool: AssistantToolOverrides = {
     'spreadsheet-quality-check': '表格資料檢查',
     'spreadsheet-workbench': '試算表製作',
     'text-polish': '文字潤飾',
+    'topic-library': '選題庫',
     'topic-research': '選題研究',
     'video-generation': '影片生成',
     'video-script-breakdown': '影片腳本拆解',

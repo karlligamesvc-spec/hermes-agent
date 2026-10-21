@@ -10,6 +10,7 @@ import {
   saveVideoGenerationModel,
   selectedGenerationModel,
   selectGenerationModel,
+  startupGenerationModel,
   VIDEO_GENERATION_MODELS
 } from './generation-models'
 
@@ -150,5 +151,23 @@ describe('video model runtime binding', () => {
   it('rejects unknown video models before writing configuration', async () => {
     await expect(saveVideoGenerationModel('unknown')).rejects.toThrow()
     expect(saveHermesConfig).not.toHaveBeenCalled()
+  })
+})
+
+// hc-960 exit 31 (Kael, 2026-10-20): tier mode has no generation picker and
+// always runs on the defaults.
+describe('startupGenerationModel', () => {
+  beforeEach(() => window.localStorage.clear())
+
+  it('migrates nothing when nothing was ever picked, in or out of tier mode', () => {
+    expect(startupGenerationModel('image', false)).toBeNull()
+    expect(startupGenerationModel('video', true)).toBeNull()
+  })
+
+  it('carries an old pick forward, except in tier mode where the default replaces it', () => {
+    selectGenerationModel('video', 'MiniMax-H3')
+
+    expect(startupGenerationModel('video', false)?.id).toBe('MiniMax-H3')
+    expect(startupGenerationModel('video', true)?.id).toBe('doubao-seedance-2-0-mini-260615')
   })
 })

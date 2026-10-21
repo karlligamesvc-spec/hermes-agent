@@ -33,6 +33,7 @@
 // Layout produced (bundle root = versions/<key>/ once installed):
 //   ./                      runtime source tree (git archive of the pinned ref)
 //   ./venv/                 relocatable venv (uv venv --relocatable + uv sync)
+//   ./hermes_cli/tui_dist/  compiled TUI (`hermes --tui`), runs on .runtime/node
 //   ./.runtime/py/<name>/   python-build-standalone CPython (uv-managed)
 //   ./.runtime/node/        portable Node 22 = npm -g prefix (agent-browser…)
 //   ./.runtime/git/         PortableGit, including Bash (windows only)
@@ -50,7 +51,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import { notarizeMacRuntimePayload, signMacRuntimePayload, verifyNotarizedMacExecutable } from './mac-runtime-payload.mjs'
-import { probeBundledBackend, removeOwnedRuntimeTree, runtimeSmokeEnvironment } from './runtime-bundle-offline-smoke.mjs'
+import { probeBundledBackend, probeBundledTui, removeOwnedRuntimeTree, runtimeSmokeEnvironment } from './runtime-bundle-offline-smoke.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -70,6 +71,22 @@ const RIPGREP_VERSION = '14.1.1'
 // Lockstep with scripts/install.{ps1,sh} agent-browser install (npm -g --prefix
 // <node dir> --ignore-scripts). Keep the specs identical to the installers'.
 const AGENT_BROWSER_SPECS = ['agent-browser@^0.26.0', '@askjo/camofox-browser@^1.5.2']
+
+// hc-951: paths an installed engine never reads. Each was checked against every runtime consumer
+// (Desktop shell, engine CLI/gateway/serve, platform skills, Hypit, the offline fresh install, legacy
+// upgrade and rollback, the release consumer smoke). Kept on purpose: website/static/api (the model
+// catalog seed), website/docs (skills cite it), apps/shared and every workspace package.json (frontend
+// builds reach their installed-engine refusal through the manifests: without web/package.json,
+// `hermes dashboard` would skip its build as if it were done), .runtime/media/ffmpeg (the bundled
+// FFmpeg's corresponding source).
+export const BUNDLE_EXCLUDED_PATHS = Object.freeze([
+  'tests', // pytest suite: outside pyproject's packages, imported only by tests/ and evals/
+  'contributors', // upstream CI attribution map (scripts/audit_pr_attribution.py)
+  'website/static/img', // docs-site images
+  'apps/desktop/docs', // Desktop QA evidence
+  'apps/desktop/pr-assets', // PR screenshots
+  '.runtime/node/include', // C headers: official Node sends node-gyp to its headersUrl, never here
+])
 
 // ---------------------------------------------------------------------------
 // small utils
@@ -501,13 +518,11 @@ async function cmdBuild(args) {
   if (target.os === 'win') fs.writeFileSync(path.join(hypitBin, 'hypit.cmd'),
     '@echo off\r\n"%~dp0node.exe" "%~dp0..\\..\\apex_overlay\\hypit_cli.mjs" %*\r\n')
 
-  // ── 8. repo npm trees. Deliberate A2 curation (NOT today's accidental
-  //       full-workspace install): root deps (browser tool resolution) +
-  //       ui-tui workspace (hermes --tui; tui_dist is NOT committed). Both
-  //       resolve from the root package-lock.json. web/ and apps/* are
-  //       excluded — the packaged shell ships its own Electron. ──────────────
-  npm(['install', '--workspaces=false', '--silent'], { cwd: stage })
-  npm(['install', '--workspace', 'ui-tui', '--silent'], { cwd: stage })
+  // ── 8. no repo npm trees (hc-951). The root and ui-tui installs held only
+  //       build tooling. The TUI ships compiled (step 9b, hc-954) and runs on
+  //       the bundled Node; every other frontend build refuses inside an
+  //       installed engine (apex_overlay/packaged_engine.py), so nothing
+  //       here runs `npm ci`. `serve` never builds a frontend. ─────────────
 
   // ── 9. PortableGit (windows only). Runtime tools need Bash, which MinGit
   //       omits even though its git --version probe succeeds. ──────────────
@@ -525,6 +540,9 @@ async function cmdBuild(args) {
     if (!fs.existsSync(gitExe) || !fs.existsSync(bashExe)) die(`PortableGit missing git.exe or bash.exe under ${gitDir}`)
     gitComponent = { path: '.runtime/git', version: MINGIT_VERSION, flavor: 'PortableGit', shell: 'bin/bash.exe' }
   }
+
+  // ── 9b. compiled TUI (hc-954). An installed engine never builds a frontend. ─
+  buildPackagedTui({ repoRoot, sha, stage, tools, nodeExe, env: npmEnv })
 
   // ── 10. small tools: uv + rg into .runtime/bin ─────────────────────────────
   const binDir = path.join(stage, '.runtime', 'bin')
@@ -551,6 +569,7 @@ async function cmdBuild(args) {
   })
 
   // ── 11. prune build detritus + neutralize location-bound links ────────────
+  for (const rel of pruneUnusedRuntimePaths(stage, target.os)) log(`pruned unused runtime path: ${rel}`)
   prunePycache(stage)
   normalizeStageLinks(stage)
 
@@ -586,11 +605,11 @@ async function cmdBuild(args) {
       python: { path: pyDirRel, version: pyVersion, source: 'python-build-standalone (uv-managed)' },
       venv: { path: 'venv', relocatable: true, sync: 'uv sync --extra all --locked', uv_version: uvVersion },
       node: { path: '.runtime/node', version: nodeVersion, npm_prefix: true, globals: AGENT_BROWSER_SPECS },
-      npm_trees: { root: 'node_modules (--workspaces=false)', 'ui-tui': 'hoisted via npm install -w ui-tui' },
       ...(gitComponent ? { git: gitComponent } : {}),
       uv: { path: `.runtime/bin/uv${target.exe}`, version: uvVersion },
       ripgrep: { path: `.runtime/bin/rg${target.exe}`, version: RIPGREP_VERSION },
       ffmpeg: ffmpegComponent,
+      tui: { path: PACKAGED_TUI_DIR, node: '.runtime/node' },
     },
     chromium: {
       included: false,
@@ -714,6 +733,31 @@ function normalizeStageLinks(root) {
   die('normalizeStageLinks did not reach a fixpoint in 4 passes')
 }
 
+// agent-browser.js runs bin/agent-browser-<os.platform()>-<os.arch()> of whichever node starts it, and
+// the npm package carries seven. Linux builds are never selectable here. A Mac keeps both Darwin builds:
+// a login shell's path_helper can put an x64 (Rosetta Homebrew) node ahead of the bundled one.
+export function excludedAgentBrowserBinaries(names, os) {
+  const own = os === 'win' ? /^agent-browser-win32-/ : /^agent-browser-darwin-/
+  return names.filter(name => /^agent-browser-(?:darwin|linux|linux-musl|win32)-/.test(name) && !own.test(name))
+}
+
+export function pruneUnusedRuntimePaths(root, os) {
+  const agentBrowserBin = `.runtime/node/${os === 'win' ? '' : 'lib/'}node_modules/agent-browser/bin`
+  const binDir = path.join(root, ...agentBrowserBin.split('/'))
+  const binaries = fs.existsSync(binDir) ? excludedAgentBrowserBinaries(fs.readdirSync(binDir), os) : []
+  const removed = []
+  for (const rel of [...BUNDLE_EXCLUDED_PATHS, ...binaries.map(name => `${agentBrowserBin}/${name}`)]) {
+    const abs = path.join(root, ...rel.split('/'))
+    if (!fs.existsSync(abs)) continue
+    rmrf(abs)
+    removed.push(rel)
+  }
+  // A link into a pruned tree would ship dangling and fail only on the user's machine.
+  const dangling = [...walk(root)].filter(f => f.type === 'link' && !fs.existsSync(f.abs)).map(f => f.rel)
+  if (dangling.length) throw new Error(`pruning left dangling links: ${dangling.join(', ')}`)
+  return removed
+}
+
 function prunePycache(root) {
   let n = 0
   const stack = [root]
@@ -742,6 +786,40 @@ function detectPlaywrightVersion(stage, target) {
     try { return JSON.parse(fs.readFileSync(c, 'utf8')).version } catch { /* next */ }
   }
   return null
+}
+
+// hc-954: Desktop verifies an installed engine against files.tsv at every launch and keeps the
+// previous one for rollback, so the engine never builds a frontend in place
+// (apex_overlay/packaged_engine.py refuses). It ships the TUI compiled the way upstream's sealed
+// payloads ship it (scripts/build/agent.py plant_surfaces), and `hermes --tui` runs it on the bundled
+// Node. The npm tree that compiles it lives in a scratch copy of the source, never in the stage.
+export const PACKAGED_TUI_DIR = 'hermes_cli/tui_dist'
+
+export function buildPackagedTui({ repoRoot, sha, stage, tools, nodeExe, env }) {
+  const work = path.join(tools, 'tui-build')
+  rmrf(work)
+  const source = path.join(work, 'source')
+  fs.mkdirSync(source, { recursive: true })
+  const srcTar = path.join(work, 'src.tar')
+  run('git', ['-C', repoRoot, 'archive', '--format=tar', '-o', srcTar, sha])
+  run(tarBin(), ['-xf', srcTar, '-C', source])
+  const product = path.join(work, 'product')
+  run(nodeExe, [path.join(source, 'scripts/build/node-deps.mjs'), '--source', source, '--workspace', 'ui-tui'], { env })
+  run(nodeExe, [path.join(source, 'scripts/build/tui.mjs'), '--source', source, '--out', product], { env })
+  plantPackagedTui(product, stage)
+  rmrf(work)
+}
+
+// The product's dist/ plus its package.json ({"type":"module"}: entry.js is ESM), as plant_surfaces does.
+export function plantPackagedTui(product, stage) {
+  const destination = path.join(stage, ...PACKAGED_TUI_DIR.split('/'))
+  if (fs.existsSync(destination)) throw new Error(`${PACKAGED_TUI_DIR} already exists in the stage; the source tree must not carry a build`)
+  fs.cpSync(path.join(product, 'dist'), destination, { recursive: true })
+  fs.copyFileSync(path.join(product, 'package.json'), path.join(destination, 'package.json'))
+  const entry = path.join(destination, 'entry.js')
+  const type = JSON.parse(fs.readFileSync(path.join(destination, 'package.json'), 'utf8')).type
+  if (!fs.existsSync(entry) || !fs.statSync(entry).size || type !== 'module') throw new Error(`incomplete compiled TUI in ${destination}`)
+  log(`compiled TUI: ${PACKAGED_TUI_DIR}/entry.js`)
 }
 
 // The exact files fixup rewrites — verify must skip them (their content is
@@ -1049,6 +1127,7 @@ async function cmdSmoke(args) {
     if (!fs.existsSync(shim)) die(`agent-browser not found under the bundled npm prefix (${shim})`)
     log('agent-browser-ok (npm -g prefix)')
     proofs.push({ location: label, root, native_target: `${manifest.os}-${manifest.arch}`, imports: 'core/providers/native/extensions/document-dependencies',
+      tui: await probeBundledTui(root, manifest, probeEnv, log),
       backend: await probeBundledBackend(root, manifest, probeEnv, log) })
   }
 

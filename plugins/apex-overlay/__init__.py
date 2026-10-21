@@ -21,9 +21,66 @@ See ``apex_overlay/README.md`` for the full pattern.
 
 from __future__ import annotations
 
+import importlib
 import logging
 
 logger = logging.getLogger(__name__)
+
+# The China IM seams, applied in this order: each seam module with the warning logged when its
+# apply() reports a missing upstream target.
+_CN_IM_SEAMS = (
+    (
+        "first_turn_ack",
+        "apex-overlay: hc-401 first_turn_ack seam did not fully apply "
+        "(see prior error). Native no-edit CN-IM entries "
+        "(wecom/weixin/dingtalk/qqbot) will sit in ~14.6s of first-turn "
+        "silence with no 'received, working' ack.",
+    ),
+    (
+        "cn_im_messages",
+        "apex-overlay: hc-401 CN-IM message localization seam did not "
+        "fully apply (see prior error). Gateway control/status messages "
+        "(busy-ack, gateway-busy, no-home-channel, mid-run rejections) "
+        "may leak English to wecom/weixin/dingtalk/qqbot users.",
+    ),
+    (
+        "cn_im_banners",
+        "apex-overlay: hc-976 CN-IM runtime banner filter seam did not "
+        "apply (see prior error). The session-reset notice and the ◆ "
+        "model/provider/context lines will reach weixin/wecom/dingtalk/"
+        "qqbot/feishu users.",
+    ),
+)
+
+
+def _apply_cn_im_seams() -> None:
+    for name, warning in _CN_IM_SEAMS:
+        try:
+            if not importlib.import_module(f"apex_overlay.{name}").apply():
+                logger.warning(warning)
+        except Exception:
+            logger.warning("apex-overlay: %s seam failed to load", name, exc_info=True)
+
+
+# Seams that register on the plugin context itself (system prompt sections), so
+# their apply() takes ctx: each with the warning logged when it reports False.
+_CONTEXT_SEAMS = (
+    (
+        "user_profile_prompt",
+        "apex-overlay: hc-991 user profile prompt section did not register "
+        "(see prior warning). New local sessions will not carry the "
+        "account's 用户画像 (the first-use creator answers).",
+    ),
+)
+
+
+def _apply_context_seams(ctx) -> None:
+    for name, warning in _CONTEXT_SEAMS:
+        try:
+            if not importlib.import_module(f"apex_overlay.{name}").apply(ctx):
+                logger.warning(warning)
+        except Exception:
+            logger.warning("apex-overlay: %s seam failed to load", name, exc_info=True)
 
 
 def register(ctx) -> None:
@@ -40,6 +97,8 @@ def register(ctx) -> None:
         doubao_tts.apply(ctx)
     except Exception:
         logger.warning("apex-overlay: doubao_tts seam failed to load", exc_info=True)
+
+    _apply_context_seams(ctx)
 
     try:
         from apex_overlay import provider_filter
@@ -196,31 +255,7 @@ def register(ctx) -> None:
     except Exception:
         logger.warning("apex-overlay: stt_no_lazy_install seam failed to load", exc_info=True)
 
-    try:
-        from apex_overlay import first_turn_ack
-
-        if not first_turn_ack.apply():
-            logger.warning(
-                "apex-overlay: hc-401 first_turn_ack seam did not fully apply "
-                "(see prior error). Native no-edit CN-IM entries "
-                "(wecom/weixin/dingtalk/qqbot) will sit in ~14.6s of first-turn "
-                "silence with no 'received, working' ack."
-            )
-    except Exception:
-        logger.warning("apex-overlay: first_turn_ack seam failed to load", exc_info=True)
-
-    try:
-        from apex_overlay import cn_im_messages
-
-        if not cn_im_messages.apply():
-            logger.warning(
-                "apex-overlay: hc-401 CN-IM message localization seam did not "
-                "fully apply (see prior error). Gateway control/status messages "
-                "(busy-ack, gateway-busy, no-home-channel, mid-run rejections) "
-                "may leak English to wecom/weixin/dingtalk/qqbot users."
-            )
-    except Exception:
-        logger.warning("apex-overlay: cn_im_messages seam failed to load", exc_info=True)
+    _apply_cn_im_seams()
 
     try:
         from apex_overlay import cn_mirror_env

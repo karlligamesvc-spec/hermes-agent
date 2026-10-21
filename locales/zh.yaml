@@ -737,6 +737,12 @@ gateway:
     unknown_mode: "未知模式 `{arg}`。请使用 `/busy queue`、`/busy steer` 或 `/busy interrupt`。"
     save_failed: "忙碌输入模式无法保存到配置。模式未更改。"
     set: "忙碌输入模式已设为 **`{mode}`**（已保存）。\n_{behavior}_"
+  onboarding:
+    busy_queue: "💡 首次提示——我把你的消息排队了，没有打断当前任务。发送 `/busy interrupt` 可让新消息立即停止当前任务，或发送 `/busy status` 查看状态。此提示只显示一次。"
+    busy_steer: "💡 首次提示——我把你的消息插入了当前运行，它会在下一次工具调用后到达，而不是打断当前任务。发送 `/busy interrupt` 或 `/busy queue` 可更改，或发送 `/busy status` 查看状态。此提示只显示一次。"
+    busy_redirect: "💡 首次提示——我已按你的消息调整了当前运行。已完成的工作会保留在上下文中，`/stop` 仍可取消任务。发送 `/busy queue` 可改为排队、等当前任务完成后单独处理，或发送 `/busy status` 查看状态。此提示只显示一次。"
+    busy_interrupt: "💡 首次提示——我刚刚中断当前任务来回答你。发送 `/busy queue` 可改为把后续消息排到当前任务之后，`/busy steer` 可在运行中插入而不打断，或发送 `/busy status` 查看状态。此提示只显示一次。"
+    tool_progress: "💡 首次提示——这个工具运行了较长时间，我正在实时推送每一步的进度。如果觉得进度消息太多，发送 `/verbose` 可循环切换显示模式（all → new → off）。此提示只显示一次。"
   pause:
     resumed: "▶️ 已恢复——重新开始接受新任务。"
     not_paused: "Hermes 并未暂停。"
@@ -795,6 +801,7 @@ gateway:
   unknown_command: "未知命令 `/{command}`。输入 /commands 查看可用命令，或去掉开头的斜杠重新发送，以作为普通消息处理。"
   session:
     auto_reset_notice: "◐ 会话在停止后已重置。对话历史已清空。\n用 /resume 浏览并恢复之前的会话。\n"
+    auto_reset_plain_notice: "之前的对话已清空。"
     auto_reset_context_exhausted: "\n\n🔄 会话已自动重置——对话超出了最大上下文大小，且无法进一步压缩。你的下一条消息将开始一个新会话。"
     info_model: "◆ 模型：`{model}`"
     info_provider: "◆ 提供方：{provider}"

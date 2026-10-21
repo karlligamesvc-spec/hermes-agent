@@ -65,12 +65,18 @@ COVERAGE BOUNDARY (mirrors the original patch's honesty)
 ========================================================
 Covered: the busy-ack family (interrupt/queue/steer/subagent/gateway-busy incl.
 the "(iteration i/m, N min elapsed, running: tool)" detail), the first-time
-busy-input onboarding tip (appended into the busy-ack ``message``), the
-no-home-channel notice, and the "Agent is running — …" mid-run command
-rejections.
+busy-input onboarding tips (appended into the busy-ack ``message``; read from
+the catalog, see ``_HC228_ZH_CATALOG_KEYS``), the no-home-channel notice, and
+the "Agent is running — …" mid-run command rejections.
 NOT covered (follow-up, lower blast radius): other slash-command usage replies
 (e.g. /help, /usage, /insights output that are not routed through _handle_message
-as a plain string return), and the long-running "⏳ Working — N min" heartbeat.
+as a plain string return), the long-running "⏳ Working — N min" heartbeat, and
+the first-time tool-progress tip (a progress bubble no choke point sees).
+Busy-ack variants added upstream later (redirect, steering into subagents,
+compressing) and the /loop rejection are not in the table either. Those, the
+heartbeat and the tool-progress tip come from the catalog, so under
+display.language zh they are already Chinese; for them this table only matters
+when the gateway runs in English.
 
 Idempotent (``_MARK`` sentinels + module ``_APPLIED``) and fail-safe: the
 localizer's own try/except returns the original text on any error, and every
@@ -85,6 +91,8 @@ import functools
 import logging
 import re
 
+from apex_overlay import post_import
+
 logger = logging.getLogger(__name__)
 
 # Upstream targets we monkey-patch — centralized so the seam-test pins them.
@@ -97,7 +105,9 @@ _TARGET_BASE_MODULE = "gateway.platforms.base"
 _TARGET_ADAPTER_CLASS = "BasePlatformAdapter"
 _TARGET_SEND_METHOD = "_send_with_retry"
 
-_APPLIED = False
+_APPLIED = False  # True once both the gateway.run and the adapter-base patches are installed
+_RUN_APPLIED = False
+_BASE_APPLIED = False
 _MARK = "_apex_overlay_cn_im_localize"
 
 
@@ -112,50 +122,24 @@ _HC228_ZH_PLATFORMS = frozenset(
     {"wecom", "weixin", "dingtalk", "wecom_callback", "qqbot"}
 )
 
+# The first-time busy-input tips (agent/onboarding.py) render from these catalog
+# keys in the active language, so under display.language zh they already arrive
+# in Chinese. Under en they arrive in English and are mapped to their zh
+# rendering, like the busy-ack around them. They are read from the catalog, not
+# copied here, so a reworded tip cannot fall out of step with this table.
+# gateway.onboarding.tool_progress is not listed: it goes out as a progress
+# bubble (adapter.send / edit_message), which none of the choke points sees.
+_HC228_ZH_CATALOG_KEYS = (
+    "gateway.onboarding.busy_queue",
+    "gateway.onboarding.busy_steer",
+    "gateway.onboarding.busy_redirect",
+    "gateway.onboarding.busy_interrupt",
+)
+
 # Ordered longest/most-specific first so partial fragments never clobber a
 # fuller match. Every English fragment of the covered message family is listed,
 # so a gated platform never sees a partial-English message.
 _HC228_ZH_LITERALS = [
-    # --- first-time busy-input onboarding tips (full sentences) ---
-    (
-        "\U0001f4a1 First-time tip — I queued your message instead of "
-        "interrupting. Send `/busy interrupt` to make new messages stop the "
-        "current task immediately, or `/busy status` to check. This notice "
-        "won't appear again.",
-        "\U0001f4a1 首次提示——我把你的"
-        "消息排队了，没有打断当前"
-        "任务。发送 `/busy interrupt` 可让新消"
-        "息立即停止当前任务，或发"
-        "送 `/busy status` 查看状态。此提示"
-        "只显示一次。",
-    ),
-    (
-        "\U0001f4a1 First-time tip — I steered your message into the "
-        "current run; it will arrive after the next tool call instead of "
-        "interrupting. Send `/busy interrupt` or `/busy queue` to change this, "
-        "or `/busy status` to check. This notice won't appear again.",
-        "\U0001f4a1 首次提示——我把你的"
-        "消息插入了当前运行，它会"
-        "在下一次工具调用后到达，"
-        "而不是打断当前任务。发送 "
-        "`/busy interrupt` 或 `/busy queue` 可更改，或"
-        "发送 `/busy status` 查看状态。此提"
-        "示只显示一次。",
-    ),
-    (
-        "\U0001f4a1 First-time tip — I just interrupted my current task to "
-        "answer you. Send `/busy queue` to queue follow-ups for after the "
-        "current task instead, `/busy steer` to inject them mid-run without "
-        "interrupting, or `/busy status` to check. This notice won't appear "
-        "again.",
-        "\U0001f4a1 首次提示——我刚刚中"
-        "断当前任务来回答你。发送 "
-        "`/busy queue` 可改为把后续消息排到"
-        "当前任务之后，`/busy steer` 可在运"
-        "行中插入而不打断，或发送 "
-        "`/busy status` 查看状态。此提示只"
-        "显示一次。",
-    ),
     # --- gateway-busy (full strings, both gerunds x both phrasings) ---
     (
         "⏳ Gateway is restarting and is not accepting another turn right now.",
@@ -225,12 +209,6 @@ _HC228_ZH_LITERALS = [
         "Agent is running — wait or /stop first, then change runtime.",
         "AI 助手正在运行——请先等待或发送 /stop，然后再切换运行时。",
     ),
-    (
-        "Agent is running — use /goal status / pause / clear mid-run, or "
-        "/stop before setting a new goal.",
-        "AI 助手正在运行——运行中可用 /goal status / pause / clear，"
-        "或先发送 /stop 再设置新目标。",
-    ),
     ("⏳ Agent is running — ", "⏳ AI 助手正在运行——"),
     (
         " can't run mid-turn. Wait for the current response or `/stop` first.",
@@ -294,6 +272,18 @@ def _platform_config_key(platform) -> str:
         return ""
 
 
+def _catalog_rows():
+    """(en, zh) renderings of ``_HC228_ZH_CATALOG_KEYS``, through the profile's locale overlay and packs."""
+    from agent.i18n import t
+
+    rows = []
+    for key in _HC228_ZH_CATALOG_KEYS:
+        needle, repl = t(key, lang="en"), t(key, lang="zh")
+        if needle and needle != repl:  # an empty needle would splice repl between every character
+            rows.append((needle, repl))
+    return rows
+
+
 def _hc228_localize(platform, text):
     """Chinese-ize gateway control/status text for native CN-IM entries only
     (wecom/weixin/dingtalk/wecom_callback/qqbot). Feishu and international
@@ -310,6 +300,8 @@ def _hc228_localize(platform, text):
         if key not in _HC228_ZH_PLATFORMS:
             return text
         out = text
+        for needle, repl in _catalog_rows():
+            out = out.replace(needle, repl)
         for needle, repl in _HC228_ZH_LITERALS:
             out = out.replace(needle, repl)
         for needle, repl in _HC228_ZH_LITERALS_EXTRA:
@@ -408,25 +400,37 @@ def _wrap_send_with_retry(orig):
 def apply() -> bool:
     """Install the CN-IM localization seam onto upstream. Idempotent, fail-safe.
 
-    Returns True when all four choke points are wrapped (or already present),
-    False if any target symbol is missing (the seam-test turns that into a hard
-    CI failure). Never raises into plugin discovery.
+    Returns True when all four choke points are wrapped, already present, or armed for their module's
+    import (hc-989: ``gateway.run`` and ``gateway.platforms.base`` are never imported from plugin
+    discovery, where the gateway's main thread may be inside that import waiting for discovery).
+    False means a target symbol is missing (the seam-test turns that into a hard CI failure). Never
+    raises into plugin discovery.
     """
-    global _APPLIED
     if _APPLIED:
         return True
+    run_ok = post_import.when_imported(_TARGET_RUN_MODULE, _install_run)
+    base_ok = post_import.when_imported(_TARGET_BASE_MODULE, _install_base)
+    return run_ok and base_ok
 
-    import importlib
 
+def _mark_applied() -> None:
+    global _APPLIED
+    _APPLIED = _RUN_APPLIED and _BASE_APPLIED
+    if _APPLIED:
+        logger.debug("apex_overlay: CN-IM message localization seam applied")
+
+
+def _install_run(run_mod) -> bool:
+    """Choke points 1-3, all in ``gateway.run``."""
+    global _RUN_APPLIED
     ok = True
 
     # 1. _prepare_gateway_status_message (module function).
     try:
-        run_mod = importlib.import_module(_TARGET_RUN_MODULE)
         orig_prepare = getattr(run_mod, _TARGET_PREPARE_FN)
         if not getattr(orig_prepare, _MARK, False):
             setattr(run_mod, _TARGET_PREPARE_FN, _wrap_prepare_status(orig_prepare))
-    except (ImportError, AttributeError) as exc:
+    except AttributeError as exc:
         logger.error(
             "apex_overlay: could not patch %s.%s — CN-IM status localization is "
             "NOT active for gateway status callbacks. Upstream may have renamed "
@@ -437,7 +441,6 @@ def apply() -> bool:
 
     # 2 + 3. GatewayRunner methods.
     try:
-        run_mod = importlib.import_module(_TARGET_RUN_MODULE)
         runner_cls = getattr(run_mod, _TARGET_RUNNER_CLASS)
 
         orig_deliver = getattr(runner_cls, _TARGET_DELIVER_METHOD)
@@ -447,7 +450,7 @@ def apply() -> bool:
         orig_handle = getattr(runner_cls, _TARGET_HANDLE_METHOD)
         if not getattr(orig_handle, _MARK, False):
             setattr(runner_cls, _TARGET_HANDLE_METHOD, _wrap_handle_message(orig_handle))
-    except (ImportError, AttributeError) as exc:
+    except AttributeError as exc:
         logger.error(
             "apex_overlay: could not patch %s.%s.{%s,%s} — CN-IM localization of "
             "the no-home-channel notice / mid-run rejections is NOT active. "
@@ -457,23 +460,27 @@ def apply() -> bool:
         )
         ok = False
 
-    # 4. BasePlatformAdapter._send_with_retry (busy-ack / gateway-busy).
+    _RUN_APPLIED = ok
+    _mark_applied()
+    return ok
+
+
+def _install_base(base_mod) -> bool:
+    """Choke point 4: BasePlatformAdapter._send_with_retry (busy-ack / gateway-busy)."""
+    global _BASE_APPLIED
     try:
-        base_mod = importlib.import_module(_TARGET_BASE_MODULE)
         adapter_cls = getattr(base_mod, _TARGET_ADAPTER_CLASS)
         orig_send = getattr(adapter_cls, _TARGET_SEND_METHOD)
-        if not getattr(orig_send, _MARK, False):
-            setattr(adapter_cls, _TARGET_SEND_METHOD, _wrap_send_with_retry(orig_send))
-    except (ImportError, AttributeError) as exc:
+    except AttributeError as exc:
         logger.error(
             "apex_overlay: could not patch %s.%s.%s — CN-IM localization of the "
             "busy-ack / gateway-busy messages is NOT active. Upstream may have "
             "renamed it. (%s)",
             _TARGET_BASE_MODULE, _TARGET_ADAPTER_CLASS, _TARGET_SEND_METHOD, exc,
         )
-        ok = False
-
-    _APPLIED = ok
-    if ok:
-        logger.debug("apex_overlay: CN-IM message localization seam applied")
-    return ok
+        return False
+    if not getattr(orig_send, _MARK, False):
+        setattr(adapter_cls, _TARGET_SEND_METHOD, _wrap_send_with_retry(orig_send))
+    _BASE_APPLIED = True
+    _mark_applied()
+    return True

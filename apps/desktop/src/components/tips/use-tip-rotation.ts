@@ -26,8 +26,10 @@ import { useNavigate } from 'react-router'
 import { SETTINGS_ROUTE } from '@/app/routes'
 import type { Translations } from '@/i18n/types'
 import { resolveTipAnchor } from '@/lib/tips/anchor'
+import { isApexAccount, rotationTips } from '@/lib/tips/apex-ui-tips'
 import { TIP_CATALOG } from '@/lib/tips/catalog'
 import { nextTip } from '@/lib/tips/rotation'
+import { $authState } from '@/store/auth'
 import { $awaitingResponse, $busy } from '@/store/session'
 import { $activeTip, $lastTipId, $nextTipAt, $retiredTips, $tipsEnabled, $tipShownAt, showTip } from '@/store/tips'
 import { checkTutorialLifetime } from '@/store/tutorial-lifetime'
@@ -95,11 +97,17 @@ export function useTipRotation(copy: Translations['tips']) {
         return
       }
 
+      // hc-995 (Q10): an APEX account is a creator; the catalog and the
+      // local-model campaign speak to developers (lib/tips/apex-ui-tips.ts).
+      const apexAccount = isApexAccount($authState.get())
+      const catalog = rotationTips(TIP_CATALOG, apexAccount)
+
       // Campaigns outrank the walk: a conditional, actionable tip that is
       // live right now (the local-setup CTA) says something about THIS
       // machine, which beats the catalog's standing introduction. It shares
       // the cooldown, so taking the moment still costs it the usual hours.
       if (
+        !apexAccount &&
         offerLocalSetupTip(copy, () => {
           navigate(`${SETTINGS_ROUTE}?tab=providers&pview=local`)
         })
@@ -109,10 +117,10 @@ export function useTipRotation(copy: Translations['tips']) {
 
       // Only tips with something on screen to point at are candidates, so the
       // rotation never burns a turn on a pane the user isn't showing.
-      const onScreen = TIP_CATALOG.filter(tip => resolveTipAnchor(document, tip.targets))
+      const onScreen = catalog.filter(tip => resolveTipAnchor(document, tip.targets))
 
       const chosen = nextTip(
-        TIP_CATALOG.map(tip => tip.id),
+        catalog.map(tip => tip.id),
         onScreen.map(tip => tip.id),
         // `$tipShownAt` is the seen ledger: every tip that reached the screen
         // is in it, so a tip the timer closed is as done as one the ✕ closed.

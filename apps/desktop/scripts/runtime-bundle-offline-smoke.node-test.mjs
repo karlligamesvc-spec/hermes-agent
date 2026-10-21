@@ -7,7 +7,71 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
-import { probeBundledBackend, removeOwnedRuntimeTree, runtimeSmokeEnvironment, terminateOwnedSmokeProcess } from '../../../scripts/runtime-bundle-offline-smoke.mjs'
+import { PACKAGED_TUI_DIR, plantPackagedTui } from '../../../scripts/build-runtime-bundle.mjs'
+import { probeBundledBackend, probeBundledTui, removeOwnedRuntimeTree, runtimeSmokeEnvironment, terminateOwnedSmokeProcess } from '../../../scripts/runtime-bundle-offline-smoke.mjs'
+
+// hc-954: the bundle ships the compiled TUI where upstream's sealed payloads do, and nothing else of its build.
+test('the compiled TUI is planted as dist/ plus its module package.json, never over an existing build', () => {
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-tui-plant-'))
+  const product = path.join(work, 'product')
+  const stage = path.join(work, 'stage')
+  const write = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text) }
+  try {
+    write(path.join(product, 'dist', 'entry.js'), 'console.log("tui")\n')
+    write(path.join(product, 'dist', 'hermes-build.json'), '{"product":"tui"}\n')
+    write(path.join(product, 'package.json'), '{"type":"module"}\n')
+    write(path.join(product, '.hermes-product'), 'hermes-frontend-product-v1\n')
+    fs.mkdirSync(stage)
+    plantPackagedTui(product, stage)
+    const planted = path.join(stage, ...PACKAGED_TUI_DIR.split('/'))
+    assert.equal(PACKAGED_TUI_DIR, 'hermes_cli/tui_dist')
+    assert.deepEqual(fs.readdirSync(planted).sort(), ['entry.js', 'hermes-build.json', 'package.json'])
+    for (const [name, from] of [['entry.js', 'dist/entry.js'], ['hermes-build.json', 'dist/hermes-build.json'], ['package.json', 'package.json']]) {
+      assert.deepEqual(fs.readFileSync(path.join(planted, name)), fs.readFileSync(path.join(product, from)))
+    }
+    assert.throws(() => plantPackagedTui(product, stage), /already exists in the stage/)
+
+    for (const [label, broken] of [['commonjs', () => write(path.join(product, 'package.json'), '{}\n')],
+      ['empty entry', () => write(path.join(product, 'dist', 'entry.js'), '')]]) {
+      fs.rmSync(planted, { recursive: true, force: true })
+      write(path.join(product, 'package.json'), '{"type":"module"}\n')
+      write(path.join(product, 'dist', 'entry.js'), 'console.log("tui")\n')
+      broken()
+      assert.throws(() => plantPackagedTui(product, stage), /incomplete compiled TUI/, label)
+    }
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true })
+  }
+})
+
+test('the TUI smoke accepts only the shipped build on the bundled Node, and only when it loads', { skip: process.platform === 'win32' }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-tui-smoke-'))
+  const manifest = { os: 'mac', components: { node: { path: '.runtime/node' } } }
+  const node = path.join(root, '.runtime', 'node', 'bin', 'node')
+  const entry = path.join(root, 'hermes_cli', 'tui_dist', 'entry.js')
+  const python = path.join(root, 'venv', 'bin', 'python')
+  const script = (file, body) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, `#!/bin/sh\n${body}\n`, { mode: 0o755 }) }
+  // The engine's _make_tui_argv answer, printed by a stand-in for the venv Python.
+  const resolvesTo = argv => script(python, `echo '${JSON.stringify(argv)}'`)
+  try {
+    script(node, `exec ${JSON.stringify(process.execPath)} "$@"`)
+    fs.mkdirSync(path.dirname(entry), { recursive: true })
+    fs.writeFileSync(entry, 'console.log("hermes-tui: no TTY")\n')
+    resolvesTo([node, '--expose-gc', entry])
+    assert.deepEqual(await probeBundledTui(root, manifest, process.env), { node, entry })
+
+    resolvesTo([process.execPath, '--expose-gc', entry]) // a Node from outside the bundle (PM's)
+    await assert.rejects(probeBundledTui(root, manifest, process.env), /did not resolve the bundled TUI on the bundled Node/)
+    resolvesTo([node, '--expose-gc', path.join(root, 'ui-tui', 'dist', 'entry.js')]) // a source build
+    await assert.rejects(probeBundledTui(root, manifest, process.env), /did not resolve the bundled TUI/)
+
+    resolvesTo([node, '--expose-gc', entry])
+    fs.writeFileSync(entry, 'console.log("loaded something else")\n')
+    await assert.rejects(probeBundledTui(root, manifest, process.env), /The bundled TUI did not load/)
+  } finally {
+    removeOwnedRuntimeTree(root)
+  }
+})
 
 function ownedFixture(executable, code, codeFlag = '-e') {
   const child = spawn(executable, [codeFlag, code], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })

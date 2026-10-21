@@ -1,3 +1,4 @@
+import { enProcess } from './en-process'
 import type { AssistantToolCopy } from './types-assistant-tool'
 
 export const enAssistantTool: AssistantToolCopy = {
@@ -103,6 +104,7 @@ export const enAssistantTool: AssistantToolCopy = {
   searchResults: 'Search results',
   stdoutLabel: 'stdout',
   stderrLabel: 'stderr',
+  process: enProcess,
   toolNames: {},
   skillNames: {},
   skillNameFallback: slug => slug,
