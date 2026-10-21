@@ -101,6 +101,7 @@ import {
   sanitizeDeviceName as sanitizeDaemonDeviceName
 } from './apex-daemon'
 import { ensureApexDesktopSoul } from './apex-default-soul'
+import { clientConfigForRenderer } from './apex-desktop-features'
 import {
   buildFeishuBackendEnv,
   feishuCredentialsUrl,
@@ -24639,11 +24640,7 @@ ipcMain.handle('hermes:agentProxy:set', async (_event, payload) => {
 // get: the cached state from disk — no network, informational only. The APPLY
 // now happens entirely in the main process pre-gateway (applyClientConfigToRuntime);
 // the renderer neither applies nor records versions anymore.
-ipcMain.handle('hermes:clientConfig:get', async () => {
-  const state = readClientConfigState()
-
-  return { version: state.version, payload: state.payload, appliedVersion: state.appliedVersion }
-})
+ipcMain.handle('hermes:clientConfig:get', async () => clientConfigForRenderer(readClientConfigState(), process.env))
 
 // Both fetchJson and fetchJsonViaOauthSession reject with a message shaped
 // `"<statusCode>: <body>"`. Parse the leading status code (fetchJsonViaOauthSession
