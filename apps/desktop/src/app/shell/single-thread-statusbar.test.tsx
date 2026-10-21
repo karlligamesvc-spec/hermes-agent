@@ -1,12 +1,15 @@
-import { cleanup, render, renderHook, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { useApprovalModeStatusbarItem } from '@/app/shell/approval-mode-menu'
 import { singleThreadStatusbarItems, useSingleThreadStatusbar } from '@/app/shell/single-thread-statusbar'
 import { StatusbarControls, type StatusbarItem } from '@/app/shell/statusbar-controls'
+import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
 import { $approvalModes } from '@/store/approval-mode'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $singleThreadFlag } from '@/store/single-thread'
+import { $statusbarHiddenIds, STATUSBAR_HIDDEN_BY_DEFAULT } from '@/store/statusbar-prefs'
 import { setToolViewMode } from '@/store/tool-view'
 import { stubMenuDomApis, stubResizeObserver } from '@/test/jsdom'
 
@@ -123,5 +126,65 @@ describe('useStatusbarItems, narrowed', () => {
     const { result } = renderHook(() => useSingleThreadStatusbar(sets, extras))
 
     expect(result.current).toBe(sets)
+  })
+})
+
+describe('⚡ while approvals are off: the one place left to change them', () => {
+  afterEach(() => {
+    $approvalModes.set({})
+    $statusbarHiddenIds.set([...STATUSBAR_HIDDEN_BY_DEFAULT])
+    setRuntimeI18nLocale('en')
+  })
+
+  function Bar({
+    requestGateway
+  }: {
+    requestGateway: (method: string, params?: Record<string, unknown>) => Promise<unknown>
+  }) {
+    const approval = useApprovalModeStatusbarItem('default', requestGateway)
+    const plain = item('gateway-health')
+
+    const { leftStatusbarItems, statusbarItems } = useSingleThreadStatusbar(
+      // As use-statusbar-items.tsx adds it: a toggleLabel is what lets the user hide an item.
+      { leftStatusbarItems: [plain], statusbarItems: [{ ...approval, toggleLabel: '审批' }] },
+      { extraLeftItems: [], extraRightItems: [] }
+    )
+
+    return <StatusbarControls items={statusbarItems} leftItems={leftStatusbarItems} />
+  }
+
+  it('shows even when the user once hid it, and its menu switches approvals back on', async () => {
+    setRuntimeI18nLocale('zh')
+    $singleThreadFlag.set(true)
+    $activeGatewayProfile.set('default')
+    $statusbarHiddenIds.set([...STATUSBAR_HIDDEN_BY_DEFAULT, 'approval-mode'])
+
+    const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) =>
+      method === 'config.get' ? { value: 'off' } : { value: params?.value }
+    )
+
+    render(
+      <MemoryRouter>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <Bar requestGateway={requestGateway} />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    const zap = await screen.findByRole('button', { name: /关闭/ })
+
+    expect(screen.queryByText('gateway-health')).toBeNull()
+
+    await act(async () => {
+      fireEvent.pointerDown(zap, { button: 0, pointerId: 1, pointerType: 'mouse' })
+      fireEvent.pointerUp(zap, { button: 0, pointerId: 1, pointerType: 'mouse' })
+      fireEvent.click(zap)
+    })
+
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: /智能/ }))
+
+    await waitFor(() =>
+      expect(requestGateway).toHaveBeenCalledWith('config.set', { key: 'approvals.mode', value: 'smart' })
+    )
   })
 })

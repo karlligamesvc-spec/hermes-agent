@@ -20,15 +20,18 @@ import {
 } from './apex-model-tiers'
 import {
   applySingleThreadSwitch,
-  isSingleThreadEnabled,
-  SINGLE_THREAD_ENV,
-  singleThreadFromClientConfig
+  isSingleThreadActive,
+  SINGLE_THREAD_ACTIVE_ENV,
+  singleThreadFromClientConfig,
+  singleThreadOnForLaunch
 } from './apex-single-thread'
 
 const RELAY = DEFAULT_RELAY_BASE_URL
 const ON = { desktop_features: { single_thread: true } }
+const OFF = { desktop_features: {} }
+const INSTALL = 'APEXNODES_SINGLE_THREAD'
 
-describe('the platform switch', () => {
+describe('the switch for this launch', () => {
   test.each([
     [ON, true],
     [{ desktop_features: { single_thread: 'true' } }, false],
@@ -37,11 +40,21 @@ describe('the platform switch', () => {
     [{ desktop_features: [] }, false],
     [[], false],
     [null, false]
-  ])('reads %j as %s', (payload, on) => {
+  ])('reads the platform payload %j as %s', (payload, on) => {
     assert.equal(singleThreadFromClientConfig(payload), on)
   })
 
-  test('is settled into the env, and an env value the user set wins', () => {
+  test.each([
+    ['the platform alone', {}, ON, true],
+    ['nothing on', {}, OFF, false],
+    ['this install on, platform off', { [INSTALL]: '1' }, OFF, true],
+    ['this install off, platform on', { [INSTALL]: '0' }, ON, false],
+    ['an unreadable install value leaves it to the platform', { [INSTALL]: 'maybe' }, ON, true]
+  ])('decides as hc-1014 does: %s', (_label, env, payload, on) => {
+    assert.equal(singleThreadOnForLaunch(env, payload), on)
+  })
+
+  test('tells the engine through its own variable and never writes hc-1014’s input', () => {
     const lines: string[] = []
     const env: Record<string, string | undefined> = {}
 
@@ -49,31 +62,21 @@ describe('the platform switch', () => {
       applySingleThreadSwitch(env, ON, line => lines.push(line)),
       true
     )
-    assert.equal(env[SINGLE_THREAD_ENV], '1')
-    assert.equal(isSingleThreadEnabled(env), true)
-    assert.deepEqual(lines, ['[client-config] APEXNODES_SINGLE_THREAD=1 from platform desktop_features'])
-
-    const optedOut = { [SINGLE_THREAD_ENV]: '0' }
-
-    assert.equal(applySingleThreadSwitch(optedOut, ON), false)
-    assert.equal(isSingleThreadEnabled(optedOut), false)
-
-    const off: Record<string, string | undefined> = {}
-
-    assert.equal(applySingleThreadSwitch(off, { desktop_features: {} }), false)
-    assert.equal(off[SINGLE_THREAD_ENV], undefined)
+    assert.equal(env[SINGLE_THREAD_ACTIVE_ENV], '1')
+    assert.equal(isSingleThreadActive(env), true)
+    assert.equal(env[INSTALL], undefined)
+    assert.deepEqual(lines, ['[client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)'])
+    // The renderer's install switches stay exactly what this install set: none.
+    assert.deepEqual(clientConfigForRenderer({ appliedVersion: 3, payload: ON, version: 3 }, env).installSwitches, {})
   })
 
-  test('reads back as hc-1014’s install switch, so the chat and the engine agree for the launch', () => {
-    const env: Record<string, string | undefined> = {}
-    const state = { appliedVersion: 3, payload: ON, version: 3 }
+  test('clears a stale signal when the switch is off for this launch', () => {
+    const env: Record<string, string | undefined> = { [INSTALL]: '0', [SINGLE_THREAD_ACTIVE_ENV]: '1' }
 
-    applySingleThreadSwitch(env, ON)
-
-    assert.deepEqual(clientConfigForRenderer(state, env).installSwitches, { single_thread: true })
-    assert.deepEqual(clientConfigForRenderer(state, { [SINGLE_THREAD_ENV]: '0' }).installSwitches, {
-      single_thread: false
-    })
+    assert.equal(applySingleThreadSwitch(env, ON), false)
+    assert.equal(env[SINGLE_THREAD_ACTIVE_ENV], undefined)
+    assert.equal(env[INSTALL], '0')
+    assert.equal(isSingleThreadActive(env), false)
   })
 
   test('settles with the tier switches in one launch-time call', () => {
@@ -81,10 +84,10 @@ describe('the platform switch', () => {
 
     assert.deepEqual(
       applyDesktopFeatureSwitches(env, { desktop_features: { model_tiers: true, single_thread: true } }),
-      ['APEXNODES_MODEL_TIERS', SINGLE_THREAD_ENV]
+      ['APEXNODES_MODEL_TIERS', SINGLE_THREAD_ACTIVE_ENV]
     )
     assert.equal(env.APEXNODES_MODEL_TIERS, '1')
-    assert.equal(env[SINGLE_THREAD_ENV], '1')
+    assert.equal(env[SINGLE_THREAD_ACTIVE_ENV], '1')
   })
 })
 
@@ -93,7 +96,7 @@ describe('the default tier alias, pinned in single-thread mode', () => {
     `model:\n  default: ${model}\n  provider: ${provider}\n  base_url: ${baseUrl}\n  api_key: sk-test\n`
 
   const managed = { baseUrl: RELAY, key: 'sk-test' }
-  const singleThread = { [SINGLE_THREAD_ENV]: '1' }
+  const singleThread = { [SINGLE_THREAD_ACTIVE_ENV]: '1' }
 
   test.each([
     ['a Pro pick', block('custom:apex-nodes.com', 'apex-pro'), 'apex-pro'],

@@ -29,7 +29,7 @@ CI 模式（`CI=true`，不写 golden）和 UTC / Asia/Shanghai / America/Los_An
 
 ## 反向验证（硬规则 14）
 
-脚本把每个改动撤掉或改坏（先断言锚点在文件里恰好命中 1 次），跑守它的测试，记下真实变红的用例，再按 sha256 原样还原。**46/46 变红，0 条绿。** 跑完后工作区干净。脚本和原始输出在协调会话共享笔记 `hc-1015-reverse-verify.py` / `hc-1015-reverse-verify-output.txt`。
+脚本把每个改动撤掉或改坏（先断言锚点在文件里恰好命中 1 次），跑守它的测试，记下真实变红的用例，再按 sha256 原样还原。**50/50 变红，0 条绿。** 第 1 轮 46 处跑在 `c37bec69ec`；协调会话更正环境变量和 ⚡ 之后，主进程、引擎和状态栏那 20 处又在最终代码上整轮重跑（第 2 轮里 ⚡ 锁定那条先是绿的，原因是测试里的 ⚡ 没带 toggleLabel、根本藏不掉，补上后变红）。脚本和原始输出在协调会话共享笔记 `hc-1015-reverse-verify.py` / `hc-1015-reverse-verify-output.txt`。
 
 | # | 注入 | 文件 | 变红 |
 |---|---|---|---|
@@ -66,19 +66,23 @@ CI 模式（`CI=true`，不写 golden）和 UTC / Asia/Shanghai / America/Los_An
 | 31 | 审批不是 off 也留 ⚡ | `single-thread-statusbar.ts` | 4 条（single-thread-statusbar.test.tsx） |
 | 32 | 没有待装更新也留版本号 | `single-thread-statusbar.ts` | 4 条（single-thread-statusbar.test.tsx） |
 | 33 | 插件项被滤掉 | `single-thread-statusbar.ts` | 2 条（single-thread-statusbar.test.tsx） |
-| 34 | 钩子不认开关 | `single-thread-statusbar.ts` | 3 条（single-thread-statusbar.test.tsx） |
-| 35 | 空状态栏仍画 | `statusbar-controls.tsx` | 1 条（single-thread-statusbar.test.tsx） |
-| 36 | 平台值不是字面 true 也设变量 | `apex-single-thread.ts` | 2 条（apex-single-thread.test.ts） |
-| 37 | 平台覆盖本机的 0 | `apex-single-thread.ts` | 1 条（apex-single-thread.test.ts） |
-| 38 | 启动只落三档开关 | `apex-model-tiers.ts` | 1 条（apex-single-thread.test.ts） |
-| 39 | main.ts 换回只落三档的调用 | `main.ts` | 1 条（apex-model-tiers.test.ts） |
-| 40 | 单线模式下 Pro 选择保留 | `apex-model-tiers.ts` | 2 条（apex-single-thread.test.ts） |
-| 41 | 配置自愈跳过单线模式 | `apex-model-tiers.ts` | 3 条（apex-single-thread.test.ts） |
-| 42 | 只开三档也把 Pro 改回 Flash | `apex-model-tiers.ts` | 2 条（apex-model-tiers.test.ts、apex-single-thread.test.ts） |
-| 43 | 没开也加提示段 | `single_thread_prompt.py` | 6 条（test_single_thread_prompt_seam.py） |
-| 44 | 开了也不加提示段 | `single_thread_prompt.py` | 5 条（test_single_thread_prompt_seam.py） |
-| 45 | 去掉「照常先问」那条 | `single_thread_prompt.py` | 1 条（test_single_thread_prompt_seam.py） |
-| 46 | 插件 register 不调这个接缝 | `__init__.py` | 1 条（test_single_thread_prompt_seam.py） |
+| 34 | 钩子不认开关 | `single-thread-statusbar.ts` | 4 条（single-thread-statusbar.test.tsx） |
+| 35 | 用户藏过 ⚡ 时 off 也看不到它 | `single-thread-statusbar.ts` | 1 条（single-thread-statusbar.test.tsx） |
+| 36 | 空状态栏仍画 | `statusbar-controls.tsx` | 1 条（single-thread-statusbar.test.tsx） |
+| 37 | 平台值不是字面 true 也算开 | `apex-single-thread.ts` | 2 条（apex-single-thread.test.ts） |
+| 38 | 不认本机 APEXNODES_SINGLE_THREAD | `apex-single-thread.ts` | 3 条（apex-single-thread.test.ts） |
+| 39 | 主进程顺手写了 hc-1014 的输入变量 | `apex-single-thread.ts` | 1 条（apex-single-thread.test.ts） |
+| 40 | 开关关的那次启动留着旧信号 | `apex-single-thread.ts` | 1 条（apex-single-thread.test.ts） |
+| 41 | 启动只落三档开关 | `apex-model-tiers.ts` | 1 条（apex-single-thread.test.ts） |
+| 42 | main.ts 换回只落三档的调用 | `main.ts` | 1 条（apex-model-tiers.test.ts） |
+| 43 | 单线模式下 Pro 选择保留 | `apex-model-tiers.ts` | 2 条（apex-single-thread.test.ts） |
+| 44 | 配置自愈跳过单线模式 | `apex-model-tiers.ts` | 3 条（apex-single-thread.test.ts） |
+| 45 | 只开三档也把 Pro 改回 Flash | `apex-model-tiers.ts` | 2 条（apex-model-tiers.test.ts、apex-single-thread.test.ts） |
+| 46 | 没开也加提示段 | `single_thread_prompt.py` | 7 条（test_single_thread_prompt_seam.py） |
+| 47 | 开了也不加提示段 | `single_thread_prompt.py` | 3 条（test_single_thread_prompt_seam.py） |
+| 48 | 去掉「照常先问」那条 | `single_thread_prompt.py` | 1 条（test_single_thread_prompt_seam.py） |
+| 49 | 引擎把 "true" 也当开（只认主进程写的 1） | `single_thread_prompt.py` | 1 条（test_single_thread_prompt_seam.py） |
+| 50 | 插件 register 不调这个接缝 | `__init__.py` | 1 条（test_single_thread_prompt_seam.py） |
 
 ## 测试
 
@@ -89,15 +93,15 @@ CI 模式（`CI=true`，不写 golden）和 UTC / Asia/Shanghai / America/Los_An
 | `src/single-thread-identity.test.tsx` | 8 | 开关关时消息区 6 种 + 输入框 1 种逐字一致；开关开 + 开发者模式对照同一份 golden |
 | `src/components/assistant-ui/thread/single-thread-chat.test.tsx` | 11 | 「用时 · 看过程」位置和展开、无思考 / ⏱、活动行文案和位置、审批条、「等你决定」、卡住三按钮、开发者模式、不出换更强 / 分支 / 切换提供方（各带开关关或自带密钥的对照） |
 | `src/app/chat/composer/single-thread-composer.test.tsx` | 4 | APEX 账号无模型药丸、高级里无场景和审批方式、生成两行无模型子菜单；自带密钥和开发者模式保留 |
-| `src/app/shell/single-thread-statusbar.test.tsx` | 9 | 只留 off 时的 ⚡ 和待装更新的版本号、插件项照常、空了不画、钩子在开关关 / 开发者模式时原样返回 |
+| `src/app/shell/single-thread-statusbar.test.tsx` | 10 | 只留 off 时的 ⚡ 和待装更新的版本号、插件项照常、空了不画、钩子在开关关 / 开发者模式时原样返回；用真的 ⚡ 菜单：用户藏过也照样显示，点开选「智能」会写 `approvals.mode` |
 | `src/lib/single-thread-slash.test.ts` | 4 | `/moa` 不出候选（`/model` 本来就不在候选里），自带密钥保留 |
 | `src/store/model-choice.test.ts` | 11 | `$modelChoiceHidden` 真值表（含三档模式不受影响）、展示用模型名在单线模式下为空 |
-| `electron/apex-single-thread.test.ts` | 17 | 只认字面 `true`、本机 0/1 优先、读回是 hc-1014 的 install switch、配置自愈钉 `apex-flash` 和不动的情况 |
-| `tests/apex_overlay/test_single_thread_prompt_seam.py` | 20 | 只在变量为 1 时加段、规则原文、真实 `AIAgent` 的 `build_system_prompt` 带上它、插件 register 调到它 |
+| `electron/apex-single-thread.test.ts` | 22 | 只认字面 `true`；和 hc-1014 一样本机 `APEXNODES_SINGLE_THREAD` 优先；只写引擎用的 `APEX_SINGLE_THREAD_ACTIVE`，不写 hc-1014 的输入变量、渲染端 installSwitches 不受影响；关的那次启动清掉旧信号；配置自愈钉 `apex-flash` 和不动的情况 |
+| `tests/apex_overlay/test_single_thread_prompt_seam.py` | 19 | 只在 `APEX_SINGLE_THREAD_ACTIVE` 为 1 时加段、规则原文、真实 `AIAgent` 的 `build_system_prompt` 带上它、插件 register 调到它 |
 
 改的既有测试：`src/model-tier-exits.test.ts`（hc-960 出口清单：门换成 `$modelChoiceHidden`，并钉住「三档模式时它一定为真」）、`electron/apex-model-tiers.test.ts`（main.ts 启动调用改名）。
 
-全量（rebase 到 hc-1014 之后的提交 `c37bec69ec`）：
+全量（rebase 到 hc-1014 之后的提交 `c37bec69ec`；之后按协调会话改了环境变量和 ⚡，又重跑了 Electron 全量 264 文件 / 3573 条、`tests/apex_overlay` 694 条、相关 UI 165 文件 / 1962 条和 `scripts/check`，都过）：
 
 - Desktop `npm run typecheck` 四段全过；eslint 0 error（剩下的 12 条 warning 是 main.ts 和 use-statusbar-items.tsx 里原有的行）；
 - Desktop UI 全量 991 文件 / 9771 条全过；Electron 全量 264 文件 / 3568 条全过（25 条本来就跳过）；

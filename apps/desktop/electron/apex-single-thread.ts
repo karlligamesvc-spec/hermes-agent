@@ -1,30 +1,30 @@
 /**
- * apex-single-thread.ts — the single-thread switch on the main-process side
+ * apex-single-thread.ts — single-thread mode on the main-process side
  * (hc-1015 「只有问题和回复」).
  *
- * The platform client config's `desktop_features.single_thread` (Kael
- * 2026-10-21; off by default, internal accounts first) is settled into
- * APEXNODES_SINGLE_THREAD at launch, before the engine spawns, like the hc-960
- * tier switches. Two readers depend on it:
+ * hc-1014 owns the switch: the platform client config's
+ * `desktop_features.single_thread`, or this install's own APEXNODES_SINGLE_THREAD
+ * (1 on, 0 off, read as an input by electron/apex-desktop-features.ts and handed
+ * to the renderer as `installSwitches`). This module never writes that variable.
+ *
+ * It settles the same decision once per launch — the install switch if set,
+ * else the platform's literal `true` — into its own output variable,
+ * APEX_SINGLE_THREAD_ACTIVE=1, before the engine spawns. Two readers depend on it:
  *
  *  - the engine: apex-overlay's `apex.single-thread` prompt section (no tool,
- *    skill or model names, one question at most, the name APEX) is on only
- *    while the variable is 1 (apex_overlay/single_thread_prompt.py);
+ *    skill or model names, one question with a default, the name APEX) is on
+ *    only while it is 1 (apex_overlay/single_thread_prompt.py);
  *  - the config heal: the managed model is pinned to the default tier alias,
  *    since nothing on screen lets the user pick another (apex-model-tiers.ts).
  *
- * The renderer reads the same cached config for the chat itself, with this
- * variable as the install switch beside it (hc-1014: src/store/single-thread.ts,
- * electron/apex-desktop-features.ts). An explicit 0/false in the env wins over
- * the platform, so one install can opt out; 1 turns it on for a tester. Set from
- * the platform here, it reads as that install switch too, so the chat and the
- * engine agree for the whole launch. Electron-free.
+ * The engine does not see the renderer's developer mode; the prompt rules stay
+ * on there too (developer mode only adds technical detail on screen). Electron-free.
  */
 
 import { DESKTOP_FEATURE_ENV, envSwitch } from './apex-desktop-features'
 
-/** The same variable hc-1014 reads as this install's own switch. */
-export const SINGLE_THREAD_ENV = DESKTOP_FEATURE_ENV.single_thread
+/** Written by main for the engine; never an input. */
+export const SINGLE_THREAD_ACTIVE_ENV = 'APEX_SINGLE_THREAD_ACTIVE'
 
 /** Only a literal `true` under `desktop_features.single_thread` turns it on. */
 export function singleThreadFromClientConfig(payload: unknown): boolean {
@@ -41,22 +41,32 @@ export function singleThreadFromClientConfig(payload: unknown): boolean {
   )
 }
 
-export function isSingleThreadEnabled(env: Record<string, string | undefined> = {}): boolean {
-  return envSwitch(env?.[SINGLE_THREAD_ENV]) === true
+/** This launch's switch, decided as hc-1014 decides it: the install switch wins, else the platform. */
+export function singleThreadOnForLaunch(
+  env: Record<string, string | undefined>,
+  clientConfigPayload: unknown
+): boolean {
+  return envSwitch(env?.[DESKTOP_FEATURE_ENV.single_thread]) ?? singleThreadFromClientConfig(clientConfigPayload)
 }
 
-/** Settle the switch for this launch; returns whether it set the variable. */
+export function isSingleThreadActive(env: Record<string, string | undefined> = {}): boolean {
+  return env?.[SINGLE_THREAD_ACTIVE_ENV] === '1'
+}
+
+/** Settle the engine's signal for this launch: 1 when on, removed when off. Returns whether it is on. */
 export function applySingleThreadSwitch(
   env: Record<string, string | undefined>,
   clientConfigPayload: unknown,
   log: (line: string) => void = () => undefined
 ): boolean {
-  if (!singleThreadFromClientConfig(clientConfigPayload) || envSwitch(env?.[SINGLE_THREAD_ENV]) !== null) {
+  if (!singleThreadOnForLaunch(env, clientConfigPayload)) {
+    delete env[SINGLE_THREAD_ACTIVE_ENV]
+
     return false
   }
 
-  env[SINGLE_THREAD_ENV] = '1'
-  log(`[client-config] ${SINGLE_THREAD_ENV}=1 from platform desktop_features`)
+  env[SINGLE_THREAD_ACTIVE_ENV] = '1'
+  log(`[client-config] ${SINGLE_THREAD_ACTIVE_ENV}=1 (desktop_features.single_thread)`)
 
   return true
 }

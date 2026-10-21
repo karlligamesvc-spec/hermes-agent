@@ -16,7 +16,10 @@ import type { StatusbarItem } from './statusbar-controls'
  * mode keeps off screen. Two stay, because they need the user:
  *
  *  - ⚡ approvals, only while they are off — then dangerous commands run
- *    without asking, which the user must be able to see (and turn back);
+ *    without asking, which the user must be able to see and turn back. It is
+ *    the same menu as ever (手动 / 智能 / 完全访问), the one place left to
+ *    change approvals in this mode, so it shows even if the user once hid it
+ *    from the bar. The mode itself is never changed for them;
  *  - the version pill, only while an update is waiting or applying — hiding it
  *    is how a client falls behind.
  *
@@ -36,12 +39,14 @@ export function singleThreadStatusbarItems(
 ): StatusbarItem[] {
   const fromPlugins = new Set(contributed)
 
-  return items.filter(
-    item =>
-      fromPlugins.has(item) ||
-      (item.id === 'approval-mode' && keep.approvalsOff) ||
-      (item.id === 'version-client' && keep.updatePending)
-  )
+  return items
+    .filter(
+      item =>
+        fromPlugins.has(item) ||
+        (item.id === 'approval-mode' && keep.approvalsOff) ||
+        (item.id === 'version-client' && keep.updatePending)
+    )
+    .map(item => (item.id === 'approval-mode' && !fromPlugins.has(item) ? { ...item, lockedVisible: true } : item))
 }
 
 interface StatusbarItemSets {

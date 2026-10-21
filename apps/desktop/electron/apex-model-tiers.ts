@@ -13,7 +13,7 @@
  */
 
 import { MANAGED_PROVIDER_NAME } from './apex-relay-key-anchors'
-import { applySingleThreadSwitch, isSingleThreadEnabled, SINGLE_THREAD_ENV } from './apex-single-thread'
+import { applySingleThreadSwitch, isSingleThreadActive, SINGLE_THREAD_ACTIVE_ENV } from './apex-single-thread'
 
 export const MODEL_TIER_ALIASES = ['apex-flash', 'apex-pro', 'apex-max']
 
@@ -165,7 +165,7 @@ export function applyDesktopFeatureSwitches(
 ): string[] {
   const set = applyModelTierSwitches(env, clientConfigPayload, log)
 
-  return applySingleThreadSwitch(env, clientConfigPayload, log) ? [...set, SINGLE_THREAD_ENV] : set
+  return applySingleThreadSwitch(env, clientConfigPayload, log) ? [...set, SINGLE_THREAD_ACTIVE_ENV] : set
 }
 
 function trimTrailingSlash(value: string): string {
@@ -243,7 +243,7 @@ export function healManagedModelTier(
   env: Record<string, string | undefined>,
   fixed: string[]
 ): string {
-  const singleThread = isSingleThreadEnabled(env)
+  const singleThread = isSingleThreadActive(env)
 
   if (!managed.key || (!isModelTiersEnabled(env) && !singleThread)) {
     return raw

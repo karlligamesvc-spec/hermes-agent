@@ -9,10 +9,13 @@ seam adds a fixed prompt section to every new local session while the switch
 is on: no tool, skill or model names, one question at most with a default,
 the name APEX unless the user renamed it, and confirmations kept.
 
-Desktop's main process settles the switch into ``APEXNODES_SINGLE_THREAD`` at
-launch, before the engine spawns (electron/apex-single-thread.ts). No variable,
-no section: cloud containers never set it, and a Desktop with the switch off
-builds exactly the prompt it built before.
+Desktop's main process settles the switch (hc-1014's platform flag or this
+install's own APEXNODES_SINGLE_THREAD) into its own output variable
+``APEX_SINGLE_THREAD_ACTIVE=1`` at launch, before the engine spawns
+(electron/apex-single-thread.ts). No variable, no section: cloud containers
+never set it, and a Desktop with the switch off builds exactly the prompt it
+built before. The engine does not know the renderer's developer mode, so the
+rules stay on there too; developer mode only adds technical detail on screen.
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ from typing import Any, Mapping
 logger = logging.getLogger(__name__)
 
 SECTION_ID = "apex.single-thread"
-SWITCH_ENV = "APEXNODES_SINGLE_THREAD"
+SWITCH_ENV = "APEX_SINGLE_THREAD_ACTIVE"
 MAX_CHARS = 2_000
 
 SINGLE_THREAD_PROMPT = """【APEX 怎么说话 · 平台规则】
@@ -37,8 +40,7 @@ SINGLE_THREAD_PROMPT = """【APEX 怎么说话 · 平台规则】
 
 
 def switch_on() -> bool:
-    raw = os.environ.get(SWITCH_ENV, "").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
+    return os.environ.get(SWITCH_ENV, "").strip() == "1"
 
 
 def render_section(_session_info: Mapping[str, Any] | None = None) -> str:

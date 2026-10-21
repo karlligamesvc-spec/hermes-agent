@@ -1,7 +1,8 @@
 """hc-1015 「只有问题和回复」: how APEX talks while single-thread mode is on.
 
-Desktop's main process sets ``APEXNODES_SINGLE_THREAD=1`` at launch when the
-platform turns ``desktop_features.single_thread`` on; the apex-overlay seam
+Desktop's main process sets ``APEX_SINGLE_THREAD_ACTIVE=1`` at launch when
+single-thread mode is on (hc-1014's platform flag or this install's own
+switch); it is main's output, never a user setting. The apex-overlay seam
 then adds a fixed section to every new local session's system prompt. These
 tests pin the switch, the rules the chat relies on, that a real agent's prompt
 carries them, and that with the switch off the prompt is what it was.
@@ -26,7 +27,7 @@ def _no_switch(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize(
     ("value", "on"),
-    [("1", True), ("true", True), ("ON", True), (" yes ", True), ("0", False), ("false", False), ("", False), ("2", False)],
+    [("1", True), (" 1 ", True), ("true", False), ("on", False), ("0", False), ("", False), ("2", False)],
 )
 def test_the_switch_is_the_launch_variable(monkeypatch, value, on):
     monkeypatch.setenv(single_thread_prompt.SWITCH_ENV, value)
