@@ -4,6 +4,7 @@ import {
   dividerDateParts,
   IDLE_SEGMENT_SECONDS,
   isRestartRequest,
+  isSlashBranch,
   isSlashNew,
   lastActivitySeconds,
   localDayKey,
@@ -51,6 +52,7 @@ describe('hc-1014 「从头来」 and /new', () => {
     ['重来', false],
     ['重新开始剪这条', false],
     ['这条视频从头来一遍字幕', false],
+    ['从头来一遍字幕', false],
     ['帮我从头开始写', false],
     ['', false]
   ])('%j → %j', (text, expected) => {
@@ -64,6 +66,15 @@ describe('hc-1014 「从头来」 and /new', () => {
     ['/newsletter', false]
   ])('%j is a bare /new: %j', (text, expected) => {
     expect(isSlashNew(text)).toBe(expected)
+  })
+
+  it.each([
+    ['/branch', true],
+    ['/fork 从第 3 条开始', true],
+    ['/branches', false],
+    ['帮我 /branch', false]
+  ])('%j asks for a branch: %j', (text, expected) => {
+    expect(isSlashBranch(text)).toBe(expected)
   })
 })
 

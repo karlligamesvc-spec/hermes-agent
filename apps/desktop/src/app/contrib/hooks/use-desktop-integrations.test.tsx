@@ -247,13 +247,20 @@ describe('useDesktopIntegrations', () => {
     it.each([
       ['a remembered chat', 'hermes.desktop.lastSessionId.profile.default', 'remembered-session'],
       ['a remembered page', 'hermes.desktop.lastRoute.profile.default', '/projects']
-    ])('opens the one conversation, never %s, even before the config answers', (_label, key, value) => {
+    ])('opens the one conversation, never %s, with the setting on or still loading', (_label, key, value) => {
       window.localStorage.setItem(key, value)
       setSingleThreadFlagForTest(true)
 
-      render({ profileReady: true, resumeLastSession: null, sessions: [session({ id: 'remembered-session', profile: 'default' })] })
+      for (const resumeLastSession of [true, null]) {
+        const result = render({
+          profileReady: true,
+          resumeLastSession,
+          sessions: [session({ id: 'remembered-session', profile: 'default' })]
+        })
 
-      expect(navigate).not.toHaveBeenCalled()
+        expect(navigate).not.toHaveBeenCalled()
+        result.unmount()
+      }
     })
 
     it('developer mode keeps the remembered restore', () => {

@@ -63,6 +63,11 @@ export function isRestartRequest(text: string): boolean {
   return RESTART_REQUEST.test(text.trim())
 }
 
+/** `/branch` or `/fork`: a branch is a second conversation, which the one thread does not have. */
+export function isSlashBranch(text: string): boolean {
+  return /^\/(?:branch|fork)(?:\s|$)/i.test(text.trim())
+}
+
 /** `/new` or `/reset` typed alone: in the one thread that means a new segment, not a new chat. */
 export function isSlashNew(text: string): boolean {
   return /^\/(?:new|reset)\s*$/i.test(text.trim())

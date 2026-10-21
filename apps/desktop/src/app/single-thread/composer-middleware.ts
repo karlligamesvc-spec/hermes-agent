@@ -34,7 +34,14 @@ import { dismissNotification, notify } from '@/store/notifications'
 import { $activeSessionId, $busy, $messages, $selectedStoredSessionId, $sessions } from '@/store/session'
 import { isSingleThreadMode } from '@/store/single-thread'
 
-import { isRestartRequest, isSlashNew, lastActivitySeconds, segmentBoundary, type SegmentReason } from './segments'
+import {
+  isRestartRequest,
+  isSlashBranch,
+  isSlashNew,
+  lastActivitySeconds,
+  segmentBoundary,
+  type SegmentReason
+} from './segments'
 
 export type RequestGateway = <T>(method: string, params?: Record<string, unknown>, timeoutMs?: number) => Promise<T>
 
@@ -154,6 +161,10 @@ export async function singleThreadSend(
 
   if (!gateway) {
     return draft
+  }
+
+  if (isSlashBranch(draft.text)) {
+    return refuse(copy.noBranch)
   }
 
   if (isSlashNew(draft.text)) {

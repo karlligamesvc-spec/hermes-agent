@@ -33,6 +33,8 @@ export interface SingleThreadChatCopy {
   segmentStarting: string
   /** `/new` or 「从头来」 opened a new segment. */
   restarted: string
+  /** `/branch` in the thread: nothing forks. */
+  noBranch: string
   /** A send arrived before the thread was found; it stays in the composer. */
   threadOpening: string
   /** The thread lookup failed; nothing is sent, so no second thread is made. */
@@ -59,6 +61,7 @@ const en: SingleThreadChatCopy = {
   backToThread: 'Back to the chat',
   segmentStarting: 'Picking up where we left off…',
   restarted: 'OK, I still remember what came before. Starting fresh from here.',
+  noBranch: 'This chat doesn’t branch. To change the subject, just say “start over”.',
   threadOpening: 'Opening the chat. Send again in a moment.',
   threadUnavailable: 'Can’t reach the chat right now. Your message is still in the box; try again shortly.'
 }
@@ -78,6 +81,7 @@ const zh: SingleThreadChatCopy = {
   backToThread: '回到对话',
   segmentStarting: '正在接上之前的内容…',
   restarted: '好，前面的我记着，从这儿重新来。',
+  noBranch: '一条对话里不分叉。想换个话题，直接说「从头来」。',
   threadOpening: '正在打开对话，稍等一下再发。',
   threadUnavailable: '暂时连不上对话，消息还在输入框里，稍后再发。'
 }
@@ -97,6 +101,7 @@ const zhHant: SingleThreadChatCopy = {
   backToThread: '回到對話',
   segmentStarting: '正在接上之前的內容…',
   restarted: '好，前面的我記著，從這裡重新來。',
+  noBranch: '一條對話裡不分叉。想換個話題，直接說「從頭來」。',
   threadOpening: '正在打開對話，稍等一下再發。',
   threadUnavailable: '暫時連不上對話，訊息還在輸入框裡，稍後再發。'
 }

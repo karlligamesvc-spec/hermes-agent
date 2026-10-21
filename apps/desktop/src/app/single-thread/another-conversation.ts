@@ -13,3 +13,17 @@ export function openAnotherConversation(open: () => void, openThread: () => void
     open()
   }
 }
+
+/** Keybind actions that start a second conversation. */
+const NEW_CONVERSATION_ACTIONS = new Set(['session.new', 'session.newTab', 'session.newWindow'])
+
+/** The command palette's groups without its 新建会话 / new-window rows in single-thread product mode. */
+export function withoutNewConversationItems<G extends { items: readonly { action?: string }[] }>(groups: G[]): G[] {
+  if (!isSingleThreadMode()) {
+    return groups
+  }
+
+  return groups
+    .map(group => ({ ...group, items: group.items.filter(item => !NEW_CONVERSATION_ACTIONS.has(item.action ?? '')) }))
+    .filter(group => group.items.length > 0)
+}

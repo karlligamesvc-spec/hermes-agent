@@ -66,6 +66,7 @@ function message(id: string, timestamp: number): ChatMessage {
 }
 
 const draft = (text: string) => ({ attachments: [], text })
+
 const send = (text: string, request: RequestGateway) =>
   singleThreadSend(
     draft(text),
@@ -251,6 +252,14 @@ describe('hc-1014 composer middleware: segments of the thread', () => {
     expect(await send('/new', request)).toBeNull()
     expect(compressCalls(calls)).toHaveLength(1)
     expect(notices).toContain('好，前面的我记着，从这儿重新来。')
+  })
+
+  it('/branch is refused: the one thread has no second conversation to branch into', async () => {
+    const { calls, request } = gateway()
+
+    expect(await send('/branch', request)).toBeNull()
+    expect(calls).toEqual([])
+    expect(notices).toEqual(['一条对话里不分叉。想换个话题，直接说「从头来」。'])
   })
 
   it('a failed summary still lets the message out', async () => {

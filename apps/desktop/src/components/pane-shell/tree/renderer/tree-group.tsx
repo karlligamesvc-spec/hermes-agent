@@ -13,6 +13,7 @@ import { useStore } from '@nanostores/react'
 import { type CSSProperties, Fragment, type ReactNode, type RefObject, useEffect, useRef, useState } from 'react'
 
 import { TITLEBAR_HEIGHT } from '@/app/shell/titlebar'
+import { $newConversationTabAction } from '@/app/single-thread/new-session-tab'
 import { ActionsContextMenu, type MenuKit, renderActionItem } from '@/components/ui/actions-menu'
 import { Codicon } from '@/components/ui/codicon'
 import { DecodeText } from '@/components/ui/decode-text'
@@ -49,7 +50,6 @@ import {
   $dropHint,
   $hiddenTreePanes,
   $narrowViewport,
-  $newSessionTabAction,
   $panesWithCloser,
   $treeDragging,
   $treePaneEpochs,
@@ -260,7 +260,7 @@ export function TreeGroup({
   const narrow = useStore($narrowViewport)
   const workspaceMode = useStore($workspaceMode)
   const workspaceOwnerKey = useStore($workspaceOwnerKey)
-  const newSessionTabAction = useStore($newSessionTabAction)
+  const newSessionTabAction = useStore($newConversationTabAction)
   const panesWithCloser = useStore($panesWithCloser)
   // Multi-tab selection (⌥/Ctrl-click, Shift-click) — null for every zone but
   // the one holding it, so this subscription is quiet during normal use.

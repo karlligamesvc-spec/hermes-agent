@@ -3,6 +3,7 @@ import type { ComponentProps } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { $newSessionTabAction } from '@/components/pane-shell/tree/store'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
 import { $mainThread, noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
 import { $activeGatewayProfile } from '@/store/profile'
@@ -12,9 +13,10 @@ import { setSingleThreadFlagForTest } from '@/store/single-thread'
 import { setToolViewMode } from '@/store/tool-view'
 import { makeSessionInfo } from '@/test/session-info'
 
-import { openAnotherConversation } from './another-conversation'
+import { openAnotherConversation, withoutNewConversationItems } from './another-conversation'
 import { ChatBar, isEarlierConversation } from './composer-gate'
 import { $pendingThreadClaim } from './composer-middleware'
+import { $newConversationTabAction } from './new-session-tab'
 import { singleThreadQuickEntryTarget } from './quick-entry'
 
 vi.mock('../chat/composer', () => ({
@@ -97,6 +99,7 @@ describe('hc-1014 the composer gate', () => {
       status,
       tipId: 'thread-root'
     } as const
+
     const singleThread = flag && toolView === 'product'
 
     expect(isEarlierConversation(singleThread, key, thread, $sessions.get(), claimPending)).toBe(expected)
@@ -147,5 +150,43 @@ describe('hc-1014 ⌘T and the new-window shortcut', () => {
     )
 
     expect(calls).toEqual([expected])
+  })
+})
+
+describe('hc-1014 the other new-chat entries', () => {
+  const groups = [
+    {
+      heading: 'Go to',
+      items: [
+        { action: 'session.new', id: 'nav-new' },
+        { action: 'session.newWindow', id: 'nav-new-window' },
+        { id: 'nav-settings' }
+      ]
+    },
+    { heading: 'New', items: [{ action: 'session.newTab', id: 'new-tab' }] }
+  ]
+
+  it("drops the palette's new-chat rows (and a group left empty) only in single-thread product mode", () => {
+    expect(withoutNewConversationItems(groups)).toBe(groups)
+
+    setSingleThreadFlagForTest(true)
+    expect(withoutNewConversationItems(groups)).toEqual([{ heading: 'Go to', items: [{ id: 'nav-settings' }] }])
+
+    setToolViewMode('technical')
+    expect(withoutNewConversationItems(groups)).toBe(groups)
+  })
+
+  it('hides the tab strip "+" only in single-thread product mode', () => {
+    const openTab = () => undefined
+
+    $newSessionTabAction.set(openTab)
+    expect($newConversationTabAction.get()).toBe(openTab)
+
+    setSingleThreadFlagForTest(true)
+    expect($newConversationTabAction.get()).toBeNull()
+
+    setToolViewMode('technical')
+    expect($newConversationTabAction.get()).toBe(openTab)
+    $newSessionTabAction.set(null)
   })
 })

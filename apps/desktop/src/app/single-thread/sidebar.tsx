@@ -50,6 +50,7 @@ function contractItem(id: 'analysis' | 'projects' | 'scheduled-runs', icon: stri
 }
 
 const ANALYSIS_ITEM = contractItem('analysis', 'book')
+
 const ACCOUNT_MENU_ITEMS = {
   projects: contractItem('projects', 'folder'),
   'scheduled-runs': contractItem('scheduled-runs', 'calendar')
@@ -67,6 +68,7 @@ export function SingleThreadSidebar({
   const navigate = useNavigate()
   const thread = useStore($mainThread)
   const panesFlipped = useStore($panesFlipped)
+
   const openThread = () =>
     navigate(thread.status === 'found' && thread.tipId ? sessionRoute(thread.tipId) : NEW_CHAT_ROUTE)
 

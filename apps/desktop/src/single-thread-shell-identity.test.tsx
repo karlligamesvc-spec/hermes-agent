@@ -15,12 +15,15 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { cleanup, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { stubThreadEnvironment, stubThreadViewportSize } from '@/components/assistant-ui/test-utils'
+import { stubThreadEnvironment, stubThreadViewportSize, ThreadRuntime } from '@/components/assistant-ui/test-utils'
+import { Thread } from '@/components/assistant-ui/thread'
+import { I18nProvider } from '@/i18n'
 import { $introSplash, $introSplashShown } from '@/store/intro-splash'
-import { noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
+import { $mainThread, noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
 import { setToolViewMode } from '@/store/tool-view'
 
@@ -63,6 +66,25 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+/** An empty primary chat on `/`, the way the shell shows it before the first message. */
+async function renderEmptyThread(): Promise<HTMLElement> {
+  const view = render(
+    <MemoryRouter initialEntries={['/']}>
+      <I18nProvider configClient={null} initialLocale="zh">
+        <ThreadRuntime messages={[]}>
+          <Thread />
+        </ThreadRuntime>
+      </I18nProvider>
+    </MemoryRouter>
+  )
+
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 30))
+  })
+
+  return view.container
+}
+
 async function historyHtml(): Promise<string> {
   const view = renderHistory()
 
@@ -102,6 +124,12 @@ describe.each([
   it('keeps the Start page splash under the Appearance toggle', () => {
     expect($introSplashShown.get()).toBe($introSplash.get())
   })
+
+  it('draws no single-thread greeting in an empty chat', async () => {
+    $mainThread.set({ ids: [], profile: 'default', rootId: null, status: 'absent', tipId: null })
+
+    expect((await renderEmptyThread()).querySelector('[data-single-thread-empty]')).toBeNull()
+  })
 })
 
 describe('hc-1014 switch on, product mode: one conversation', () => {
@@ -112,6 +140,15 @@ describe('hc-1014 switch on, product mode: one conversation', () => {
   it('has no Start page', () => {
     expect($introSplash.get()).toBe(true)
     expect($introSplashShown.get()).toBe(false)
+  })
+
+  it('greets in the conversation when there is no thread yet, and stays blank while one is opening', async () => {
+    $mainThread.set({ ids: [], profile: 'default', rootId: null, status: 'absent', tipId: null })
+    expect((await renderEmptyThread()).textContent).toContain('你好，我是 APEX，帮你做短视频的。')
+    cleanup()
+
+    noteMainThreadClaimed('default', 'chat-a')
+    expect((await renderEmptyThread()).querySelector('[data-single-thread-empty]')).toBeNull()
   })
 
   it('has no session list, no 开始 / ⌘N row and no "+": one row opens the conversation', () => {
@@ -186,6 +223,15 @@ describe('hc-1014 the seams stay wired', () => {
     )
     expect(keybinds).toContain(
       "'session.newWindow': () => openAnotherConversation(() => void openNewWindow(), deps.startFreshSession)"
+    )
+  })
+
+  it('the tab strip "+" and the command palette read the one-conversation guard', () => {
+    expect(source('components', 'pane-shell', 'tree', 'renderer', 'tree-group.tsx')).toContain(
+      'const newSessionTabAction = useStore($newConversationTabAction)'
+    )
+    expect(source('app', 'command-palette', 'index.tsx')).toContain(
+      'rankGroups(withoutNewConversationItems(unrankedGroups), search)'
     )
   })
 
