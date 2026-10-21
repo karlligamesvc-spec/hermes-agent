@@ -18,6 +18,7 @@ import {
   messageContentText,
   pickPrimaryPreviewTarget
 } from '@/components/assistant-ui/thread/content'
+import { MemoryNotedLine } from '@/components/assistant-ui/thread/memory-noted-line'
 import { MESSAGE_PARTS_COMPONENTS } from '@/components/assistant-ui/thread/message-parts'
 import { ReactionPicker } from '@/components/assistant-ui/thread/message-reactions'
 import { ResponseLoadingIndicator, TurnActivityIndicator } from '@/components/assistant-ui/thread/status'
@@ -279,6 +280,7 @@ const AssistantMessageBody: FC<AssistantMessageProps & { collapsedNotice?: null 
             </MessagePrimitive.Error>
           </div>
           <MessageTimelineTimestamp className="px-(--message-text-indent) pt-0.5" suppressIfDuplicatePart />
+          <MemoryNotedLine />
           {hasVisibleText && !isInterim && (
             <AssistantFooter
               durationS={turnDurationS}

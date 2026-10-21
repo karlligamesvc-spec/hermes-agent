@@ -78,7 +78,10 @@ export interface CreatorProfileDeps {
   apiBase: () => string
   getJson: (url: string, opts: { bearer: string }) => Promise<unknown>
   log: (line: string) => void
-  postJson: (url: string, opts: { bearer: string; body: object; method?: 'PUT' }) => Promise<unknown>
+  postJson: (
+    url: string,
+    opts: { bearer: string; body: object; method?: 'DELETE' | 'PATCH' | 'PUT' }
+  ) => Promise<unknown>
 }
 
 const CREATOR_PROFILE_PATH = '/api/v1/account/creator-profile'
