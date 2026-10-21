@@ -4,9 +4,9 @@ import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { removeOwnedRuntimeTree } from '../../../scripts/runtime-bundle-offline-smoke.mjs'
-import { nativeGreenRunProblems } from './owned-cleanup-gate-tap.mjs'
+import { nativeGreenRunProblems, privateTestCopy, unresolvedRelativeImports } from './owned-cleanup-gate-tap.mjs'
 
 assert.equal(process.platform, 'win32', 'The executable-lock gate requires real native Windows')
 const args = process.argv.slice(2)
@@ -20,6 +20,8 @@ const tests = fs.readFileSync(testPath)
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-owned-tree-reversal-'))
 const proof = { nativePlatform: process.platform, helperSha256: digest(helper), testSha256: digest(tests), originalGreenExitCode: null, negativeExitCode: null, restoredExitCode: null, success: false }
+
+let copiedTests = null
 
 function runFocused(file, name) {
   const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...(name ? [`--test-name-pattern=${name}`] : []), file], { encoding: 'utf8', timeout: 180_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true })
@@ -39,14 +41,14 @@ try {
   assert.equal(source.split(anchor).length - 1, 1, 'tree-kill executable anchor must be unique')
   const modified = source.replace(anchor, "['/PID', String(child.pid), '/F']")
   const copiedHelper = path.join(workspace, 'helper-without-tree-kill.mjs')
-  const copiedTests = path.join(workspace, 'owned-lock-test.mjs')
   fs.writeFileSync(copiedHelper, modified)
   assert.equal(fs.readFileSync(copiedHelper, 'utf8'), modified, 'mutation must land in the exact private file')
   assert.notEqual(digest(fs.readFileSync(copiedHelper)), digest(helper))
-  const importAnchor = "'../../../scripts/runtime-bundle-offline-smoke.mjs'"
-  const testSource = tests.toString('utf8')
-  assert.equal(testSource.split(importAnchor).length - 1, 1, 'private test import must be unique')
-  fs.writeFileSync(copiedTests, testSource.replace(importAnchor, JSON.stringify(pathToFileURL(copiedHelper).href)))
+  const privateTests = privateTestCopy(testPath, tests.toString('utf8'), copiedHelper, path.basename(workspace))
+  assert.deepEqual(unresolvedRelativeImports(privateTests.path, privateTests.source, fs.existsSync), [],
+    'every other relative import of the private test copy must resolve from the checkout')
+  copiedTests = privateTests.path
+  fs.writeFileSync(copiedTests, privateTests.source)
   proof.reversal = { anchorCount: 1, privateHelperSha256: digest(fs.readFileSync(copiedHelper)), privateTestSha256: digest(fs.readFileSync(copiedTests)) }
   console.log(JSON.stringify({ privateMutationLanded: true, ...proof.reversal }))
   const negative = runFocused(copiedTests, '^native Windows tree shutdown')
@@ -67,6 +69,11 @@ try {
   assert.match(restored.stdout, /# fail 0\b/)
   proof.success = true
 } finally {
+  if (copiedTests) {
+    fs.rmSync(copiedTests, { force: true })
+    assert.equal(fs.existsSync(copiedTests), false)
+    proof.privateTestCopyRemoved = true
+  }
   removeOwnedRuntimeTree(workspace)
   assert.equal(fs.existsSync(workspace), false)
   proof.privateCopyRemoved = true
