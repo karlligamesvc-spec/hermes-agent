@@ -7,6 +7,8 @@
  */
 
 import assert from 'node:assert/strict'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { describe, test } from 'vitest'
 
@@ -88,6 +90,51 @@ describe('the switch for this launch', () => {
     )
     assert.equal(env.APEXNODES_MODEL_TIERS, '1')
     assert.equal(env[SINGLE_THREAD_ACTIVE_ENV], '1')
+  })
+})
+
+describe('main never writes hc-1014’s per-install switch', () => {
+  // APEXNODES_SINGLE_THREAD is an input (hc-1014: 1 on, 0 forced off, ahead of
+  // the platform; read into installSwitches). Writing it from main would turn a
+  // platform value into a per-install override and feed it back into the read.
+  test.each([
+    ['unset, platform on', undefined, ON],
+    ['unset, platform off', undefined, OFF],
+    ['forced off, platform on', '0', ON],
+    ['forced on, platform off', '1', OFF],
+    ['an unreadable value', 'maybe', ON]
+  ])('the launch-time call main makes leaves it as it was: %s', (_label, before, payload) => {
+    const env: Record<string, string | undefined> = before === undefined ? {} : { [INSTALL]: before }
+
+    applyDesktopFeatureSwitches(env, payload)
+
+    assert.equal(env[INSTALL], before)
+    assert.equal(INSTALL in env, before !== undefined)
+  })
+
+  test('no main-process module assigns or deletes it', () => {
+    const strip = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1')
+    const name = /APEXNODES_SINGLE_THREAD|DESKTOP_FEATURE_ENV/
+
+    const assigns =
+      /(APEXNODES_SINGLE_THREAD['"]?\]?|DESKTOP_FEATURE_ENV(?:\.\w+|\[[^\]]*\])\])\s*(?:=(?!=)|\?\?=|\|\|=)/
+
+    const deletes = /delete\s+[^\n;]*(APEXNODES_SINGLE_THREAD|DESKTOP_FEATURE_ENV)/
+
+    const offenders = readdirSync(__dirname)
+      .filter(file => file.endsWith('.ts') && !file.endsWith('.test.ts') && !file.endsWith('.d.ts'))
+      .flatMap(file =>
+        strip(readFileSync(join(__dirname, file), 'utf8'))
+          .split('\n')
+          .filter(line => name.test(line) && (assigns.test(line) || deletes.test(line)))
+          .map(line => `${file}: ${line.trim()}`)
+      )
+
+    assert.deepEqual(offenders, [])
+    // The guard can see a write: the injected form it must catch.
+    assert.ok(assigns.test("  env.APEXNODES_SINGLE_THREAD = '1'"))
+    assert.ok(assigns.test("  env[DESKTOP_FEATURE_ENV.single_thread] = '1'"))
+    assert.ok(deletes.test('  delete process.env.APEXNODES_SINGLE_THREAD'))
   })
 })
 
