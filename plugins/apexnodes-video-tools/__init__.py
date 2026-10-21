@@ -164,10 +164,11 @@ def _leg_health() -> dict[str, Any] | None:
 GENERATE_VIDEO_SCHEMA = {
     "name": "generate_video",
     "description": (
-        "Generate a short video from a text prompt through the platform video service. "
+        "Generate a short video from a text prompt (and optional input images) through the platform video service. "
         "Use only when the user explicitly asks to 生成视频/做个视频/做条短视频/文生视频/把这段文案做成视频. "
         "Rendering takes a while; tell the user it is being generated and wait for the result. "
-        "Returns video_url/video_path/media_tag. After success, share the video link; on IM "
+        "Returns video_url/video_path/media_tag and last_frame_ref (the clip's last frame, to start the "
+        "next shot from). After success, share the video link; on IM "
         "entries, output `MEDIA:<path>` on its own line for native file delivery. Never claim "
         "success unless the tool returns ok, and never fabricate a video or link."
     ),
@@ -217,10 +218,62 @@ GENERATE_VIDEO_SCHEMA = {
                     "It may be unavailable, in which case the tool says so; do not silently fall back."
                 ),
             },
+            "images": {
+                "type": "array",
+                "maxItems": 9,
+                "description": (
+                    "Optional input images that pin who / what / where the clip shows (镜头连贯). "
+                    "source: an image_ref from an earlier result (generate_image's image_ref, "
+                    "generate_video's last_frame_ref), a path from [Image attached at: …], or an image "
+                    "link. role: first_frame = the clip starts from this picture and takes its shape; "
+                    "last_frame = only with one first_frame, the clip ends on it; reference = 1-9 "
+                    "pictures of the character / outfit / product / scene, called 图片1, 图片2 … in the "
+                    "prompt in this order. Frames and references cannot be mixed. kind: person / product "
+                    "/ scene / style / other; mark a real person's photo as person. To chain shots, pass "
+                    "the previous clip's last_frame_ref as the next clip's first_frame. An image that "
+                    "cannot be used fails the call; it never renders without it."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "source": {"type": "string"},
+                        "role": {"type": "string", "enum": ["first_frame", "last_frame", "reference"]},
+                        "kind": {"type": "string", "enum": ["person", "product", "scene", "style", "other"]},
+                    },
+                    "required": ["source", "role"],
+                },
+            },
+            "rights_confirmed": {
+                "type": "boolean",
+                "description": (
+                    "Set true ONLY after the user explicitly confirmed that the real person in an uploaded "
+                    "photo (or named in the prompt) is themselves or agreed to it. Never set it on your own."
+                ),
+            },
         },
         "required": ["prompt"],
     },
 }
+
+
+def _input_images(args: dict, *, with_roles: bool) -> list[dict[str, str]]:
+    """The call's input images, on this leg (apexnodes_gateway.input_images); ``[]`` without any."""
+    if _gateway is None:
+        if args.get("images"):
+            raise RuntimeError("这个客户端缺少平台网关模块，不能带图生成，请更新客户端。")
+        return []
+    if _use_gateway():
+        upload = _gateway.upload_input_image
+    else:
+        def upload(data: bytes, filename: str, index: int) -> str:
+            return _gateway.legacy_upload_input_image(_api_base(), data, filename, index)
+    return _gateway.input_images(
+        args.get("images"),
+        with_roles=with_roles,
+        takes_images=lambda: _gateway.takes_input_images(_leg_health()),
+        upload=upload,
+        server_paths=not _use_gateway(),
+    )
 
 
 def _desktop_video_model() -> str | None:
@@ -308,6 +361,10 @@ def _handle_generate_video(args: dict, **_kwargs) -> str:
     )
     if unavailable:
         return tool_error(unavailable)
+    try:
+        images = _input_images(args, with_roles=True)
+    except RuntimeError as exc:
+        return tool_error(_say("media_failed", "视频生成失败: {reason}", reason=exc))
     payload = {
         "prompt": prompt,
         "aspect_ratio": str(args.get("aspect_ratio") or "landscape").strip() or "landscape",
@@ -318,6 +375,10 @@ def _handle_generate_video(args: dict, **_kwargs) -> str:
         # never learns which engines exist, and never holds a vendor key).
         "provider": str(args.get("provider") or "").strip() or None,
     }
+    if images:
+        # A text-only call sends exactly what it did before input images existed.
+        payload["images"] = images
+        payload["rights_confirmed"] = args.get("rights_confirmed") is True
     if _use_gateway():
         try:
             response = _gateway.request_json(

@@ -47,8 +47,10 @@ CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 # v9(hc-948):generate_video 的 provider 枚举去掉 agnes(Kael:Agnes 从候选中全部去掉)。
 # v10(hc-969):generate_video 生成前先读链路健康,两条腿各多一个只读检查端点
 # (/tools/v1/check、/media/video/check)。
-EXPECTED_CONTRACT_SHA256 = "b9c7d360f579d6270691e9300c96467b768573f13adf57a173e25effaf4c5e66"
-EXPECTED_CONTRACT_VERSION = 10
+# v11(hc-1011):generate_video 接输入图(images、rights_confirmed),两条腿的端点族各加一个参考图
+# 上传端点;三条新行为：带图转成 ref、服务端不声明支持就不发、上传失败绝不改成不带图。
+EXPECTED_CONTRACT_SHA256 = "afac8a78e17b6d5c7d72a033512ed8e9b524079b34fb9bc931acc8beff7b1b09"
+EXPECTED_CONTRACT_VERSION = 11
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -187,12 +189,14 @@ class RecordedCall:
     """统一的出网记录:legacy=urlopen(body=JSON 请求体);gateway=request_json
     (body=payload,files=multipart)。path 一律相对各自 base。"""
 
-    def __init__(self, *, method: str, path: str, body=None, files=None, form_data=None):
+    def __init__(self, *, method: str, path: str, body=None, files=None, form_data=None, raw=None):
         self.method = method
         self.path = path
         self.body = body
         self.files = files
         self.form_data = form_data
+        # legacy multipart upload: the raw request bytes (the reference image).
+        self.raw = raw
 
 
 class LegacyHarness:
@@ -224,9 +228,13 @@ class LegacyHarness:
         def _fake_urlopen(request, timeout=None):
             assert request.full_url.startswith(LEGACY_BASE), request.full_url
             path = request.full_url[len(LEGACY_BASE):]
-            body = json.loads(request.data.decode("utf-8")) if request.data else None
-            harness.calls.append(RecordedCall(method=request.get_method(), path=path, body=body))
-            return _Response(harness._canned(path))
+            multipart = "multipart/form-data" in (request.get_header("Content-type") or "")
+            body = json.loads(request.data.decode("utf-8")) if request.data and not multipart else None
+            harness.calls.append(RecordedCall(method=request.get_method(), path=path, body=body, raw=request.data))
+            answer = harness._canned(path)
+            if isinstance(answer, BaseException):
+                raise answer
+            return _Response(answer)
 
         monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
 
@@ -277,7 +285,10 @@ class GatewayHarness:
                     form_data=form_data,
                 )
             )
-            return harness._canned(path)
+            answer = harness._canned(path)
+            if isinstance(answer, BaseException):
+                raise answer
+            return answer
 
         def _fake_download_media(url, *, headers=None, filename_hint=""):
             if harness.download_media_fails:
@@ -605,6 +616,90 @@ def _check_segments_file_handoff(h, tool_name, _spec):
         assert "segments_path" not in result and "segments" not in result
 
 
+_REF_A = "media:" + "a" * 32 + "/image_1.png"
+_REF_UPLOADED = "media:" + "f" * 32 + "/ref_1.png"
+_UPLOAD_PATHS = {"legacy": "/media/reference-upload", "gateway": "/tools/v1/media/reference-upload"}
+_GENERATE_PATHS = {"legacy": "/media/video-generate", "gateway": "/tools/v1/video/generate"}
+
+
+def _images_answers(h, *, supported: bool = True, upload: object = None):
+    """Canned answers for a call with input images on this leg: the check (with or
+    without ``input_images.supported``) and the reference upload."""
+
+    def canned(path: str):
+        if path.endswith("/check"):
+            section = {"configured": True, "serving": True, "legs": {}}
+            if supported:
+                section["input_images"] = {"supported": True}
+            # gateway: /tools/v1/check carries the video section; legacy: the section itself.
+            return {"ok": True, "video": section} if h.leg == "gateway" else {"ok": True, **section}
+        if path == _UPLOAD_PATHS[h.leg]:
+            if upload is not None:
+                return upload
+            ref = {"image_ref": _REF_UPLOADED}
+            return {"ok": True, "data": ref} if h.leg == "gateway" else {"ok": True, **ref}
+        return type(h)._canned(path)
+
+    return canned
+
+
+def _upload_error(h, status: int, message: str) -> Exception:
+    body = {"detail": {"code": "x", "message": message}}
+    if h.leg == "legacy":
+        raw = io.BytesIO(json.dumps(body, ensure_ascii=False).encode("utf-8"))
+        return urllib.error.HTTPError(LEGACY_BASE + _UPLOAD_PATHS["legacy"], status, "error", {}, raw)
+    return _gateway_module()._error_from_response(_GatewayHttpResponse(status, body), path=_UPLOAD_PATHS["gateway"])
+
+
+def _uploaded_bytes(call) -> bytes:
+    if call.raw is not None:
+        return call.raw
+    return call.files["file"][1]
+
+
+def _check_images_forwarded_as_refs(h, tool_name, _spec):
+    h._canned = _images_answers(h)  # type: ignore[method-assign]
+    shot = h.tmp_path / "shot.png"
+    shot.write_bytes(b"\x89PNG-local-shot")
+    args = {
+        "prompt": "x",
+        "images": [
+            {"source": _REF_A, "role": "reference", "kind": "person"},
+            {"source": str(shot), "role": "reference"},
+        ],
+    }
+    _result, calls = h.invoke(tool_name, args)
+    uploads = [c for c in calls if c.path == _UPLOAD_PATHS[h.leg]]
+    assert len(uploads) == 1 and b"\x89PNG-local-shot" in _uploaded_bytes(uploads[0]), "the local file goes up as bytes"
+    generate = [c for c in calls if c.path == _GENERATE_PATHS[h.leg]]
+    assert len(generate) == 1
+    assert generate[0].body["images"] == [
+        {"ref": _REF_A, "role": "reference", "kind": "person"},
+        {"ref": _REF_UPLOADED, "role": "reference"},
+    ]
+    assert generate[0].body["rights_confirmed"] is False, "only an explicit true confirms"
+    h._canned = type(h)._canned  # type: ignore[method-assign]
+    _result, plain_calls = h.invoke(tool_name, h.probe_args(tool_name))
+    plain = next(c for c in plain_calls if c.path == _GENERATE_PATHS[h.leg])
+    assert "images" not in plain.body and "rights_confirmed" not in plain.body
+
+
+def _check_images_require_server_support(h, tool_name, _spec):
+    h._canned = _images_answers(h, supported=False)  # type: ignore[method-assign]
+    result, calls = h.invoke(tool_name, {"prompt": "x", "images": [{"source": _REF_A, "role": "first_frame"}]})
+    assert "error" in result
+    assert all(c.method == "GET" for c in calls), "no upload and no generate call without confirmed support"
+
+
+def _check_images_never_dropped_on_upload_failure(h, tool_name, _spec):
+    h._canned = _images_answers(h, upload=_upload_error(h, 503, "上传通道不可用"))  # type: ignore[method-assign]
+    shot = h.tmp_path / "shot.png"
+    shot.write_bytes(b"\x89PNG")
+    result, calls = h.invoke(tool_name, {"prompt": "x", "images": [{"source": str(shot), "role": "first_frame"}]})
+    assert "error" in result and "上传通道不可用" in result["error"]
+    assert not [c for c in calls if c.path == _GENERATE_PATHS[h.leg]], "never generated without the image"
+
+
 # name → callable;跑腿集合 = 契约行为声明的 legs(fork 双腿都在场)。
 BEHAVIOR_CHECKS = {
     "routed_intent_passthrough": _check_routed_intent_passthrough,
@@ -623,6 +718,9 @@ BEHAVIOR_CHECKS = {
     "asr_upload_modes": _check_asr_upload_modes,
     "gateway_platform_fallback_douyin": _check_gateway_platform_fallback_douyin,
     "no_foreign_paths_in_result": _check_no_foreign_paths_in_result,
+    "images_forwarded_as_refs": _check_images_forwarded_as_refs,
+    "images_require_server_support": _check_images_require_server_support,
+    "images_never_dropped_on_upload_failure": _check_images_never_dropped_on_upload_failure,
 }
 
 BEHAVIOR_CASES = [

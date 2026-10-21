@@ -1,7 +1,7 @@
 {
  "contract_name": "apexnodes-plugin-tools-parity",
- "contract_version": 10,
- "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948, hc-969",
+ "contract_version": 11,
+ "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948, hc-969, hc-1011",
  "sync_policy": {
   "copies": [
    "hermes-cloud: tests/contracts/plugin_tools_contract.json (source of truth)",
@@ -698,6 +698,12 @@
        "portrait"
       ]
      },
+     "images": {
+      "type": "array",
+      "items": {
+       "type": "object"
+      }
+     },
      "model": {
       "type": "string",
       "enum": [
@@ -717,6 +723,9 @@
        "chinaapi"
       ]
      },
+     "rights_confirmed": {
+      "type": "boolean"
+     },
      "seconds": {
       "type": "integer"
      },
@@ -731,11 +740,13 @@
    "endpoints": {
     "legacy": [
      "/media/video-generate",
-     "/media/video/check"
+     "/media/video/check",
+     "/media/reference-upload"
     ],
     "gateway": [
      "/tools/v1/video/generate",
-     "/tools/v1/check"
+     "/tools/v1/check",
+     "/tools/v1/media/reference-upload"
     ]
    },
    "behaviors": {
@@ -757,6 +768,27 @@
      ],
      "poison_path": "/data/hermes/agents/a1/media/jobs/j1/video_1.mp4",
      "note": "master-local video_path/media_tag must never reach the desktop result face; localize via video_url or drop the fields (hc-562)."
+    },
+    "images_forwarded_as_refs": {
+     "legs": [
+      "legacy",
+      "gateway"
+     ],
+     "note": "An image_ref (media:...) passes as {ref}; a local file is uploaded to the leg's reference-upload endpoint first and passes as the returned ref. role/kind ride along. A call without images sends no images/rights_confirmed keys."
+    },
+    "images_require_server_support": {
+     "legs": [
+      "legacy",
+      "gateway"
+     ],
+     "note": "With images, the leg's check must report input_images.supported; otherwise the tool fails before any upload or generate call (an older server drops the unknown field and renders text-only)."
+    },
+    "images_never_dropped_on_upload_failure": {
+     "legs": [
+      "legacy",
+      "gateway"
+     ],
+     "note": "An image that cannot be uploaded fails the call; the generate endpoint is never called without it."
     }
    }
   },
