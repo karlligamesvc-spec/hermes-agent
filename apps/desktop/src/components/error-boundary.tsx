@@ -139,7 +139,7 @@ export function RootErrorBoundary({ children }: { children: ReactNode }) {
   return <ErrorBoundary label="root">{children}</ErrorBoundary>
 }
 
-function RootErrorFallback({ error, reset }: ErrorBoundaryFallbackProps) {
+export function RootErrorFallback({ error, reset }: ErrorBoundaryFallbackProps) {
   const { t } = useI18n()
 
   return (

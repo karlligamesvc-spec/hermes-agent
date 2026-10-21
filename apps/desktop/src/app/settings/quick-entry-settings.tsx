@@ -2,7 +2,7 @@ import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
 
 import { Input } from '@/components/ui/input'
-import { useI18n } from '@/i18n'
+import { useQuickEntrySettingsCopy } from '@/i18n/quick-entry'
 import { isSubmitEnter } from '@/lib/ime'
 import {
   $quickEntry,
@@ -23,8 +23,7 @@ import { ListRow, ToggleRow } from './primitives'
  * with `error: 'taken'` and says so, right under the field.
  */
 export function QuickEntrySettings() {
-  const { t } = useI18n()
-  const q = t.settings.quickEntry
+  const q = useQuickEntrySettingsCopy()
   const state = useStore($quickEntry)
   // The field is a local draft: the accelerator is only committed on blur/Enter,
   // so a half-typed chord ("Alt+") never tears down the live registration.

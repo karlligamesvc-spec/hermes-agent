@@ -836,15 +836,6 @@ export interface Translations {
       attachmentSizeLabel: string
       showOptions: string
     }
-    quickEntry: {
-      enabledTitle: string
-      enabledDesc: string
-      shortcutTitle: string
-      shortcutDesc: string
-      active: string
-      takenBy: string
-      invalidShortcut: string
-    }
     credentials: {
       pasteKey: string
       pasteLabelKey: (label: string) => string

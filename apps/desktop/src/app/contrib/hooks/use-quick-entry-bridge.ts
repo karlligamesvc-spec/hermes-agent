@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
 
+import { useI18n } from '@/i18n'
+import { rememberQuickEntryLocale } from '@/i18n/quick-entry'
 import {
   initQuickEntryBridge,
   QUICK_TARGET_CURRENT,
@@ -27,7 +29,9 @@ function sessionOptions(): QuickEntrySessionOption[] {
     .slice(0, QUICK_ENTRY_SESSION_OPTIONS)
     .map(session => ({
       id: session.id,
-      title: session.title?.trim() || session.preview?.trim() || session.id
+      // Empty when the session has neither: the quick window names it in its
+      // own language. The raw id used to stand in, a code string in a menu.
+      title: session.title?.trim() || session.preview?.trim() || ''
     }))
 }
 
@@ -42,7 +46,9 @@ function sessionOptions(): QuickEntrySessionOption[] {
  *   clicking New Chat and typing does. One submit pipeline, no bespoke RPC.
  * - **Outbound:** gateway connection state + the recent-session list are pushed
  *   to the quick window (via main, which caches the latest push), so its input
- *   disables with a reconnect hint whenever the backend is unreachable.
+ *   disables with a reconnect hint whenever the backend is unreachable. The
+ *   language this window resolved goes through localStorage instead (hc-1001),
+ *   so the quick window has it on its first paint.
  *
  * Handlers register ONCE through refs tracking the latest callbacks —
  * re-registering on identity churn leaves a nulled-handler window that can drop
@@ -55,6 +61,13 @@ export function useQuickEntryBridge({ startFreshSessionDraft, submitText }: Quic
   submitTextRef.current = submitText
   const startFreshRef = useRef(startFreshSessionDraft)
   startFreshRef.current = startFreshSessionDraft
+  const { locale } = useI18n()
+
+  useEffect(() => {
+    if (!isAuxiliaryWindow()) {
+      rememberQuickEntryLocale(locale)
+    }
+  }, [locale])
 
   useEffect(() => {
     if (isAuxiliaryWindow()) {

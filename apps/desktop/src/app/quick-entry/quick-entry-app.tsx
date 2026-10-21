@@ -1,5 +1,7 @@
+import { applyDocumentLocale } from '@hermes/shared/i18n'
 import { useEffect, useReducer, useRef } from 'react'
 
+import { QUICK_ENTRY_COPY, useQuickEntryLocale } from '@/i18n/quick-entry'
 import { isSubmitEnter } from '@/lib/ime'
 import {
   initialQuickComposerState,
@@ -25,9 +27,16 @@ import {
  * the gateway up, which recent sessions exist — is pushed in by the primary
  * renderer through main (`onState`), and its text goes back the same road to
  * the primary renderer's normal prompt-submit path.
+ *
+ * Its words follow the main window's language (see i18n/quick-entry): there is
+ * no I18nProvider here, and a hard-coded English string is exactly what hc-1001
+ * removed — `quick-entry-identity.test.tsx` renders this at zh and fails on any
+ * English word or on Hermes.
  */
 export function QuickEntryApp() {
   const inputRef = useRef<HTMLInputElement>(null)
+  const locale = useQuickEntryLocale()
+  const copy = QUICK_ENTRY_COPY[locale].window
 
   // The reducer returns { send, state }; this wrapper performs the side effect
   // (hand the payload to the shell, ask to hide) and stores the next state, so
@@ -72,6 +81,10 @@ export function QuickEntryApp() {
     }
   }, [])
 
+  // index.html ships `lang="en"`; a screen reader reading Chinese under it
+  // speaks it with the wrong voice.
+  useEffect(() => applyDocumentLocale(locale), [locale])
+
   return (
     <div
       style={{
@@ -111,7 +124,7 @@ export function QuickEntryApp() {
             ›
           </span>
           <input
-            aria-label="Quick Entry"
+            aria-label={copy.inputLabel}
             autoCapitalize="off"
             autoComplete="off"
             autoCorrect="off"
@@ -132,7 +145,7 @@ export function QuickEntryApp() {
                 dispatch({ type: 'dismiss' })
               }
             }}
-            placeholder={state.connected ? 'Ask Hermes…' : 'Not connected — open Hermes to reconnect'}
+            placeholder={state.connected ? copy.placeholder : copy.disconnected}
             ref={inputRef}
             spellCheck={false}
             style={{
@@ -159,10 +172,10 @@ export function QuickEntryApp() {
               userSelect: 'none'
             }}
           >
-            Send to
+            {copy.sendTo}
           </label>
           <select
-            aria-label="Target session"
+            aria-label={copy.targetLabel}
             disabled={!state.connected}
             id="quick-entry-target"
             onChange={event => dispatch({ target: event.target.value, type: 'target' })}
@@ -183,11 +196,11 @@ export function QuickEntryApp() {
             }}
             value={state.target}
           >
-            <option value={QUICK_TARGET_CURRENT}>Current chat</option>
-            <option value={QUICK_TARGET_NEW}>New session</option>
+            <option value={QUICK_TARGET_CURRENT}>{copy.currentChat}</option>
+            <option value={QUICK_TARGET_NEW}>{copy.newSession}</option>
             {state.sessions.map(session => (
               <option key={session.id} value={session.id}>
-                {session.title}
+                {session.title || copy.untitled}
               </option>
             ))}
           </select>
