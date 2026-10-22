@@ -300,7 +300,7 @@ GENERATE_IMAGE_SCHEMA = {
                 "type": "array",
                 "maxItems": 4,
                 "description": (
-                    "Optional reference images for the new image (定妆图 → 每镜关键帧, a product shot). "
+                    "Optional reference images for the new image (定妆图, a product shot, a video's first frame). "
                     "source: an image_ref from an earlier result, a path from [Image attached at: …], or an "
                     "image link; call them 图片1, 图片2 … in the prompt in this order (\"图片1 里的人物穿图片2 "
                     "的外套\"). kind: person / product / scene / style / other; mark a real person's photo as "
