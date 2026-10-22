@@ -454,8 +454,11 @@ class LSPClient:
                     await asyncio.wait_for(proc.wait(), timeout=SHUTDOWN_GRACE)
             except ProcessLookupError:
                 pass
-            if self._exit_code is None and proc.returncode is not None:
-                self._exit_code = proc.returncode
+            finally:
+                # Also on the grace return: when stdout EOF reaches the reader loop before asyncio
+                # reaps the child (Linux pidfd ordering), the abort is first seen inside that wait.
+                if self._exit_code is None and proc.returncode is not None:
+                    self._exit_code = proc.returncode
 
     # ---- request / notification plumbing ----
 
