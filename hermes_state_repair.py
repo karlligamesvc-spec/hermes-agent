@@ -557,6 +557,10 @@ def preflight_db_writability(db_path: Path, *, db_label: str = "state.db", direc
     for p, is_dir in [(db_path.parent, True), *files]:
         if (is_dir and not p.is_dir()) or os.access(p, os.R_OK | os.W_OK):
             continue
+        if not is_dir and not os.path.lexists(p):
+            # Listed above, gone now (a concurrent opener's quarantine, or another connection's last close
+            # removing -wal/-shm): os.access is False for a missing path, and absent is not read-only.
+            continue
         x = "x" if is_dir else ""
         in_scope = False
         with contextlib.suppress(OSError, ValueError):
