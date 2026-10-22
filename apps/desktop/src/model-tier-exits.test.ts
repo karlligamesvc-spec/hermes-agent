@@ -32,6 +32,14 @@ const GATES: ReadonlyArray<readonly [exit: string, file: string, gate: RegExp]> 
     /return useModelTierMode\(\) \? null : children/
   ],
   [
+    // hc-1015: the chat surfaces below gate on $modelChoiceHidden, which is
+    // tier mode OR single-thread mode on an APEX account — never less than
+    // tier mode (store/model-choice.test.ts checks it both ways).
+    'model choice is hidden whenever tier mode is on',
+    'store/model-choice.ts',
+    /\(tierMode, singleThread, auth\) => tierMode \|\| \(singleThread && isApexAccount\(auth\)\)/
+  ],
+  [
     'free-tier status as the chrome sees it',
     'store/model-tiers.ts',
     /\(status, tierMode\) =>\s*tierMode \? null : status/
@@ -40,32 +48,32 @@ const GATES: ReadonlyArray<readonly [exit: string, file: string, gate: RegExp]> 
   [
     'composer model pill (main, tiles, Start input)',
     'app/chat/composer/model-pill.tsx',
-    /if \(modelTierMode\) \{\s*return null\s*\}\s*if \(!model\.modelMenuContent\)/
+    /if \(modelChoiceHidden\) \{\s*return null\s*\}\s*if \(!model\.modelMenuContent\)/
   ],
   [
     'composer reasoning pill',
     'app/chat/composer/reasoning-pill.tsx',
-    /if \(modelTierMode \|\| !model\.reasoningMenuContent/
+    /if \(modelChoiceHidden \|\| !model\.reasoningMenuContent/
   ],
   [
     '⌘⇧M model-picker chord',
     'app/hooks/use-keybinds.ts',
-    /'composer\.modelPicker': \(\) => \{\s*if \(\$modelTierMode\.get\(\)\) \{\s*return\s*\}/
+    /'composer\.modelPicker': \(\) => \{\s*if \(\$modelChoiceHidden\.get\(\)\) \{\s*return\s*\}/
   ],
   [
     'shortcuts panel row',
     'app/shell/keybind-panel.tsx',
-    /!\(modelTierMode && MODEL_TIER_HIDDEN_KEYBIND_ACTIONS\.has\(action\.id\)\)/
+    /!\(modelChoiceHidden && MODEL_TIER_HIDDEN_KEYBIND_ACTIONS\.has\(action\.id\)\)/
   ],
   [
     'Settings › 快捷键 row',
     'app/settings/keybind-settings.tsx',
-    /!\(modelTierMode && MODEL_TIER_HIDDEN_KEYBIND_ACTIONS\.has\(action\.id\)\)/
+    /!\(modelChoiceHidden && MODEL_TIER_HIDDEN_KEYBIND_ACTIONS\.has\(action\.id\)\)/
   ],
   [
     '/model and /moa',
     'app/session/hooks/use-prompt-actions/slash.ts',
-    /if \(\$modelTierMode\.get\(\) && MODEL_TIER_BLOCKED_SLASH_COMMANDS\.has\(/
+    /if \(\s*\$modelChoiceHidden\.get\(\) &&\s*MODEL_TIER_BLOCKED_SLASH_COMMANDS\.has\(/
   ],
   [
     'slash output (/status Model line)',

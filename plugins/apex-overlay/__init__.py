@@ -77,6 +77,12 @@ _CONTEXT_SEAMS = (
         "warning). New local sessions will not carry the account's 记忆底账 "
         "and the agent cannot write to it.",
     ),
+    (
+        "single_thread_prompt",
+        "apex-overlay: hc-1015 single-thread prompt section did not "
+        "register (see prior warning). With desktop_features.single_thread "
+        "on, answers may name tools, skills and models again.",
+    ),
 )
 
 

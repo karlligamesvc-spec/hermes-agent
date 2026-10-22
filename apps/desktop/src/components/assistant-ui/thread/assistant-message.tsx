@@ -12,6 +12,10 @@ import { useInRouterContext, useNavigate } from 'react-router'
 
 import { useSessionView } from '@/app/chat/session-view'
 import { SETTINGS_ROUTE } from '@/app/routes'
+import {
+  SingleThreadActivityLine,
+  SingleThreadProcessFooter
+} from '@/components/assistant-ui/process/single-thread-process'
 import { ChangedFilesCard } from '@/components/assistant-ui/thread/changed-files-card'
 import {
   contentHasVisibleText,
@@ -56,11 +60,13 @@ import { markAssistantIdSpoken } from '@/lib/spoken-reply'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
 import { playSpeechText, stopVoicePlayback } from '@/lib/voice-playback'
+import { useModelChoiceHidden } from '@/store/model-choice'
 import { notifyError } from '@/store/notifications'
 import { startManualProviderOAuth } from '@/store/onboarding'
 import { $activeGatewayProfile, normalizeProfileKey, requestFreshSession } from '@/store/profile'
 import { requestSendDiagnostics } from '@/store/send-diagnostics'
 import { $connection, $currentModel } from '@/store/session'
+import { useSingleThreadMode } from '@/store/single-thread'
 import { $voicePlayback } from '@/store/voice-playback'
 
 // Stable empty identity for the settled-parts selector — a fresh [] per render
@@ -249,6 +255,7 @@ const AssistantMessageBody: FC<AssistantMessageProps & { collapsedNotice?: null 
           >
             {/* Todos render in the composer status stack now, not inline. */}
             {MESSAGE_PARTS}
+            <SingleThreadProcessFooter />
             <AssistantStatusSlot />
             <AssistantPreviewEmbeds />
             <MessagePrimitive.Error>
@@ -339,8 +346,15 @@ const AssistantStatusSlot: FC = () => {
     return s.message.status?.type === 'running' && s.message.content.length === 0 ? 'placeholder' : 'activity'
   })
 
+  // hc-1015: one activity line instead of either row in single-thread mode.
+  const singleThread = useSingleThreadMode()
+
   if (slot === 'none') {
     return null
+  }
+
+  if (singleThread) {
+    return <SingleThreadActivityLine />
   }
 
   return slot === 'placeholder' ? <ResponseLoadingIndicator /> : <TurnActivityIndicator />
@@ -576,7 +590,12 @@ const ErrorRecoveryActions: FC = () => {
 
   // Switch Provider deep-links Settings → Models for the layers where the fix
   // is provider/endpoint/auth config, not a retry.
-  const showSwitchProvider = surface != null && ['auth', 'billing', 'endpoint', 'provider'].includes(surface.layer)
+  // hc-1015: not where nobody picks a model (tier mode, single-thread on an APEX account).
+  const modelChoiceHidden = useModelChoiceHidden()
+
+  const showSwitchProvider =
+    !modelChoiceHidden && surface != null && ['auth', 'billing', 'endpoint', 'provider'].includes(surface.layer)
+
   const switchProviderIsPrimary = showSwitchProvider && !retryable && !oauthReauth
 
   const openLogs = useCallback(async () => {
@@ -689,6 +708,9 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const { enabled: reactionsEnabled, react, reactions: shownReactions } = useMessageReactions(messageId, 'assistant')
+  // hc-1015: single-thread mode names no tier and opens no second chat; how
+  // long a turn took is in its 「用时 … · 看过程」 line instead.
+  const singleThread = useSingleThreadMode()
 
   const pickEmoji = useCallback(
     (emoji: null | string) => {
@@ -700,7 +722,7 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
 
   return (
     <div className="relative flex w-full shrink-0 items-center justify-end gap-1.5">
-      {durationS !== undefined && (
+      {durationS !== undefined && !singleThread && (
         <span
           className="mr-auto select-none px-0.5 text-[0.6875rem] leading-5 tabular-nums text-muted-foreground"
           data-slot="aui_turn-duration"
@@ -711,7 +733,7 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
       )}
       {/* hc-960: always visible under the latest answer (not hover-gated
           like the icons beside it) — it is the one tier control in a chat. */}
-      <RetryStrongerButton />
+      {!singleThread && <RetryStrongerButton />}
       <ActionBarPrimitive.Root
         className={
           // NOTE: intentionally NOT `hideWhenRunning`. That prop unmounts the
@@ -725,7 +747,7 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
         }
         data-slot="aui_msg-actions"
       >
-        {onBranchInNewChat && (
+        {onBranchInNewChat && !singleThread && (
           <TooltipIconButton
             onClick={() => {
               triggerHaptic('selection')

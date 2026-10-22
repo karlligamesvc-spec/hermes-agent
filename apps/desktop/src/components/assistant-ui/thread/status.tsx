@@ -149,7 +149,7 @@ const ProgressHint: FC<{ label: string; percent: null | number }> = ({ label, pe
 /** These indicators render inside whichever transcript mounted them, so every
  *  session-scoped signal comes from that surface's view — a tile must never
  *  show the primary chat's compaction, prompt-wait, or turn timer. */
-function useThreadSessionStatus() {
+export function useThreadSessionStatus() {
   const view = useSessionView()
   const sessionId = useStore(view.$runtimeId)
   // The same turn-busy the composer's arc border and Stop button read. The
@@ -189,7 +189,7 @@ const DRAFTING_REVEAL_MS = 200
  * What to call the wait, if it deserves a name. Compaction outranks a draft —
  * it's rarer, slower, and explains a transcript that looks like it reset.
  */
-function useStatusHint(compacting: boolean, drafting: DraftingTool | null, providerWait: string): string {
+export function useStatusHint(compacting: boolean, drafting: DraftingTool | null, providerWait: string): string {
   const { t } = useI18n()
   const [revealed, setRevealed] = useState(false)
   const name = drafting?.name ?? ''
