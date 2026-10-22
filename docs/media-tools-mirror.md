@@ -30,7 +30,8 @@ fonts through CoreText (macOS) and DirectWrite (Windows), so no `fonts.conf` shi
 no font cache directory has to be writable; `drawtext` therefore takes `fontfile=`, not
 a family name. On macOS, use a family that maps to a readable file (Hiragino Sans GB,
 STHeiti, Songti SC): CoreText maps "PingFang SC" to a reserved file FreeType cannot open,
-and libass then falls back. No `--enable-nonfree` build
+and libass then falls back. Those system families are only for these native build checks: Agents do
+not burn customer captions with them (see "Subtitle font" below). No `--enable-nonfree` build
 may be published. Intel's portable C build trades optimized assembly for simpler
 build prerequisites. Mac minimum deployment target is 12.0.
 
@@ -53,6 +54,32 @@ and the COS Mac arm64 ZIP passed the native smoke again on macOS 27. Each ZIP gr
 about 28 MB and each extracted package 30–31 MB, almost all of it corresponding source
 (the HarfBuzz tarball alone is 20 MB). The workflow was disabled again after that run;
 re-enable it only for a rebuild.
+
+## Subtitle font (hc-1025)
+
+Subtitles and styled text that Agents burn into a customer's video use only a font cleared for
+commercial use. Hiragino Sans GB, STHeiti, Songti SC, PingFang and Microsoft YaHei are not, so the
+platform skill no longer names them. `desktop-lock.json` `fonts.subtitle` pins 得意黑 Smiley Sans
+2.0.1 (`SmileySans-Oblique.otf`, family "Smiley Sans Oblique", SIL OFL-1.1, the font APEX's
+server-side covers already use) by size and SHA-256 at an immutable COS key under
+`media-tools/fonts/`. The font file is not committed.
+
+`python -m apex_overlay.media_tools font` (the Agent runs it with `$APEX_PYTHON`) downloads the
+file once into `HERMES_HOME/tool-cache/fonts/<sha256>/`, refuses anything but APEX COS, verifies
+size and SHA-256, reuses a verified copy and replaces a tampered one, then prints the path; on
+failure it prints one line instead of a traceback. ffmpeg's libass loads it with
+`subtitles=<file>:fontsdir=<that folder>` and the ASS style `Fontname: Smiley Sans Oblique`
+(checked with the bundled 9.0.2 on macOS: "Loading font file … SmileySans-Oblique.otf", CoreText
+provider); `drawtext` takes `fontfile=<path>`.
+
+Publishing (not yet done for 2.0.1): download the official release archive named in `upstream`
+into a folder with `desktop-lock.json`, load COS credentials through the existing server
+environment, and run `scripts/media-tools/publish_fonts.py <folder>`. It extracts
+`upstreamMember`, refuses to upload unless size and SHA-256 equal the lock, uploads the immutable
+key and reads it back over public HTTPS. The pinned SHA-256 was taken from the copy the apex-nodes
+cover renderer extracts from that same archive; the publisher re-derives it from the official
+archive before any write. Until the object exists, the `font` command fails and the skill delivers
+the video with a separate SRT instead of falling back to a system font.
 
 ## Hypit
 

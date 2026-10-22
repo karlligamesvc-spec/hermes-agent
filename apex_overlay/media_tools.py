@@ -1,4 +1,11 @@
-"""APEX's verified COS browser cache, shared by browser automation and Hypit."""
+"""APEX's verified COS browser cache, shared by browser automation and Hypit.
+
+hc-1025: the same cache holds the one subtitle font Agents burn captions with
+(得意黑 Smiley Sans, OFL-1.1). System fonts such as Hiragino Sans GB or Microsoft
+YaHei are not cleared for commercial use, so subtitles never rely on them:
+``python -m apex_overlay.media_tools font`` prints the verified font file, and
+ffmpeg loads it through ``subtitles=…:fontsdir=<its folder>`` or ``fontfile=``.
+"""
 from __future__ import annotations
 
 import argparse
@@ -86,6 +93,38 @@ def ensure_browser(*, render=False) -> Path:
     return executable
 
 
+def ensure_font(name: str = 'subtitle') -> Path:
+    """The licensed font ``name`` from desktop-lock, downloaded once from APEX COS and hash verified."""
+    from filelock import FileLock
+    from hermes_constants import get_hermes_home
+    from urllib.parse import urlsplit
+    spec = json.loads(LOCK.read_text(encoding='utf-8-sig'))['fonts'][name]
+    url = urlsplit(spec['url'])
+    if url.scheme != 'https' or url.hostname != COS_HOST:
+        raise ValueError('Font download must use APEX COS')
+    cache = Path(get_hermes_home()) / 'tool-cache' / 'fonts'
+    cache.mkdir(parents=True, exist_ok=True)
+    destination = cache / spec['sha256'] / spec['file']
+    with FileLock(str(cache / 'install.lock'), timeout=600):
+        if destination.is_file():
+            with destination.open('rb') as cached:
+                if hashlib.file_digest(cached, 'sha256').hexdigest() == spec['sha256']:
+                    return destination
+        with tempfile.TemporaryDirectory(prefix='install-', dir=cache) as temporary:
+            download = Path(temporary) / spec['file']
+            digest, size = hashlib.sha256(), 0
+            with urllib.request.urlopen(spec['url'], timeout=120) as response, download.open('wb') as output:
+                while chunk := response.read(1024 * 1024):
+                    output.write(chunk)
+                    digest.update(chunk)
+                    size += len(chunk)
+            if size != spec['bytes'] or digest.hexdigest() != spec['sha256']:
+                raise ValueError('COS font checksum mismatch')
+            destination.parent.mkdir(exist_ok=True)
+            os.replace(download, destination)
+    return destination
+
+
 def prepare_hypit(workspace: Path, version: str | None = None) -> Path:
     from apex_overlay.hypit_profile import prepare_profile
     if version is None:
@@ -126,8 +165,14 @@ def apply() -> bool:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['browser', 'prepare-hypit'])
+    parser.add_argument('command', choices=['browser', 'prepare-hypit', 'font'])
     parser.add_argument('--workspace', '--project', type=Path, default=Path.cwd())
     parser.add_argument('--hypit-version')
     args = parser.parse_args()
-    print(ensure_browser() if args.command == 'browser' else prepare_hypit(args.workspace, args.hypit_version))
+    if args.command == 'font':
+        try:
+            print(ensure_font())
+        except (OSError, ValueError, KeyError) as exc:  # the Agent relays this line instead of a traceback
+            raise SystemExit(f'APEX subtitle font unavailable: {type(exc).__name__}: {exc}') from None
+    else:
+        print(ensure_browser() if args.command == 'browser' else prepare_hypit(args.workspace, args.hypit_version))
