@@ -17,7 +17,7 @@ const refreshedFor = new Set<string>()
  * something new this turn — 「记下了：… · 撤销」 (Grok's "Updated memory" line,
  * with Muse's undo). 撤销 deletes the entry from the account's ledger for real.
  * Shows only in single-thread product mode (`$singleThreadMode`); otherwise
- * renders nothing. 待 Kael 定 (decision 7): shown, one line per new entry, undoable.
+ * renders nothing. One line per new entry, each undoable.
  */
 export const MemoryNotedLine: FC = () => {
   // A string selector stays equal across streaming deltas, so the line does not
