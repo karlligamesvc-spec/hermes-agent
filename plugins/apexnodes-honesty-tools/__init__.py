@@ -372,10 +372,12 @@ def _apply_fixes(text: str, hits: list[dict[str, Any]]) -> str:
                 cuts.append((start, end))
         else:
             clause_start, clause_end = hit["clause"]
-            # take the clause's own trailing comma; keep a sentence end for the clause before it
+            head = text[clause_start - 1:clause_start]
             tail = text[clause_end:clause_end + 1]
             if tail and tail in "，,；;、":
-                clause_end += 1
+                clause_end += 1  # the clause takes its own comma
+            elif tail and tail in "。！？!?\n" and (not head or head in "。！？!?\n"):
+                clause_end += 1  # a whole sentence or line goes with its end mark (no 「。。」)
             cuts.append((clause_start, clause_end))
     if not cuts:
         return text
