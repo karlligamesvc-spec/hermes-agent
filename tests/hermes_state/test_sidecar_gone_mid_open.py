@@ -36,9 +36,13 @@ def test_a_connection_closing_during_the_scan_is_not_a_holder(tmp_path, scans):
     assert scans == [], "both looks must be taken"
 
 
-def test_a_holder_still_there_on_the_second_look_is_refused(tmp_path, scans):
-    wal = str(tmp_path / "state.db-wal")
-    scans += [[(4242, wal)], [(4242, wal)]]
+@pytest.mark.parametrize("second_look", [
+    [(4242, "state.db-wal")],  # the same holder, still there
+    [(5151, "state.db-shm")],  # a holder that appeared while the opener waited
+], ids=["same-holder", "new-holder"])
+def test_a_holder_on_the_second_look_is_refused(tmp_path, scans, second_look):
+    scans += [[(4242, str(tmp_path / "state.db-wal"))],
+              [(pid, str(tmp_path / name)) for pid, name in second_look]]
 
     with pytest.raises(DeletedWalGenerationError):
         hermes_state_dbfile.refuse_deleted_wal_generation(tmp_path / "state.db")

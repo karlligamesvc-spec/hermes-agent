@@ -389,16 +389,17 @@ def refuse_deleted_wal_generation(db_path) -> None:
     """Raise if any process holds a deleted WAL/SHM generation for *db_path*; called
     *before* ``sqlite3.connect`` so a second opener cannot mint a replacement WAL inode.
 
-    Only a holder seen on a second look counts: SQLite's last close checkpoints the WAL, unlinks
-    -wal/-shm and only then closes their descriptors, so a scan landing in that gap sees a
-    connection on its way out (a false FATAL for an opener racing another's close). A retired
-    generation is held until its process lets go, so it is still there ``_HOLDER_CONFIRM_SECONDS`` later."""
+    A scan that finds a holder is taken again ``_HOLDER_CONFIRM_SECONDS`` later and only that second
+    look decides: SQLite's last close checkpoints the WAL, unlinks -wal/-shm and only then closes
+    their descriptors, so a scan landing in that gap sees a connection on its way out (a false FATAL
+    for an opener racing another's close). The second look is the scan right before connect, as
+    strict as a single scan: any holder then, whether or not the first look saw it, is refused."""
     from hermes_state import DeletedWalGenerationError
     from hermes_state_errors import _DELETED_WAL_GENERATION_MSG
     holders = iter_deleted_sqlite_sidecar_holders(db_path)
     if holders:
         time.sleep(_HOLDER_CONFIRM_SECONDS)
-        holders = set(holders) & set(iter_deleted_sqlite_sidecar_holders(db_path))
+        holders = iter_deleted_sqlite_sidecar_holders(db_path)
     if not holders:
         return
     logger.error(_DELETED_WAL_GENERATION_MSG)
