@@ -4,9 +4,9 @@
  * itself; one opens read-only (composer-gate.tsx puts a bar with the way back
  * where the composer was). New messages only ever go to the thread.
  *
- * Decision 10 (where an existing user's sessions go) is still Kael's to make;
- * this is the plan's recommendation: kept, readable, not stitched into the
- * thread.
+ * Decision 10, decided by Kael on 2026-10-21: old sessions are kept and
+ * read-only, with their entry in the avatar (account) menu; they are not
+ * stitched into the thread.
  */
 
 import { useStore } from '@nanostores/react'

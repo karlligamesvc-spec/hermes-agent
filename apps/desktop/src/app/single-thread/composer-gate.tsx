@@ -6,8 +6,8 @@
  * itself, tiles (which import the composer directly) — this is the composer,
  * untouched.
  *
- * Decision 10 (old sessions into a read-only 「更早的对话」) is still Kael's to
- * make; this follows the plan's recommendation.
+ * Decision 10, decided by Kael on 2026-10-21: old sessions are read-only, and
+ * their entry is in the avatar (account) menu.
  */
 
 import { useStore } from '@nanostores/react'
