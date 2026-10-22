@@ -8,7 +8,7 @@ import { ModelPickerDialog } from '@/components/model-picker'
 import type { HermesGateway } from '@/hermes'
 import { resolveModelPickerOwner } from '@/lib/model-picker-owner'
 import { useStoreSelector } from '@/lib/use-session-slice'
-import { $modelTierMode } from '@/store/model-tiers'
+import { $modelChoiceHidden } from '@/store/model-choice'
 import {
   $activeSessionId,
   $currentModel,
@@ -56,7 +56,7 @@ export function ModelPickerOverlay({
   const open = useStore($modelPickerOpen)
   // hc-960: an APEX account has no model to pick; every opener (pill,
   // ⌘⇧M, /model, the free-tier strip) lands here, so this is the backstop.
-  const modelTierMode = useStore($modelTierMode)
+  const modelChoiceHidden = useStore($modelChoiceHidden)
 
   const pickerOwner = resolveModelPickerOwner({
     ambientConnectionId: ownerConnectionId,
@@ -85,7 +85,7 @@ export function ModelPickerOverlay({
   const currentModel = focusedRuntimeId && focusedModel !== null ? focusedModel : primaryModel
   const currentProvider = focusedRuntimeId && focusedProvider !== null ? focusedProvider : primaryProvider
 
-  if (!gatewayOpen || modelTierMode) {
+  if (!gatewayOpen || modelChoiceHidden) {
     return null
   }
 

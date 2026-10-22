@@ -214,7 +214,8 @@ describe('main.ts wiring', () => {
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
 
   test('settles the switches from the cached client config at module scope, before any seed', () => {
-    const settle = main.search(/^applyModelTierSwitches\(process\.env, readClientConfigState\(\)\.payload\b/m)
+    // hc-1015: through applyDesktopFeatureSwitches, which settles the tier switches first.
+    const settle = main.search(/^applyDesktopFeatureSwitches\(process\.env, readClientConfigState\(\)\.payload\b/m)
     const ready = main.indexOf('app.whenReady().then(')
 
     assert.ok(settle > 0, 'the switch is never read from the platform config (or not at module scope)')

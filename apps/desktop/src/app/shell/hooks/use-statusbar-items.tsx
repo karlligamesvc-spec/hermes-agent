@@ -8,6 +8,7 @@ import { useApprovalModeStatusbarItem } from '@/app/shell/approval-mode-menu'
 import { ContextUsagePanel } from '@/app/shell/context-usage-panel'
 import { GatewayMenuPanel } from '@/app/shell/gateway-menu-panel'
 import { useContextBreakdown } from '@/app/shell/hooks/use-context-breakdown'
+import { useSingleThreadStatusbar } from '@/app/shell/single-thread-statusbar'
 import { useSystemResourcesStatusbarItem } from '@/app/shell/system-resources-statusbar'
 import { $paneVisible, togglePaneVisible } from '@/components/pane-shell/tree/store'
 import { Badge } from '@/components/ui/badge'
@@ -89,7 +90,12 @@ interface StatusbarItemsOptions {
   toggleCommandCenter: () => void
 }
 
-export function useStatusbarItems({
+/** The bar's items; single-thread mode narrows them (hc-1015, single-thread-statusbar.ts). */
+export function useStatusbarItems(options: StatusbarItemsOptions) {
+  return useSingleThreadStatusbar(useAllStatusbarItems(options), options)
+}
+
+function useAllStatusbarItems({
   agentsOpen,
   chatOpen,
   commandCenterOpen,

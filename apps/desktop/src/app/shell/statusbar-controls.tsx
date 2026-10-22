@@ -17,6 +17,7 @@ import { ContribRender } from '@/contrib/react/boundary'
 import { useI18n } from '@/i18n'
 import { useKeybindHint } from '@/lib/keybinds/use-keybind-hint'
 import { cn } from '@/lib/utils'
+import { $singleThreadMode } from '@/store/single-thread'
 import {
   $statusbarHiddenIds,
   isStatusbarLayoutDefault,
@@ -95,6 +96,13 @@ export function StatusbarControls({ className, leftItems = [], items = [], ...pr
 
   const visible = (item: StatusbarItem) =>
     !item.hidden && (item.lockedVisible || !item.toggleLabel || !hiddenIds.includes(item.id))
+
+  // hc-1015: single-thread mode draws no empty bar (single-thread-statusbar.ts).
+  const singleThread = useStore($singleThreadMode)
+
+  if (singleThread && !leftItems.some(visible) && !items.some(visible)) {
+    return null
+  }
 
   return (
     <ContextMenu>

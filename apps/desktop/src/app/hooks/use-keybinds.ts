@@ -40,7 +40,7 @@ import {
   togglePanesFlipped,
   toggleSidebarOpen
 } from '@/store/layout'
-import { $modelTierMode } from '@/store/model-tiers'
+import { $modelChoiceHidden } from '@/store/model-choice'
 import { openBrowserTab } from '@/store/preview'
 import {
   $newChatProfile,
@@ -194,8 +194,8 @@ export function useKeybinds(deps: KeybindRuntimeDeps): void {
     // Toggle the composer pill's live model dropdown (pane under the pointer,
     // else active composer); no chat surface on screen → the full dialog.
     'composer.modelPicker': () => {
-      // hc-960: no model picker on an APEX account; the chord does nothing.
-      if ($modelTierMode.get()) {
+      // hc-960 / hc-1015: no model picker on an APEX account; the chord does nothing.
+      if ($modelChoiceHidden.get()) {
         return
       }
 
