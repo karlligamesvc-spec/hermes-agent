@@ -834,6 +834,11 @@ def _pin_ancestry(monkeypatch, leaf):
     """Make ``psutil.Process()`` return the leaf of a stubbed chain."""
     psutil = pytest.importorskip("psutil")
     monkeypatch.setattr(psutil, "Process", lambda *a, **k: leaf)
+    # The getppid() shortcut runs before the walk, and our real parent (one
+    # test-runner pid for a whole CI shard) can be a pid these tests query.
+    # 0 (a parent in another pid namespace) matches no queried pid, so only
+    # the stubbed walk answers. The shortcut has its own test above.
+    monkeypatch.setattr(os, "getppid", lambda: 0)
 
 
 def _chain(*pids, blocked_above=False):
