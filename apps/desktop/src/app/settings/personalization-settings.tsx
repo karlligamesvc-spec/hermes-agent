@@ -14,6 +14,7 @@ import { CONTROL_TEXT, EMPTY_SELECT_VALUE, FIELD_DESCRIPTIONS, FIELD_LABELS } fr
 import { CreatorProfileSettings } from './creator-profile-settings'
 import { fieldCopyForSchemaKey } from './field-copy'
 import { enumOptionsFor, getNested, prettyName, setNested } from './helpers'
+import { MemoryLedgerSettings } from './memory-ledger-settings'
 import { ListRow, SectionHeading, SettingsContent } from './primitives'
 import { SoulEditor } from './soul-editor'
 
@@ -79,6 +80,7 @@ export function PersonalizationSettings({ onConfigSaved }: { onConfigSaved?: () 
   return (
     <SettingsContent>
       <CreatorProfileSettings />
+      <MemoryLedgerSettings />
 
       <div className="mt-6">
         <SectionHeading icon={Sparkles} title={copy.personalityTitle} />

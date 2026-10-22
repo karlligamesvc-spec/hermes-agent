@@ -3,7 +3,8 @@
  * stored login JWT, which never reaches the renderer: hc-447 更新日志 (list +
  * best-effort read receipt), hc-971 the account's team, the hc-991
  * first-use creator profile (read and written), the hc-995 creator-tip
- * catalog and the hc-995 今日点子 (read, 开做 and 不喜欢). Each handler's
+ * catalog, the hc-995 今日点子 (read, 开做 and 不喜欢) and the hc-1016 memory
+ * ledger (read and edited). Each handler's
  * request and ok:false shapes live in its own module;
  * this file only registers them, so main.ts holds one call instead of one
  * handler per read.
@@ -13,6 +14,7 @@ import { fetchAnnouncements, markAnnouncementRead } from './apex-announcements'
 import { type CreatorProfileDeps, creatorProfileRequest } from './apex-creator-profile'
 import { type CreatorTipsCache, fetchCreatorTips } from './apex-creator-tips'
 import { dailyIdeasRequest } from './apex-daily-ideas'
+import { memoryLedgerRequest } from './apex-memory-ledger'
 import { fetchMyTeam } from './apex-team'
 
 export interface IpcHandleRegistry {
@@ -38,5 +40,8 @@ export function registerApexAccountReads(
   )
   ipcMain.handle('hermes:managed:dailyIdeas', async (_event, request) =>
     dailyIdeasRequest(reads, process.env, request)
+  )
+  ipcMain.handle('hermes:managed:memoryLedger', async (_event, request) =>
+    memoryLedgerRequest(reads, hermesHome, request)
   )
 }

@@ -41,6 +41,8 @@ _SEAM_MODULES = (
     "im_passthrough",
     # hc-991 first-use creator answers in each new Desktop session's prompt.
     "user_profile_prompt",
+    # hc-1016 the account's memory ledger: prompt section + apex_memory tool.
+    "memory_ledger",
     # hc-1015 how APEX talks in single-thread mode.
     "single_thread_prompt",
 )
