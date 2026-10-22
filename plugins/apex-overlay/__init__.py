@@ -202,6 +202,19 @@ def register(ctx) -> None:  # noqa: ARG001 — ctx unused; this is a boot hook
         logger.warning("apex-overlay: cn_im_messages seam failed to load", exc_info=True)
 
     try:
+        from apex_overlay import im_question_reply_only
+
+        if not im_question_reply_only.apply():
+            logger.warning(
+                "apex-overlay: hc-1018 cloud IM question-and-reply-only seam did not "
+                "apply (see prior error). With apex.im_question_reply_only on, "
+                "status lines and the runtime's English failure replies (provider, "
+                "model, /model) still reach weixin/wecom/dingtalk/qqbot/feishu users."
+            )
+    except Exception:
+        logger.warning("apex-overlay: im_question_reply_only seam failed to load", exc_info=True)
+
+    try:
         from apex_overlay import cn_mirror_env
 
         if not cn_mirror_env.apply():

@@ -33,6 +33,8 @@ _SEAM_MODULES = (
     "stt_no_lazy_install",
     "first_turn_ack",
     "cn_im_messages",
+    # hc-1018 cloud IM: no status lines, plain failure replies (behind a config switch).
+    "im_question_reply_only",
     # hc-539 IM ↔ local coding-agent passthrough.
     "im_passthrough",
 )
