@@ -161,5 +161,18 @@
       "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/chrome/152.0.7928.2/ec7d7cfbc9d97093c9269d6a26de78a3244a49f3112ff9616e2ccb5ac3afeb24/chrome-headless-shell-win64.zip",
       "executable": "chrome-headless-shell-win64/chrome-headless-shell.exe"
     }
+  },
+  "fonts": {
+    "subtitle": {
+      "family": "Smiley Sans Oblique",
+      "file": "SmileySans-Oblique.otf",
+      "version": "2.0.1",
+      "license": "OFL-1.1",
+      "bytes": 2003884,
+      "sha256": "139b5dcbe70d6d52de85a62d148784c6af4bd161e38fdb62ba0c1e7e5065fca6",
+      "upstream": "https://github.com/atelier-anchor/smiley-sans/releases/download/v2.0.1/smiley-sans-v2.0.1.zip",
+      "upstreamMember": "SmileySans-Oblique.otf",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/fonts/smiley-sans/2.0.1/139b5dcbe70d6d52de85a62d148784c6af4bd161e38fdb62ba0c1e7e5065fca6/SmileySans-Oblique.otf"
+    }
   }
 }
