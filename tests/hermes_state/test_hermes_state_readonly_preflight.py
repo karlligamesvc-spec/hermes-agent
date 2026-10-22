@@ -153,8 +153,43 @@ class TestSkips:
         preflight_db_writability(db)
         assert stat.S_IMODE(db.stat().st_mode) == before
 
+    @pytest.mark.parametrize("vanishing", ["custom.db", "custom.db-wal", "custom.db-shm"])
+    def test_file_gone_since_the_listing_is_not_read_only(self, hermes_home, tmp_path, monkeypatch, vanishing):
+        """A concurrent opener's quarantine renames the DB aside, or another connection's last close
+        removes -wal/-shm, between the preflight listing a file and checking it. os.access on the
+        vanished path is False; that used to fail a writable open as "read-only" (flaky
+        test_concurrent_quarantine_no_clobber). Outside the home, so no chmod repair masks it."""
+        outside = tmp_path / "elsewhere"
+        outside.mkdir()
+        db = outside / "custom.db"
+        _make_wal_db(db)
+        for sidecar in ("custom.db-wal", "custom.db-shm"):
+            (outside / sidecar).touch()
+        gone = outside / vanishing
+        real_access = os.access
+
+        def vanishes_before_access(path, mode, *args, **kwargs):
+            if Path(path) == gone:
+                gone.unlink(missing_ok=True)
+            return real_access(path, mode, *args, **kwargs)
+
+        monkeypatch.setattr(hermes_state.os, "access", vanishes_before_access)
+        preflight_db_writability(db, db_label="custom.db")
+        assert not gone.exists()
+
 
 class TestSessionDBIntegration:
+    def test_sessiondb_repairs_readonly_dir_before_fresh_db_lock(self, hermes_home):
+        sub = hermes_home / "profiles" / "p1"
+        sub.mkdir(parents=True)
+        os.chmod(sub, 0o555)
+        try:
+            db = SessionDB(sub / "state.db")  # absent DB: the quarantine lock lives in this dir
+            db.close()
+            assert os.access(sub, os.W_OK)
+        finally:
+            os.chmod(sub, 0o755)
+
     def test_sessiondb_selfheals_readonly_db_in_home(self, hermes_home):
         db_path = hermes_home / "state.db"
         first = SessionDB(db_path)

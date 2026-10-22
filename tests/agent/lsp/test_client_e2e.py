@@ -98,6 +98,39 @@ async def test_aborted_start_reports_exit_status_and_stderr_tail(tmp_path: Path)
 
 
 @pytest.mark.asyncio
+async def test_aborted_start_reports_exit_status_reaped_after_stdout_eof(tmp_path: Path, monkeypatch):
+    """Same abort, in the order Linux's pidfd child watcher can deliver it: the reader loop sees
+    stdout EOF and starts cleanup before asyncio has reaped the server, so the exit is first seen
+    inside cleanup's grace wait.  That status must still reach the report (CI flake of the test
+    above: 'server connection closed (last stderr lines: ...)' with no exit status)."""
+    from asyncio import base_subprocess
+
+    transport = base_subprocess.BaseSubprocessTransport
+    real_exited, real_wait = transport._process_exited, transport._wait
+    held: dict[int, int] = {}
+
+    def hold_exit(self, returncode):  # the child is gone; asyncio reports it once someone waits
+        held[id(self)] = returncode
+
+    async def release_on_wait(self):
+        if id(self) in held:
+            real_exited(self, held.pop(id(self)))
+        return await real_wait(self)
+
+    monkeypatch.setattr(transport, "_process_exited", hold_exit)
+    monkeypatch.setattr(transport, "_wait", release_on_wait)
+    client = _client(tmp_path, "oom_abort")
+
+    with pytest.raises(LSPProtocolError) as excinfo:
+        await client.start()
+
+    message = str(excinfo.value)
+    assert "server exited on signal" in message
+    assert "JavaScript heap out of memory" in message
+    await client.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_initialize_error_response_keeps_its_exception_type(tmp_path: Path):
     """A JSON-RPC error to ``initialize`` must surface as the LSPRequestError the server sent,
     with the exit details appended -- not as a TypeError from re-instantiating an exception
