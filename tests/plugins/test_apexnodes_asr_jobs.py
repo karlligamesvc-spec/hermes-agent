@@ -295,11 +295,13 @@ def test_a_job_still_running_past_the_server_budget_stops_with_a_plain_answer(sc
     state["answers"][("POST", "/tools/v1/asr/jobs")] = [{**RUNNING, "max_wait_seconds": 600, "poll_after_seconds": 5}]
     state["answers"][("GET", "/tools/v1/asr/jobs/job-1")] = [{**RUNNING, "poll_after_seconds": 5}]
     started = clock.now
-    with pytest.raises(module.GatewayError) as caught:
-        module.transcribe_media_url("https://cos.example/a.m4a", timeout=7800)
+    finished, box = _run_bounded(lambda: module.transcribe_media_url("https://cos.example/a.m4a", timeout=7800), 10)
     waited = clock.now - started
-    assert caught.value.code == "asr_job_overdue"
-    assert "停止等待" in str(caught.value)
+    assert finished, "a job that never finishes must not be polled forever"
+    error = box["error"]
+    assert isinstance(error, module.GatewayError)
+    assert error.code == "asr_job_overdue"
+    assert "停止等待" in str(error)
     assert 600 + module._ASR_JOB_DEADLINE_MARGIN_SECONDS <= waited < 600 + module._ASR_JOB_DEADLINE_MARGIN_SECONDS + 30
 
 
