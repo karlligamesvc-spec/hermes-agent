@@ -15,6 +15,7 @@ import {
 } from '@/hermes'
 import { setModelAssignment } from "@/hermes"
 import { translateNow } from '@/i18n'
+import { managedSignInCopyNow } from '@/i18n/managed-sign-in'
 import { isProviderSetupErrorMessage } from "@/lib/provider-setup-errors"
 import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
 import { markSignedIn } from '@/store/auth'
@@ -856,6 +857,8 @@ function managedErrorCopy(message: string | undefined): string {
   if (raw === 'MODEL_RUNTIME_UNAVAILABLE') {return translateNow('auth.login.runtimeUnavailable')}
 
   if (raw === 'MANAGED_PROVISION_UNAVAILABLE') {return translateNow('auth.login.provisionUnavailable')}
+
+  if (raw === 'MANAGED_DEVICE_LIMIT_REACHED') {return managedSignInCopyNow().deviceLimitReached}
 
   if (raw === 'MODEL_MUTATION_SUPERSEDED') {return translateNow('auth.login.superseded')}
 
