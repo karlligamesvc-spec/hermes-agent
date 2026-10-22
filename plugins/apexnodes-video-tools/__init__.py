@@ -191,7 +191,13 @@ GENERATE_VIDEO_SCHEMA = {
             },
             "seconds": {
                 "type": "integer",
-                "description": "Optional clip length in seconds. Leave empty to use the platform default; longer clips take longer to render.",
+                "description": (
+                    "Optional clip length in whole seconds. Leave empty for the platform default (a 5 s "
+                    "sample). A finished cut of up to 15 s is ONE call: write all its shots into the prompt "
+                    "in order with hard cuts, not one call per shot; only a longer cut is split. The "
+                    "platform clamps this to the selected engine's range (at most 15 s), so report the "
+                    "returned seconds."
+                ),
             },
             "model": {
                 "type": "string",
