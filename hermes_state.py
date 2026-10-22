@@ -296,7 +296,10 @@ def _secure_state_db_files(db_path: Path, *, create_main: bool = False) -> None:
             continue
         if not stat.S_ISREG(st.st_mode):
             continue
-        os.chmod(path, 0o600)
+        try:
+            os.chmod(path, 0o600)
+        except FileNotFoundError:
+            continue  # removed since the lstat: another connection's last close takes -wal/-shm with it
 
 
 # Openings of the background-review harness prompts (agent/background_review.py).
