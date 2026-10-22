@@ -194,7 +194,7 @@ GENERATE_VIDEO_SCHEMA = {
                 "description": (
                     "Optional clip length in whole seconds. Leave empty for the platform default (a 5 s "
                     "sample). A finished cut of up to 15 s is ONE call: write all its shots into the prompt "
-                    "with time spans and hard cuts, not one call per shot; only a longer cut is split. The "
+                    "in order with hard cuts, not one call per shot; only a longer cut is split. The "
                     "platform clamps this to the selected engine's range (at most 15 s), so report the "
                     "returned seconds."
                 ),
