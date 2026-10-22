@@ -138,6 +138,7 @@ export const zhProcess: ProcessCopy = {
     live_record_start: step('正在开始录直播', '开始录直播', said('开始录了')),
     live_record_status: step('正在查看录制进度', '查看录制进度', said('看过了')),
     live_record_stop: step('正在结束录制', '结束录制', said('录好了')),
+    honesty_verify: step('正在检查文案说法', '检查文案说法', said('检查好了')),
     doc_file_write: step('正在生成文档', '生成文档', said('文档做好了')),
     xlsx_file_write: step('正在生成表格', '生成表格', said('表格做好了')),
     pptx_file_write: step('正在生成演示文稿', '生成演示文稿', said('演示文稿做好了')),

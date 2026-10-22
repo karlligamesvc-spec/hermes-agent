@@ -1,0 +1,9 @@
+name: apexnodes-honesty-tools
+version: "0.2.0"
+description: >-
+  Deterministic honesty and ad-compliance check (honesty_verify) for customer-facing text.
+  Rules come from the copy-compliance-check skill's graded lexicon (references/ad-lexicon.json,
+  hc-1022), the single source for cloud agents and APEX Desktop; no lexicon, no check.
+  Byte-identical to hermes-agent fork plugins/apexnodes-honesty-tools/ (hc-1023).
+provides_tools:
+  - honesty_verify

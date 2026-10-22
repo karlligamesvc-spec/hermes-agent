@@ -145,6 +145,7 @@ export const enProcess: ProcessCopy = {
     live_record_start: step('Starting the live recording', 'Start recording', said('Recording')),
     live_record_status: step('Checking the recording', 'Check recording', said('Checked')),
     live_record_stop: step('Stopping the recording', 'Stop recording', said('Stopped')),
+    honesty_verify: step("Checking the copy's claims", 'Check claims', said('Checked')),
     doc_file_write: step('Making the document', 'Make document', said('Document ready')),
     xlsx_file_write: step('Making the spreadsheet', 'Make spreadsheet', said('Spreadsheet ready')),
     pptx_file_write: step('Making the slides', 'Make slides', said('Slides ready')),

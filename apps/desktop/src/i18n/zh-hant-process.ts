@@ -133,6 +133,7 @@ export const zhHantProcess: ProcessCopy = {
     live_record_start: step('正在開始錄直播', '開始錄直播', said('開始錄了')),
     live_record_status: step('正在查看錄製進度', '查看錄製進度', said('看過了')),
     live_record_stop: step('正在結束錄製', '結束錄製', said('錄好了')),
+    honesty_verify: step('正在檢查文案說法', '檢查文案說法', said('檢查好了')),
     doc_file_write: step('正在生成文件', '生成文件', said('文件做好了')),
     xlsx_file_write: step('正在生成試算表', '生成試算表', said('試算表做好了')),
     pptx_file_write: step('正在生成簡報', '生成簡報', said('簡報做好了')),

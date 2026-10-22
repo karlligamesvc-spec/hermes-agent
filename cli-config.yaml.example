@@ -97,6 +97,10 @@ plugins:
     # 回数字等于发了那句话;提到「选题库」时附上 HERMES_HOME/apex/选题库.md 的路径。
     # 与 apex-nodes app/runtime_plugins/apexnodes-next-steps 逐字节相同。
     - apexnodes-next-steps
+    # ApexNodes honesty_verify(hc-1023):确定性的文案合规检查。规则是 copy-compliance-check
+    # 技能的分级词库(登录后随平台技能下发到 HERMES_HOME/skills/apexnodes/);没有词库时工具
+    # 报错说明，不判通过。与 apex-nodes app/runtime_plugins/apexnodes-honesty-tools 逐字节相同。
+    - apexnodes-honesty-tools
   # Deadline for each Git clone, fetch or checkout during plugin install. Default: 300
   # seconds. Subdirectory installs download only that folder.
   # Raise this for large repositories or slow connections. Maximum: 3600.

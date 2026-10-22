@@ -311,7 +311,11 @@ const MANAGED_PLUGIN_NAMES = [
   // renderer, turns it into reply-a-number text on the local gateway's IM channels,
   // and hands a 选题库 message the file under HERMES_HOME. Byte-identical to the
   // apex-nodes cloud copy.
-  'apexnodes-next-steps'
+  'apexnodes-next-steps',
+  // ApexNodes honesty_verify (hc-1023): the deterministic ad-compliance check. Its rules are
+  // the copy-compliance-check skill's lexicon, which arrives with the platform skills after
+  // login; byte-identical to the apex-nodes cloud copy.
+  'apexnodes-honesty-tools'
 ]
 
 // Skills physically present in ~/.hermes/skills/ but kept INACTIVE by default
