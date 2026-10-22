@@ -494,14 +494,10 @@ def _gateway_media_transcribe(
                 force_refresh=force_refresh,
             )
         elif media_url:
-            payload: dict[str, Any] = {"media_url": media_url}
-            if force_refresh is not None:
-                payload["force_refresh"] = force_refresh
-            response = _gateway.request_json(
-                "POST",
-                "/tools/v1/asr/transcribe",
-                payload,
+            response = _gateway.transcribe_media_url(
+                media_url,
                 timeout=_MEDIA_TRANSCRIBE_TIMEOUT_SECONDS,
+                force_refresh=force_refresh,
             )
         else:
             return tool_error(

@@ -327,14 +327,16 @@ def test_transcribe_remote_fetch_fallback_uses_only_refreshed_url(monkeypatch):
     )
     requests = []
 
-    def request_json(method, path, payload, **_kwargs):
+    def request_json(method, path, payload=None, **_kwargs):
         requests.append((method, path, payload))
-        return {"text": "fallback transcript"}
+        # hc-978: the transcription is a job; answering the submit with done (a cache
+        # hit's shape) keeps this test about which URL is sent.
+        return {"job_id": "j1", "status": "done", "text": "fallback transcript"}
 
     monkeypatch.setattr(gateway, "request_json", request_json)
     result = module._gateway_media_transcribe(None, source)
     assert "fallback transcript" in result
-    assert requests == [("POST", "/tools/v1/asr/transcribe", {"media_url": refreshed})]
+    assert requests == [("POST", "/tools/v1/asr/jobs", {"media_url": refreshed})]
 
 
 def test_503_copy_distinguishes_download_resolution_from_asr():

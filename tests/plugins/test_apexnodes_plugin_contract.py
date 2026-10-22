@@ -299,6 +299,7 @@ class GatewayHarness:
 
         monkeypatch.setattr(gateway_module, "request_json", _fake_request_json)
         monkeypatch.setattr(gateway_module, "download_media", _fake_download_media)
+        monkeypatch.setattr(gateway_module.time, "sleep", lambda _s: None)  # hc-978 poll gaps
         # 桌面最保守形态:无 ffmpeg → 抽音轨失败 → 原文件上传(hc-560 已知语境)。
         monkeypatch.setattr(gateway_module, "extract_audio_for_asr", lambda _p, **_kw: None)
 
@@ -306,9 +307,10 @@ class GatewayHarness:
     def _canned(path: str) -> dict:
         # 按服务端真实线形 can 响应(app/routers/tools_gateway.py):
         # /social/{p}/{action}、/video/generate = {ok, data, cost_cents} 信封;
-        # /asr/transcribe、/social/batch/* = 平铺。
+        # /asr/transcribe、/social/batch/* = 平铺。hc-978:转写是 /asr/jobs 提交(running)
+        # 加一次轮询(done,字段同 /asr/transcribe)。
         if path.startswith("/tools/v1/asr/"):
-            return {"ok": True, "text": "转写正文", "duration_seconds": 3.0, "cost_cents": 8}
+            return _asr_answer(path, {"ok": True, "text": "转写正文", "duration_seconds": 3.0, "cost_cents": 8})
         if path == "/tools/v1/social/batch/submit":
             return {"ok": True, "async_delivery": False, "job_id": "j1", "status": "queued"}
         if path.startswith("/tools/v1/social/batch/status/"):
@@ -444,14 +446,14 @@ def _check_force_refresh_passthrough(h, tool_name, _spec):
     args = h.probe_args(tool_name)
     args["force_refresh"] = True
     _result, calls = h.invoke(tool_name, args)
-    asr_call = next(call for call in reversed(calls) if call.path.endswith("/transcribe"))
+    asr_call = next(call for call in reversed(calls) if _submits_transcription(call.path))
     if h.leg == "gateway" and asr_call.files is not None:
         assert asr_call.form_data == {"force_refresh": "true"}
     else:
         assert asr_call.body["force_refresh"] is True
 
     _result, plain_calls = h.invoke(tool_name, h.probe_args(tool_name))
-    plain_asr = next(call for call in reversed(plain_calls) if call.path.endswith("/transcribe"))
+    plain_asr = next(call for call in reversed(plain_calls) if _submits_transcription(call.path))
     assert "force_refresh" not in (plain_asr.body or {})
     assert not plain_asr.form_data
 
@@ -545,6 +547,30 @@ class _GatewayHttpResponse:
         return self._body
 
 
+def _submits_transcription(path: str) -> bool:
+    """The call that carries the transcription's body: legacy /media/transcribe, the
+    gateway's synchronous /asr/transcribe, or the hc-978 job submit."""
+    return path.endswith("/transcribe") or path == "/tools/v1/asr/jobs"
+
+
+def _answers_transcription(path: str) -> bool:
+    """The call whose answer is the transcription: the hc-978 job poll on the gateway."""
+    return path.endswith("/transcribe") or path.startswith("/tools/v1/asr/jobs/")
+
+
+def _asr_answer(path: str, result: dict | None = None, *, failure: tuple[int, dict] | None = None) -> dict:
+    """Gateway wire shape (hc-978): the submit answers running, the poll answers done
+    with ``result`` or failed with what /asr/transcribe would have answered."""
+    if path == "/tools/v1/asr/jobs":
+        return {"ok": True, "job_id": "j1", "status": "running", "poll_after_seconds": 5, "max_wait_seconds": 1800}
+    if not path.startswith("/tools/v1/asr/jobs/"):
+        return dict(result or {})
+    if failure is not None:
+        status, body = failure
+        return {"ok": False, "job_id": "j1", "status": "failed", "error": {"status_code": status, "detail": body.get("detail")}}
+    return {"job_id": "j1", "status": "done", **(result or {})}
+
+
 def _transcribe_http_error(h, path: str, status: int, body: dict) -> Exception:
     """The error each leg's transport raises for an HTTP status on the transcribe call."""
     if h.leg == "legacy":
@@ -562,13 +588,15 @@ def _check_no_speech_is_success(h, tool_name, _spec):
         def canned(path: str):
             if path.endswith("/transcribe"):
                 raise _transcribe_http_error(h, path, status, body)
+            if path.startswith("/tools/v1/asr/jobs"):  # hc-978: the verdict comes back on the poll
+                return _asr_answer(path, failure=(status, body))
             return type(h)._canned(path)
         return canned
 
     h._canned = answer_with(422, no_speech)  # type: ignore[method-assign]
     raw, calls = h.invoke_raw(tool_name, h.probe_args(tool_name))
     result = json.loads(raw)
-    assert calls and calls[-1].path.endswith("/transcribe")
+    assert calls and _answers_transcription(calls[-1].path)
     assert "error" not in result
     assert (result["ok"], result["speech"], result["transcript"]) == (True, False, "")
     assert result["speech_note"]
@@ -592,17 +620,17 @@ _TIMED_SEGMENTS = [
 def _check_segments_file_handoff(h, tool_name, _spec):
     def answer_with(segments):
         def canned(path: str):
-            if not path.endswith("/transcribe"):
+            if not (path.endswith("/transcribe") or path.startswith("/tools/v1/asr/jobs")):
                 return type(h)._canned(path)
             if h.leg == "legacy":  # master /media/transcribe body
                 return {"ok": True, "transcript": "大家好开始吧", "title": "", "segments": segments}
-            return {"ok": True, "text": "大家好开始吧", "duration_seconds": 2.6, "segments": segments}
+            return _asr_answer(path, {"ok": True, "text": "大家好开始吧", "duration_seconds": 2.6, "segments": segments})
         return canned
 
     h._canned = answer_with(_TIMED_SEGMENTS)  # type: ignore[method-assign]
     raw, calls = h.invoke_raw(tool_name, h.probe_args(tool_name))
     result = json.loads(raw)
-    assert calls and calls[-1].path.endswith("/transcribe")
+    assert calls and _answers_transcription(calls[-1].path)
     assert "segments" not in result, "timing must not ride inline in the result"
     assert result["segments_summary"] == {"count": 2, "word_count": 2, "first_start_ms": 320, "last_end_ms": 2600}
     segments_path = Path(result["segments_path"])

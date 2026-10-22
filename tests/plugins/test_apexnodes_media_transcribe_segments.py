@@ -30,10 +30,13 @@ import pytest
 from agent.display import _detect_tool_failure
 from tests.plugins.test_apexnodes_gateway_tools import (
     _VENDOR_AND_MASTER_ENV,
+    ASR_JOB_POLL_URL,
+    ASR_JOBS_URL,
     GATEWAY_BASE,
     GATEWAY_KEY,
     UPLOAD_URL_OK,
     FakeResponse,
+    asr_job_done,
     _gateway_module,
     _load_plugin,
 )
@@ -160,14 +163,14 @@ def _asr_body(segments=SEGMENTS, text: str = TEXT) -> dict:
 
 
 def _exit_multipart(douyin_mod, responses, tmp_path, monkeypatch, body):
-    responses.append(FakeResponse(200, body))
+    responses.extend(asr_job_done(body))
     return douyin_mod._handle_media_transcribe({"video_path": str(_clip(tmp_path, "talk.mp4"))})
 
 
 def _exit_direct_upload(douyin_mod, responses, tmp_path, monkeypatch, body):
     monkeypatch.setenv(_gateway_module().ENV_ASR_DIRECT_UPLOAD_THRESHOLD, "16")
     clip = _clip(tmp_path, "talk_long.mp4", size=32)
-    responses.extend([FakeResponse(200, UPLOAD_URL_OK), FakeResponse(200, {}), FakeResponse(200, body)])
+    responses.extend([FakeResponse(200, UPLOAD_URL_OK), FakeResponse(200, {}), *asr_job_done(body)])
     return douyin_mod._handle_media_transcribe({"video_path": str(clip)})
 
 
@@ -179,7 +182,7 @@ def _exit_media_url(douyin_mod, responses, tmp_path, monkeypatch, body):
         raise douyin_mod._ResolvedMediaDownloadError({"title": "做菜"}, fetched)
 
     monkeypatch.setattr(douyin_mod, "_gateway_download_resolved_media", local_download_exhausted)
-    responses.append(FakeResponse(200, body))
+    responses.extend(asr_job_done(body))
     return douyin_mod._handle_media_transcribe({"url": "https://v.douyin.com/abc/"})
 
 
@@ -205,7 +208,7 @@ def test_every_gateway_asr_exit_hands_segments_over_as_a_file(
 ):
     responses, urls = gateway_http
     raw = exit_fn(douyin_mod, responses, tmp_path, monkeypatch, _asr_body())
-    assert urls[-1] == f"{GATEWAY_BASE}{ASR_PATH}"
+    assert urls[-2:] == [ASR_JOBS_URL, ASR_JOB_POLL_URL]
     assert not responses, "every queued hop must have been used"
     result = json.loads(raw)
     assert (result["ok"], result["transcript"], result["speech"]) == (True, TEXT, True)
@@ -236,7 +239,7 @@ def test_legacy_leg_moves_master_segments_into_a_local_file(legacy_master, douyi
 def test_a_response_without_timing_says_count_zero(segments, douyin_mod, gateway_http, tmp_path, hermes_home):
     """count=0 is how the agent tells "the server had no timing" (old cache) from an old client."""
     responses, _urls = gateway_http
-    responses.append(FakeResponse(200, _asr_body(segments)))
+    responses.extend(asr_job_done(_asr_body(segments)))
     result = json.loads(douyin_mod._handle_media_transcribe({"video_path": str(_clip(tmp_path, "c.mp4"))}))
     assert result["transcript"] == TEXT
     assert result["segments_summary"] == {"count": 0}
@@ -273,7 +276,7 @@ def test_a_long_video_result_stays_inline_with_its_whole_transcript(
     # The fixture is meaningful: the timing alone would be spilled by the runtime.
     assert len(json.dumps(segments, ensure_ascii=False)) > threshold
     responses, _urls = gateway_http
-    responses.append(FakeResponse(200, _asr_body(segments, text)))
+    responses.extend(asr_job_done(_asr_body(segments, text)))
     raw = douyin_mod._handle_media_transcribe({"video_path": str(_clip(tmp_path, "long.mp4"))})
     # The runtime keeps the result inline (no spill file, no 1.5K preview) and the agent sees it all.
     assert maybe_persist_tool_result(raw, "media_transcribe", "call_hc929") == raw
@@ -292,7 +295,7 @@ def test_a_title_with_dots_keeps_both_file_names_whole(douyin_mod, gateway_http,
     monkeypatch.setattr(
         douyin_mod, "_gateway_download_resolved_media", lambda *_a: (meta, _clip(tmp_path, "launch.mp4"))
     )
-    responses.append(FakeResponse(200, _asr_body()))
+    responses.extend(asr_job_done(_asr_body()))
     result = json.loads(douyin_mod._handle_media_transcribe({"url": "https://v.douyin.com/v12/"}))
     segments_name = Path(result["segments_path"]).name
     assert segments_name.startswith("v1.2 发布会_转写_") and segments_name.endswith(".segments.json")
@@ -308,7 +311,7 @@ def test_an_unwritable_cache_keeps_the_transcript_and_says_why_timing_is_missing
         raise PermissionError("cache/documents is not writable")
 
     monkeypatch.setattr(douyin_mod, "_document_cache_dir", no_cache_dir)
-    responses.append(FakeResponse(200, _asr_body()))
+    responses.extend(asr_job_done(_asr_body()))
     raw = douyin_mod._handle_media_transcribe({"video_path": str(_clip(tmp_path, "d.mp4"))})
     result = json.loads(raw)
     assert (result["ok"], result["transcript"]) == (True, TEXT)
@@ -339,7 +342,7 @@ def test_gateway_result_without_timing_says_whether_a_retry_can_help(
         body.pop("cache_hit")
     else:
         body["cache_hit"] = cache_hit
-    responses.append(FakeResponse(200, body))
+    responses.extend(asr_job_done(body))
     raw = douyin_mod._handle_media_transcribe({"video_path": str(_clip(tmp_path, "t.mp4"))})
     result = json.loads(raw)
     assert result["segments_summary"] == {"count": 0}
@@ -372,7 +375,7 @@ def test_legacy_result_without_timing_says_whether_a_retry_can_help(legacy_maste
 )
 def test_no_timing_note_only_when_speech_lacks_timing(body, expected_note, douyin_mod, gateway_http, tmp_path):
     responses, _urls = gateway_http
-    responses.append(FakeResponse(200, body))
+    responses.extend(asr_job_done(body))
     result = json.loads(douyin_mod._handle_media_transcribe({"video_path": str(_clip(tmp_path, "n.mp4"))}))
     assert result.get("segments_note") == expected_note
 
@@ -383,7 +386,7 @@ def test_unwritable_cache_note_is_not_overwritten_by_the_no_timing_note(
     """Timing existed but could not be written: re-transcribing after a fix DOES help."""
     responses, _urls = gateway_http
     monkeypatch.setattr(douyin_mod, "_document_cache_dir", lambda: (_ for _ in ()).throw(PermissionError("ro")))
-    responses.append(FakeResponse(200, _asr_body()))
+    responses.extend(asr_job_done(_asr_body()))
     result = json.loads(douyin_mod._handle_media_transcribe({"video_path": str(_clip(tmp_path, "w.mp4"))}))
     assert result["segments_note"] == douyin_mod._SEGMENTS_WRITE_FAILED_NOTE
 

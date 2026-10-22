@@ -7,7 +7,13 @@
 ── API 契约(与 hermes-cloud 网关腿并行开发,以本表为准) ────────────────────────
 鉴权:``Authorization: Bearer <Agent API key>``;请求头 ``X-Capability-Version=<runtime 版本>``。
 
-ASR 族:
+ASR 族(hc-978:先提交任务再轮询,旧网关没有 /asr/jobs 时回退同步的 /asr/transcribe):
+  POST {base}/tools/v1/asr/jobs                         ← 请求体与 /asr/transcribe 相同
+    → 202 {"job_id": str, "status": "running", "poll_after_seconds": int, "max_wait_seconds": int}
+      (缓存命中直接 200 {"status": "done", ...结果})
+  GET  {base}/tools/v1/asr/jobs/{job_id}
+    → 202 running | 200 done(字段同下) | 200 failed {"error": {"status_code", "detail"}}
+      | 404 asr_job_not_found(平台重启过:重新提交一次)
   POST {base}/tools/v1/asr/transcribe
     JSON  {"media_url": str}                            ← 基本形态(网关自取媒体)
     multipart file=<音频/视频文件>                        ← ≤阈值小文件:本地抽音轨压缩后上传
@@ -77,6 +83,7 @@ import mimetypes
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -120,6 +127,7 @@ __all__ = [
     "resolve_agent_api_key",
     "stale_credential_message",
     "tools_check",
+    "transcribe_media_url",
     "transcribe_upload",
     "unwrap",
     "use_gateway",
@@ -206,6 +214,32 @@ _ASR_PUT_ATTEMPTS = 2  # 首次 + 重试一次
 # 文件再推一次 web 层)。其余(旧网关 404、503 direct_upload_unavailable、网络
 # 故障)才是「通道不可用」,回退 multipart。
 _ASR_DIRECT_VERDICT_STATUSES = frozenset({401, 402, 413, 429})
+
+# hc-978: transcription is a job the client polls. Holding one request open for the
+# whole vendor wait failed on 2026-10-22: the connection carried no bytes for 6 minutes,
+# a middlebox on the Shanghai home broadband → Tencent HK/SG path dropped it, and the
+# server's 200 never arrived while this client waited out its 7800 s read timeout.
+ASR_JOBS_PATH = "/tools/v1/asr/jobs"
+ASR_TRANSCRIBE_PATH = "/tools/v1/asr/transcribe"
+_ASR_JOB_SUBMIT_TIMEOUT_SECONDS = 120.0  # the upload plus a cache lookup; no vendor wait
+_ASR_JOB_POLL_TIMEOUT_SECONDS = 30.0  # one poll reads server memory
+_ASR_JOB_POLL_GAP_SECONDS = (1.0, 5.0, 30.0)  # floor, default, ceiling
+# Polls that fail for network reasons are retried; only this long without one answer
+# ends the wait, so a lost poll answer costs one poll, not the transcription.
+_ASR_JOB_UNREACHABLE_SECONDS = 120.0
+_ASR_JOB_DEADLINE_MARGIN_SECONDS = 120.0  # past the server's own vendor budget
+# Old gateway (no /asr/jobs): the synchronous call can't succeed after nginx's and the
+# server's 1800 s, so waiting longer only hides a lost answer.
+_ASR_SYNC_FALLBACK_TIMEOUT_SECONDS = 1850.0
+
+# hc-978: TCP keepalive on every gateway connection. A call that waits minutes for an
+# answer (video and image generation, the old synchronous ASR) sends nothing while it
+# waits; probes every few seconds keep NAT state alive and turn a dead path into an
+# error within about two minutes instead of a full read timeout.
+_KEEPALIVE_IDLE_SECONDS = 30
+_KEEPALIVE_INTERVAL_SECONDS = 10
+_KEEPALIVE_PROBES = 6
+_keepalive_options_cache: list[tuple[int, int, int]] | None = None
 
 
 class GatewayError(RuntimeError):
@@ -313,6 +347,25 @@ _COPY: dict[str, tuple[str, str]] = {
     "gateway_unreadable": (
         "平台工具网关的回答读不出来,这次没有结果。",
         "The platform tool gateway sent an answer that could not be read; there is no result this time.",
+    ),
+    # hc-978: what the agent can do next when a transcription job's answer is out of reach.
+    "asr_job_unreachable": (
+        "转写任务已经交给平台，但本机连续 {minutes} 分钟连不上平台，没拿到结果。先检查网络或代理；"
+        "恢复后用同一个文件再调一次 media_transcribe，平台已经转完的话会直接取回结果。",
+        "The transcription job reached the platform, but this computer could not reach the platform for "
+        "{minutes} minutes in a row, so there is no result. Check the network or proxy; once it is back, call "
+        "media_transcribe again with the same file, and a result the platform already finished comes straight back.",
+    ),
+    "asr_job_overdue": (
+        "平台转写等了 {minutes} 分钟还没完成，这次停止等待。可以稍后用同一个文件再试一次；"
+        "这段素材如果不需要台词，按没有字幕的素材继续。",
+        "The platform has been transcribing for {minutes} minutes without finishing, so this wait stops here. "
+        "Try again later with the same file; if this clip does not need its speech, carry on without captions.",
+    ),
+    "asr_job_lost": (
+        "平台重启过，找不到这个转写任务；自动重新提交一次后又找不到了，这次没有结果。稍后用同一个文件再调一次 media_transcribe。",
+        "The platform restarted and lost this transcription job, and the automatic resubmission was lost too; "
+        "there is no result this time. Call media_transcribe again later with the same file.",
     ),
     "media_daily_limit": ("今天的{label}生成额度用完了，明天恢复。", "Today's {label} generation quota is used up; it comes back tomorrow."),
     "media_switched_off": (
@@ -680,6 +733,60 @@ def _retry_after_seconds(response: httpx.Response, attempt: int) -> float:
     return max(0.5, min(delay, _MAX_RETRY_AFTER_SECONDS))
 
 
+def _keepalive_socket_options() -> list[tuple[int, int, int]]:
+    """The keepalive options this OS accepts, probed once on a throwaway socket.
+
+    httpcore applies every option when it connects, and one the OS refuses would fail
+    the connection, so only options that a real socket took are kept (macOS names the
+    idle timer ``TCP_KEEPALIVE``, Linux and Windows ``TCP_KEEPIDLE``)."""
+    global _keepalive_options_cache
+    if _keepalive_options_cache is not None:
+        return _keepalive_options_cache
+    idle = getattr(socket, "TCP_KEEPIDLE", None) or getattr(socket, "TCP_KEEPALIVE", None)
+    wanted = [(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)]
+    for name, value in ((idle, _KEEPALIVE_IDLE_SECONDS),
+                        (getattr(socket, "TCP_KEEPINTVL", None), _KEEPALIVE_INTERVAL_SECONDS),
+                        (getattr(socket, "TCP_KEEPCNT", None), _KEEPALIVE_PROBES)):
+        if name is not None:
+            wanted.append((socket.IPPROTO_TCP, name, value))
+    accepted: list[tuple[int, int, int]] = []
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            for option in wanted:
+                try:
+                    probe.setsockopt(*option)
+                except OSError:
+                    continue
+                accepted.append(option)
+    except OSError:
+        accepted = []
+    _keepalive_options_cache = accepted
+    return accepted
+
+
+def _http_client(timeout: float) -> httpx.Client:
+    """An httpx client whose connections carry TCP keepalive (hc-978).
+
+    httpx ignores the environment's proxies once a transport is passed in, so the proxy
+    mounts are rebuilt here from the same helper httpx uses (HTTP(S)_PROXY, ALL_PROXY,
+    NO_PROXY); a user who reaches the platform through a proxy keeps reaching it."""
+    options = _keepalive_socket_options()
+    try:
+        from httpx._utils import get_environment_proxies
+    except ImportError:  # httpx moved its helper: keep the plain client
+        return httpx.Client(timeout=timeout, follow_redirects=True)
+    mounts = {
+        pattern: None if proxy is None else httpx.HTTPTransport(proxy=proxy, socket_options=options)
+        for pattern, proxy in get_environment_proxies().items()
+    }
+    return httpx.Client(
+        timeout=timeout,
+        follow_redirects=True,
+        transport=httpx.HTTPTransport(socket_options=options),
+        mounts=mounts,
+    )
+
+
 def request_json(
     method: str,
     path: str,
@@ -709,7 +816,7 @@ def request_json(
     attempt = 0
     while True:
         try:
-            with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+            with _http_client(timeout) as client:
                 response = client.request(
                     method,
                     url,
@@ -941,6 +1048,8 @@ def transcribe_upload(
     nginx/scheduler 的 multipart 同步管道);≤阈值维持 multipart。直传**通道**故障
     (旧网关无端点、COS 不可用、PUT 失败)自动回退 multipart,绝不因通道失败让转写
     失败;转写本身的业务错误(402/413/429/鉴权)原样抛 :class:`GatewayError`。
+    hc-978:两条路都是提交任务再轮询(见 :func:`_transcribe`),``timeout`` 是整次
+    转写最多等多久,不再是单个请求的读超时。
     """
     source = Path(upload_path)
     size = source.stat().st_size
@@ -953,16 +1062,118 @@ def transcribe_upload(
         )
         if result is not None:
             return result
-    with open(source, "rb") as fh:
-        files = {"file": (source.name, fh, guess_media_content_type(source))}
-        form_data = None if force_refresh is None else {"force_refresh": str(force_refresh).lower()}
-        return request_json(
-            "POST",
-            "/tools/v1/asr/transcribe",
-            files=files,
-            form_data=form_data,
-            timeout=timeout,
-        )
+    form_data = None if force_refresh is None else {"force_refresh": str(force_refresh).lower()}
+
+    def send(path: str, request_timeout: float) -> dict[str, Any]:
+        with open(source, "rb") as fh:
+            files = {"file": (source.name, fh, guess_media_content_type(source))}
+            return request_json("POST", path, files=files, form_data=form_data, timeout=request_timeout)
+
+    return _transcribe(send, timeout=timeout)
+
+
+def transcribe_media_url(
+    media_url: str,
+    *,
+    timeout: float,
+    force_refresh: bool | None = None,
+) -> dict[str, Any]:
+    """转写一个网关能自己取的 ``media_url``(直传后的 COS 地址,或解析出的直链)。"""
+    payload: dict[str, Any] = {"media_url": media_url}
+    if force_refresh is not None:
+        payload["force_refresh"] = force_refresh
+    return _transcribe(
+        lambda path, request_timeout: request_json("POST", path, payload, timeout=request_timeout),
+        timeout=timeout,
+    )
+
+
+def _transcribe(send: Callable[[str, float], dict[str, Any]], *, timeout: float) -> dict[str, Any]:
+    """hc-978: submit the transcription as a job and poll it.
+
+    ``send(path, request_timeout)`` posts this transcription's body to ``path``. An old
+    gateway without ``/asr/jobs`` answers 404/405 and gets the synchronous call, capped
+    at what nginx and the server would wait anyway."""
+    try:
+        submitted = send(ASR_JOBS_PATH, _ASR_JOB_SUBMIT_TIMEOUT_SECONDS)
+    except GatewayError as exc:
+        if exc.status not in (404, 405):
+            raise
+        logger.info("asr jobs endpoint missing (status=%s); using the synchronous call", exc.status)
+        return send(ASR_TRANSCRIBE_PATH, min(timeout, _ASR_SYNC_FALLBACK_TIMEOUT_SECONDS))
+    return _await_asr_job(
+        submitted,
+        resubmit=lambda: send(ASR_JOBS_PATH, _ASR_JOB_SUBMIT_TIMEOUT_SECONDS),
+        timeout=timeout,
+    )
+
+
+def _await_asr_job(
+    submitted: dict[str, Any],
+    *,
+    resubmit: Callable[[], dict[str, Any]],
+    timeout: float,
+) -> dict[str, Any]:
+    """Poll a submitted job until it is done (its result) or failed (the error the
+    synchronous endpoint would have raised).
+
+    A poll that fails for network or server reasons is tried again; only
+    :data:`_ASR_JOB_UNREACHABLE_SECONDS` without any answer ends the wait. A job the
+    server no longer knows (it restarted) is submitted once more."""
+    started = time.monotonic()
+    budget = _number(submitted.get("max_wait_seconds"), timeout) + _ASR_JOB_DEADLINE_MARGIN_SECONDS
+    deadline = started + min(timeout, budget)
+    answer, last_answer_at, resubmitted = submitted, started, False
+    while True:
+        status = answer.get("status")
+        if status == "done":
+            return answer
+        if status == "failed":
+            raise _asr_job_failure(answer)
+        if status != "running" or not answer.get("job_id"):
+            raise GatewayError(say("gateway_unreadable"), code="unreadable_answer")
+        if time.monotonic() >= deadline:
+            minutes = max(1, round((time.monotonic() - started) / 60))
+            raise GatewayError(say("asr_job_overdue", minutes=minutes), code="asr_job_overdue")
+        gap_floor, gap_default, gap_ceiling = _ASR_JOB_POLL_GAP_SECONDS
+        time.sleep(min(max(_number(answer.get("poll_after_seconds"), gap_default), gap_floor), gap_ceiling))
+        try:
+            answer = request_json("GET", f"{ASR_JOBS_PATH}/{answer['job_id']}", timeout=_ASR_JOB_POLL_TIMEOUT_SECONDS)
+        except GatewayError as exc:
+            if exc.code == "asr_job_not_found":
+                if resubmitted:
+                    raise GatewayError(say("asr_job_lost"), status=exc.status, code=exc.code) from exc
+                logger.info("asr job %s unknown to the server; submitting again", answer["job_id"])
+                answer, resubmitted = resubmit(), True
+            elif exc.status is not None and exc.status != 429 and exc.status < 500:
+                raise
+            elif time.monotonic() - last_answer_at >= _ASR_JOB_UNREACHABLE_SECONDS:
+                minutes = max(1, round(_ASR_JOB_UNREACHABLE_SECONDS / 60))
+                raise GatewayError(say("asr_job_unreachable", minutes=minutes), code="asr_job_unreachable") from exc
+            else:
+                logger.info("asr job %s poll failed (status=%s); trying again", answer["job_id"], exc.status)
+                continue
+        last_answer_at = time.monotonic()
+
+
+def _number(value: Any, default: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    return number if math.isfinite(number) and number > 0 else float(default)
+
+
+def _asr_job_failure(answer: dict[str, Any]) -> GatewayError:
+    """The error the synchronous endpoint would have raised for this job, read through
+    the same mapping, so ``asr_no_speech`` / 402 / 503 wording stays one code path."""
+    error = answer.get("error") if isinstance(answer.get("error"), dict) else {}
+    status = error.get("status_code")
+    response = httpx.Response(
+        status if isinstance(status, int) and status >= 400 else 502,
+        json={"detail": error.get("detail")},
+    )
+    return _error_from_response(response, credential_source(), path=ASR_TRANSCRIBE_PATH)
 
 
 def _transcribe_via_direct_upload(
@@ -1005,10 +1216,7 @@ def _transcribe_via_direct_upload(
     except GatewayError:
         logger.info("asr direct PUT failed after retry; falling back to multipart")
         return None
-    payload: dict[str, Any] = {"media_url": media_url}
-    if force_refresh is not None:
-        payload["force_refresh"] = force_refresh
-    return request_json("POST", "/tools/v1/asr/transcribe", payload, timeout=timeout)
+    return transcribe_media_url(media_url, timeout=timeout, force_refresh=force_refresh)
 
 
 def _put_presigned(put_url: str, source: Path, size: int, *, timeout: float) -> None:
