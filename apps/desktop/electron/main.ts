@@ -81,7 +81,6 @@ import {
   shouldApply as shouldApplyClientConfig
 } from './apex-client-config'
 import { guardConfigYamlOnArrival } from './apex-config-arrival'
-import { clearUserProfilePrompt } from './apex-creator-profile'
 import {
   bridgeResultUrl,
   buildInvalidTaskResult,
@@ -101,6 +100,7 @@ import {
   sanitizeDeviceName as sanitizeDaemonDeviceName
 } from './apex-daemon'
 import { ensureApexDesktopSoul } from './apex-default-soul'
+import { clientConfigForRenderer } from './apex-desktop-features'
 import {
   buildFeishuBackendEnv,
   feishuCredentialsUrl,
@@ -159,7 +159,8 @@ import {
   syncManagedRelayConfigYaml
 } from './apex-managed'
 import { ManagedCredentialLifetime, managedProvisionCommitToken, ManagedRelayRecoveryCoordinator, provisionManagedRelayForCurrentAccount } from './apex-managed-recovery'
-import { applyModelTierSwitches, healManagedModelTier, modelTierStatus } from './apex-model-tiers'
+import { clearAccountPromptMirrors } from './apex-memory-ledger'
+import { applyDesktopFeatureSwitches, healManagedModelTier, modelTierStatus } from './apex-model-tiers'
 import { normalizeStoredPluginsState, syncPlatformPlugins } from './apex-platform-plugins'
 import {
   applyPlatformSkills,
@@ -19606,7 +19607,7 @@ function writeManagedConfig(provisioned, renewal = false) {
   if (!renewal) {lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }}
 
   if (Boolean(previous.key) !== Boolean(key) || managedAccountId(previous.accessToken) !== managedAccountId(accessToken)) {
-    clearUserProfilePrompt(HERMES_HOME)
+    clearAccountPromptMirrors(HERMES_HOME)
     broadcastManagedAccountChanged()
   }
 
@@ -19642,7 +19643,7 @@ function clearManagedRelayCredential() {
   modelMutationMetadata.markCredentialRecovery(false)
   unpersistedManagedRotation = false
   lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }
-  clearUserProfilePrompt(HERMES_HOME)
+  clearAccountPromptMirrors(HERMES_HOME)
   broadcastManagedAccountChanged()
 }
 
@@ -20662,7 +20663,7 @@ function readClientConfigState() {
   }
 }
 
-applyModelTierSwitches(process.env, readClientConfigState().payload, rememberLog) // hc-960: before app.whenReady
+applyDesktopFeatureSwitches(process.env, readClientConfigState().payload, rememberLog) // hc-960/hc-1015: before app.whenReady
 
 function writeClientConfigState(next) {
   fs.mkdirSync(path.dirname(DESKTOP_CLIENT_CONFIG_PATH), { recursive: true })
@@ -24639,11 +24640,7 @@ ipcMain.handle('hermes:agentProxy:set', async (_event, payload) => {
 // get: the cached state from disk — no network, informational only. The APPLY
 // now happens entirely in the main process pre-gateway (applyClientConfigToRuntime);
 // the renderer neither applies nor records versions anymore.
-ipcMain.handle('hermes:clientConfig:get', async () => {
-  const state = readClientConfigState()
-
-  return { version: state.version, payload: state.payload, appliedVersion: state.appliedVersion }
-})
+ipcMain.handle('hermes:clientConfig:get', async () => clientConfigForRenderer(readClientConfigState(), process.env))
 
 // Both fetchJson and fetchJsonViaOauthSession reject with a message shaped
 // `"<statusCode>: <body>"`. Parse the leading status code (fetchJsonViaOauthSession

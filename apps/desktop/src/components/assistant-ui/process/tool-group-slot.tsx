@@ -3,6 +3,8 @@
 import { useAuiState } from '@assistant-ui/react'
 import { Children, type FC, Fragment, type PropsWithChildren, useMemo } from 'react'
 
+import { useSingleThreadMode } from '@/store/single-thread'
+
 import { TurnProcessBlock } from './process-block'
 import { processKind, type TurnPart } from './turn-process'
 import { useTurnAnchor } from './turn-state'
@@ -62,7 +64,11 @@ export const ProcessToolGroupSlot: FC<PropsWithChildren<{ endIndex: number; star
   )
 
   const messageId = useAuiState(state => state.message.id)
-  const anchor = useTurnAnchor()
+  // hc-1015: in single-thread mode the turn's work is the activity line and
+  // the 「看过程」 line under the answer (single-thread-process.tsx), not a block.
+  const singleThread = useSingleThreadMode()
+  const turnAnchor = useTurnAnchor()
+  const anchor = singleThread ? '' : turnAnchor
   const items = useMemo(() => splitProcessItems(kindKey.split('|')), [kindKey])
   const rows = Children.toArray(children)
 

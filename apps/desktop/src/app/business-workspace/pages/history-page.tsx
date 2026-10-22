@@ -11,9 +11,11 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useI18n } from '@/i18n'
 import { formatBusinessDayTime } from '@/lib/time'
 import { $sessions, $sessionsLoading } from '@/store/session'
+import { useSingleThreadMode } from '@/store/single-thread'
 
 import { openSession } from '../../open-session'
 import { deliverableDetailRoute, routeDrawerNavigationState, SEARCH_ROUTE, workflowRunRoute } from '../../routes'
+import { EarlierConversationsView } from '../../single-thread/earlier-conversations'
 import type { WorkflowActivityItem } from '../api/types'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { WorkflowRefreshNotice } from '../components/workflow-refresh-notice'
@@ -64,6 +66,12 @@ export function HistoryView() {
   const { locale } = useI18n()
   const [mode, setMode] = useState<'activity' | 'sessions'>('sessions')
   const labels = HISTORY_MODES[locale]
+  // hc-1014: in single-thread product mode this destination is 「更早的对话」.
+  const singleThread = useSingleThreadMode()
+
+  if (singleThread) {
+    return <EarlierConversationsView />
+  }
 
   return (
     <section className="apex-business-surface apex-business-page apex-primary-page" data-history-page="">

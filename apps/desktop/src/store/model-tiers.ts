@@ -6,6 +6,7 @@ import { displayModelName } from '@/lib/model-status-label'
 import { modelTierDisplayName } from '@/lib/model-tiers'
 import { $authState, type DesktopAuthState } from '@/store/auth'
 import { $freeTierStatus } from '@/store/free-tier'
+import { $singleThreadMode } from '@/store/single-thread'
 
 /**
  * Tier mode (hc-960): an APEX account sees Flash / Pro / Max instead of any
@@ -21,9 +22,13 @@ import { $freeTierStatus } from '@/store/free-tier'
  * keep the full model UI.
  */
 export function isModelTierMode(state: Pick<DesktopAuthState, 'enabled' | 'modelTiers' | 'status'>): boolean {
-  return (
-    state.modelTiers === true && state.enabled === true && (state.status === 'signed-in' || state.status === 'expired')
-  )
+  return state.modelTiers === true && isApexAccount(state)
+}
+
+/** An APEX account: the managed path is on and this window is signed in to it
+ *  (or in the soft `expired` degrade that still belongs to it). */
+export function isApexAccount(state: Pick<DesktopAuthState, 'enabled' | 'status'>): boolean {
+  return state.enabled === true && (state.status === 'signed-in' || state.status === 'expired')
 }
 
 export const $modelTierMode = computed($authState, isModelTierMode)
@@ -57,23 +62,36 @@ export function useModelTierMaxOpen(): boolean {
   return useStore($modelTierMaxOpen)
 }
 
+/** hc-1015: single-thread mode on an APEX account names no model and no tier
+ *  anywhere (Kael 2026-10-21, decision 5); the user's own key still does. */
+export const $modelNamesHidden = computed(
+  [$singleThreadMode, $authState],
+  (singleThread, auth) => singleThread && isApexAccount(auth)
+)
+
 /**
  * The name a surface shows for a model id: in tier mode its tier (Flash / Pro /
  * Max), or '' — show nothing — for the user's own model; otherwise the friendly
- * model name. Every display-only surface (session cards, subagent rows, profile
- * cards…) goes through this, so tier mode cannot leak a model name there.
+ * model name. In single-thread mode on an APEX account, '' for every model.
+ * Every display-only surface (session cards, subagent rows, profile cards…)
+ * goes through this, so neither mode can leak a model name there.
  */
 export function userFacingModelName(model: string, provider?: null | string): string {
+  if ($modelNamesHidden.get()) {
+    return ''
+  }
+
   return $modelTierMode.get() ? modelTierDisplayName(model, provider) : displayModelName(model)
 }
 
-/** `userFacingModelName` for components: re-renders when tier mode flips. */
+/** `userFacingModelName` for components: re-renders when either mode flips. */
 export function useUserFacingModelName(): (model: string, provider?: null | string) => string {
   const tierMode = useModelTierMode()
+  const hidden = useStore($modelNamesHidden)
 
   return useCallback(
     (model: string, provider?: null | string) =>
-      tierMode ? modelTierDisplayName(model, provider) : displayModelName(model),
-    [tierMode]
+      hidden ? '' : tierMode ? modelTierDisplayName(model, provider) : displayModelName(model),
+    [hidden, tierMode]
   )
 }

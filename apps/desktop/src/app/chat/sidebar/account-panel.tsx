@@ -23,6 +23,7 @@ import { notify } from '@/store/notifications'
 import { requestManagedReSignIn } from '@/store/onboarding'
 
 import { ASSISTANT_ROUTE, CRON_ROUTE, DELIVERABLES_ROUTE, HISTORY_ROUTE, PROFILE_STATS_ROUTE, PROJECTS_ROUTE, SETTINGS_ROUTE } from '../../routes'
+import { useSingleThreadNavLabels } from '../../single-thread/nav-labels'
 
 // The signed-in display name: prefer an explicit name, else the email's local
 // part, else a generic fallback ("账户"). The avatar shows its first letter.
@@ -78,7 +79,7 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
 } = {}) {
   const { t } = useI18n()
   const a = t.auth.account
-  const nav = t.sidebar.nav
+  const nav = useSingleThreadNavLabels(t.sidebar.nav)
   const navigate = useNavigate()
   const { account, accountId, enabled, status } = useStore($authState)
   const team = teamFor(useStore($accountTeam), accountId)

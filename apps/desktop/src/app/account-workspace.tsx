@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react'
 import { Fragment, type ReactNode, useEffect } from 'react'
 
+import { useMemoryLedgerSync } from '@/app/memory-ledger/use-memory-ledger-sync'
 import { $authState, refreshAuthStatus, refreshChangedAccount } from '@/store/auth'
 import { $desktopOnboarding } from '@/store/onboarding'
 
@@ -25,6 +26,9 @@ export function AccountWorkspace({ children }: AccountWorkspaceProps) {
 
 /** Both shells, including secondary windows, follow the native credential owner. */
 export function useManagedAccountChanges() {
+  // hc-1016: the account's memory ledger (and main's prompt copy of it) follows the same owner.
+  useMemoryLedgerSync()
+
   useEffect(() => {
     const unsubscribe = window.hermesDesktop?.onManagedAccountChanged?.(() => {
       refreshChangedAccount($desktopOnboarding.get().managedSubmitting)

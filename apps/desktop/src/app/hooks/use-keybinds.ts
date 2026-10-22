@@ -40,7 +40,7 @@ import {
   togglePanesFlipped,
   toggleSidebarOpen
 } from '@/store/layout'
-import { $modelTierMode } from '@/store/model-tiers'
+import { $modelChoiceHidden } from '@/store/model-choice'
 import { openBrowserTab } from '@/store/preview'
 import {
   $newChatProfile,
@@ -86,6 +86,7 @@ import {
   SETTINGS_ROUTE,
   SKILLS_ROUTE
 } from '../routes'
+import { openAnotherConversation } from '../single-thread/another-conversation'
 
 
 export interface KeybindRuntimeDeps {
@@ -193,8 +194,8 @@ export function useKeybinds(deps: KeybindRuntimeDeps): void {
     // Toggle the composer pill's live model dropdown (pane under the pointer,
     // else active composer); no chat surface on screen → the full dialog.
     'composer.modelPicker': () => {
-      // hc-960: no model picker on an APEX account; the chord does nothing.
-      if ($modelTierMode.get()) {
+      // hc-960 / hc-1015: no model picker on an APEX account; the chord does nothing.
+      if ($modelChoiceHidden.get()) {
         return
       }
 
@@ -233,8 +234,8 @@ export function useKeybinds(deps: KeybindRuntimeDeps): void {
       deps.startFreshSession()
       window.dispatchEvent(new CustomEvent('hermes:new-session-shortcut'))
     },
-    'session.newTab': () => deps.openNewSessionTab(),
-    'session.newWindow': () => void openNewWindow(),
+    'session.newTab': () => openAnotherConversation(deps.openNewSessionTab, deps.startFreshSession),
+    'session.newWindow': () => openAnotherConversation(() => void openNewWindow(), deps.startFreshSession),
     'session.next': () => cycleTab(1),
     'session.prev': () => cycleTab(-1),
     ...sessionSlotHandlers,

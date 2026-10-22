@@ -34,7 +34,7 @@ import { cn } from '@/lib/utils'
 import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
 import { $voiceConversationStartRequest, migrateSessionDraft } from '@/store/composer'
 import { migrateQueuedPrompts, parkQueuedPrompts } from '@/store/composer-queue'
-import { $introSplash } from '@/store/intro-splash'
+import { $introSplashShown } from '@/store/intro-splash'
 import { $pinnedSessionIds } from '@/store/layout'
 import { $petActive } from '@/store/pet'
 import { $petOverlayActive } from '@/store/pet-overlay'
@@ -60,10 +60,11 @@ import { isAuxiliaryWindow, isWatchWindow } from '@/store/windows'
 
 import { primaryRouteSelectedSessionId, routeSessionId } from '../routes'
 import { titlebarHeaderBaseClass, titlebarHeaderShadowClass, titlebarHeaderTitleClass } from '../shell/titlebar'
+import { ChatBar, ChatBarFallback } from '../single-thread/composer-gate'
+import { SingleThreadHeader, useSingleThreadHeader } from '../single-thread/thread-header'
 
 import { ChatDropOverlay } from './chat-drop-overlay'
 import { ChatSwapOverlay, ChatSyncBadge } from './chat-swap-overlay'
-import { ChatBar, ChatBarFallback } from './composer'
 import { ComposerSurfaceProvider, useComposerScope, useComposerSurfaceId } from './composer/scope'
 import type { ChatBarState } from './composer/types'
 import { useChatFileDrops } from './hooks/use-chat-file-drops'
@@ -191,6 +192,11 @@ function ChatHeader({
       </div>
     </header>
   )
+}
+
+/** The primary chat's header: the single-thread pill over the one thread (hc-1014), today's header everywhere else. */
+function PrimaryChatHeader(props: ChatHeaderProps) {
+  return useSingleThreadHeader(props.selectedSessionId) ? <SingleThreadHeader /> : <ChatHeader {...props} />
 }
 
 interface ChatRuntimeBoundaryProps {
@@ -477,7 +483,7 @@ const ChatViewContent = memo(function ChatViewContent({
   const gatewayOpen = gatewayState === 'open'
   const introPersonality = useStore($introPersonality)
   const introSeed = useStore($introSeed)
-  const introSplash = useStore($introSplash)
+  const introSplash = useStore($introSplashShown)
   // PERF: ChatView must not subscribe to the view's $messages — the atom is
   // replaced on every streaming delta flush (~30×/s) and a subscription here
   // re-renders the entire chat shell (header, chat bar, thread wrapper) per
@@ -714,7 +720,7 @@ const ChatViewContent = memo(function ChatViewContent({
       {/* Tiles get their chrome from the layout zone (chip strip); the modal
           prompt overlays stay active-session-scoped in the primary surface. */}
       {isPrimary && (
-        <ChatHeader
+        <PrimaryChatHeader
           activeSessionId={activeSessionId}
           isRoutedSessionView={isRoutedSessionView}
           onDeleteSelectedSession={onDeleteSelectedSession}

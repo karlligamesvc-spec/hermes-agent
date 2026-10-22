@@ -23,6 +23,7 @@ import {
   toWirePatch,
   userProfilePromptPath
 } from './apex-creator-profile'
+import { clearAccountPromptMirrors } from './apex-memory-ledger'
 
 const ALICE = '1f0e7b52-7c1d-4c55-9a39-1f1d1f1d1f1d'
 const BOB = '2a0e7b52-7c1d-4c55-9a39-2a2a2a2a2a2a'
@@ -282,7 +283,8 @@ test('the registrar wires every account read, and main clears the copy on every 
     'hermes:managed:team',
     'hermes:managed:creatorProfile',
     'hermes:managed:creatorTips',
-    'hermes:managed:dailyIdeas'
+    'hermes:managed:dailyIdeas',
+    'hermes:managed:memoryLedger'
   ])
 
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
@@ -294,12 +296,19 @@ test('the registrar wires every account read, and main clears the copy on every 
   assert.ok(main.includes('registerApexAccountReads(ipcMain, apexAccountReads, HERMES_HOME)'))
   // Sign-out (the credential clear) and a different account signing in (writeManagedConfig).
   const signOut = main.slice(main.indexOf('function clearManagedRelayCredential()'))
-  assert.ok(signOut.slice(0, signOut.indexOf('\n}\n')).includes('clearUserProfilePrompt(HERMES_HOME)'))
+  // hc-1016: one call clears every account-level prompt copy, this one included.
+  assert.ok(signOut.slice(0, signOut.indexOf('\n}\n')).includes('clearAccountPromptMirrors(HERMES_HOME)'))
   assert.ok(
     main.includes(
       '  if (Boolean(previous.key) !== Boolean(key) || managedAccountId(previous.accessToken) !== managedAccountId(accessToken)) {\n' +
-        '    clearUserProfilePrompt(HERMES_HOME)\n'
+        '    clearAccountPromptMirrors(HERMES_HOME)\n'
     )
   )
-  assert.equal(main.split('clearUserProfilePrompt(HERMES_HOME)').length - 1, 2)
+  assert.equal(main.split('clearAccountPromptMirrors(HERMES_HOME)').length - 1, 2)
+})
+
+test('clearing the account prompt copies removes the 用户画像 copy too (hc-1016)', () => {
+  syncUserProfilePrompt(home, SEGMENT, () => {})
+  clearAccountPromptMirrors(home)
+  assert.equal(existsSync(promptFile()), false)
 })

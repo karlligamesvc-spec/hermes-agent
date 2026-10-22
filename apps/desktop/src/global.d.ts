@@ -2435,6 +2435,10 @@ export interface DesktopClientConfigState {
   version: number
   payload: Record<string, unknown> | null
   appliedVersion: number
+  // hc-1014: this install's own switches for `desktop_features.<name>`
+  // (electron/apex-desktop-features.ts; e.g. APEXNODES_SINGLE_THREAD=1/0).
+  // Absent from an older main process; a missing key means the platform decides.
+  installSwitches?: Record<string, boolean>
 }
 
 // One side (installed or admin-latest) of an engine version, as derived by

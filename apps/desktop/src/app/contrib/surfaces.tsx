@@ -19,6 +19,7 @@ import { $activeConnectionId } from '@/store/connections'
 import { $gateway } from '@/store/gateway'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $connection, $freshDraftReady, $gatewayState, $selectedStoredSessionId } from '@/store/session'
+import { useSingleThreadMode } from '@/store/single-thread'
 
 import { AccountWorkspace } from '../account-workspace'
 import { stageVideoAnalysisDraft } from '../business-workspace/video-analysis-composer-handoff'
@@ -49,6 +50,8 @@ import { useStatusbarItems } from '../shell/hooks/use-statusbar-items'
 import { ModelMenuPanel } from '../shell/model-menu-panel'
 import { ReasoningMenuPanel } from '../shell/reasoning-menu-panel'
 import { StatusbarControls } from '../shell/statusbar-controls'
+import { SingleThreadSidebar } from '../single-thread/sidebar'
+import { useSingleThreadShell } from '../single-thread/use-single-thread-shell'
 
 import { latestChatActions, latestSidebarActions } from './latest-actions'
 import { setStatusbarItemGroup, useStatusbarContributions } from './panes'
@@ -208,8 +211,14 @@ export const SidebarSurface = memo(function SidebarSurface({
   currentView: ComponentProps<typeof ChatSidebar>['currentView']
 }) {
   const latestActions = useMemo(() => latestSidebarActions(actions), [actions])
+  // hc-1014: single-thread product mode has its own sidebar (no session list, no new chat).
+  const singleThread = useSingleThreadMode()
 
-  return <ChatSidebar currentView={currentView} {...latestActions} />
+  return singleThread ? (
+    <SingleThreadSidebar currentView={currentView} onNavigate={latestActions.onNavigate} />
+  ) : (
+    <ChatSidebar currentView={currentView} {...latestActions} />
+  )
 })
 
 export const TerminalSurface = memo(function TerminalSurface() {
@@ -279,6 +288,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
   const gatewayState = useStore($gatewayState)
   const location = useLocation()
   useContributions(ROUTES_AREA)
+  useSingleThreadShell(actions.requestGateway)
   const routeContributions = contributedRoutes()
   const workflowRunOpen = workflowRunIdForPath(location.pathname) !== null
   const projectDetailOpen = projectIdForPath(location.pathname) !== null

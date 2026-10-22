@@ -5,6 +5,7 @@ import { type MutableRefObject, useCallback, useRef } from 'react'
 import { getProfiles } from '@/hermes'
 import type { Translations } from '@/i18n'
 import { modelTierCopyNow } from '@/i18n/model-tier'
+import { singleThreadCopyNow } from '@/i18n/single-thread'
 import { type ChatMessage, toChatMessages } from '@/lib/chat-messages'
 import { sessionTitle } from '@/lib/chat-runtime'
 import {
@@ -23,6 +24,7 @@ import { setSessionYolo } from '@/lib/yolo-session'
 import { openCommandPalettePage } from '@/store/command-palette'
 import { setComposerDraft } from '@/store/composer'
 import { applyGoalStatusText } from '@/store/goals'
+import { $modelChoiceHidden } from '@/store/model-choice'
 import { $modelTierMode, MODEL_TIER_BLOCKED_SLASH_COMMANDS } from '@/store/model-tiers'
 import { dismissNotification, notify, notifyError } from '@/store/notifications'
 import { setPetScale } from '@/store/pet-gallery'
@@ -1203,9 +1205,13 @@ export function useSlashCommand(deps: SlashCommandDeps) {
 
         // hc-960: `/model` (bare or with an id) and `/moa` would pick models;
         // an APEX account gets where its tier lives instead, and nothing runs.
-        if ($modelTierMode.get() && MODEL_TIER_BLOCKED_SLASH_COMMANDS.has(canonicalDesktopSlashCommand(`/${name}`))) {
+        // hc-1015: in single-thread mode there is no tier to point at either.
+        if (
+          $modelChoiceHidden.get() &&
+          MODEL_TIER_BLOCKED_SLASH_COMMANDS.has(canonicalDesktopSlashCommand(`/${name}`))
+        ) {
           const resolved = await withSlashOutput(ctx)
-          resolved?.render(modelTierCopyNow().slashHint)
+          resolved?.render($modelTierMode.get() ? modelTierCopyNow().slashHint : singleThreadCopyNow().modelSlashHint)
 
           return
         }

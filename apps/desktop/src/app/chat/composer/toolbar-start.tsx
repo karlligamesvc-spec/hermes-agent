@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { Slot as ContribSlot } from '@/contrib/react/slot'
 import { cn } from '@/lib/utils'
+import { $singleThreadMode } from '@/store/single-thread'
 import { $toolViewMode } from '@/store/tool-view'
 
 import { ScenarioButton, ScenarioPicker } from '../scenarios/scenario-button'
@@ -38,9 +39,11 @@ export function ComposerToolbarStart({
   voice: VoiceMenuItemsProps
 }) {
   const developer = useStore($toolViewMode) === 'technical'
+  // hc-1015: single-thread mode picks no scenario and no approval mode here.
+  const singleThread = useStore($singleThreadMode)
   const catalog = useScenarioCatalog()
   const [scenariosOpen, setScenariosOpen] = useState(false)
-  const scenariosAvailable = catalog.enabled && !disabled
+  const scenariosAvailable = catalog.enabled && !disabled && !singleThread
 
   return (
     <Popover onOpenChange={setScenariosOpen} open={scenariosOpen}>
@@ -56,7 +59,11 @@ export function ComposerToolbarStart({
             advanced={
               developer
                 ? undefined
-                : { onOpenScenarios: scenariosAvailable ? () => setScenariosOpen(true) : undefined, voice }
+                : {
+                    hideApprovals: singleThread,
+                    onOpenScenarios: scenariosAvailable ? () => setScenariosOpen(true) : undefined,
+                    voice
+                  }
             }
             pickers={pickers}
             state={state}
