@@ -17,6 +17,7 @@ import {
 } from 'react'
 import { type GetTargetScrollTop, useStickToBottom } from 'use-stick-to-bottom'
 
+import { TurnDivider } from '@/app/single-thread/turn-divider'
 import { usePaneLifecycle, usePaneVisible } from '@/components/pane-shell/pane-visibility'
 import { useI18n } from '@/i18n'
 import { messagePaintWeight } from '@/lib/render-weight'
@@ -380,6 +381,7 @@ const TurnRow = memo(function TurnRow({ components, group, resetKey, virtualized
       )}
       data-slot="aui_message-group"
     >
+      <TurnDivider index={group.kind === 'turn' ? group.indices[0] : group.index} />
       <MessageRenderBoundary resetKey={resetKey}>
         {group.kind === 'turn' ? (
           <div

@@ -86,6 +86,7 @@ import {
   SETTINGS_ROUTE,
   SKILLS_ROUTE
 } from '../routes'
+import { openAnotherConversation } from '../single-thread/another-conversation'
 
 
 export interface KeybindRuntimeDeps {
@@ -233,8 +234,8 @@ export function useKeybinds(deps: KeybindRuntimeDeps): void {
       deps.startFreshSession()
       window.dispatchEvent(new CustomEvent('hermes:new-session-shortcut'))
     },
-    'session.newTab': () => deps.openNewSessionTab(),
-    'session.newWindow': () => void openNewWindow(),
+    'session.newTab': () => openAnotherConversation(deps.openNewSessionTab, deps.startFreshSession),
+    'session.newWindow': () => openAnotherConversation(() => void openNewWindow(), deps.startFreshSession),
     'session.next': () => cycleTab(1),
     'session.prev': () => cycleTab(-1),
     ...sessionSlotHandlers,

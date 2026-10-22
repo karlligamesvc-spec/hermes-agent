@@ -1,5 +1,6 @@
 import { createContext, memo, useCallback, useContext, useMemo, useRef, useState } from 'react'
 
+import { SingleThreadEmptyState } from '@/app/single-thread/thread-empty'
 import { AssistantMessage } from '@/components/assistant-ui/thread/assistant-message'
 import { ThreadMessageList } from '@/components/assistant-ui/thread/list'
 import { BackgroundResumeNotice, CenteredThreadSpinner } from '@/components/assistant-ui/thread/status'
@@ -13,6 +14,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { HermesGateway } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { notifyError } from '@/store/notifications'
+import { useSingleThreadMode } from '@/store/single-thread'
 
 type ThreadLoadingState = 'response' | 'session'
 
@@ -68,6 +70,9 @@ export const Thread = memo(function Thread({
 }: ThreadProps) {
   const { t } = useI18n()
   const copy = t.assistant.thread
+  // hc-1014: one thread, so no "branch into a new chat", and an empty thread
+  // greets in the conversation instead of showing the Start page.
+  const singleThread = useSingleThreadMode()
 
   const [restoreConfirmTarget, setRestoreConfirmTarget] = useState<
     (RestoreMessageTarget & { messageId: string }) | null
@@ -116,7 +121,7 @@ export const Thread = memo(function Thread({
   // re-renders for unrelated reasons never re-render the composer.
   const editContext = useMemo(() => ({ cwd, gateway, sessionId }), [cwd, gateway, sessionId])
 
-  const hasBranchInNewChat = Boolean(onBranchInNewChat)
+  const hasBranchInNewChat = Boolean(onBranchInNewChat) && !singleThread
   const hasCancel = Boolean(onCancel)
   const hasDismissError = Boolean(onDismissError)
   const hasRestoreToMessage = Boolean(onRestoreToMessage)
@@ -178,6 +183,8 @@ export const Thread = memo(function Thread({
         <Intro {...intro} />
       </div>
     </div>
+  ) : singleThread && !loading ? (
+    <SingleThreadEmptyState />
   ) : undefined
 
   // Stable element identity, for the same reason the component map above is

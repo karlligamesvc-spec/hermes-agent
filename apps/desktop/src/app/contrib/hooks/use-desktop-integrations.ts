@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { useEffect, useRef } from 'react'
 
 import { closeActiveTab } from '@/app/chat/close-tab'
@@ -26,6 +27,7 @@ import {
 } from '@/store/session'
 import { $botChatScopes, $sessionTiles, storedSessionIdForRuntimeId } from '@/store/session-states'
 import { onSessionsChanged } from '@/store/session-sync'
+import { $singleThreadMode } from '@/store/single-thread'
 import { startUpdatePoller, stopUpdatePoller } from '@/store/updates'
 import { isSecondaryWindow } from '@/store/windows'
 import { isBrowserWindow } from "@/store/windows"
@@ -75,6 +77,9 @@ export function useDesktopIntegrations({
   runtimeIdByStoredSessionId,
   sessions
 }: DesktopIntegrationsParams): void {
+  // hc-1014: single-thread mode opens the one conversation (useSingleThreadShell
+  // takes `/`), never a remembered chat or page.
+  const restoreLastSession = useStore($singleThreadMode) ? false : resumeLastSession
   // Update polling — populates $desktopVersion/$updateStatus, which feed the
   // statusbar version pill and the update toasts. Also honors the main
   // process's "open updates" menu request.
@@ -119,11 +124,11 @@ export function useDesktopIntegrations({
         // record answers, then either restore below or stay on the fresh chat.
         // Remembered ids keep being written either way, so flipping the switch
         // back on resumes from the very next launch.
-        if (resumeLastSession === undefined) {
+        if (restoreLastSession === undefined) {
           return
         }
 
-        if (!resumeLastSession) {
+        if (!restoreLastSession) {
           restoredRef.current = true
 
           return
@@ -187,7 +192,7 @@ export function useDesktopIntegrations({
     } else if (!routedSessionId && !isOverlayView(appViewForPath(locationPathname))) {
       setRememberedRoute(locationPathname, activeProfile)
     }
-  }, [activeProfile, locationPathname, navigate, profileReady, resumeLastSession, routedSessionId, sessions])
+  }, [activeProfile, locationPathname, navigate, profileReady, restoreLastSession, routedSessionId, sessions])
 
   useEffect(() => {
     if (!profileReady || !resumeExhaustedSessionId) {

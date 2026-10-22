@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 
+import { singleThreadQuickEntryTarget } from '@/app/single-thread/quick-entry'
 import { useI18n } from '@/i18n'
 import { rememberQuickEntryLocale } from '@/i18n/quick-entry'
 import {
@@ -74,7 +75,10 @@ export function useQuickEntryBridge({ startFreshSessionDraft, submitText }: Quic
       return
     }
 
-    setQuickEntrySubmitHandler(({ target, text }) => {
+    setQuickEntrySubmitHandler(({ target: picked, text }) => {
+      // hc-1014: in single-thread mode every capture goes to the one conversation.
+      const target = singleThreadQuickEntryTarget(picked)
+
       if (target === QUICK_TARGET_NEW) {
         // Same as the user clicking New Chat and typing: fresh draft, then the
         // normal submit creates the backend session.
