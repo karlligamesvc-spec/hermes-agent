@@ -296,10 +296,57 @@ GENERATE_IMAGE_SCHEMA = {
                     "corner=左下角标(小红书笔记). Default banner."
                 ),
             },
+            "images": {
+                "type": "array",
+                "maxItems": 4,
+                "description": (
+                    "Optional reference images for the new image (定妆图 → 每镜关键帧, a product shot). "
+                    "source: an image_ref from an earlier result, a path from [Image attached at: …], or an "
+                    "image link; call them 图片1, 图片2 … in the prompt in this order (\"图片1 里的人物穿图片2 "
+                    "的外套\"). kind: person / product / scene / style / other; mark a real person's photo as "
+                    "person. Leave provider empty: the cover engines and seedream take no images. An image "
+                    "that cannot be used fails the call; it never draws without it."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "source": {"type": "string"},
+                        "kind": {"type": "string", "enum": ["person", "product", "scene", "style", "other"]},
+                    },
+                    "required": ["source"],
+                },
+            },
+            "rights_confirmed": {
+                "type": "boolean",
+                "description": (
+                    "Set true ONLY after the user explicitly confirmed that the real person in an uploaded "
+                    "photo (or named in the prompt) is themselves or agreed to it. Never set it on your own."
+                ),
+            },
         },
         "required": ["prompt"],
     },
 }
+
+
+def _input_images(args: dict, *, with_roles: bool) -> list[dict[str, str]]:
+    """The call's input images, on this leg (apexnodes_gateway.input_images); ``[]`` without any."""
+    if _gateway is None:
+        if args.get("images"):
+            raise RuntimeError("这个客户端缺少平台网关模块，不能带图生成，请更新客户端。")
+        return []
+    if _use_gateway():
+        upload = _gateway.upload_input_image
+    else:
+        def upload(data: bytes, filename: str, index: int) -> str:
+            return _gateway.legacy_upload_input_image(_api_base(), data, filename, index)
+    return _gateway.input_images(
+        args.get("images"),
+        with_roles=with_roles,
+        takes_images=lambda: _gateway.takes_input_images(_leg_health()),
+        upload=upload,
+        server_paths=not _use_gateway(),
+    )
 
 
 def _localize_gateway_image(result: dict[str, Any], prompt: str) -> str:
@@ -392,6 +439,14 @@ def _handle_generate_image(args: dict, **_kwargs) -> str:
     )
     if unavailable:
         return tool_error(unavailable)
+    try:
+        images = _input_images(args, with_roles=False)
+    except RuntimeError as exc:
+        return tool_error(_say("media_failed", "图片生成失败: {reason}", reason=exc))
+    if images:
+        # A text-only call sends exactly what it did before input images existed.
+        payload["images"] = images
+        payload["rights_confirmed"] = args.get("rights_confirmed") is True
     if _use_gateway():
         try:
             response = _gateway.request_json(

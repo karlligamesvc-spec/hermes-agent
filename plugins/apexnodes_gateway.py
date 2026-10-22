@@ -70,6 +70,7 @@ Agent API key 解析(桌面与云同一把 key 的两种落点):
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import mimetypes
@@ -79,6 +80,8 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -353,6 +356,35 @@ _COPY: dict[str, tuple[str, str]] = {
     "media_setting_malformed": ("当前{label}模型设置格式无效", "The current {label} model setting is malformed"),
     "media_setting_unknown": ("当前{label}模型设置不是可用的模型", "The current {label} model setting is not an available model"),
     "media_setting_unreadable": ("无法读取当前{label}模型设置", "Could not read the current {label} model setting"),
+    # Input images (参考图、首帧、首尾帧).
+    "input_images_not_list": (
+        "images 必须是列表，每一项是 {{source, role, kind}}。",
+        "images must be a list of {{source, role, kind}} objects.",
+    ),
+    "input_image_source_missing": ("images 第 {index} 项没有 source。", "images item {index} has no source."),
+    "input_images_unsupported_server": (
+        "平台还不支持带图生成(参考图、首帧、首尾帧),这次没有生成。可以先不带图生成，或等平台更新后再试。",
+        "The platform does not take input images (references, first or last frames) yet; nothing was "
+        "generated. Generate without images for now, or try again after the platform updates.",
+    ),
+    "input_image_missing": (
+        "找不到第 {index} 张图({source}),这次没有生成。请让用户重新发图，或用生成结果里的 image_ref。",
+        "Image {index} ({source}) was not found; nothing was generated. Ask for the image again, or use "
+        "the image_ref from an earlier result.",
+    ),
+    "input_image_too_large": (
+        "第 {index} 张图超过 {mb} MB,没有上传，这次没有生成。",
+        "Image {index} is over {mb} MB and was not uploaded; nothing was generated.",
+    ),
+    "input_image_download_failed": (
+        "第 {index} 张图的链接下载不下来({reason}),这次没有生成。",
+        "Image {index}'s link could not be downloaded ({reason}); nothing was generated.",
+    ),
+    "input_image_upload_failed": (
+        "第 {index} 张图上传失败：{reason}。这次没有生成，也不会改成不带图去生成。",
+        "Image {index} could not be uploaded: {reason}. Nothing was generated, and nothing will be "
+        "generated without the image.",
+    ),
 }
 
 # (zh, en) media names for ``{label}``.
@@ -1262,3 +1294,171 @@ def _extract_audio_afconvert(afconvert: str, source: Path, *, timeout: int) -> P
 def guess_media_content_type(path: Path | str) -> str:
     """multipart 上传时的 Content-Type 猜测(猜不出用 octet-stream)。"""
     return mimetypes.guess_type(Path(path).name)[0] or "application/octet-stream"
+
+
+# ---------------------------------------------------------------------------
+# 生成工具的输入图：参考图、首帧、首尾帧(apex-nodes docs/design/generation-input-images.md)
+# ---------------------------------------------------------------------------
+#
+# 两个出片插件共用这一份。``source`` 是之前结果里的 ``image_ref``(``media:…``)、平台签发
+# 的图片链接、本机文件(对话里 [Image attached at: …] 的路径)或别的图片链接：句柄和平台
+# 链接原样交，本机文件和外链先上传(网关腿 /tools/v1/media/reference-upload,legacy 腿
+# /media/reference-upload),交回传回来的 ``image_ref``。任何一张图用不了，整次调用报错，
+# 绝不改成不带图的请求(那会按文生出片)。服务端没在 check 里声明 ``input_images.supported``
+# 时一张都不发：旧服务端会悄悄丢掉 ``images``。
+
+INPUT_IMAGE_MAX_BYTES = 20 * 1024 * 1024
+INPUT_UPLOAD_PATH = "/tools/v1/media/reference-upload"
+LEGACY_INPUT_UPLOAD_PATH = "/media/reference-upload"
+_SIGNED_IMAGE_MARKER = "/api/v1/media/image/"
+_INPUT_DOWNLOAD_TIMEOUT = 30
+_INPUT_UPLOAD_TIMEOUT = 120
+
+
+class InputImageError(RuntimeError):
+    """An input image that cannot be used: the call fails and nothing is generated."""
+
+
+def takes_input_images(section: dict[str, Any] | None) -> bool:
+    """Does this check section (the image or video one) say the server takes ``images``?"""
+    view = section.get("input_images") if isinstance(section, dict) else None
+    return bool(isinstance(view, dict) and view.get("supported"))
+
+
+def _input_too_large(index: int) -> InputImageError:
+    return InputImageError(say("input_image_too_large", index=index, mb=INPUT_IMAGE_MAX_BYTES // (1024 * 1024)))
+
+
+def _safe_upload_name(filename: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]", "_", filename)[-64:] or "image"
+
+
+def _uploaded_ref(answer: Any, index: int) -> str:
+    ref = answer.get("image_ref") if isinstance(answer, dict) else None
+    if not isinstance(ref, str) or not ref.startswith("media:"):
+        raise InputImageError(say("input_image_upload_failed", index=index, reason="no image_ref"))
+    return ref
+
+
+def _download_input_image(url: str, index: int) -> bytes:
+    data = bytearray()
+    try:
+        with httpx.Client(timeout=_INPUT_DOWNLOAD_TIMEOUT, follow_redirects=True) as client:
+            with client.stream("GET", url, headers={"User-Agent": "Mozilla/5.0 (compatible; APEX)"}) as response:
+                if response.status_code >= 400:
+                    reason = f"HTTP {response.status_code}"
+                    raise InputImageError(say("input_image_download_failed", index=index, reason=reason))
+                for chunk in response.iter_bytes():
+                    data.extend(chunk)
+                    if len(data) > INPUT_IMAGE_MAX_BYTES:
+                        raise _input_too_large(index)
+    except httpx.HTTPError as exc:
+        raise InputImageError(say("input_image_download_failed", index=index, reason=exc)) from exc
+    return bytes(data)
+
+
+def upload_input_image(data: bytes, filename: str, index: int) -> str:
+    """Gateway leg: one image up to the platform; its ``image_ref``."""
+    try:
+        body = request_json(
+            "POST",
+            INPUT_UPLOAD_PATH,
+            files={"file": (_safe_upload_name(filename), data, "application/octet-stream")},
+            timeout=_INPUT_UPLOAD_TIMEOUT,
+        )
+    except GatewayError as exc:
+        raise InputImageError(say("input_image_upload_failed", index=index, reason=exc)) from exc
+    return _uploaded_ref(unwrap(body), index)
+
+
+def legacy_upload_input_image(api_base: str, data: bytes, filename: str, index: int) -> str:
+    """Legacy leg (``TOOLS_GATEWAY_DISABLED=1``): the same upload on the master's internal route."""
+    key = agent_api_key()
+    if not key:
+        raise missing_credential_error()
+    boundary = f"apexnodes-{uuid.uuid4().hex}"
+    head = (
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{_safe_upload_name(filename)}\"\r\n"
+        "Content-Type: application/octet-stream\r\n\r\n"
+    ).encode()
+    request = urllib.request.Request(
+        f"{api_base.rstrip('/')}{LEGACY_INPUT_UPLOAD_PATH}",
+        data=head + data + f"\r\n--{boundary}--\r\n".encode(),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=_INPUT_UPLOAD_TIMEOUT) as response:
+            answer = json.loads(response.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = json.loads(exc.read().decode("utf-8", errors="replace")).get("detail")
+        except (ValueError, AttributeError):
+            detail = None
+        message = detail.get("message") if isinstance(detail, dict) else detail if isinstance(detail, str) else ""
+        reason = message or f"HTTP {exc.code}"
+        raise InputImageError(say("input_image_upload_failed", index=index, reason=reason)) from exc
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        raise InputImageError(say("input_image_upload_failed", index=index, reason=exc)) from exc
+    return _uploaded_ref(answer, index)
+
+
+def _input_image_source(
+    source: str, index: int, *, upload: Callable[[bytes, str, int], str], server_paths: bool
+) -> dict[str, str]:
+    if source.startswith("media:"):
+        return {"ref": source}
+    if source.lower().startswith(("http://", "https://")):
+        path = source.split("?", 1)[0].split("#", 1)[0]
+        if _SIGNED_IMAGE_MARKER in path:
+            return {"url": source}
+        return {"ref": upload(_download_input_image(source, index), path.rsplit("/", 1)[-1] or "image", index)}
+    local = Path(source).expanduser()
+    if local.is_file():
+        try:
+            if local.stat().st_size > INPUT_IMAGE_MAX_BYTES:
+                raise _input_too_large(index)
+            data = local.read_bytes()
+        except OSError as exc:
+            raise InputImageError(say("input_image_upload_failed", index=index, reason=exc)) from exc
+        return {"ref": upload(data, local.name, index)}
+    if server_paths:
+        # Not a file here: a master path from an earlier result; the platform checks it is ours.
+        return {"path": source}
+    raise InputImageError(say("input_image_missing", index=index, source=source[:120]))
+
+
+def input_images(
+    raw: Any,
+    *,
+    with_roles: bool,
+    takes_images: Callable[[], bool],
+    upload: Callable[[bytes, str, int], str],
+    server_paths: bool,
+) -> list[dict[str, str]]:
+    """The request's ``images`` from the tool's, or :class:`InputImageError`; ``[]`` without any.
+
+    ``takes_images`` reads the leg's check; ``upload`` is the leg's upload; ``server_paths``
+    only on the legacy leg, where a master path from an earlier result is meaningful."""
+    if raw in (None, "", []):
+        return []
+    if not isinstance(raw, list):
+        raise InputImageError(say("input_images_not_list"))
+    if not takes_images():
+        raise InputImageError(say("input_images_unsupported_server"))
+    items: list[dict[str, str]] = []
+    for index, entry in enumerate(raw, start=1):
+        if isinstance(entry, str):
+            entry = {"source": entry}
+        if not isinstance(entry, dict):
+            raise InputImageError(say("input_images_not_list"))
+        source = str(entry.get("source") or entry.get("image_ref") or "").strip()
+        if not source:
+            raise InputImageError(say("input_image_source_missing", index=index))
+        item = _input_image_source(source, index, upload=upload, server_paths=server_paths)
+        for key in ("role", "kind") if with_roles else ("kind",):
+            value = str(entry.get(key) or "").strip()
+            if value:
+                item[key] = value
+        items.append(item)
+    return items
