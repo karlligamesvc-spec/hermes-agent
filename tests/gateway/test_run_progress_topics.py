@@ -1769,7 +1769,11 @@ async def test_base_processing_stops_typing_before_hung_post_delivery_callback(
 
     async def _post_delivery_cb():
         events.append("callback-start")
-        await asyncio.Event().wait()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            events.append("callback-cut-off")
+            raise
 
     async def _stop_typing(chat_id):
         events.append("typing-stopped")
@@ -1778,27 +1782,21 @@ async def test_base_processing_stops_typing_before_hung_post_delivery_callback(
     adapter.set_message_handler(_handler)
     adapter.stop_typing = _stop_typing
 
-    source = SessionSource(
-        platform=Platform.TELEGRAM,
-        chat_id="-1001",
-        chat_type="group",
-        thread_id="17585",
-    )
-    event = MessageEvent(
-        text="hello",
-        message_type=MessageType.TEXT,
-        source=source,
-        message_id="msg-1",
-    )
+    source = SessionSource(platform=Platform.TELEGRAM, chat_id="-1001", chat_type="group", thread_id="17585")
+    event = MessageEvent(text="hello", message_type=MessageType.TEXT, source=source, message_id="msg-1")
     session_key = "agent:main:telegram:group:-1001:17585"
     adapter._active_sessions[session_key] = asyncio.Event()
     adapter._post_delivery_callbacks[session_key] = _post_delivery_cb
 
+    # A hang guard, not a speed budget: the cycle also commits the delivery ledger (a fresh state.db)
+    # in worker threads, which outlasted 1 s on a stalled CI runner. The cut-off is asserted below.
     await asyncio.wait_for(
-        adapter._process_message_background(event, session_key), timeout=1.0
+        adapter._process_message_background(event, session_key), timeout=10.0
     )
 
     assert [call["content"] for call in adapter.sent] == ["done"]
+    assert "callback-cut-off" in events
+    assert events.index("callback-cut-off") > events.index("callback-start")
     # Invariant: typing must stop before the (hung) post-delivery callback
     # starts.  Don't pin the exact stop_typing call count — the shared
     # cleanup path may make more than one bounded stop attempt.
