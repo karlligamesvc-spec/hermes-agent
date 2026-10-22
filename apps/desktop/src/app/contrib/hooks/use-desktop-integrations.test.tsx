@@ -5,6 +5,8 @@ import { createClientSessionState } from '@/lib/chat-runtime'
 import { requestMcpInstallFromDeepLink } from '@/store/mcp-deeplink-install'
 import { _resetLegacyDiscardForTests } from '@/store/session'
 import { dropSessionState, publishSessionState } from '@/store/session-states'
+import { setSingleThreadFlagForTest } from '@/store/single-thread'
+import { setToolViewMode } from '@/store/tool-view'
 import type * as WindowsStore from '@/store/windows'
 import type { SessionInfo } from '@/types/hermes'
 
@@ -231,6 +233,42 @@ describe('useDesktopIntegrations', () => {
         routedSessionId: null,
         sessions
       })
+
+      expect(navigate).toHaveBeenCalledWith('/remembered-session', { replace: true })
+    })
+  })
+
+  describe('hc-1014 single-thread mode', () => {
+    afterEach(() => {
+      setSingleThreadFlagForTest(false)
+      setToolViewMode('product')
+    })
+
+    it.each([
+      ['a remembered chat', 'hermes.desktop.lastSessionId.profile.default', 'remembered-session'],
+      ['a remembered page', 'hermes.desktop.lastRoute.profile.default', '/projects']
+    ])('opens the one conversation, never %s, with the setting on or still loading', (_label, key, value) => {
+      window.localStorage.setItem(key, value)
+      setSingleThreadFlagForTest(true)
+
+      for (const resumeLastSession of [true, null]) {
+        const result = render({
+          profileReady: true,
+          resumeLastSession,
+          sessions: [session({ id: 'remembered-session', profile: 'default' })]
+        })
+
+        expect(navigate).not.toHaveBeenCalled()
+        result.unmount()
+      }
+    })
+
+    it('developer mode keeps the remembered restore', () => {
+      window.localStorage.setItem('hermes.desktop.lastSessionId.profile.default', 'remembered-session')
+      setSingleThreadFlagForTest(true)
+      setToolViewMode('technical')
+
+      render({ profileReady: true, sessions: [session({ id: 'remembered-session', profile: 'default' })] })
 
       expect(navigate).toHaveBeenCalledWith('/remembered-session', { replace: true })
     })

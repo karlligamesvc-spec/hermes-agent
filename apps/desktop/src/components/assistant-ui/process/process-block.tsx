@@ -49,23 +49,23 @@ import { type TurnView, useTurnView } from './turn-state'
  * user sends, through the normal composer.
  */
 
-const LINE_CLASS =
+export const LINE_CLASS =
   'text-[length:var(--conversation-tool-font-size)] leading-(--conversation-line-height) text-(--ui-text-secondary)'
 
-const NOTE_CLASS =
+export const NOTE_CLASS =
   'text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)'
 
-const LINK_BUTTON_CLASS =
+export const LINK_BUTTON_CLASS =
   'shrink-0 rounded-sm bg-transparent px-0.5 text-[length:var(--conversation-caption-font-size)] text-(--ui-accent-secondary,var(--ui-text-secondary)) underline-offset-2 transition-colors hover:text-(--ui-text-primary) hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40'
 
-function useDisclosure(id: string, fallback: boolean): [boolean, () => void] {
+export function useDisclosure(id: string, fallback: boolean): [boolean, () => void] {
   const persisted = useStore($toolDisclosureOpen(id))
   const open = persisted ?? fallback
 
   return [open, () => setToolDisclosureOpen(id, !open)]
 }
 
-function StateGlyph({ state }: { state: CallState }) {
+export function StateGlyph({ state }: { state: CallState }) {
   const { t } = useI18n()
   const copy = t.assistant.tool
 
@@ -114,13 +114,13 @@ function stepResult(step: ProcessStep, copy: ProcessCopy): string {
   return step.failedCalls > 0 ? `${done} · ${copy.stepPartlyFailed(step.failedCalls)}` : done
 }
 
-interface StatusLine {
+export interface StatusLine {
   meta: string[]
   state: CallState
   text: string
 }
 
-function statusLine(process: TurnProcess, copy: ProcessCopy): StatusLine {
+export function statusLine(process: TurnProcess, copy: ProcessCopy): StatusLine {
   const { steps } = process
   const status = copy.status
 
@@ -333,7 +333,7 @@ function StepRow({
   )
 }
 
-function StepsList({ devMode, process, turnKey }: { devMode: boolean; process: TurnProcess; turnKey: string }) {
+export function StepsList({ devMode, process, turnKey }: { devMode: boolean; process: TurnProcess; turnKey: string }) {
   const { t } = useI18n()
   const copy = t.assistant.tool.process
 
@@ -352,7 +352,7 @@ function StepsList({ devMode, process, turnKey }: { devMode: boolean; process: T
   )
 }
 
-function FailureCard({ process, view }: { process: TurnProcess; view: TurnView }) {
+export function FailureCard({ process, view }: { process: TurnProcess; view: TurnView }) {
   const { locale, t } = useI18n()
   const copy = t.assistant.tool.process
   const gatewayState = useStore($gatewayState)
@@ -491,7 +491,7 @@ function ReasoningChip({ process, turnKey }: { process: TurnProcess; turnKey: st
 
 /** A running terminal or code call can be waiting on the user's approval. Its
  *  row is folded away, so the approval bar hangs off the process line. */
-function PendingApproval({ process }: { process: TurnProcess }) {
+export function PendingApproval({ process }: { process: TurnProcess }) {
   const step = process.current === null ? null : process.steps[process.current]
   const call = step?.calls.findLast(item => item.state === 'running' && APPROVAL_TOOLS.has(item.toolName))
 

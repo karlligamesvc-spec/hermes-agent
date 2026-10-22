@@ -59,9 +59,10 @@ const VARIANT_TAGS: ReadonlyArray<readonly [RegExp, string]> = [
 const titleCase = (text: string): string => text.replace(/\b\w/g, char => char.toUpperCase()).trim()
 
 // Brand names whose official casing plain title-casing gets wrong
-// ("glm-5.2" → "Glm 5.2", "deepseek-…" → "Deepseek …"). Applied word-wise
-// after titleCase.
+// ("glm-5.2" → "Glm 5.2", "deepseek-…" → "Deepseek …", the managed default
+// "apex-flash" → "Apex Flash"). Applied word-wise after titleCase.
 const ACRONYM_WORDS: Record<string, string> = {
+  Apex: 'APEX',
   Deepseek: 'DeepSeek',
   Glm: 'GLM',
   Mimo: 'MiMo'
@@ -141,21 +142,6 @@ export function modelDisplayParts(model: string): { name: string; tag: string } 
   base = base.replace(/-\d{6}(\d{2})?$/, '')
 
   return { name: prettifyBase(base) || model.trim() || 'No model', tag: tags.join(' ') }
-}
-
-// ApexNodes managed-LLM display mapping. The managed default seeds
-// `model.default: deepseek-v4-pro` routed through the relay; the UI shows the
-// ApexNodes-branded label. The relay decouples display from routing (hc-184),
-// so this is purely cosmetic. Kept in sync with electron/apex-managed.ts
-// (DEFAULT_MANAGED_MODEL / MANAGED_MODEL_DISPLAY).
-const MANAGED_MODEL_ID = 'deepseek-v4-pro'
-const MANAGED_MODEL_DISPLAY = 'deepseek-v4-pro-APEX'
-
-/** Map the managed relay model id to its ApexNodes display label; pass other
- *  ids through unchanged. Applied at the visible "current model" chokepoints so
- *  a managed user sees the branded name instead of the raw routed id. */
-export function managedModelDisplayName(model: string): string {
-  return modelBaseId(model) === MANAGED_MODEL_ID ? MANAGED_MODEL_DISPLAY : model
 }
 
 /** Friendly one-line model name for menus and the status bar. */

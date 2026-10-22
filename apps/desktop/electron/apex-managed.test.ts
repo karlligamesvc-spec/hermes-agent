@@ -65,6 +65,7 @@ import {
   shouldAttemptReprovision,
   syncManagedRelayKeyYaml
 } from './apex-managed'
+import { isModelTierAlias } from './apex-model-tiers'
 
 test('hc-645 fresh seed configures only the SearXNG search leg', () => {
   const yaml = seedWebGatewayBlockYaml()
@@ -249,11 +250,11 @@ test('isLoginStateTruthEnabled is ON by default and disables on the same falsy s
 
 test('buildManagedModelConfig writes the collision-free DISPLAY model id + registers the relay as a named custom provider', () => {
   const block = buildManagedModelConfig('sk-relaykey123', {})
-  assert.equal(block.default, 'deepseek-flash-APEX', 'new installations start with catalog Flash')
+  assert.equal(block.default, 'apex-flash', 'new installations start on the Flash tier alias')
   assert.deepEqual(block, {
-    // The WRITTEN model id is the display name, NOT the raw routed id — the raw
-    // `deepseek-v4-pro` collides with the built-in DeepSeek catalog and gets
-    // agent init mis-routed to the keyless built-in `deepseek` provider.
+    // The WRITTEN model id is the collision-free tier alias, NOT a raw routed
+    // id — the raw `deepseek-v4-pro` collides with the built-in DeepSeek catalog
+    // and gets agent init mis-routed to the keyless built-in `deepseek` provider.
     default: MANAGED_MODEL_DISPLAY,
     provider: 'custom',
     base_url: 'https://apex-nodes.com/relay/v1',
@@ -275,9 +276,16 @@ test('buildManagedModelConfig model id is never the catalog-colliding raw routed
   // The whole point of the fix: the written id must not be `deepseek-v4-pro`
   // (which is an exact entry in the built-in DeepSeek static catalog).
   const block = buildManagedModelConfig('sk-x', {})
-  assert.notEqual(block.default, 'deepseek-v4-pro')
-  assert.notEqual(block.custom_providers[0].model, 'deepseek-v4-pro')
-  assert.match(block.default, /-APEX$/)
+
+  for (const raw of ['deepseek-v4-pro', 'deepseek-flash']) {
+    assert.notEqual(block.default, raw)
+    assert.notEqual(block.custom_providers[0].model, raw)
+  }
+
+  // Collision-free by being a tier alias — and never the alias with the `-APEX`
+  // suffix glued on, which no plan's allowed list contains (hc-1010).
+  assert.ok(isModelTierAlias(block.default), block.default)
+  assert.doesNotMatch(block.default, /-APEX$/i)
 })
 
 test('buildManagedModelConfig custom_providers entry mirrors model.default/base_url/api_key', () => {
@@ -398,7 +406,7 @@ test('managedModelConfigYaml emits a valid, quoted model block + custom_provider
   const yaml = managedModelConfigYaml(buildManagedModelConfig('sk-relaykey123', {}))
   assert.match(yaml, /^model:\n/)
   // The collision-free display id is what lands in config.
-  assert.match(yaml, /\n {2}default: deepseek-flash-APEX\n/)
+  assert.match(yaml, /\n {2}default: apex-flash\n/)
   assert.match(yaml, /\n {2}provider: custom\n/)
   // base_url + api_key are double-quoted scalars.
   assert.match(yaml, /\n {2}base_url: "https:\/\/apex-nodes\.com\/relay\/v1"\n/)
@@ -409,7 +417,7 @@ test('managedModelConfigYaml emits a valid, quoted model block + custom_provider
   assert.match(yaml, /\n {2}- name: "Apex-nodes\.com"\n/)
   assert.match(yaml, /\n {4}base_url: "https:\/\/apex-nodes\.com\/relay\/v1"\n/)
   assert.match(yaml, /\n {4}api_key: "sk-relaykey123"\n/)
-  assert.match(yaml, /\n {4}model: deepseek-flash-APEX\n/)
+  assert.match(yaml, /\n {4}model: apex-flash\n/)
   // Critically, the catalog-colliding raw id must NOT appear as a written model.
   assert.doesNotMatch(yaml, /\n {2}default: deepseek-v4-pro\n/)
 })

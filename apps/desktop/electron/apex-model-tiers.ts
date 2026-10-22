@@ -13,8 +13,14 @@
  */
 
 import { MANAGED_PROVIDER_NAME } from './apex-relay-key-anchors'
+import { applySingleThreadSwitch, isSingleThreadActive, SINGLE_THREAD_ACTIVE_ENV } from './apex-single-thread'
 
 export const MODEL_TIER_ALIASES = ['apex-flash', 'apex-pro', 'apex-max']
+
+// The managed default of every APEX install, tiers on or off (hc-1010): the
+// relay serves the aliases since hc-959, and an older relay treats an alias it
+// does not know like the `-APEX` seed it replaced (not on the allowed list →
+// the account's default model), so nothing depends on the switch any more.
 export const TIER_DEFAULT_MANAGED_MODEL = 'apex-flash'
 
 // The tier switch. OFF by default until the relay serves the aliases (the WP2
@@ -72,25 +78,16 @@ export function modelTierStatus(env: Record<string, string | undefined>) {
   return { modelTiers: isModelTiersEnabled(env), modelTierMax: isModelTierMaxEnabled(env) }
 }
 
-/** The managed default a new install seeds: the Flash alias once tiers are on. */
-export function managedDefaultModel(env: Record<string, string | undefined>, legacyDefault: string): string {
-  return isModelTiersEnabled(env) ? TIER_DEFAULT_MANAGED_MODEL : legacyDefault
-}
-
 /**
  * The id WRITTEN to config for the managed model (collision-free with the
  * built-in catalogs). Precedence:
  *   1. explicit APEXNODES_MANAGED_MODEL_DISPLAY override
- *   2. a tier alias, already collision-free, reaches the relay as-is
- *   3. when only APEXNODES_MANAGED_MODEL is overridden (e.g. staging), derive a
- *      collision-free id by appending the `-APEX` brand suffix to it
- *   4. the prod default display name
+ *   2. a tier alias — the default — is already collision-free and reaches the
+ *      relay as-is (`apex-flash-APEX` would match no allowed model)
+ *   3. a raw routed id from an APEXNODES_MANAGED_MODEL override (e.g.
+ *      staging) gets the `-APEX` brand suffix so it cannot collide
  */
-export function managedModelDisplay(
-  env: Record<string, string | undefined>,
-  model: string,
-  defaultDisplay: string
-): string {
+export function managedModelDisplay(env: Record<string, string | undefined>, model: string): string {
   const explicit = String(env.APEXNODES_MANAGED_MODEL_DISPLAY || '').trim()
 
   if (explicit) {
@@ -101,7 +98,7 @@ export function managedModelDisplay(
     return model.toLowerCase()
   }
 
-  return env.APEXNODES_MANAGED_MODEL ? `${model}-APEX` : defaultDisplay
+  return `${model}-APEX`
 }
 
 /** A provision-key `model` is honored only when it is already collision-free:
@@ -159,6 +156,18 @@ export function applyModelTierSwitches(
   return set
 }
 
+/** Every launch-time `desktop_features` switch main settles into the env: the
+ *  tier switches above and hc-1015 single-thread (apex-single-thread.ts). */
+export function applyDesktopFeatureSwitches(
+  env: Record<string, string | undefined>,
+  clientConfigPayload: unknown,
+  log: (line: string) => void = () => undefined
+): string[] {
+  const set = applyModelTierSwitches(env, clientConfigPayload, log)
+
+  return applySingleThreadSwitch(env, clientConfigPayload, log) ? [...set, SINGLE_THREAD_ACTIVE_ENV] : set
+}
+
 function trimTrailingSlash(value: string): string {
   return String(value || '').replace(/\/+$/, '')
 }
@@ -170,8 +179,12 @@ function trimTrailingSlash(value: string): string {
  * top-level `model:` block is touched, and only when it points at the managed
  * relay (named custom provider, or bare `custom` on the relay base_url). The
  * user's own provider or endpoint is never rewritten.
+ *
+ * `pinDefault` (hc-1015 single-thread mode, where no tier is shown): a Pro or
+ * Max pick moves to the default alias too — the shell sends the default and
+ * the platform decides the rest.
  */
-export function migrateManagedModelToTierYaml(raw: string, relayBaseUrl: string) {
+export function migrateManagedModelToTierYaml(raw: string, relayBaseUrl: string, pinDefault = false) {
   const unchanged = { changed: false, from: '', next: raw }
   const lines = raw.split('\n')
   const start = lines.findIndex(line => /^model:\s*$/.test(line))
@@ -206,7 +219,9 @@ export function migrateManagedModelToTierYaml(raw: string, relayBaseUrl: string)
     provider === MANAGED_PROVIDER_SLUG ||
     (provider === MANAGED_PROVIDER && Boolean(relayBaseUrl) && baseUrl === trimTrailingSlash(relayBaseUrl))
 
-  if (!onRelay || !current || !current.value || isModelTierAlias(current.value)) {
+  const settled = pinDefault ? current?.value === TIER_DEFAULT_MANAGED_MODEL : isModelTierAlias(current?.value ?? '')
+
+  if (!onRelay || !current || !current.value || settled) {
     return unchanged
   }
 
@@ -219,7 +234,7 @@ export function migrateManagedModelToTierYaml(raw: string, relayBaseUrl: string)
 /**
  * The config heal's tier step (main.ts healConfigYamlProductBlocks): returns
  * the possibly-migrated source and records what moved in `fixed`. A no-op while
- * tiers are off or without a managed credential.
+ * tiers and single-thread mode are both off, or without a managed credential.
  */
 export function healManagedModelTier(
   raw: string,
@@ -228,14 +243,16 @@ export function healManagedModelTier(
   env: Record<string, string | undefined>,
   fixed: string[]
 ): string {
-  if (!managed.key || !isModelTiersEnabled(env)) {
+  const singleThread = isSingleThreadActive(env)
+
+  if (!managed.key || (!isModelTiersEnabled(env) && !singleThread)) {
     return raw
   }
 
-  const heal = migrateManagedModelToTierYaml(raw, managed.baseUrl || relayBaseUrl)
+  const heal = migrateManagedModelToTierYaml(raw, managed.baseUrl || relayBaseUrl, singleThread)
 
   if (heal.changed) {
-    fixed.push(`model(tier:${heal.from}→flash)`)
+    fixed.push(`model(${singleThread ? 'single-thread' : 'tier'}:${heal.from}→flash)`)
   }
 
   return heal.next

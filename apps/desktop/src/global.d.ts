@@ -1851,9 +1851,9 @@ export interface DesktopManagedStatus {
   // Optional so an older main process (no field) reads as undefined → treated as
   // enabled (fail-safe to the new single-source-of-truth behavior).
   loginStateTruth?: boolean
-  // Real routed model id (e.g. deepseek-v4-pro).
+  // Managed model id: provision-key response, else the default (apex-flash).
   model: string
-  // UI display label for the model (e.g. deepseek-v4-pro-APEX).
+  // The collision-free id written to config.yaml (e.g. apex-flash).
   modelDisplay: string
   // hc-960: Flash / Pro / Max switch (APEXNODES_MODEL_TIERS or the platform
   // client-config `desktop_features.model_tiers`). Optional so an older main
@@ -2435,6 +2435,10 @@ export interface DesktopClientConfigState {
   version: number
   payload: Record<string, unknown> | null
   appliedVersion: number
+  // hc-1014: this install's own switches for `desktop_features.<name>`
+  // (electron/apex-desktop-features.ts; e.g. APEXNODES_SINGLE_THREAD=1/0).
+  // Absent from an older main process; a missing key means the platform decides.
+  installSwitches?: Record<string, boolean>
 }
 
 // One side (installed or admin-latest) of an engine version, as derived by

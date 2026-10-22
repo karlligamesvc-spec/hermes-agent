@@ -23,7 +23,11 @@ export interface ComposerPickers {
 
 /** What the 高级 fold needs from the composer that owns it. */
 export interface ComposerAdvanced {
-  /** Absent while the scenario catalog is switched off. */
+  /** hc-1015 single-thread mode: no approval picker here. The mode stays as
+   *  set, every approval still asks, and the status bar keeps the ⚡ item
+   *  while approvals are off. */
+  hideApprovals?: boolean
+  /** Absent while the scenario catalog is switched off, and in single-thread mode. */
   onOpenScenarios?: () => void
   voice: VoiceMenuItemsProps
 }
@@ -86,7 +90,7 @@ export function AdvancedSubmenu({ advanced, children }: { advanced: ComposerAdva
             <span>{copy.scenarios}</span>
           </DropdownMenuItem>
         )}
-        <ApprovalSubmenu />
+        {!advanced.hideApprovals && <ApprovalSubmenu />}
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className={ROW}>
             <AudioLines />

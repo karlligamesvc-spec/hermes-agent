@@ -265,6 +265,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     creatorTips: request => ipcRenderer.invoke('hermes:managed:creatorTips', request),
     // hc-995 今日点子: today's cards, 开做 and 不喜欢 when the section is on (apex-daily-ideas.ts).
     dailyIdeas: request => ipcRenderer.invoke('hermes:managed:dailyIdeas', request),
+    // hc-1016 记得你 v1: read and edit the account's memory ledger while single_thread is
+    // on, or { action: 'off' } (apex-memory-ledger.ts); main keeps the local prompt copy in step.
+    memoryLedger: request => ipcRenderer.invoke('hermes:managed:memoryLedger', request),
     // hc-512: live relay model-catalog state for the model menu ('ok' |
     // 'unauthorized' | 'unreachable' | 'unknown'); { refresh: true } re-probes.
     relayCatalog: opts => ipcRenderer.invoke('hermes:managed:relayCatalog', opts),

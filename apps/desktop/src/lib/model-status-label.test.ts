@@ -3,21 +3,21 @@ import { describe, expect, it } from 'vitest'
 import {
   currentPickerSelection,
   displayModelName,
+  formatModelPillLabel,
   formatModelStatusLabel,
-  managedModelDisplayName,
   modelDisplayParts,
   reasoningEffortLabel
 } from './model-status-label'
 
 describe('model-status-label', () => {
-  it('maps the managed relay model to its APEX display label', () => {
-    expect(managedModelDisplayName('deepseek-v4-pro')).toBe('deepseek-v4-pro-APEX')
-    // Provider-prefixed managed id still maps (modelBaseId strips the prefix).
-    expect(managedModelDisplayName('custom/deepseek-v4-pro')).toBe('deepseek-v4-pro-APEX')
-    // Non-managed ids pass through unchanged.
-    expect(managedModelDisplayName('openai/gpt-5.5')).toBe('openai/gpt-5.5')
-    expect(managedModelDisplayName('deepseek-v4-flash')).toBe('deepseek-v4-flash')
-    expect(managedModelDisplayName('')).toBe('')
+  // hc-1010: outside tier mode the managed default `apex-flash` is shown through
+  // the ordinary splitter, with the brand cased like everywhere else and no
+  // second APEX tag.
+  it('shows the managed tier-alias default as APEX Flash', () => {
+    expect(modelDisplayParts('apex-flash')).toEqual({ name: 'APEX Flash', tag: '' })
+    expect(modelDisplayParts('custom:apex-nodes.com/apex-pro')).toEqual({ name: 'APEX Pro', tag: '' })
+    expect(formatModelPillLabel('apex-flash')).toBe('APEX Flash')
+    expect(formatModelStatusLabel('apex-flash', { reasoningEffort: 'high' })).toBe('APEX Flash · High')
   })
 
   it('formats display names consistently', () => {

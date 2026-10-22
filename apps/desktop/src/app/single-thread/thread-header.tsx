@@ -1,0 +1,45 @@
+/**
+ * hc-1014 单线对话: the header over the one thread — a pill with APEX's mark
+ * and name, nothing else. No session title, no pin / rename / delete menu: there
+ * is one conversation and it is not managed like a session. Its status goes in
+ * the activity line at the foot of the conversation (hc-1015), not here. An
+ * earlier conversation keeps today's header, title included, so it reads as an
+ * old chat. The name is the default 「APEX」 (decision 4); renaming it in one
+ * sentence is a later piece.
+ */
+
+import { useStore } from '@nanostores/react'
+
+import { BrandMark } from '@/components/brand-mark'
+import { useSingleThreadChatCopy } from '@/i18n/single-thread-chat'
+import { cn } from '@/lib/utils'
+import { $mainThread, isMainThreadStoredId } from '@/store/main-thread'
+import { $sessions } from '@/store/session'
+import { useSingleThreadMode } from '@/store/single-thread'
+
+import { titlebarHeaderBaseClass } from '../shell/titlebar'
+
+/** Does the primary chat on screen (the thread, or the empty thread before it exists) wear the pill? */
+export function useSingleThreadHeader(selectedStoredSessionId: null | string): boolean {
+  const singleThread = useSingleThreadMode()
+  const thread = useStore($mainThread)
+  const sessions = useStore($sessions)
+
+  return singleThread && (!selectedStoredSessionId || isMainThreadStoredId(selectedStoredSessionId, thread, sessions))
+}
+
+export function SingleThreadHeader() {
+  const copy = useSingleThreadChatCopy()
+
+  return (
+    <header className={cn(titlebarHeaderBaseClass, 'justify-center')} data-single-thread-header="">
+      <div
+        aria-label={copy.assistantName}
+        className="flex min-w-0 items-center gap-2 rounded-full border border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) py-0.5 pl-0.5 pr-3 shadow-xs"
+      >
+        <BrandMark aria-hidden="true" className="size-6 rounded-full" />
+        <span className="truncate text-[0.875rem] font-semibold text-(--ui-text-primary)">{copy.assistantName}</span>
+      </div>
+    </header>
+  )
+}
