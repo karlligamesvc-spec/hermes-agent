@@ -154,7 +154,9 @@ class _WaitRecorder:
         download_default = _default_of(gateway.download_media, "timeout")
         extract_default = _default_of(gateway.extract_audio_for_asr, "timeout")
 
-        def _fake_request_json(method, path, payload=None, *, timeout=request_default, files=None, form_data=None):
+        def _fake_request_json(
+            method, path, payload=None, *, timeout=request_default, files=None, form_data=None, headers=None
+        ):
             recorder.waits.append((f"request_json {path}", timeout))
             return GatewayHarness._canned(path)
 

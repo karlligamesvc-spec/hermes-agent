@@ -57,11 +57,13 @@ def test_the_take_length_is_forwarded_as_asked(video_plugin, monkeypatch, tmp_pa
         captured.append(payload)
         return {"ok": True, "seconds": payload["seconds"]}
 
-    def via_gateway(_method, path, payload=None, *, timeout=None):
+    def via_gateway(_method, path, payload=None, *, timeout=None, headers=None):
         if path == "/tools/v1/check":
             return {}
         captured.append(payload)
-        return {"data": {"ok": True, "seconds": payload["seconds"]}}
+        # The job submit (hc-1000, hc-978's video follow-up), answered as already done: only the
+        # payload matters here.
+        return {"job_id": "j1", "status": "done", "data": {"ok": True, "seconds": payload["seconds"]}}
 
     monkeypatch.setattr(video_plugin, "_use_gateway", lambda: gateway)
     monkeypatch.setattr(video_plugin, "_request", legacy)

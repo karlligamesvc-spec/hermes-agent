@@ -561,24 +561,30 @@ class TestGatewayCallSurface:
     # video_path/media_tag 是 master 本机路径(云侧共享卷语义),桌面必须用
     # video_url 直链本地落地后再出 MEDIA 标签。
     _MASTER_VIDEO_PATH = "/data/hermes/agents/a1/media/jobs/j1/video_1.mp4"
+    # The render is a job (hc-1000, hc-978's video follow-up): submit answers running, the poll
+    # answers done with /video/generate's {data, cost_cents}.
+    _VIDEO_RUNNING = {"ok": True, "job_id": "job-v", "status": "running", "poll_after_seconds": 5}
+
+    def _video_done(self, data: dict) -> dict:
+        return {"ok": True, "job_id": "job-v", "status": "done", "data": data, "cost_cents": 40}
 
     def test_generate_video_gateway_lands_video_locally(
         self, desktop_env, fake_httpx, video_mod, monkeypatch, tmp_path
     ):
         gateway_module = _gateway_module()
         fake_httpx.responses.append(FakeResponse(200, VIDEO_CHECK_SERVING))
+        fake_httpx.responses.append(FakeResponse(202, self._VIDEO_RUNNING))
         fake_httpx.responses.append(
             FakeResponse(
                 200,
-                {
-                    "data": {
+                self._video_done(
+                    {
                         "video_url": "https://cdn.example/o.mp4",
                         "video": "https://cdn.example/o.mp4",
                         "video_path": self._MASTER_VIDEO_PATH,
                         "media_tag": f"MEDIA:{self._MASTER_VIDEO_PATH}",
-                    },
-                    "cost_cents": 40,
-                },
+                    }
+                ),
             )
         )
         downloaded = tmp_path / "gen.mp4"
@@ -592,11 +598,13 @@ class TestGatewayCallSurface:
         monkeypatch.setattr(gateway_module, "download_media", fake_download)
         raw = video_mod._handle_generate_video({"prompt": "一只猫在弹钢琴"})
         result = _parse(raw)
-        check, request = fake_httpx.requests
+        check, request, poll = fake_httpx.requests
         assert (check.method, check.url) == ("GET", f"{GATEWAY_BASE}/tools/v1/check")
-        assert request.url == f"{GATEWAY_BASE}/tools/v1/video/generate"
+        assert (request.method, request.url) == ("POST", f"{GATEWAY_BASE}/tools/v1/video/jobs")
         assert request.json["prompt"] == "一只猫在弹钢琴"
         assert request.headers["X-Capability-Version"]
+        assert len(request.headers["Idempotency-Key"]) == 32
+        assert (poll.method, poll.url) == ("GET", f"{GATEWAY_BASE}/tools/v1/video/jobs/job-v")
         assert seen["url"] == "https://cdn.example/o.mp4"
         assert result["video_path"] == str(downloaded)
         assert result["media_tag"] == f"MEDIA:{downloaded}"
@@ -609,17 +617,17 @@ class TestGatewayCallSurface:
     ):
         gateway_module = _gateway_module()
         fake_httpx.responses.append(FakeResponse(200, VIDEO_CHECK_SERVING))
+        fake_httpx.responses.append(FakeResponse(202, self._VIDEO_RUNNING))
         fake_httpx.responses.append(
             FakeResponse(
                 200,
-                {
-                    "data": {
+                self._video_done(
+                    {
                         "video_url": "https://cdn.example/o.mp4",
                         "video_path": self._MASTER_VIDEO_PATH,
                         "media_tag": f"MEDIA:{self._MASTER_VIDEO_PATH}",
-                    },
-                    "cost_cents": 40,
-                },
+                    }
+                ),
             )
         )
 

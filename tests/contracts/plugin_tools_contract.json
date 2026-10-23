@@ -1,7 +1,7 @@
 {
  "contract_name": "apexnodes-plugin-tools-parity",
- "contract_version": 11,
- "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948, hc-969, hc-1011",
+ "contract_version": 12,
+ "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948, hc-969, hc-1011, hc-1000",
  "sync_policy": {
   "copies": [
    "hermes-cloud: tests/contracts/plugin_tools_contract.json (source of truth)",
@@ -745,6 +745,8 @@
     ],
     "gateway": [
      "/tools/v1/video/generate",
+     "/tools/v1/video/jobs",
+     "/tools/v1/video/jobs/{job_id}",
      "/tools/v1/check",
      "/tools/v1/media/reference-upload"
     ]
@@ -789,6 +791,12 @@
       "gateway"
      ],
      "note": "An image that cannot be uploaded fails the call; the generate endpoint is never called without it."
+    },
+    "submit_then_poll": {
+     "legs": [
+      "gateway"
+     ],
+     "note": "hc-1000: the generation is POSTed to /tools/v1/video/jobs with an Idempotency-Key (the same key on every resend) and read back from /tools/v1/video/jobs/{job_id}; no single request waits for the render. A failed job reads like /tools/v1/video/generate's error. Only an old gateway without jobs (404/405) gets /tools/v1/video/generate."
     }
    }
   },

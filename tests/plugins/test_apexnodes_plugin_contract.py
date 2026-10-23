@@ -49,8 +49,10 @@ CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 # (/tools/v1/check、/media/video/check)。
 # v11(hc-1011):generate_video 接输入图(images、rights_confirmed),两条腿的端点族各加一个参考图
 # 上传端点;三条新行为：带图转成 ref、服务端不声明支持就不发、上传失败绝不改成不带图。
-EXPECTED_CONTRACT_SHA256 = "afac8a78e17b6d5c7d72a033512ed8e9b524079b34fb9bc931acc8beff7b1b09"
-EXPECTED_CONTRACT_VERSION = 11
+# v12(hc-1000):generate_video 改成提交任务再轮询,网关腿端点族加 /tools/v1/video/jobs 和
+# /tools/v1/video/jobs/{job_id},新增网关腿行为 submit_then_poll。
+EXPECTED_CONTRACT_SHA256 = "22d450db9566239ffefd651825ff7df7be0354d0989cf59cffc8f6a9892a9ffe"
+EXPECTED_CONTRACT_VERSION = 12
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -189,12 +191,13 @@ class RecordedCall:
     """统一的出网记录:legacy=urlopen(body=JSON 请求体);gateway=request_json
     (body=payload,files=multipart)。path 一律相对各自 base。"""
 
-    def __init__(self, *, method: str, path: str, body=None, files=None, form_data=None, raw=None):
+    def __init__(self, *, method: str, path: str, body=None, files=None, form_data=None, raw=None, headers=None):
         self.method = method
         self.path = path
         self.body = body
         self.files = files
         self.form_data = form_data
+        self.headers = headers or {}
         # legacy multipart upload: the raw request bytes (the reference image).
         self.raw = raw
 
@@ -275,7 +278,7 @@ class GatewayHarness:
         gateway_module = _gateway_module()
         harness = self
 
-        def _fake_request_json(method, path, payload=None, *, timeout=90, files=None, form_data=None):
+        def _fake_request_json(method, path, payload=None, *, timeout=90, files=None, form_data=None, headers=None):
             harness.calls.append(
                 RecordedCall(
                     method=method,
@@ -283,6 +286,7 @@ class GatewayHarness:
                     body=payload,
                     files=files,
                     form_data=form_data,
+                    headers=headers,
                 )
             )
             answer = harness._canned(path)
@@ -308,7 +312,10 @@ class GatewayHarness:
         # 按服务端真实线形 can 响应(app/routers/tools_gateway.py):
         # /social/{p}/{action}、/video/generate = {ok, data, cost_cents} 信封;
         # /asr/transcribe、/social/batch/* = 平铺。hc-978:转写是 /asr/jobs 提交(running)
-        # 加一次轮询(done,字段同 /asr/transcribe)。
+        # 加一次轮询(done,字段同 /asr/transcribe);视频同样是 /video/jobs 提交加轮询
+        # (done 带 /video/generate 的 {data, cost_cents})。
+        if path.startswith("/tools/v1/video/jobs"):
+            return _video_answer(path, {"data": {"video_url": "https://cdn.example/o.mp4"}, "cost_cents": 40})
         if path.startswith("/tools/v1/asr/"):
             return _asr_answer(path, {"ok": True, "text": "转写正文", "duration_seconds": 3.0, "cost_cents": 8})
         if path == "/tools/v1/social/batch/submit":
@@ -474,7 +481,9 @@ def _check_instruction_decoration(h, tool_name, _spec):
 
 def _check_aspect_ratio_defaults_landscape(h, tool_name, _spec):
     _result, calls = h.invoke(tool_name, h.probe_args(tool_name))
-    assert calls[-1].body["aspect_ratio"] == "landscape"
+    # The call that carries the generation (the gateway polls after it, without a body).
+    generate = [c for c in calls if isinstance(c.body, dict)]
+    assert generate[-1].body["aspect_ratio"] == "landscape"
 
 
 def _check_asr_upload_modes(h, tool_name, spec):
@@ -507,16 +516,9 @@ def _check_no_foreign_paths_in_result(h, tool_name, spec):
     poison = spec["poison_path"]
 
     def canned_with_poison(path: str) -> dict:
-        if path == "/tools/v1/video/generate":
-            return {
-                "ok": True,
-                "data": {
-                    "video_url": "https://cdn.example/o.mp4",
-                    "video_path": poison,
-                    "media_tag": f"MEDIA:{poison}",
-                },
-                "cost_cents": 40,
-            }
+        if path.startswith("/tools/v1/video/jobs"):
+            data = {"video_url": "https://cdn.example/o.mp4", "video_path": poison, "media_tag": f"MEDIA:{poison}"}
+            return _video_answer(path, {"data": data, "cost_cents": 40})
         return GatewayHarness._canned(path)
 
     h._canned = canned_with_poison  # type: ignore[method-assign]
@@ -545,6 +547,14 @@ class _GatewayHttpResponse:
 
     def json(self):
         return self._body
+
+
+def _video_answer(path: str, result: dict) -> dict:
+    """Gateway wire shape of a video job: the submit answers running, the poll answers
+    done with /video/generate's ``{data, cost_cents}``."""
+    if path == "/tools/v1/video/jobs":
+        return {"ok": True, "job_id": "j1", "status": "running", "poll_after_seconds": 5}
+    return {"ok": True, "job_id": "j1", "status": "done", **result}
 
 
 def _submits_transcription(path: str) -> bool:
@@ -647,7 +657,8 @@ def _check_segments_file_handoff(h, tool_name, _spec):
 _REF_A = "media:" + "a" * 32 + "/image_1.png"
 _REF_UPLOADED = "media:" + "f" * 32 + "/ref_1.png"
 _UPLOAD_PATHS = {"legacy": "/media/reference-upload", "gateway": "/tools/v1/media/reference-upload"}
-_GENERATE_PATHS = {"legacy": "/media/video-generate", "gateway": "/tools/v1/video/generate"}
+# The call that carries the generation's body: the gateway's job submit.
+_GENERATE_PATHS = {"legacy": "/media/video-generate", "gateway": "/tools/v1/video/jobs"}
 
 
 def _images_answers(h, *, supported: bool = True, upload: object = None):
@@ -719,6 +730,34 @@ def _check_images_require_server_support(h, tool_name, _spec):
     assert all(c.method == "GET" for c in calls), "no upload and no generate call without confirmed support"
 
 
+def _check_submit_then_poll(h, tool_name, _spec):
+    """hc-1000: no single request waits for the render; an old gateway without
+    /video/jobs still gets the synchronous call."""
+    assert h.leg == "gateway"
+    result, calls = h.invoke(tool_name, h.probe_args(tool_name))
+    assert result["video_url"] == "https://cdn.example/o.mp4"
+    sent = [(c.method, c.path) for c in calls]
+    assert ("POST", "/tools/v1/video/generate") not in sent, "a single request waits for the render"
+    (submit,) = [c for c in calls if (c.method, c.path) == ("POST", "/tools/v1/video/jobs")]
+    assert submit.headers.get("Idempotency-Key"), "every generation is named, so a resend never renders twice"
+    assert ("GET", "/tools/v1/video/jobs/j1") in sent
+
+    not_found = _gateway_module().GatewayError("HTTP 404", status=404)
+
+    def old_gateway(path: str):
+        if path == "/tools/v1/video/jobs":
+            return not_found
+        if path == "/tools/v1/video/generate":
+            return {"ok": True, "data": {"video_url": "https://cdn.example/o.mp4"}, "cost_cents": 40}
+        return type(h)._canned(path)
+
+    h._canned = old_gateway  # type: ignore[method-assign]
+    result, calls = h.invoke(tool_name, h.probe_args(tool_name))
+    h._canned = type(h)._canned  # type: ignore[method-assign]
+    assert result["video_url"] == "https://cdn.example/o.mp4"
+    assert [c.path for c in calls if c.method == "POST"] == ["/tools/v1/video/jobs", "/tools/v1/video/generate"]
+
+
 def _check_images_never_dropped_on_upload_failure(h, tool_name, _spec):
     h._canned = _images_answers(h, upload=_upload_error(h, 503, "上传通道不可用"))  # type: ignore[method-assign]
     shot = h.tmp_path / "shot.png"
@@ -749,6 +788,7 @@ BEHAVIOR_CHECKS = {
     "images_forwarded_as_refs": _check_images_forwarded_as_refs,
     "images_require_server_support": _check_images_require_server_support,
     "images_never_dropped_on_upload_failure": _check_images_never_dropped_on_upload_failure,
+    "submit_then_poll": _check_submit_then_poll,
 }
 
 BEHAVIOR_CASES = [
