@@ -203,6 +203,39 @@ def _parse(result: str) -> dict:
     return json.loads(result)
 
 
+# hc-978: the gateway answers a transcription as a job — the submit (202 running), then
+# a poll (200 done, or 200 failed carrying the error /asr/transcribe would have
+# answered). Tests queue both answers in that order.
+ASR_JOBS_URL = f"{GATEWAY_BASE}/tools/v1/asr/jobs"
+ASR_JOB_POLL_URL = f"{ASR_JOBS_URL}/job-1"
+ASR_JOB_RUNNING = {
+    "ok": True,
+    "job_id": "job-1",
+    "status": "running",
+    "elapsed_seconds": 0,
+    "poll_after_seconds": 5,
+    "max_wait_seconds": 1800,
+}
+
+
+def asr_job_done(result: dict) -> list[FakeResponse]:
+    return [
+        FakeResponse(202, ASR_JOB_RUNNING),
+        FakeResponse(200, {"ok": True, "job_id": "job-1", "status": "done", "elapsed_seconds": 3, **result}),
+    ]
+
+
+def asr_job_failed(status: int, body: dict) -> list[FakeResponse]:
+    failed = {
+        "ok": False,
+        "job_id": "job-1",
+        "status": "failed",
+        "elapsed_seconds": 3,
+        "error": {"status_code": status, "detail": body.get("detail")},
+    }
+    return [FakeResponse(202, ASR_JOB_RUNNING), FakeResponse(200, failed)]
+
+
 # hc-969: generate_video reads /tools/v1/check before rendering; a serving default leg.
 VIDEO_CHECK_SERVING = {
     "ok": True,
@@ -375,19 +408,19 @@ class TestGatewayCallSurface:
         monkeypatch.setattr(gateway_module, "extract_audio_for_asr", lambda _p: None)
         video = tmp_path / "clip.mp4"
         video.write_bytes(b"fake-bytes")
-        fake_httpx.responses.append(
-            FakeResponse(
-                200, {"text": "大家好，今天聊三件事。", "duration_seconds": 12.5, "cost_cents": 8}
-            )
+        fake_httpx.responses.extend(
+            asr_job_done({"text": "大家好，今天聊三件事。", "duration_seconds": 12.5, "cost_cents": 8})
         )
         result = _parse(
             douyin_mod._handle_media_transcribe({"video_path": str(video)})
         )
-        request = fake_httpx.requests[0]
-        assert request.url == f"{GATEWAY_BASE}/tools/v1/asr/transcribe"
+        request, poll = fake_httpx.requests
+        assert request.url == ASR_JOBS_URL
         assert request.files and "file" in request.files  # multipart 形态(PD §8)
         assert request.json is None
         assert request.headers["Authorization"] == f"Bearer {GATEWAY_KEY}"
+        assert (poll.method, poll.url) == ("GET", ASR_JOB_POLL_URL)
+        assert poll.headers["Authorization"] == f"Bearer {GATEWAY_KEY}"
         assert result["transcript"] == "大家好，今天聊三件事。"
         assert result["audio_duration_seconds"] == 12.5
         assert result["cost_cents"] == 8
@@ -411,7 +444,7 @@ class TestGatewayCallSurface:
                     200,
                     {"data": {"title": "标题", "download_url": "https://cdn.example/d.mp4"}},
                 ),
-                FakeResponse(200, {"text": "转写正文", "duration_seconds": 3.0}),
+                *asr_job_done({"text": "转写正文", "duration_seconds": 3.0}),
             ]
         )
         result = _parse(
@@ -421,7 +454,8 @@ class TestGatewayCallSurface:
         )
         assert [r.url for r in fake_httpx.requests] == [
             f"{GATEWAY_BASE}/tools/v1/social/douyin/download",
-            f"{GATEWAY_BASE}/tools/v1/asr/transcribe",
+            ASR_JOBS_URL,
+            ASR_JOB_POLL_URL,
         ]
         assert result["transcript"] == "转写正文"
         assert result["title"] == "标题"
@@ -640,13 +674,11 @@ class TestLargeAudioDirectUpload:
             [
                 FakeResponse(200, UPLOAD_URL_OK),
                 FakeResponse(200, {}),  # COS PUT(空体 200)
-                FakeResponse(
-                    200, {"text": "大文件转写正文", "duration_seconds": 900.0, "cost_cents": 90}
-                ),
+                *asr_job_done({"text": "大文件转写正文", "duration_seconds": 900.0, "cost_cents": 90}),
             ]
         )
         result = _parse(douyin_mod._handle_media_transcribe({"video_path": str(big_clip)}))
-        issue, put, submit = fake_httpx.requests
+        issue, put, submit, poll = fake_httpx.requests
         # ① 领预签名:带鉴权,报 filename/size_bytes
         assert issue.method == "POST"
         assert issue.url == f"{GATEWAY_BASE}/tools/v1/asr/upload-url"
@@ -661,9 +693,10 @@ class TestLargeAudioDirectUpload:
         assert "Authorization" not in put.headers
         # ③ JSON media_url 提交转写(不是 multipart)
         assert submit.method == "POST"
-        assert submit.url == f"{GATEWAY_BASE}/tools/v1/asr/transcribe"
+        assert submit.url == ASR_JOBS_URL
         assert submit.json == {"media_url": UPLOAD_URL_OK["media_url"]}
         assert submit.files is None
+        assert (poll.method, poll.url) == ("GET", ASR_JOB_POLL_URL)
         # 结果面与 multipart 形态同构
         assert result["transcript"] == "大文件转写正文"
         assert result["audio_duration_seconds"] == 900.0
@@ -676,11 +709,11 @@ class TestLargeAudioDirectUpload:
         monkeypatch.setattr(gateway_module, "extract_audio_for_asr", lambda _p: None)
         clip = tmp_path / "small.mp3"
         clip.write_bytes(b"A" * 16)  # == 阈值,不大于 → multipart
-        fake_httpx.responses.append(FakeResponse(200, {"text": "小文件", "duration_seconds": 3.0}))
+        fake_httpx.responses.extend(asr_job_done({"text": "小文件", "duration_seconds": 3.0}))
         result = _parse(douyin_mod._handle_media_transcribe({"video_path": str(clip)}))
-        assert len(fake_httpx.requests) == 1
+        assert len(fake_httpx.requests) == 2  # submit + one poll; no upload-url hop
         request = fake_httpx.requests[0]
-        assert request.url == f"{GATEWAY_BASE}/tools/v1/asr/transcribe"
+        assert request.url == ASR_JOBS_URL
         assert request.files and "file" in request.files
         assert result["transcript"] == "小文件"
 
@@ -693,13 +726,13 @@ class TestLargeAudioDirectUpload:
         fake_httpx.responses.extend(
             [
                 FakeResponse(404, {"detail": "Not Found"}),
-                FakeResponse(200, {"text": "回退转写", "duration_seconds": 5.0}),
+                *asr_job_done({"text": "回退转写", "duration_seconds": 5.0}),
             ]
         )
         result = _parse(douyin_mod._handle_media_transcribe({"video_path": str(big_clip)}))
-        issue, fallback = fake_httpx.requests
+        issue, fallback, _poll = fake_httpx.requests
         assert issue.url == f"{GATEWAY_BASE}/tools/v1/asr/upload-url"
-        assert fallback.url == f"{GATEWAY_BASE}/tools/v1/asr/transcribe"
+        assert fallback.url == ASR_JOBS_URL
         assert fallback.files and "file" in fallback.files  # multipart 回退
         assert result["transcript"] == "回退转写"
 
@@ -713,13 +746,13 @@ class TestLargeAudioDirectUpload:
                 FakeResponse(200, UPLOAD_URL_OK),
                 FakeResponse(500, {}),  # PUT 首次失败
                 FakeResponse(500, {}),  # PUT 重试一次仍失败
-                FakeResponse(200, {"text": "回退转写", "duration_seconds": 5.0}),
+                *asr_job_done({"text": "回退转写", "duration_seconds": 5.0}),
             ]
         )
         result = _parse(douyin_mod._handle_media_transcribe({"video_path": str(big_clip)}))
         methods = [r.method for r in fake_httpx.requests]
-        assert methods == ["POST", "PUT", "PUT", "POST"]
-        assert fake_httpx.requests[-1].files and "file" in fake_httpx.requests[-1].files
+        assert methods == ["POST", "PUT", "PUT", "POST", "GET"]
+        assert fake_httpx.requests[-2].files and "file" in fake_httpx.requests[-2].files
         assert result["transcript"] == "回退转写"
 
     def test_incomplete_upload_url_response_falls_back(
@@ -730,12 +763,12 @@ class TestLargeAudioDirectUpload:
         fake_httpx.responses.extend(
             [
                 FakeResponse(200, {"ok": True, "put_url": "https://cos.example/x"}),  # 缺 media_url
-                FakeResponse(200, {"text": "回退转写", "duration_seconds": 5.0}),
+                *asr_job_done({"text": "回退转写", "duration_seconds": 5.0}),
             ]
         )
         result = _parse(douyin_mod._handle_media_transcribe({"video_path": str(big_clip)}))
-        assert [r.method for r in fake_httpx.requests] == ["POST", "POST"]
-        assert fake_httpx.requests[-1].files
+        assert [r.method for r in fake_httpx.requests] == ["POST", "POST", "GET"]
+        assert fake_httpx.requests[-2].files
         assert result["transcript"] == "回退转写"
 
     def test_413_verdict_propagates_with_neutral_copy_no_multipart_replay(
@@ -914,7 +947,7 @@ class TestAudioCompressionFallbackChain:
         monkeypatch.setattr(gateway_module.sys, "platform", "linux")
         clip = tmp_path / "raw.mp4"
         clip.write_bytes(b"fake-bytes")
-        fake_httpx.responses.append(FakeResponse(200, {"text": "原文件转写", "duration_seconds": 2.0}))
+        fake_httpx.responses.extend(asr_job_done({"text": "原文件转写", "duration_seconds": 2.0}))
         result = _parse(douyin_mod._handle_media_transcribe({"video_path": str(clip)}))
         request = fake_httpx.requests[0]
         assert request.files and request.files["file"][0] == "raw.mp4"
