@@ -16,6 +16,11 @@ import json, os, pathlib, sys, time, uuid
 import psutil
 from gateway.drain_control import write_drain_request, clear_drain_request, read_drain_request
 from gateway.status import get_running_pid, take_over_scoped_lock_holder, _validated_scoped_lock_gateway_owner, looks_like_gateway_runtime_command_line
+try:
+    from gateway.status import (read_runtime_status, get_runtime_status_running_pid, _snapshot_gateway_children,
+        write_takeover_marker, clear_takeover_marker, _terminate_verified_owner, reap_gateway_children)
+except ImportError:  # an older engine: only gateways with a gateway.pid are retired
+    read_runtime_status = None
 
 active, home, desktop_pid = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]).resolve(), int(sys.argv[3])
 inspect_only = len(sys.argv) > 4 and sys.argv[4] == 'inspect'
@@ -39,22 +44,50 @@ def wait_gone(processes, seconds):
         time.sleep(.05)
     return [p for p in processes if not gone(p)]
 
+def owned_gateway(target):
+    # (record, pid, from_pid_file) for this home's live gateway, else None. gateway.pid first; hc-1031: when it
+    # is gone or names another life, the same identity (pid, start_time, home, argv) in gateway_state.json.
+    pid_path = target / 'gateway.pid'
+    if pid_path.is_file():
+        record = json.loads(pid_path.read_text())
+        pid = get_running_pid(pid_path, cleanup_stale=False)
+        if (pathlib.Path(record.get('hermes_home', '')).resolve() == target and pid and pid == record.get('pid')
+                and _validated_scoped_lock_gateway_owner(record) is not None):
+            return record, pid, True
+    if read_runtime_status is None:
+        return None
+    record = read_runtime_status(target / 'gateway_state.json')
+    # The takeover binds to PID + creation time, so a record without a start time proves nothing.
+    if not isinstance(record, dict) or not isinstance(record.get('start_time'), int):
+        return None
+    # Checks the state, the live PID and its start time, the record's home and the live command line.
+    pid = get_runtime_status_running_pid(record, expected_home=target)
+    return (record, pid, False) if pid else None
+def take_over_runtime_owner(record, pid, target):
+    # take_over_scoped_lock_holder for a gateway proven by gateway_state.json alone: the same takeover
+    # marker, PID + creation-time bound SIGTERM-then-SIGKILL and child reaping.
+    children = _snapshot_gateway_children(pid)
+    if not write_takeover_marker(pid, target_home=target, target_start_time=record['start_time']):
+        return None
+    try:
+        stopped = _terminate_verified_owner(pid, record['start_time'], graceful_attempts=10, force_attempts=4)
+    finally:
+        clear_takeover_marker(target)
+    if stopped is not None:
+        reap_gateway_children(children, parent_pid=pid)
+    return stopped
+
 homes = [home]
 profiles = home / 'profiles'
 if profiles.is_dir() and not profiles.is_symlink():
     homes += [p.resolve() for p in profiles.iterdir() if p.is_dir() and p.resolve().parent == profiles.resolve()]
 retired = []
 for target in homes:
-    pid_path = target / 'gateway.pid'
-    if not pid_path.is_file():
-        continue
     try:
-        record = json.loads(pid_path.read_text())
-        if pathlib.Path(record.get('hermes_home', '')).resolve() != target:
+        owned = owned_gateway(target)
+        if owned is None:
             continue
-        pid = get_running_pid(pid_path, cleanup_stale=False)
-        if not pid or pid != record.get('pid') or _validated_scoped_lock_gateway_owner(record) is None:
-            continue
+        record, pid, from_pid_file = owned
         process = psutil.Process(pid)
         # Preserve a gateway owned by another still-running app/CLI instance.
         parent = process.parent()
@@ -104,7 +137,8 @@ for target in homes:
                 time.sleep(.1)
             else:
                 raise RuntimeError('APEX_RUNTIME_UPDATE_BUSY')
-            stopped = take_over_scoped_lock_holder(record, graceful_attempts=10, force_attempts=4)
+            stopped = (take_over_scoped_lock_holder(record, graceful_attempts=10, force_attempts=4) if from_pid_file
+                       else take_over_runtime_owner(record, pid, target))
             if stopped is None:
                 raise RuntimeError('Gateway identity could not be retired: PID ' + str(pid))
         finally:

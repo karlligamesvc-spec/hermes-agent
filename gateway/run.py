@@ -4975,8 +4975,8 @@ def _replace_target_belongs_to_other_profile(existing_pid: int) -> bool:
             logger.log(level, "Refusing --replace: " + msg, *args)
             return True
 
-        # Bound claim: the record must name THIS pid with THIS live start time, else it proves nothing.
-        record = _read_pid_record(_get_pid_path())
+        from gateway.replace_identity import replace_identity_record  # hc-1031: gateway.pid, else gateway_state.json
+        record = replace_identity_record(existing_pid)  # bound claim: THIS pid with THIS live start time, else nothing
         if not isinstance(record, dict) or not _record_looks_like_gateway(record):
             return refuse("no valid gateway pid record to prove ownership of PID %s.", existing_pid)
         record_pid = _pid_from_record(record)
