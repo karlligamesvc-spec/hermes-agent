@@ -226,6 +226,32 @@ def master(monkeypatch):
     return state
 
 
+VIDEO_JOBS = "/tools/v1/video/jobs"
+
+
+def _answer_render(server, media, status: int = 200, body: dict | None = None) -> None:
+    """The render's answer on the gateway. Video is a job (hc-1000, hc-978's follow-up): the
+    submit answers running, the poll the done body or the failure /video/generate would
+    have answered, which the Desktop reads through the same mapping."""
+    body = {"data": {"ok": True}} if body is None else body
+    if media.kind != "video":
+        server.answer(media.generate, FakeResponse(status, body))
+        return
+    server.answer(VIDEO_JOBS, FakeResponse(202, {"ok": True, "job_id": "j1", "status": "running", "poll_after_seconds": 5}))
+    if status < 400:
+        done = {"ok": True, "job_id": "j1", "status": "done", **body}
+        server.answer(f"{VIDEO_JOBS}/j1", FakeResponse(200, done))
+    else:
+        error = {"status_code": status, "detail": body.get("detail")}
+        server.answer(f"{VIDEO_JOBS}/j1", FakeResponse(200, {"ok": False, "job_id": "j1", "status": "failed", "error": error}))
+
+
+def _render_requests(media) -> list[tuple[str, str]]:
+    if media.kind != "video":
+        return [("POST", media.generate)]
+    return [("POST", VIDEO_JOBS), ("GET", f"{VIDEO_JOBS}/j1")]
+
+
 def _vendor_unavailable(vendor_code: str, message: str) -> dict:
     """The gateway folds every media 5xx into 503 vendor_unavailable (tools_gateway._map_vendor_error)."""
     return {"detail": {"code": "vendor_unavailable", "message": message, "vendor_code": vendor_code}}
@@ -284,7 +310,7 @@ GATEWAY_FAILURES = [
 @pytest.mark.parametrize(("status", "body", "expected"), GATEWAY_FAILURES)
 def test_gateway_failures_no_retry_can_fix_say_so(desktop_env, server, media, status, body, expected):
     server.answer("/tools/v1/check", FakeResponse(200, {"ok": True}))
-    server.answer(media.generate, FakeResponse(status, body))
+    _answer_render(server, media, status, body)
 
     error = _generate(media, {"prompt": "x", "model": media.model})["error"]
 
@@ -303,10 +329,14 @@ def test_daily_limit_says_tomorrow_and_is_not_retried(transport, request, media,
         request.getfixturevalue("desktop_env")
         server = request.getfixturevalue("server")
         server.answer("/tools/v1/check", FakeResponse(200, {"ok": True}))
-        server.answer(media.generate, FakeResponse(429, body), FakeResponse(429, body), FakeResponse(429, body))
+        if media.kind == "video":
+            # The daily cap is read inside the render job: its failure, read once.
+            _answer_render(server, media, 429, body)
+        else:
+            server.answer(media.generate, FakeResponse(429, body), FakeResponse(429, body), FakeResponse(429, body))
         error = _generate(media, {"prompt": "x", "model": media.model})["error"]
         # One render request: backing off cannot bring back a quota that resets tomorrow.
-        assert server.requests == [("GET", "/tools/v1/check"), ("POST", media.generate)]
+        assert server.requests == [("GET", "/tools/v1/check"), *_render_requests(media)]
     else:
         request.getfixturevalue("legacy_env")
         master = request.getfixturevalue("master")
@@ -322,7 +352,7 @@ def test_a_busy_upstream_keeps_the_servers_own_sentence(desktop_env, server, med
     in its own "平台能力暂不可用(503),请稍后重试" lead."""
     busy = f"{media.label}生成服务繁忙,请稍后重试"
     server.answer("/tools/v1/check", FakeResponse(200, {"ok": True}))
-    server.answer(media.generate, FakeResponse(503, _vendor_unavailable(f"{media.kind}_provider_busy", busy)))
+    _answer_render(server, media, 503, _vendor_unavailable(f"{media.kind}_provider_busy", busy))
 
     error = _generate(media, {"prompt": "x", "model": media.model})["error"]
 
@@ -331,7 +361,7 @@ def test_a_busy_upstream_keeps_the_servers_own_sentence(desktop_env, server, med
 
 def test_an_unexplained_503_promises_nothing(desktop_env, server, media):
     server.answer("/tools/v1/check", FakeResponse(200, {"ok": True}))
-    server.answer(media.generate, FakeResponse(503, {}))
+    _answer_render(server, media, 503, {})
 
     error = _generate(media, {"prompt": "x", "model": media.model})["error"]
 
@@ -339,14 +369,16 @@ def test_an_unexplained_503_promises_nothing(desktop_env, server, media):
 
 
 def test_a_rate_limit_is_still_backed_off_and_retried(desktop_env, server, video):
-    """Only the daily limits skip the backoff; a per-minute limit can clear in seconds."""
-    limited = {"detail": {"code": "video_rate_limited", "message": "视频生成请求过于频繁，请稍后再试。"}}
+    """Only the daily limits skip the backoff; a per-minute limit can clear in seconds.
+    The gateway's token bucket answers the job submit (with the same Idempotency-Key
+    each time, so a retry can never start a second render)."""
+    limited = {"detail": {"code": "rate_limited", "message": "平台工具请求过于频繁，请稍后再试。"}}
     server.answer("/tools/v1/check", FakeResponse(200, {"ok": True}))
-    server.answer(video.generate, *[FakeResponse(429, limited) for _ in range(3)])
+    server.answer(VIDEO_JOBS, *[FakeResponse(429, limited) for _ in range(3)])
 
     error = _generate(video)["error"]
 
-    assert server.requests.count(("POST", video.generate)) == 3
+    assert server.requests.count(("POST", VIDEO_JOBS)) == 3
     assert "频繁" in error
 
 
@@ -413,10 +445,10 @@ def test_the_picked_models_leg_decides(_hermes_home, desktop_env, server, media)
     _pick(_hermes_home, media, other)
     server.requests.clear()
     server.answer("/tools/v1/check", FakeResponse(200, _check_body(media.kind, flat=failing, legs=legs)))
-    server.answer(media.generate, FakeResponse(200, {"data": {"ok": True}}))
+    _answer_render(server, media)
 
     assert _generate(media)["ok"] is True
-    assert server.requests == [("GET", "/tools/v1/check"), ("POST", media.generate)]
+    assert server.requests == [("GET", "/tools/v1/check"), *_render_requests(media)]
 
 
 @pytest.mark.parametrize(
@@ -432,10 +464,10 @@ def test_the_picked_models_leg_decides(_hermes_home, desktop_env, server, media)
 def test_no_clear_verdict_goes_ahead(_hermes_home, desktop_env, server, media, check_answer):
     _pick(_hermes_home, media, media.model)
     server.answer("/tools/v1/check", check_answer(media.kind))
-    server.answer(media.generate, FakeResponse(200, {"data": {"ok": True}}))
+    _answer_render(server, media)
 
     assert _generate(media)["ok"] is True
-    assert server.requests == [("GET", "/tools/v1/check"), ("POST", media.generate)]
+    assert server.requests == [("GET", "/tools/v1/check"), *_render_requests(media)]
 
 
 def test_an_image_without_a_model_reads_the_check_and_goes_ahead_without_a_verdict(desktop_env, server, image):

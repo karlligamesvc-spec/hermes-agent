@@ -47,9 +47,16 @@ ASR 族(hc-978:先提交任务再轮询,旧网关没有 /asr/jobs 时回退同�
     POST {base}/tools/v1/social/batch/submit               ← social_batch_submit
     GET  {base}/tools/v1/social/batch/status/{job_id}      ← social_batch_status
 
-视频生成族:
+视频生成族(hc-1000,hc-978 的视频后续票:也是提交任务再轮询,旧网关没有 /video/jobs 时回退同步的
+/video/generate):
+  POST {base}/tools/v1/video/jobs                          ← 请求体与 /video/generate 相同,
+    头 Idempotency-Key: <每次生成一个>                         ← generate_video
+    → 202 {"job_id": str, "status": "running", "poll_after_seconds": int}
+      (同一用户同一个 key 再提交:拿回同一个任务,"reused": true,不会再渲染、再计费)
+  GET  {base}/tools/v1/video/jobs/{job_id}
+    → 202 running | 200 done {"data": {...}, "cost_cents": int} | 200 failed {"error": …}
+      | 404 video_job_not_found(平台重启过:不自动重交,视频重交要真花钱)
   POST {base}/tools/v1/video/generate → {"data": {...}, "cost_cents": int}
-                                                           ← generate_video
   GET  {base}/tools/v1/check → image/video 段带 hc-945 的逐链路健康(legs)
                                                            ← 生成前预检(hc-969)
 
@@ -76,6 +83,7 @@ Agent API key 解析(桌面与云同一把 key 的两种落点):
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -86,11 +94,13 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -118,6 +128,7 @@ __all__ = [
     "extract_audio_for_asr",
     "gateway_base",
     "gateway_disabled",
+    "generate_video",
     "guess_media_content_type",
     "media_cache_dir",
     "media_error_message",
@@ -231,6 +242,24 @@ _ASR_JOB_DEADLINE_MARGIN_SECONDS = 120.0  # past the server's own vendor budget
 # Old gateway (no /asr/jobs): the synchronous call can't succeed after nginx's and the
 # server's 1800 s, so waiting longer only hides a lost answer.
 _ASR_SYNC_FALLBACK_TIMEOUT_SECONDS = 1850.0
+
+# Video generation is a job too (hc-1000, hc-978's follow-up). The platform queues, renders and
+# downloads a clip for minutes; the one request that waited for it could lose its answer
+# the same way, after the clip had been billed.
+VIDEO_GENERATE_PATH = "/tools/v1/video/generate"
+VIDEO_JOBS_PATH = "/tools/v1/video/jobs"
+_VIDEO_JOB_SUBMIT_TIMEOUT_SECONDS = 60.0  # the quota read and the job start; no render wait
+_VIDEO_JOB_POLL_TIMEOUT_SECONDS = 30.0  # one poll reads server memory
+_VIDEO_JOB_POLL_GAP_SECONDS = (1.0, 5.0, 30.0)  # floor, default, ceiling
+_VIDEO_JOB_UNREACHABLE_SECONDS = 120.0
+# Left for downloading the finished clip inside the tool's budget; a render still going
+# when the polls stop is picked up again by the next identical call.
+_VIDEO_JOB_DOWNLOAD_ROOM_SECONDS = 60.0
+# A call whose end this Desktop never heard keeps its Idempotency-Key this long (the
+# server keeps a finished video job for a day).
+_VIDEO_PENDING_TTL_SECONDS = 24 * 60 * 60
+_video_pending_lock = threading.Lock()
+_video_calls_in_flight: set[str] = set()
 
 # hc-978: TCP keepalive on every gateway connection. A call that waits minutes for an
 # answer (video and image generation, the old synchronous ASR) sends nothing while it
@@ -366,6 +395,33 @@ _COPY: dict[str, tuple[str, str]] = {
         "平台重启过，找不到这个转写任务；自动重新提交一次后又找不到了，这次没有结果。稍后用同一个文件再调一次 media_transcribe。",
         "The platform restarted and lost this transcription job, and the automatic resubmission was lost too; "
         "there is no result this time. Call media_transcribe again later with the same file.",
+    ),
+    # What the agent can do next when a video job's end is out of reach. The same call
+    # again carries the same Idempotency-Key, so a clip the platform kept comes back.
+    "video_job_unreachable": (
+        "视频任务已经交给平台，但本机连续 {minutes} 分钟连不上平台，没拿到结果；平台那边可能还在生成。"
+        "先检查网络或代理，恢复后用完全相同的参数再调一次 generate_video：平台还留着这个任务的话会直接取回，不会重新生成。",
+        "The video job reached the platform, but this computer could not reach the platform for {minutes} "
+        "minutes in a row, so there is no result; the platform may still be rendering it. Check the network or "
+        "proxy; once it is back, call generate_video again with exactly the same arguments, and a job the "
+        "platform still keeps comes straight back instead of rendering again.",
+    ),
+    "video_job_overdue": (
+        "视频在平台上已经生成了 {minutes} 分钟还没完成(可能在排队),这次先停止等待。"
+        "过几分钟用完全相同的参数再调一次 generate_video:平台还留着这个任务的话会接着等它、直接取回，不会重新生成。",
+        "The video has been rendering on the platform for {minutes} minutes without finishing (it may be "
+        "queued), so this wait stops here. In a few minutes call generate_video again with exactly the same "
+        "arguments: a job the platform still keeps is picked up and returned, not rendered again.",
+    ),
+    "video_job_lost": (
+        "平台重启过，找不到这个视频任务，这次没有结果。可以用同样的参数再调一次 generate_video。",
+        "The platform restarted and lost this video job; there is no result this time. Call generate_video "
+        "again with the same arguments.",
+    ),
+    "video_job_recovered": (
+        "这是之前一次完全相同的调用已经生成好的视频(当时没取回),这次没有重新生成，也没有再计费。",
+        "This is the video an earlier call with exactly the same arguments already generated (its answer never "
+        "arrived); nothing was rendered or billed again.",
     ),
     "media_daily_limit": ("今天的{label}生成额度用完了，明天恢复。", "Today's {label} generation quota is used up; it comes back tomorrow."),
     "media_switched_off": (
@@ -795,9 +851,11 @@ def request_json(
     timeout: float = 90,
     files: dict[str, Any] | None = None,
     form_data: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """对网关发一次 JSON(或 multipart)请求,返回解析后的 JSON dict。
 
+    ``headers`` 附加在鉴权头之后(如视频任务的 ``Idempotency-Key``)。
     失败一律抛 :class:`GatewayError`,message 即给用户看的降级文案。
     """
     base = gateway_base()
@@ -808,7 +866,8 @@ def request_json(
         raise missing_credential_error()
     if not base:
         raise GatewayError(say("gateway_unconfigured", env_base=ENV_BASE), code="gateway_unconfigured")
-    headers = {
+    request_headers = {
+        **(headers or {}),
         "Authorization": f"Bearer {key}",
         "X-Capability-Version": capability_version(),
     }
@@ -823,7 +882,7 @@ def request_json(
                     json=payload if files is None else None,
                     data=form_data,
                     files=files,
-                    headers=headers,
+                    headers=request_headers,
                 )
         except httpx.HTTPError as exc:
             # 第三类:网络失败。既不是「没配过」也不是「凭据失效」——绝不在这里
@@ -881,6 +940,8 @@ MEDIA_VIDEO = "video"
 _MEDIA_GENERATE_PATHS = {
     "/tools/v1/image/generate": MEDIA_IMAGE,
     "/tools/v1/video/generate": MEDIA_VIDEO,
+    # The job submit takes the same body and answers the same pre-render refusals.
+    "/tools/v1/video/jobs": MEDIA_VIDEO,
 }
 
 # 429 codes that hold until tomorrow: request_json answers them on the first
@@ -1108,52 +1169,94 @@ def _transcribe(send: Callable[[str, float], dict[str, Any]], *, timeout: float)
     )
 
 
+@dataclass(frozen=True)
+class _JobPolling:
+    """How one kind of gateway job is polled (hc-978 transcription, video). Built at
+    call time from the kind's constants, so a test that shortens them is honoured."""
+
+    kind: str  # message keys and codes are f"{kind}_job_…"
+    jobs_path: str
+    poll_timeout: float
+    poll_gaps: tuple[float, float, float]  # floor, default, ceiling
+    unreachable_seconds: float
+    failure_path: str  # the synchronous endpoint whose error a failed job replays
+
+
+def _await_job(
+    submitted: dict[str, Any],
+    polling: _JobPolling,
+    *,
+    started: float,
+    deadline: float,
+    on_not_found: Callable[[GatewayError], dict[str, Any]],
+) -> dict[str, Any]:
+    """Poll a submitted job until it is done (its answer) or failed (the error the
+    synchronous endpoint would have raised).
+
+    A poll that fails for network or server reasons is tried again; only
+    ``polling.unreachable_seconds`` without any answer ends the wait. A job the server
+    no longer knows (it restarted) is handed to ``on_not_found``, which answers the next
+    state (a resubmission) or raises."""
+    kind = polling.kind
+    answer, last_answer_at = submitted, time.monotonic()
+    while True:
+        status = answer.get("status")
+        if status == "done":
+            return answer
+        if status == "failed":
+            raise _job_failure(answer, polling.failure_path)
+        if status != "running" or not answer.get("job_id"):
+            raise GatewayError(say("gateway_unreadable"), code="unreadable_answer")
+        if time.monotonic() >= deadline:
+            minutes = max(1, round((time.monotonic() - started) / 60))
+            raise GatewayError(say(f"{kind}_job_overdue", minutes=minutes), code=f"{kind}_job_overdue")
+        gap_floor, gap_default, gap_ceiling = polling.poll_gaps
+        time.sleep(min(max(_number(answer.get("poll_after_seconds"), gap_default), gap_floor), gap_ceiling))
+        try:
+            answer = request_json("GET", f"{polling.jobs_path}/{answer['job_id']}", timeout=polling.poll_timeout)
+        except GatewayError as exc:
+            if exc.code == f"{kind}_job_not_found":
+                answer = on_not_found(exc)
+            elif exc.status is not None and exc.status != 429 and exc.status < 500:
+                raise
+            elif time.monotonic() - last_answer_at >= polling.unreachable_seconds:
+                minutes = max(1, round(polling.unreachable_seconds / 60))
+                raise GatewayError(say(f"{kind}_job_unreachable", minutes=minutes), code=f"{kind}_job_unreachable") from exc
+            else:
+                logger.info("%s job %s poll failed (status=%s); trying again", kind, answer["job_id"], exc.status)
+                continue
+        last_answer_at = time.monotonic()
+
+
 def _await_asr_job(
     submitted: dict[str, Any],
     *,
     resubmit: Callable[[], dict[str, Any]],
     timeout: float,
 ) -> dict[str, Any]:
-    """Poll a submitted job until it is done (its result) or failed (the error the
-    synchronous endpoint would have raised).
-
-    A poll that fails for network or server reasons is tried again; only
-    :data:`_ASR_JOB_UNREACHABLE_SECONDS` without any answer ends the wait. A job the
-    server no longer knows (it restarted) is submitted once more."""
+    """Poll a submitted transcription; a job the server no longer knows (it restarted)
+    is submitted once more (a finished one is a free hc-570 cache hit)."""
     started = time.monotonic()
     budget = _number(submitted.get("max_wait_seconds"), timeout) + _ASR_JOB_DEADLINE_MARGIN_SECONDS
-    deadline = started + min(timeout, budget)
-    answer, last_answer_at, resubmitted = submitted, started, False
-    while True:
-        status = answer.get("status")
-        if status == "done":
-            return answer
-        if status == "failed":
-            raise _asr_job_failure(answer)
-        if status != "running" or not answer.get("job_id"):
-            raise GatewayError(say("gateway_unreadable"), code="unreadable_answer")
-        if time.monotonic() >= deadline:
-            minutes = max(1, round((time.monotonic() - started) / 60))
-            raise GatewayError(say("asr_job_overdue", minutes=minutes), code="asr_job_overdue")
-        gap_floor, gap_default, gap_ceiling = _ASR_JOB_POLL_GAP_SECONDS
-        time.sleep(min(max(_number(answer.get("poll_after_seconds"), gap_default), gap_floor), gap_ceiling))
-        try:
-            answer = request_json("GET", f"{ASR_JOBS_PATH}/{answer['job_id']}", timeout=_ASR_JOB_POLL_TIMEOUT_SECONDS)
-        except GatewayError as exc:
-            if exc.code == "asr_job_not_found":
-                if resubmitted:
-                    raise GatewayError(say("asr_job_lost"), status=exc.status, code=exc.code) from exc
-                logger.info("asr job %s unknown to the server; submitting again", answer["job_id"])
-                answer, resubmitted = resubmit(), True
-            elif exc.status is not None and exc.status != 429 and exc.status < 500:
-                raise
-            elif time.monotonic() - last_answer_at >= _ASR_JOB_UNREACHABLE_SECONDS:
-                minutes = max(1, round(_ASR_JOB_UNREACHABLE_SECONDS / 60))
-                raise GatewayError(say("asr_job_unreachable", minutes=minutes), code="asr_job_unreachable") from exc
-            else:
-                logger.info("asr job %s poll failed (status=%s); trying again", answer["job_id"], exc.status)
-                continue
-        last_answer_at = time.monotonic()
+    resubmitted = False
+
+    def forgotten(exc: GatewayError) -> dict[str, Any]:
+        nonlocal resubmitted
+        if resubmitted:
+            raise GatewayError(say("asr_job_lost"), status=exc.status, code=exc.code) from exc
+        logger.info("asr job unknown to the server; submitting again")
+        resubmitted = True
+        return resubmit()
+
+    polling = _JobPolling(
+        kind="asr",
+        jobs_path=ASR_JOBS_PATH,
+        poll_timeout=_ASR_JOB_POLL_TIMEOUT_SECONDS,
+        poll_gaps=_ASR_JOB_POLL_GAP_SECONDS,
+        unreachable_seconds=_ASR_JOB_UNREACHABLE_SECONDS,
+        failure_path=ASR_TRANSCRIBE_PATH,
+    )
+    return _await_job(submitted, polling, started=started, deadline=started + min(timeout, budget), on_not_found=forgotten)
 
 
 def _number(value: Any, default: float) -> float:
@@ -1164,16 +1267,176 @@ def _number(value: Any, default: float) -> float:
     return number if math.isfinite(number) and number > 0 else float(default)
 
 
-def _asr_job_failure(answer: dict[str, Any]) -> GatewayError:
-    """The error the synchronous endpoint would have raised for this job, read through
-    the same mapping, so ``asr_no_speech`` / 402 / 503 wording stays one code path."""
+def _job_failure(answer: dict[str, Any], path: str) -> GatewayError:
+    """The error the synchronous endpoint at ``path`` would have raised for this job,
+    read through the same mapping, so its wording (``asr_no_speech``, 402, a video
+    leg's 503) stays one code path."""
     error = answer.get("error") if isinstance(answer.get("error"), dict) else {}
     status = error.get("status_code")
     response = httpx.Response(
         status if isinstance(status, int) and status >= 400 else 502,
         json={"detail": error.get("detail")},
     )
-    return _error_from_response(response, credential_source(), path=ASR_TRANSCRIBE_PATH)
+    return _error_from_response(response, credential_source(), path=path)
+
+
+# ---------------------------------------------------------------------------
+# 视频生成：提交任务再轮询(hc-1000,hc-978 的视频后续票)
+# ---------------------------------------------------------------------------
+
+# Outcomes after which the job may still be running or finished on the platform: the
+# call's Idempotency-Key is kept, so the same call again gets that job back.
+_VIDEO_OUTCOME_UNKNOWN = frozenset({"video_job_unreachable", "video_job_overdue"})
+
+
+def generate_video(payload: dict[str, Any], *, call_args: dict[str, Any], timeout: float) -> dict[str, Any]:
+    """Generate one clip as a gateway job; the answer is /video/generate's body
+    (``{"data", "cost_cents"}``), with ``recovered: true`` when it is the clip an earlier
+    identical call left behind.
+
+    ``call_args`` are the tool arguments as the agent gave them (before input images are
+    uploaded): an identical call while an earlier one's end is unknown reuses that
+    call's Idempotency-Key. ``timeout`` is the tool's whole budget."""
+    fingerprint = hashlib.sha256(
+        json.dumps(call_args, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
+    ).hexdigest()
+    key, earlier = _video_call_key(fingerprint)
+    if key is None:
+        # An identical call is running in this process right now: this one is its own
+        # generation, as two calls always were, and leaves no record behind.
+        return _run_video_job(payload, uuid.uuid4().hex, timeout=timeout)[1]
+    try:
+        submitted, answer = _run_video_job(payload, key, timeout=timeout)
+    except GatewayError as exc:
+        _end_video_call(fingerprint, keep=exc.code in _VIDEO_OUTCOME_UNKNOWN)
+        raise
+    except BaseException:
+        _end_video_call(fingerprint, keep=True)
+        raise
+    _end_video_call(fingerprint, keep=False)
+    if earlier and submitted.get("reused"):
+        answer = {**answer, "recovered": True}
+    return answer
+
+
+def _run_video_job(payload: dict[str, Any], key: str, *, timeout: float) -> tuple[dict[str, Any], dict[str, Any]]:
+    """``(submit answer, final answer)``. An old gateway without /video/jobs answers
+    404/405 and gets today's synchronous call."""
+    started = time.monotonic()
+    try:
+        submitted = _submit_video_job(payload, key)
+    except GatewayError as exc:
+        if exc.status not in (404, 405):
+            raise
+        logger.info("video jobs endpoint missing (status=%s); using the synchronous call", exc.status)
+        answer = request_json("POST", VIDEO_GENERATE_PATH, payload, timeout=timeout)
+        return answer, answer
+
+    def lost(exc: GatewayError) -> dict[str, Any]:
+        # Not submitted again on our own: a job that finished just before the restart
+        # was billed, and a second render bills again. The agent decides.
+        raise GatewayError(say("video_job_lost"), status=exc.status, code=exc.code) from exc
+
+    polling = _JobPolling(
+        kind="video",
+        jobs_path=VIDEO_JOBS_PATH,
+        poll_timeout=_VIDEO_JOB_POLL_TIMEOUT_SECONDS,
+        poll_gaps=_VIDEO_JOB_POLL_GAP_SECONDS,
+        unreachable_seconds=_VIDEO_JOB_UNREACHABLE_SECONDS,
+        failure_path=VIDEO_GENERATE_PATH,
+    )
+    deadline = started + max(_VIDEO_JOB_POLL_TIMEOUT_SECONDS, timeout - _VIDEO_JOB_DOWNLOAD_ROOM_SECONDS)
+    return submitted, _await_job(submitted, polling, started=started, deadline=deadline, on_not_found=lost)
+
+
+def _submit_video_job(payload: dict[str, Any], key: str) -> dict[str, Any]:
+    """POST the job. A submit whose answer did not arrive (network, or 502/503/504 from
+    the way in) is sent again with the same key, which can only ever start one render;
+    only :data:`_VIDEO_JOB_UNREACHABLE_SECONDS` without an answer ends it."""
+    first_try = time.monotonic()
+    while True:
+        try:
+            return request_json(
+                "POST",
+                VIDEO_JOBS_PATH,
+                payload,
+                timeout=_VIDEO_JOB_SUBMIT_TIMEOUT_SECONDS,
+                headers={"Idempotency-Key": key},
+            )
+        except GatewayError as exc:
+            # Anything else is an answer (a refusal, an unreadable body) or a local
+            # problem (no credential): sending it again changes nothing.
+            if exc.code != "network_unreachable" and exc.status not in (502, 503, 504):
+                raise
+            if time.monotonic() - first_try >= _VIDEO_JOB_UNREACHABLE_SECONDS:
+                minutes = max(1, round(_VIDEO_JOB_UNREACHABLE_SECONDS / 60))
+                raise GatewayError(say("video_job_unreachable", minutes=minutes), code="video_job_unreachable") from exc
+            logger.info("video job submit got no answer (status=%s); sending it again", exc.status)
+            time.sleep(_VIDEO_JOB_POLL_GAP_SECONDS[1])
+
+
+def _video_pending_file() -> Path:
+    return media_cache_dir().parent / "apexnodes-video-jobs-pending.json"
+
+
+def _read_video_pending(now: float) -> dict[str, dict[str, Any]]:
+    try:
+        entries = json.loads(_video_pending_file().read_text(encoding="utf-8-sig"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        logger.warning("video pending-call record unreadable; starting a fresh one", exc_info=True)
+        return {}
+    if not isinstance(entries, dict):
+        return {}
+    return {
+        fingerprint: entry
+        for fingerprint, entry in entries.items()
+        if isinstance(entry, dict)
+        and isinstance(entry.get("key"), str)
+        and now - _number(entry.get("at"), 0) < _VIDEO_PENDING_TTL_SECONDS
+    }
+
+
+def _write_video_pending(entries: dict[str, dict[str, Any]]) -> None:
+    path = _video_pending_file()
+    scratch = path.with_suffix(".tmp")
+    try:
+        scratch.write_text(json.dumps(entries), encoding="utf-8")
+        os.replace(scratch, path)
+    except OSError:
+        logger.warning("video pending-call record not saved", exc_info=True)
+
+
+def _video_call_key(fingerprint: str) -> tuple[str | None, bool]:
+    """``(Idempotency-Key, whether an earlier identical call left it)``. Written down
+    before the submit, so a call cut off anywhere (offline, the tool's deadline, the app
+    quitting) leaves it for the next identical call. ``(None, False)`` while an identical
+    call is running in this process: that one owns the record."""
+    with _video_pending_lock:
+        if fingerprint in _video_calls_in_flight:
+            return None, False
+        _video_calls_in_flight.add(fingerprint)
+        now = time.time()
+        entries = _read_video_pending(now)
+        entry = entries.get(fingerprint)
+        if entry is not None:
+            return entry["key"], True
+        key = uuid.uuid4().hex
+        entries[fingerprint] = {"key": key, "at": now}
+        _write_video_pending(entries)
+        return key, False
+
+
+def _end_video_call(fingerprint: str, *, keep: bool) -> None:
+    """The call is over; its key is forgotten unless the job's end is still unknown."""
+    with _video_pending_lock:
+        _video_calls_in_flight.discard(fingerprint)
+        if keep:
+            return
+        entries = _read_video_pending(time.time())
+        if entries.pop(fingerprint, None) is not None:
+            _write_video_pending(entries)
 
 
 def _transcribe_via_direct_upload(
