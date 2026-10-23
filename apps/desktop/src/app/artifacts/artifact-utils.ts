@@ -1,3 +1,4 @@
+import { sessionTitle } from '@/lib/chat-runtime'
 import {
   downloadGatewayMediaFile,
   isArtifactFilePath,
@@ -74,10 +75,6 @@ const PRODUCER_TOOL_ARTIFACT_KEY_RE =
   /^(?:artifact(?:s|_(?:file|image|path|url))?|attachment(?:s|_(?:file|image|path|url))?|download(?:s|_(?:file|path|url))?|(?:audio|image|video)(?:_(?:file|path|url))?|file_path|local_path|media(?:_(?:file|path|url))?|path)$/i
 
 const SCREENSHOT_PATH_RE = /Screenshot path:\s*([^\r\n<>]+)/gi
-
-function artifactSessionTitle(session: SessionInfo): string {
-  return session.title?.trim() || session.preview?.trim() || 'Untitled session'
-}
 
 function normalizeValue(value: string): string {
   return value.trim().replace(/[),.;]+$/, '')
@@ -406,7 +403,7 @@ function collectArtifactsFromMessage(message: SessionMessage, pushValue: (value:
 
 export function collectArtifactsForSession(session: SessionInfo, messages: SessionMessage[]): ArtifactRecord[] {
   const found = new Map<string, ArtifactRecord>()
-  const title = artifactSessionTitle(session)
+  const title = sessionTitle(session)
 
   for (const message of messages) {
     if (message.role !== 'assistant' && message.role !== 'tool') {

@@ -15,6 +15,8 @@ from hermes_state_pidns import persistent_record_pidns_checkable, pid_namespace_
 from agent.skill_commands import AUTO_LOAD_SCAFFOLD_SQL_LIKE, SKILL_EXCERPT_JOINT, SKILL_SCAFFOLD_SQL_LIKE, describe_skill_invocation
 from agent.context_compressor import (LEGACY_SUMMARY_PREFIX, SUMMARY_PREFIX, _MERGED_PRIOR_CONTEXT_HEADER,
     _MERGED_SUMMARY_DELIMITER, _SUMMARY_END_MARKER)
+from agent.attachment_ref_tokens import without_attachment_refs
+from agent.prompt_builder import STEER_DISPLAY_KIND
 
 
 # Persisted title provenance: automatic display labels are not user-selected identities.
@@ -126,8 +128,10 @@ _PREVIEW_MERGED_PRIOR_UNWRAPPED_SQL = (f"CASE WHEN SUBSTR({_PREVIEW_MERGED_PRIOR
 _PREVIEW_FORCE_USER_REMAINDER_SQL = _sql_after_marker(_SUMMARY_END_MARKER)
 
 # Pure compaction rows are ineligible; force-user-leading and merged carriers only when authentic content survives.
-# A display_kind="hidden" row is model-facing scaffolding the gateway never paints; the preview must not paint it either.
-_PREVIEW_ELIGIBLE_SQL = (f"(COALESCE(m.display_kind, '') <> 'hidden'"
+# A typed user row (display_kind hidden, process_complete, internal_notification, model_switch…) is model-facing
+# scaffolding or a runtime notice, not the user's words; the preview is every surface's title fallback, so only an
+# untyped row or a /steer may paint it (``split_user_originated_turn``'s rule).
+_PREVIEW_ELIGIBLE_SQL = (f"(COALESCE(m.display_kind, '') IN ('', {_sql_literal(STEER_DISPLAY_KIND)})"
     f" AND ((NOT {_PREVIEW_STANDALONE_SUMMARY_SQL} AND NOT {_PREVIEW_MERGED_SUMMARY_SQL})"
     f" OR ({_PREVIEW_STANDALONE_SUMMARY_SQL} AND INSTR(m.content, {_sql_literal(_SUMMARY_END_MARKER)}) > 0"
     f" AND LENGTH({_sql_trim_whitespace(_PREVIEW_FORCE_USER_REMAINDER_SQL)}) > 0)"
@@ -153,6 +157,8 @@ def _shape_preview(raw: Any) -> str:
     text = text.replace("\n", " ").replace("\r", " ")
     described = describe_skill_invocation(text)
     text = described if described is not None else text.split(SKILL_EXCERPT_JOINT)[0]
+    # Attachment paths are not the user's words; an image-only opener previews as "" (the client's untitled label).
+    text = without_attachment_refs(text)
     return text[:_PREVIEW_MAX_CHARS] + "..." if len(text) > _PREVIEW_MAX_CHARS else text
 
 

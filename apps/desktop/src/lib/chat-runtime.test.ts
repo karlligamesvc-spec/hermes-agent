@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
+import { setRuntimeI18nLocale } from '@/i18n'
 import type { ChatMessage, ChatMessagePart } from '@/lib/chat-messages'
 import type { ComposerAttachment } from '@/store/composer'
+import type { SessionInfo } from '@/types/hermes'
 
 import {
   attachmentDisplayText,
@@ -11,6 +13,7 @@ import {
   createToolMergeCache,
   messageCreatedAt,
   optimisticAttachmentRef,
+  sessionTitle,
   toRuntimeMessage
 } from './chat-runtime'
 
@@ -237,5 +240,22 @@ describe('coalesceToolOnlyAssistants toolCallId uniqueness', () => {
       .map(part => (part as { toolCallId: string }).toolCallId)
 
     expect(ids).toEqual(['call-a', 'call-b'])
+  })
+})
+
+describe('sessionTitle', () => {
+  const session = (fields: Partial<SessionInfo>) => ({ id: 's1', ...fields }) as SessionInfo
+
+  afterEach(() => setRuntimeI18nLocale('en'))
+
+  it('names an untitled, wordless session in the UI language, never in English copy', () => {
+    setRuntimeI18nLocale('zh')
+
+    expect(sessionTitle(session({ preview: '  ', title: '' }))).toBe('无标题会话')
+    expect(sessionTitle(session({ preview: '把素材剪成一条 vlog', title: null }))).toBe('把素材剪成一条 vlog')
+
+    setRuntimeI18nLocale('en')
+
+    expect(sessionTitle(session({}))).toBe('Untitled session')
   })
 })

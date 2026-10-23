@@ -793,6 +793,9 @@ def _invoke_agent(
         run_kwargs["persist_user_display_metadata"] = display_metadata
     if turn_author and "turn_author" in run_params:
         run_kwargs["turn_author"] = turn_author
+    if isinstance(prompt, str) and "title_user_message" in run_params:
+        # The model input leads with notes the user never typed (attached-image hints, reactions, surface).
+        run_kwargs["title_user_message"] = prompt
     if "prelude" in run_params:
         prelude = _onboarding_prelude(agent, st.history)
         if prelude is not None:

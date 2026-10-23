@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from agent.title_generator import (
     MAX_TITLE_INPUT_CHARS,
     _EXAMPLE_ECHO_REJECT,
+    apply_instant_title,
     build_title_input,
     derive_title,
     generate_title,
@@ -898,3 +899,141 @@ class TestModelSwitchMarkerNotTitleable:
         assert apply_instant_title(db, "sess-1", "南京市秦淮区 小时级天气预报") == (
             "南京市秦淮区 小时级天气预报"
         )
+
+
+def _completion_event(session_id="proc_dde2daa55079"):
+    return {"type": "completion", "session_id": session_id, "command": "ffmpeg -i in.mp4 out.mp4",
+            "exit_code": 0, "output": "done"}
+
+
+def _process_notice(evt):
+    from tools.process_registry_notifications import format_process_notification
+    return format_process_notification(evt)
+
+
+def _cli_tui_batch():
+    from tools.process_registry_notifications import ProcessNotificationBatch
+
+    class _Registry:
+        @staticmethod
+        def is_completion_consumed(_session_id):
+            return False
+
+    events = [_completion_event("proc_a"), _completion_event("proc_b")]
+    return ProcessNotificationBatch(tuple((e, _process_notice(e)) for e in events)).render(_Registry)
+
+
+def _gateway_batch():
+    from gateway.run_notifications import GatewayNotificationsMixin
+    entries = [("x", _completion_event("proc_a"), None), ("y", _completion_event("proc_b"), None)]
+    return GatewayNotificationsMixin._format_coalesced_process_completions(entries)
+
+
+def _truncation_nudge():
+    from agent.conversation_loop import _LENGTH_CONTINUATION_OUTPUT_LIMIT
+    return _LENGTH_CONTINUATION_OUTPUT_LIMIT
+
+
+# Built by the code that injects each notice, so a reworded notice keeps being tested as it ships.
+_RUNTIME_NOTICES = {
+    "process-completion": lambda: _process_notice(_completion_event()),
+    "watch-match": lambda: _process_notice({"type": "watch_match", "session_id": "proc_a", "command": "npm run dev",
+                                            "pattern": "ready", "output": "ready on :3000"}),
+    "watch-disabled": lambda: _process_notice({"type": "watch_disabled",
+                                               "message": "Watch pattern for proc_a disabled after 50 matches"}),
+    "heartbeat": lambda: _process_notice({"type": "heartbeat", "session_id": "proc_a", "seq": 2, "elapsed": 120,
+                                          "interval": 60, "command": "ffmpeg", "output": "frame=100"}),
+    "async-delegation": lambda: _process_notice({"type": "async_delegation", "delegation_id": "d-1",
+                                                 "goal": "Summarize the footage", "status": "completed", "summary": "ok"}),
+    "cli-tui-batch": _cli_tui_batch,
+    "gateway-batch": _gateway_batch,
+    "truncation-nudge": _truncation_nudge,
+}
+
+
+class TestRuntimeNoticesNeverNameASession:
+    """APEX Desktop 0.17.61, 2026-10-22: the opener's instant title collided with an older session's, the model
+    upgrade waited for the turn (custom route) and then failed, and the background-process completion that
+    arrived as the next turn became the sidebar title "[IMPORTANT: Background process…"."""
+
+    @pytest.mark.parametrize("kind", sorted(_RUNTIME_NOTICES))
+    def test_notice_turn_neither_titles_nor_calls_the_model(self, tmp_path, kind):
+        notice = _RUNTIME_NOTICES[kind]()
+        db = SessionDB(tmp_path / "state.db")
+        db.create_session(session_id="sess-1", source="desktop")
+
+        with patch("agent.memory_provider.spawn_context_thread") as thread, \
+             patch("agent.title_generator.call_llm") as call_llm:
+            maybe_auto_title(db, "sess-1", notice, [{"role": "user", "content": notice}])
+
+        assert is_titleable_user_message(notice) is False
+        assert db.get_session_title("sess-1") is None
+        thread.assert_not_called()
+        call_llm.assert_not_called()
+
+    def test_a_skill_invocation_shares_the_envelope_and_still_titles(self):
+        """'[IMPORTANT: The user has invoked…' is the user's /skill request, not a notice."""
+        from agent.skill_commands import _SINGLE_SKILL_INSTRUCTION, _SINGLE_SKILL_MARKER, _SKILL_INVOCATION_PREFIX
+
+        message = (f'{_SKILL_INVOCATION_PREFIX}"short-video" skill, indicating they want you to follow its '
+                   f"instructions. {_SINGLE_SKILL_MARKER}\n\n# short-video\n\nCut footage into a vlog.\n\n"
+                   f"{_SINGLE_SKILL_INSTRUCTION}剪一条上门做饭 vlog")
+
+        assert is_titleable_user_message(message) is True
+        assert derive_title(message) == "/short-video — 剪一条上门做饭 vlog"
+
+    def test_typed_turns_do_not_count_as_questions_but_a_steer_does(self):
+        from agent.title_generator import _is_real_user_turn
+
+        assert not _is_real_user_turn({"role": "user", "content": "check the export", "display_kind": "process_complete"})
+        assert not _is_real_user_turn({"role": "user", "content": "[setup] 剪辑", "display_kind": "hidden"})
+        assert _is_real_user_turn({"role": "user", "content": "先别加字幕", "display_kind": "steer"})
+
+    def test_failed_upgrade_names_the_collided_opener_not_the_notice_that_followed(self, tmp_path):
+        """The incident, replayed with the real store: the only words that may name the session are the
+        user's own, deduplicated with ``#2`` once the model title fails."""
+        from agent import turn_context
+
+        opener = "把 /Users/me/Desktop/微信视频_2026-10-16_17 里的 49 段素材剪成一条 60 秒左右的上门做饭 vlog，发抖音。"
+        db = SessionDB(tmp_path / "state.db")
+        db.create_session(session_id="older", source="desktop")
+        assert apply_instant_title(db, "older", opener)
+        db.create_session(session_id="sess-1", source="desktop")
+        runtime = {"model": "apex-flash", "provider": "custom", "base_url": "https://apex-nodes.com/relay/v1"}
+
+        upgrades = []
+        with patch("agent.memory_provider.spawn_context_thread",
+                   side_effect=lambda target, name, args, kwargs: upgrades.append((target, args, kwargs)) or MagicMock(ident=None)):
+            maybe_auto_title(db, "sess-1", opener, [{"role": "user", "content": opener}], main_runtime=runtime)
+        assert db.get_session_title("sess-1") is None  # the instant stage declined the collision
+        assert len(upgrades) == 1
+
+        agent = MagicMock(platform="desktop", session_id="sess-1", _session_db=db, _session_db_created=True, **runtime)
+        notice = {"role": "user", "content": _RUNTIME_NOTICES["process-completion"](), "display_kind": "process_complete"}
+        turn_context._maybe_title_session_at_turn_start(agent, [{"role": "user", "content": opener}, notice])
+        assert db.get_session_title("sess-1") is None
+
+        target, args, kwargs = upgrades[0]
+        with patch("agent.title_generator.call_llm", side_effect=RuntimeError("Error code: 422")):
+            target(*args, **kwargs)
+        assert db.get_session_title("sess-1") == db.get_session_title("older") + " #2"
+
+
+class TestAttachmentPathsNeverNameASession:
+    """A real 09-24 session was titled "@file:`Desktop/LIU/2026/教育/冯…": the derived title is the first line,
+    and the first line started with the attachment's path."""
+
+    @pytest.mark.parametrize("message, expected", [
+        ("@file:`Desktop/LIU/2026/冯 的IP准备/微信图片_62_138.jpg` 这是一个陕西西安本地的多元升学路径时间表。",
+         "这是一个陕西西安本地的多元升学路径时间表。"),
+        ("这是一个奶茶店，生成一个本地宣传视频\n@image:`/Users/me/Library/Application Support/ApexNodes/IMG_1.jpg`",
+         "这是一个奶茶店，生成一个本地宣传视频"),
+        ("@file:src/app.py:10-20\nfix the null check", "fix the null check"),
+    ])
+    def test_derived_title_skips_attachment_paths(self, message, expected):
+        assert derive_title(message) == expected
+
+    def test_an_image_only_opener_has_nothing_to_title(self):
+        message = "@image:`/Users/me/Library/Application Support/ApexNodes/IMG_1.jpg`"
+        assert is_titleable_user_message(message) is False
+        assert derive_title(message) is None

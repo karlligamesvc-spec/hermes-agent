@@ -207,13 +207,17 @@ def _maybe_title_session_at_turn_start(
         return
     try:
         from agent.message_content import flatten_message_text
-        from agent.title_generator import apply_subagent_title, maybe_auto_title
+        from agent.title_generator import apply_subagent_title, is_synthesized_user_turn, maybe_auto_title
 
         # Turn's user message as text; image-only turns yield "" and are skipped.
         user_text = ""
         title_preview = None
         for msg in reversed(messages or []):
             if isinstance(msg, dict) and msg.get("role") == "user":
+                if is_synthesized_user_turn(msg):
+                    # A process completion, delegation result or widget intent is never the session's name,
+                    # whatever ``title_user_message`` the caller passed (the gateway passes the event text).
+                    return
                 user_text = flatten_message_text(msg.get("content")).strip()
                 metadata = msg.get("display_metadata")
                 if isinstance(metadata, dict) and isinstance(metadata.get("title_preview"), str):

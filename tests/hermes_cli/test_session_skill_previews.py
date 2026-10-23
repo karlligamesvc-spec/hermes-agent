@@ -99,6 +99,52 @@ class TestSkillPreview:
         assert entry["preview"] == "/work — fix the title leak"
 
 
+class TestRuntimeNoticePreview:
+    """The preview is the title fallback, so a typed row (a background-process completion, a widget intent)
+    must not name an untitled session; the first row a person wrote does. A /steer is a person's words."""
+
+    @pytest.mark.parametrize("display_kind", ["process_complete", "internal_notification", "hidden"])
+    def test_typed_first_row_yields_to_the_users_words(self, db, display_kind):
+        db.create_session(session_id="s1", source="desktop", model="m")
+        db.append_message("s1", role="user", content="[IMPORTANT: Background process proc_a completed normally "
+                          "(exit code 0).\nCommand: ffmpeg\nOutput:\ndone]", display_kind=display_kind)
+        db.append_message("s1", role="user", content="把素材剪成一条上门做饭 vlog")
+
+        (row,) = db.list_sessions_rich(limit=10)
+
+        assert row["preview"] == "把素材剪成一条上门做饭 vlog"
+
+    def test_steer_row_is_the_users_words(self, db):
+        db.create_session(session_id="s1", source="desktop", model="m")
+        db.append_message("s1", role="user", content="先别加字幕", display_kind="steer")
+
+        (row,) = db.list_sessions_rich(limit=10)
+
+        assert row["preview"] == "先别加字幕"
+
+
+class TestAttachmentPathPreview:
+    """The preview is every surface's title fallback; a path is never a session's name."""
+
+    def test_caption_then_image_directive_previews_the_caption_only(self, db):
+        db.create_session(session_id="s1", source="desktop", model="m")
+        db.append_message("s1", role="user", content=(
+            "这是一个奶茶店，老板拍了几张图\n"
+            "@image:`/Users/me/Library/Application Support/ApexNodes/composer-images/IMG_6352_d081c2.jpg`"))
+
+        (row,) = db.list_sessions_rich(limit=10)
+
+        assert row["preview"] == "这是一个奶茶店，老板拍了几张图"
+
+    def test_image_only_opener_previews_nothing(self, db):
+        db.create_session(session_id="s1", source="desktop", model="m")
+        db.append_message("s1", role="user", content="@image:`/Users/me/Library/Application Support/IMG_1.jpg`")
+
+        (row,) = db.list_sessions_rich(limit=10)
+
+        assert row["preview"] == ""
+
+
 class TestCompactionPreview:
     def test_literal_marker_text_is_still_a_real_user_preview(self, db):
         message = "[CONTEXT COMPACTION — REFERENCE ONLY] what does this label mean?"
