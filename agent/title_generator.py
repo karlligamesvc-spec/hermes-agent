@@ -15,6 +15,7 @@ import weakref
 from contextlib import suppress
 from typing import Any, Callable, Optional
 
+from agent.attachment_ref_tokens import ATTACHMENT_REF_TOKEN_RE, without_attachment_refs
 from agent.auxiliary_client import call_llm
 from agent.context_compressor import LEGACY_SUMMARY_PREFIX
 from agent.delegation_context import is_dispatcher_owned_worker_context
@@ -277,19 +278,8 @@ def _strip_one_wrapper(text: str) -> str:
     return text
 
 
-# Matches an ``@file:``/``@folder:`` context reference the way the canonical
-# ``agent.context_references`` reference pattern does: an unquoted ``\S+``
-# value, or a backtick/double/single-quoted value (a space-bearing path is
-# written backtick-quoted). Kept local so the titler doesn't import the
-# context-reference machinery (circularity / startup cost) just to detect the
-# attachment-only shape (#92068).
-_QUOTED = r"(?:`[^`\n]+`|\"[^\"\n]+\"|'[^'\n]+')"
-# Mirrors the canonical agent.context_references value shape: a quoted
-# (space-bearing) path may carry a ``:start[-end]`` line-range suffix, and a
-# bare path swallows its own range via ``\S+``.
-_CONTEXT_REFERENCE_TOKEN_RE = re.compile(
-    rf"(?<![\w/])@(?:file|folder):(?:{_QUOTED}(?::\d+(?:-\d+)?)?|\S+)"
-)
+# ``@file:``/``@folder:`` context references and the Desktop's ``@image:`` directive (agent/attachment_ref_tokens.py).
+_CONTEXT_REFERENCE_TOKEN_RE = ATTACHMENT_REF_TOKEN_RE
 
 
 def _attachment_only_opener(message: str) -> bool:
@@ -380,7 +370,8 @@ def derive_title(user_message: str, title_preview: str | None = None) -> Optiona
     # refuse rather than name the session after the truncated path (#92068).
     if not title_preview and _attachment_only_opener(user_message):
         return None
-    line = " ".join(_first_line(build_title_input(user_message, title_preview)).split())
+    # A path is never the name: "@file:`Desktop/…` 这是…" titles from 这是….
+    line = " ".join(_first_line(without_attachment_refs(build_title_input(user_message, title_preview))).split())
     if len(line) > MAX_DERIVED_TITLE_CHARS:
         cut = line[:MAX_DERIVED_TITLE_CHARS]
         space = cut.rfind(" ")

@@ -1017,3 +1017,23 @@ class TestRuntimeNoticesNeverNameASession:
         with patch("agent.title_generator.call_llm", side_effect=RuntimeError("Error code: 422")):
             target(*args, **kwargs)
         assert db.get_session_title("sess-1") == db.get_session_title("older") + " #2"
+
+
+class TestAttachmentPathsNeverNameASession:
+    """A real 09-24 session was titled "@file:`Desktop/LIU/2026/教育/冯…": the derived title is the first line,
+    and the first line started with the attachment's path."""
+
+    @pytest.mark.parametrize("message, expected", [
+        ("@file:`Desktop/LIU/2026/冯 的IP准备/微信图片_62_138.jpg` 这是一个陕西西安本地的多元升学路径时间表。",
+         "这是一个陕西西安本地的多元升学路径时间表。"),
+        ("这是一个奶茶店，生成一个本地宣传视频\n@image:`/Users/me/Library/Application Support/ApexNodes/IMG_1.jpg`",
+         "这是一个奶茶店，生成一个本地宣传视频"),
+        ("@file:src/app.py:10-20\nfix the null check", "fix the null check"),
+    ])
+    def test_derived_title_skips_attachment_paths(self, message, expected):
+        assert derive_title(message) == expected
+
+    def test_an_image_only_opener_has_nothing_to_title(self):
+        message = "@image:`/Users/me/Library/Application Support/ApexNodes/IMG_1.jpg`"
+        assert is_titleable_user_message(message) is False
+        assert derive_title(message) is None
