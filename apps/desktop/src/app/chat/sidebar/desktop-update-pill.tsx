@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import type { DesktopShellUpdateState } from '@/global'
 import { useI18n } from '@/i18n'
+import { useDesktopUpdateCopy } from '@/i18n/desktop-update'
 import { formatEngineDisplayVersion } from '@/lib/engine-display'
 import { CheckCircle2, Download, Loader2 } from '@/lib/icons'
 import { $desktopUpdateProgress, applyDesktopUpdates } from '@/store/desktop-update'
@@ -40,6 +42,21 @@ async function runSilentRuntimeCheck(): Promise<void> {
   } catch {
     // Update discovery remains silent and fail-open in the sidebar.
   }
+}
+
+/** hc-1030: while a requested install waits for idle, say what it waits for. */
+function DesktopUpdateDeferredNote({ shell }: { shell: DesktopShellUpdateState | null }) {
+  const copy = useDesktopUpdateCopy()
+
+  if (!shell?.deferred) {
+    return null
+  }
+
+  return (
+    <span className="p5-update-pill-deferred" data-testid="desktop-update-deferred">
+      {copy.deferred[shell.deferredReason ?? 'active_work']}
+    </span>
+  )
 }
 
 export function DesktopUpdatePill() {
@@ -132,6 +149,7 @@ export function DesktopUpdatePill() {
           <span className="p5-update-pill-text">
             <span className="p5-update-pill-title">{copy.readyTitle}</span>
             <span className="p5-update-pill-notes">{detail}</span>
+            <DesktopUpdateDeferredNote shell={shell} />
           </span>
         </div>
         <Button

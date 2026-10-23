@@ -60,6 +60,23 @@ describe('DesktopUpdatePill', () => {
     expect(screen.getByRole('button').textContent).toContain('Install and restart')
   })
 
+  it('says what a requested install waits for while it is deferred (hc-1030)', () => {
+    $shellUpdate.set({ ...SHELL_UPDATE, deferred: true, deferredReason: 'engine_holders' })
+    render(<DesktopUpdatePill />)
+
+    expect(screen.getByTestId('desktop-update-deferred').textContent).toBe(
+      'Another program is using the APEX engine. The update installs once it exits.'
+    )
+    expect(screen.getByRole('button').textContent).toContain('Install and restart')
+  })
+
+  it('shows no waiting line when the install is not deferred (hc-1030)', () => {
+    $shellUpdate.set({ ...SHELL_UPDATE, deferred: false, deferredReason: null })
+    render(<DesktopUpdatePill />)
+
+    expect(screen.queryByTestId('desktop-update-deferred')).toBeNull()
+  })
+
   it('reuses the same entry for shell download progress and offers no premature action', () => {
     $shellUpdate.set({ ...SHELL_UPDATE, percent: 42.6, phase: 'downloading' })
     render(<DesktopUpdatePill />)

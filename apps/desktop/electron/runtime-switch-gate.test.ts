@@ -72,6 +72,18 @@ describe('preflight', () => {
     await expect(harness({ children: owned, reporters: 1 }).gate.preflight()).resolves.toBeUndefined()
   })
 
+  it('names what each busy answer waits for (hc-1030)', async () => {
+    const owned = [{ exitCode: null, pid: 7, signalCode: null }]
+
+    await expect(harness({ work: [1] }).gate.preflight()).rejects.toMatchObject({ reason: 'active_work' })
+    await expect(harness({ children: owned, reporters: 0 }).gate.preflight()).rejects.toMatchObject({
+      reason: 'activity_unknown'
+    })
+    await expect(harness({ ownership: PREVIOUS_OWNER, owner: true }).gate.prepare('/verified')).rejects.toMatchObject({
+      reason: 'previous_worker'
+    })
+  })
+
   it('only inspects gateways and exempts the live owned backends and the gateways the switch retires', async () => {
     const children = [
       { exitCode: null, pid: 7, signalCode: null },

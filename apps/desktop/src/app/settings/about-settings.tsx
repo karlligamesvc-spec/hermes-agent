@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useI18n } from '@/i18n'
+import { describeDesktopUpdateError, desktopUpdateCopyNow } from '@/i18n/desktop-update'
 import { formatEngineDisplayVersion } from '@/lib/engine-display'
 import { AlertTriangle, Cpu, Loader2, RefreshCw, Sparkles } from '@/lib/icons'
 import { cn } from '@/lib/utils'
@@ -93,7 +94,7 @@ export function EngineUpdateSection({ dialogLayer }: { dialogLayer?: number } = 
   if (checking) {
     statusLine = a.checking
   } else if (shellFailed) {
-    statusLine = shell?.error || a.engineCantReach
+    statusLine = describeDesktopUpdateError(desktopUpdateCopyNow(), shell?.error) || a.engineCantReach
     statusTone = 'error'
   } else if (shellPreparing) {
     statusLine = updateCopy.preparingTitle(shellVersion ?? '')

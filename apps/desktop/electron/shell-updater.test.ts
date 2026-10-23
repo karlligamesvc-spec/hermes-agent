@@ -166,7 +166,47 @@ test('a deferred install never hands off a different version downloaded meanwhil
     busy = false
     await waitUntil(() => h.updater.getState().phase === 'error')
     assert.equal(h.updater.getState().error, 'shell_target_changed')
+    assert.equal(h.updater.getState().deferred, false, 'a failed retry no longer claims to wait')
     assert.deepEqual(h.autoUpdater.installCalls, [], 'the user asked for 0.17.57, not whatever is downloaded now')
+  } finally { h.updater.dispose() }
+})
+
+test('a deferred install logs what it waits for once per reason and tells the renderer (hc-1030)', async () => {
+  const holders = { 1347: { name: 'python3.12', ppid: 1, exe: '/u/.apexnodes/hermes-agent/venv/bin/python3.12', argv: [] } }
+  let busy: Error | null = Object.assign(new RuntimeUpdateBusy('Waiting for engine workers: 1347', 'engine_holders'), { idleProof: { holders } })
+  let preflights = 0
+  const h = harness({ beforeInstall: async () => {
+    preflights += 1
+    if (busy) {throw busy}
+  }, installRetryMs: 10 })
+  const deferrals = () => h.logs.filter(line => line.startsWith('[shell-update] install deferred'))
+  try {
+    h.autoUpdater.emit('update-downloaded', { version: '0.17.62' })
+    assert.deepEqual(await h.ipcMain.invoke('hermes:shell-update:install'), { ok: true, deferred: true })
+    assert.equal(h.updater.getState().deferredReason, 'engine_holders')
+    assert.equal(h.broadcasts.at(-1).payload.deferredReason, 'engine_holders')
+    await waitUntil(() => preflights >= 3)
+    assert.deepEqual(deferrals(), [
+      '[shell-update] install deferred (version=0.17.62): engine_holders: Waiting for engine workers: 1347 [1347 python3.12 (/u/.apexnodes/hermes-agent/venv/bin/python3.12)]'
+    ], 'retries with the same reason add no lines')
+    busy = new RuntimeUpdateBusy()
+    await waitUntil(() => deferrals().length === 2)
+    assert.equal(deferrals()[1], '[shell-update] install deferred (version=0.17.62): active_work: Waiting for existing APEX work to finish.')
+    assert.equal(h.updater.getState().deferredReason, 'active_work')
+    busy = null
+    await waitUntil(() => h.autoUpdater.installCalls.length === 1)
+    assert.equal(h.updater.getState().deferred, false)
+    assert.equal(h.updater.getState().deferredReason, null)
+  } finally { h.updater.dispose() }
+})
+
+test('a gate failure that is not busy is logged, not only returned (hc-1030)', async () => {
+  const h = harness({ beforeInstall: async () => {throw new Error('identity probe failed')} })
+  try {
+    h.autoUpdater.emit('update-downloaded', { version: '0.17.62' })
+    assert.deepEqual(await h.ipcMain.invoke('hermes:shell-update:install'), { ok: false, error: 'identity probe failed' })
+    assert.ok(h.logs.includes('[shell-update] install blocked before quitAndInstall: identity probe failed'))
+    assert.equal(h.updater.getState().deferred, undefined)
   } finally { h.updater.dispose() }
 })
 

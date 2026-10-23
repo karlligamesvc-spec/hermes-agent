@@ -86,6 +86,15 @@ describe('EngineUpdateSection (hc-591 engine version display)', () => {
     expect(screen.queryByText("You're on the latest version.")).toBeNull()
   })
 
+  it('shows a failed app update check in words instead of the raw network code (hc-1030)', () => {
+    $shellUpdate.set({ error: 'net::ERR_TIMED_OUT', percent: null, phase: 'error', releaseNotes: null, version: null })
+
+    render(<EngineUpdateSection />)
+
+    expect(screen.getByText("Couldn't reach the update server. Check your connection and try again.")).toBeTruthy()
+    expect(screen.queryByText('net::ERR_TIMED_OUT')).toBeNull()
+  })
+
   it('labels the Electron shell version as the app and the managed runtime as the engine', () => {
     $desktopVersion.set({
       appVersion: '0.17.24',

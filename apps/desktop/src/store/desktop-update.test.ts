@@ -678,12 +678,15 @@ describe('desktop update orchestration', () => {
     })
   })
 
-  it('keeps a shell-only plan and records failure when the running shell is not the frozen target', async () => {
+  it('fetches the frozen shell again instead of failing when the restart did not install it (hc-1030)', async () => {
     const clearPlan = vi.fn(async () => ({ ok: true }))
     const transitionPlan = vi.fn(async () => ({ ok: true }))
+    const check = vi.fn(async () => ({ ok: true, state: { ...SHELL_UPDATE, percent: 12, phase: 'downloading' as const } }))
+    const install = vi.fn(async () => ({ ok: true }))
 
     window.hermesDesktop = {
       getVersion: vi.fn(async () => ({ appVersion: '0.17.14' })),
+      shellUpdate: { check, getState: vi.fn(async () => null), install, onEvent: vi.fn(() => () => {}) },
       updateCenter: {
         clearPlan,
         getPlan: vi.fn(async () => updatePlan({ kind: 'shell-only' })),
@@ -694,11 +697,54 @@ describe('desktop update orchestration', () => {
     await resumeDesktopUpdatePlan({ reload: vi.fn() })
 
     expect(clearPlan).not.toHaveBeenCalled()
-    expect(transitionPlan).toHaveBeenLastCalledWith({
-      lastError: 'shell_target_not_running',
-      phase: 'failed'
+    expect(transitionPlan).toHaveBeenLastCalledWith({ lastError: 'shell_target_redownloading', phase: 'resuming' })
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: false, error: null })
+    expect(check).toHaveBeenCalledTimes(1)
+    expect(install).not.toHaveBeenCalled()
+  })
+
+  it('a plan that only waited for its shell to download again still continues automatically (hc-1030)', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-shell-wait-'))
+    const file = path.join(home, 'plan.json')
+    writeDesktopUpdatePlan(file, updatePlan())
+    transitionDesktopUpdatePlan(file, { incrementAttempt: true, lastError: 'shell_target_redownloading', phase: 'resuming' })
+    let activeKey = 'old'
+
+    const applyUpdate = vi.fn(async () => {
+      activeKey = 'new'
+
+      return { ok: true, applied: true, reloadRequired: false }
     })
-    expect($desktopUpdateProgress.get().error).toBe('shell_target_not_running')
+
+    window.hermesDesktop = {
+      getVersion: async () => ({ appVersion: '0.18.0' }),
+      runtime: {
+        getVersion: async () => ({ ok: true, key: activeKey, version: 'v2026.8.8', treeMatchesMarker: true, updateDeferred: false }),
+        checkUpdate: async () => RUNTIME_UPDATE,
+        applyUpdate
+      },
+      updateCenter: {
+        getPlan: async () => readDesktopUpdatePlan(file),
+        transitionPlan: async (payload: Parameters<typeof transitionDesktopUpdatePlan>[1]) => ({
+          ok: true,
+          plan: transitionDesktopUpdatePlan(file, payload)
+        }),
+        clearPlan: async () => {
+          clearDesktopUpdatePlan(file)
+
+          return { ok: true }
+        }
+      }
+    } as unknown as typeof window.hermesDesktop
+
+    try {
+      await resumeDesktopUpdatePlan({ reload: vi.fn(), automatic: true })
+      expect(applyUpdate).toHaveBeenCalledTimes(1)
+      expect(readDesktopUpdatePlan(file)).toBeNull()
+      expect($desktopUpdateProgress.get()).toMatchObject({ active: false, error: null })
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
   })
 
   it('retries the frozen native shell install instead of looping on readback failure', async () => {

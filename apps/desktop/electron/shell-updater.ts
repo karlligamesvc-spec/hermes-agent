@@ -36,7 +36,7 @@ import {
   STATUS_START,
   STATUS_SUCCESS
 } from './apexnodes-telemetry'
-import { isRuntimeUpdateBusy } from './runtime-update-busy'
+import { isRuntimeUpdateBusy, runtimeUpdateBusyReason, type RuntimeUpdateBusyReason } from './runtime-update-busy'
 
 const SHELL_UPDATE_EVENT_CHANNEL = 'hermes:shell-update:event'
 const SHELL_UPDATE_FEED_BASE = 'https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop'
@@ -66,7 +66,18 @@ function shellUpdateFeedUrl({ base = SHELL_UPDATE_FEED_BASE, platform = process.
 //   disabled → (终态,dev/无 updater)
 //   idle → checking → available → downloading → downloaded(终态,等重启)
 //                   ↘ idle(update-not-available)          ↘ error → checking(下轮)
-function initialState(disabled) {
+interface ShellUpdaterState {
+  phase: string
+  version: null | string
+  percent: null | number
+  error: null | string
+  releaseNotes: null | string
+  // hc-1030: set while a requested install waits for idle, with what it waits for.
+  deferred?: boolean
+  deferredReason?: null | RuntimeUpdateBusyReason
+}
+
+function initialState(disabled): ShellUpdaterState {
   return { phase: disabled ? 'disabled' : 'idle', version: null, percent: null, error: null, releaseNotes: null }
 }
 
@@ -98,6 +109,15 @@ function normalizeReleaseNotes(value) {
   }
 
   return null
+}
+
+// hc-1030: what a deferred install waits for, as one log line. Engine holders
+// carry their process name and executable; the gate has already redacted argv.
+function describeDeferral(error: any): string {
+  const holders = Object.entries(error?.idleProof?.holders ?? {}).map(([pid, detail]: [string, any]) =>
+    `${pid} ${detail?.name || '?'}${detail?.exe ? ` (${detail.exe})` : ''}`)
+
+  return `${runtimeUpdateBusyReason(error)}: ${error?.message || 'busy'}${holders.length ? ` [${holders.join('; ')}]` : ''}`
 }
 
 /**
@@ -172,6 +192,7 @@ function createShellUpdater(options) {
   let disposed = false
   let handoffScheduled = false
   let prepared: { release: () => void } | undefined
+  let lastDeferral: string | null = null
 
   function installWhenIdle() {
     if (installPending) {return installPending}
@@ -187,13 +208,19 @@ function createShellUpdater(options) {
       } catch (error: any) {
         if (!isRuntimeUpdateBusy(error)) {
           requestedVersion = null
+          lastDeferral = null
+          log(`[shell-update] install blocked before quitAndInstall: ${error?.message || String(error)}`)
           return { ok: false, error: error?.message || String(error) }
         }
-        setState({ deferred: true })
+        // hc-1030: say why once per change of reason, not on every retry.
+        const deferral = describeDeferral(error)
+        if (deferral !== lastDeferral) {log(`[shell-update] install deferred (version=${state.version || '?'}): ${deferral}`)}
+        lastDeferral = deferral
+        setState({ deferred: true, deferredReason: runtimeUpdateBusyReason(error) })
         clearTimeout(retryInstall)
         retryInstall = setTimeout(() => {
           void installWhenIdle().then(result => {
-            if (!result.ok && !disposed) {setState({ phase: 'error', error: result.error })}
+            if (!result.ok && !disposed) {setState({ phase: 'error', error: result.error, deferred: false, deferredReason: null })}
           })
         }, installRetryMs)
         retryInstall.unref?.()
@@ -202,7 +229,8 @@ function createShellUpdater(options) {
       if (disposed) {prepared?.release(); prepared = undefined; return { ok: false, error: 'disposed' }}
       clearTimeout(retryInstall)
       handoffScheduled = true
-      setState({ deferred: false })
+      lastDeferral = null
+      setState({ deferred: false, deferredReason: null })
       log(`[shell-update] verified idle; quitAndInstall requested (version=${state.version || '?'})`)
       fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'shell_update_apply', status: STATUS_START })
       setImmediate(() => {
@@ -333,8 +361,9 @@ function createShellUpdater(options) {
         handoffScheduled = false
         requestedVersion = null
         clearTimeout(retryInstall)
+        lastDeferral = null
         const message = (error && error.message) || String(error)
-        setState({ phase: 'error', error: message })
+        setState({ phase: 'error', error: message, deferred: false, deferredReason: null })
         log(`[shell-update] error (silent): ${message}`)
         // hc-473: covers BOTH a check failure and a download failure — the
         // underlying autoUpdater API collapses both into this one 'error'
