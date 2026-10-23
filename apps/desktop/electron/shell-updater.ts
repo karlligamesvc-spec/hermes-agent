@@ -36,7 +36,7 @@ import {
   STATUS_START,
   STATUS_SUCCESS
 } from './apexnodes-telemetry'
-import { isRuntimeUpdateBusy, runtimeUpdateBusyReason } from './runtime-update-busy'
+import { isRuntimeUpdateBusy, runtimeUpdateBusyReason, type RuntimeUpdateBusyReason } from './runtime-update-busy'
 
 const SHELL_UPDATE_EVENT_CHANNEL = 'hermes:shell-update:event'
 const SHELL_UPDATE_FEED_BASE = 'https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop'
@@ -66,7 +66,18 @@ function shellUpdateFeedUrl({ base = SHELL_UPDATE_FEED_BASE, platform = process.
 //   disabled → (终态,dev/无 updater)
 //   idle → checking → available → downloading → downloaded(终态,等重启)
 //                   ↘ idle(update-not-available)          ↘ error → checking(下轮)
-function initialState(disabled) {
+interface ShellUpdaterState {
+  phase: string
+  version: null | string
+  percent: null | number
+  error: null | string
+  releaseNotes: null | string
+  // hc-1030: set while a requested install waits for idle, with what it waits for.
+  deferred?: boolean
+  deferredReason?: null | RuntimeUpdateBusyReason
+}
+
+function initialState(disabled): ShellUpdaterState {
   return { phase: disabled ? 'disabled' : 'idle', version: null, percent: null, error: null, releaseNotes: null }
 }
 
