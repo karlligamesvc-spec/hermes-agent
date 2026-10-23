@@ -4,6 +4,7 @@ import type { ModelOptionsResult } from '@hermes/shared'
 import type { QuickModelOption } from '@/app/chat/composer/types'
 import type { ClientSessionState } from '@/app/types'
 import { formatRefValue } from '@/components/assistant-ui/directive-text'
+import { translateNow } from '@/i18n'
 import { type ChatMessage, type ChatMessagePart, chatMessageText, textPart } from '@/lib/chat-messages'
 import { normalize } from '@/lib/text'
 import type { ComposerAttachment } from '@/store/composer'
@@ -48,8 +49,10 @@ export function createClientSessionState(
   }
 }
 
+/** A session's name: its stored title, else the first thing the user said, else a localized
+ *  "untitled" — never English copy in a Chinese UI, never runtime text. */
 export function sessionTitle(session: SessionInfo): string {
-  return session.title?.trim() || session.preview?.trim() || 'Untitled session'
+  return session.title?.trim() || session.preview?.trim() || translateNow('sidebar.row.untitledPlaceholder')
 }
 
 /** What a session is called before it has been sent — and before its composer

@@ -529,6 +529,32 @@ def test_prologue_leaves_cron_runs_untitled():
     assert not agent._session_db.set_auto_title.called
 
 
+@pytest.mark.parametrize("display_kind", ["process_complete", "async_delegation_complete", "internal_notification",
+                                          "auto_continue", "hidden"])
+def test_prologue_never_titles_from_a_synthesized_turn(display_kind):
+    """A turn the runtime or a widget wrote carries its transcript type; it is never the session's name, even
+    when its text reads like a request and the caller passes it as ``title_user_message`` (the gateway passes
+    the event text). Typed by the producers, not recognized by wording, so a reworded notice stays out too."""
+    from agent import turn_context
+
+    with patch("agent.title_generator.maybe_auto_title") as titler:
+        turn_context._maybe_title_session_at_turn_start(
+            _TitlingAgent("desktop"),
+            [{"role": "user", "content": "Fix the login button", "display_kind": display_kind}],
+            "Fix the login button",
+        )
+    assert not titler.called
+
+
+def test_prologue_titles_a_steer_like_typed_input():
+    from agent import turn_context
+
+    with patch("agent.title_generator.maybe_auto_title") as titler:
+        turn_context._maybe_title_session_at_turn_start(
+            _TitlingAgent("desktop"), [{"role": "user", "content": "Fix the login button", "display_kind": "steer"}])
+    assert titler.called
+
+
 def test_prologue_forwards_the_submit_title_preview_to_the_titler():
     """A paste-shrunk ``display_metadata.title_preview`` from prompt.submit is the text the
     titler should read, not the full pasted body."""

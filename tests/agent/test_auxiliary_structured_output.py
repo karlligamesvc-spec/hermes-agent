@@ -137,3 +137,43 @@ def test_rejection_memo_is_per_model_and_ignores_schema_validation_errors():
     after = _build_call_kwargs("openai", "gpt-5-mini", messages,
                                extra_body={"response_format": dict(_JSON_SCHEMA)}, base_url="https://api.openai.com/v1")
     assert after["extra_body"]["response_format"] == _JSON_SCHEMA  # ... but never feeds the memo
+
+
+# The APEX relay's answer when a DeepSeek-routed tier (apex-flash/pro/max) gets ``json_schema`` (apex-nodes
+# api-relay ``_deepseek_response_format_rejection``), as the OpenAI SDK stringifies it. Its earlier wording
+# ("supports response_format text or json_object") matched no rejection rule, so every session title failed.
+_APEX_RELAY_422 = ("Error code: 422 - {'detail': \"response_format type 'json_schema' is not supported by DeepSeek "
+                   "Chat (supported: text, json_object); this format requires another model\"}")
+
+
+class _Rejects422(Exception):
+    status_code = 422
+
+
+def test_title_on_a_deepseek_tier_behind_the_apex_relay_degrades_to_prompt_json_once(monkeypatch):
+    from unittest.mock import patch
+
+    from agent.title_generator import generate_title
+
+    monkeypatch.setattr(structured_output, "_REJECTED_ROUTES", set())
+    relay = "https://apex-nodes.com/relay/v1"
+    client = MagicMock(base_url=relay)
+    sent = []
+
+    def create(**kwargs):
+        sent.append(kwargs)
+        if "response_format" in (kwargs.get("extra_body") or {}):
+            raise _Rejects422(_APEX_RELAY_422)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content='{"title": "上门做饭 vlog 剪辑"}', reasoning_content=None, reasoning=None))])
+
+    client.chat.completions.create.side_effect = create
+    with patch("agent.auxiliary_client._resolve_task_provider_model",
+               return_value=("custom", "apex-flash", relay, "sk-x", None)), \
+         patch("agent.auxiliary_client._get_cached_client", return_value=(client, "apex-flash")), \
+         patch("agent.auxiliary_client._validate_llm_response", side_effect=lambda resp, _task, **_kw: resp):
+        assert generate_title("把素材剪成一条上门做饭 vlog") == "上门做饭 vlog 剪辑"
+        assert generate_title("再出一版竖屏") == "上门做饭 vlog 剪辑"
+
+    # First title: rejected, retried without the field. Second: the relay+model is remembered, one request.
+    assert [("response_format" in (k.get("extra_body") or {})) for k in sent] == [True, False, False]

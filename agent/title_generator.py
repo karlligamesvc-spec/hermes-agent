@@ -19,6 +19,7 @@ from agent.auxiliary_client import call_llm
 from agent.context_compressor import LEGACY_SUMMARY_PREFIX
 from agent.delegation_context import is_dispatcher_owned_worker_context
 from agent.message_content import flatten_message_text
+from agent.prompt_builder import STEER_DISPLAY_KIND
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +143,14 @@ _MACHINE_PREFIXES = (
     # question.
     "[System: The active model for this chat has changed to ",
 )
+
+# Envelopes of the notices the runtime injects as ``role="user"`` turns: process completions, watch
+# events, heartbeats and their batches, async delegation results, MCP reloads (``CONTROL_FRAME_OPENERS``
+# in agent/prompt_builder.py lists the first two as Hermes control frames). A /skill scaffold opens with
+# "[IMPORTANT: The user has invoked…" too, but ``describe_skill_invocation`` recognizes it and it is the
+# user's request. A session titled after one of these is named after our machinery: a background-process
+# completion became "[IMPORTANT: Background process…" in the APEX Desktop sidebar (2026-10-22).
+_RUNTIME_NOTICE_ENVELOPES = ("[IMPORTANT:", "[ASYNC DELEGATION", "[Background process ")
 
 
 def _title_config() -> dict:
@@ -291,6 +300,30 @@ def _attachment_only_opener(message: str) -> bool:
     return not residual.strip()
 
 
+def _is_runtime_notice(user_message: str) -> bool:
+    """A runtime notice or recovery nudge, not something a person typed: the notice envelopes above, plus
+    the scaffolding the compressor already refuses to treat as the user's words (truncation and empty-reply
+    nudges, the todo snapshot, compaction continuations — ``_is_real_user_message``)."""
+    if user_message.lstrip().startswith(_RUNTIME_NOTICE_ENVELOPES):
+        try:
+            from agent.skill_commands import describe_skill_invocation
+            return describe_skill_invocation(user_message) is None
+        except Exception:
+            logger.debug("Skill-scaffolding check failed; treating the envelope as a notice", exc_info=True)
+            return True
+    from agent.conversation_compression import _is_real_user_message
+    return not _is_real_user_message({"role": "user", "content": user_message})
+
+
+def is_synthesized_user_turn(message: Any) -> bool:
+    """A user-role row the runtime or a UI widget wrote: it carries its transcript type (``process_complete``,
+    ``async_delegation_complete``, ``hidden``…). A /steer is typed for the renderer but is the user's words."""
+    if not isinstance(message, dict):
+        return False
+    display_kind = message.get("display_kind")
+    return bool(display_kind) and display_kind != STEER_DISPLAY_KIND
+
+
 def _summarize_user_message(user_message: str) -> str:
     """Text worth titling: describe a ``/skill`` invocation (it embeds the whole skill body), then strip wrappers."""
     if not user_message:
@@ -333,6 +366,7 @@ def build_title_input(user_message: str, title_preview: str | None = None) -> st
 def is_titleable_user_message(user_message: str) -> bool:
     """False for machine-authored openers and turns that reduce to nothing once scaffolding is stripped."""
     return (isinstance(user_message, str) and bool(user_message.strip()) and not user_message.lstrip().startswith(_MACHINE_PREFIXES)
+            and not _is_runtime_notice(user_message)
             and bool(_summarize_user_message(user_message).strip())
             # An attachment-only opener (manual attach, no paste preview) is a
             # file drop, not a request: deriving its "title" from the message
@@ -694,7 +728,7 @@ def auto_title_session(
 
 def _is_real_user_turn(message: Any) -> bool:
     """A question a person actually asked (Hermes persists machinery under ``role="user"``)."""
-    if not isinstance(message, dict) or message.get("role") != "user":
+    if not isinstance(message, dict) or message.get("role") != "user" or is_synthesized_user_turn(message):
         return False
     content = message.get("content")
     return is_titleable_user_message(content if isinstance(content, str) else flatten_message_text(content))
