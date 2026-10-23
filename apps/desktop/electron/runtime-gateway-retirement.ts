@@ -150,7 +150,7 @@ export async function retirePackagedGateways(activeRoot: string, verifiedRoot: s
     cwd: os.tmpdir(), windowsHide: true, timeout: 45_000, maxBuffer: 64 * 1024,
     env: { ...inherited, ...buildDesktopBackendEnv({ runtimeRoot: verifiedRoot, hermesHome, venvRoot: path.join(verifiedRoot, 'venv'), pythonPathEntries: [verifiedRoot], currentEnv: inherited }), PYTHONDONTWRITEBYTECODE: '1', HERMES_DISABLE_LAZY_INSTALLS: '1' }
   }).catch(error => {
-    if (String(error.stderr).includes('APEX_RUNTIME_UPDATE_BUSY')) {throw new RuntimeUpdateBusy()}
+    if (String(error.stderr).includes('APEX_RUNTIME_UPDATE_BUSY')) {throw new RuntimeUpdateBusy('Waiting for the messaging gateway to finish its turns.', 'gateway_busy')}
     throw error
   })
 

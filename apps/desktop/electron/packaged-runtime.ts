@@ -366,7 +366,7 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
     const idleProof = { ownedProbePid, workerPid: result.workerPid as number, rawHolderPids: result.holders as number[], holderPids: holderPids as number[], holders }
 
     if (holderPids.length) {
-      throw Object.assign(new RuntimeUpdateBusy(`Waiting for engine workers: ${holderPids.join(', ')}`), { idleProof })
+      throw Object.assign(new RuntimeUpdateBusy(`Waiting for engine workers: ${holderPids.join(', ')}`, 'engine_holders'), { idleProof })
     }
 
     return idleProof

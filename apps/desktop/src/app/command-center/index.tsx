@@ -14,6 +14,7 @@ import { getActionStatus, getLogs, getStatus, getUsageAnalytics, restartGateway 
 import type { ActionStatusResponse, AnalyticsResponse, StatusResponse } from '@/hermes'
 import { type SessionInfo } from "@/hermes"
 import { useI18n } from '@/i18n'
+import { describeDesktopUpdateError, desktopUpdateCopyNow } from '@/i18n/desktop-update'
 import { sessionTitle } from '@/lib/chat-runtime'
 import {
   Activity,
@@ -343,7 +344,7 @@ export function CommandCenterView({ initialSection, onClose, onDeleteSession, on
       const shellPreparing = next.shell?.phase === 'available' || next.shell?.phase === 'downloading'
 
       if (next.shell?.phase === 'error' && !runtimeReady) {
-        setSystemError(next.shell.error || cc.desktopUpdateCheckFailed)
+        setSystemError(describeDesktopUpdateError(desktopUpdateCopyNow(), next.shell.error) || cc.desktopUpdateCheckFailed)
 
         return
       }

@@ -96,7 +96,8 @@ describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restorat
     })
     try {
       const view = render(<DesktopInstallOverlay />)
-      await screen.findAllByText('owned overlay failure')
+      // hc-1030: an engine message reads as the generic sentence; the raw text stays as the code.
+      await screen.findByText('Error code: owned overlay failure')
       expect(applyUpdate).toHaveBeenCalledTimes(1)
       view.rerender(<DesktopInstallOverlay enabled={false} />)
       view.rerender(<DesktopInstallOverlay enabled />)
@@ -164,6 +165,33 @@ describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restorat
       expect(screen.getByText('Restart APEX')).toBeTruthy()
       expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('63')
       expect(screen.getByText('512 MB / 1.0 GB')).toBeTruthy()
+    } finally {
+      desktop.restore()
+    }
+  })
+
+  it('says what a known update code means and keeps the code underneath (hc-1030)', async () => {
+    const desktop = stubDesktop()
+
+    try {
+      $desktopUpdateProgress.set({
+        active: false,
+        completedStages: ['check'],
+        currentStage: null,
+        error: 'shell_update_not_ready',
+        runtimeProgress: null,
+        stages: ['check', 'shell', 'restart'],
+        targetVersion: '0.18.0'
+      })
+
+      render(<DesktopInstallOverlay />)
+      await act(async () => {})
+
+      expect(
+        screen.getAllByText('The new version is still downloading. The sidebar offers "Install and restart" once it is ready.')
+      ).not.toHaveLength(0)
+      expect(screen.getByText('Error code: shell_update_not_ready')).toBeTruthy()
+      expect(screen.queryByText('shell_update_not_ready')).toBeNull()
     } finally {
       desktop.restore()
     }

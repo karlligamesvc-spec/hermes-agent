@@ -46,7 +46,8 @@ test.each([true, false])('a busy gateway defers the update (inspectOnly=%s)', as
   scriptExits('Traceback (most recent call last):\nRuntimeError: APEX_RUNTIME_UPDATE_BUSY\n')
 
   await expect(retirePackagedGateways(activeRoot, activeRoot, activeRoot, inspectOnly)).rejects.toMatchObject({
-    code: 'runtime_update_busy'
+    code: 'runtime_update_busy',
+    reason: 'gateway_busy'
   })
 })
 

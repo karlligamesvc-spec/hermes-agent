@@ -54,7 +54,7 @@ export function createRuntimeSwitchGate<Fence extends UpdateFence>(deps: Runtime
       .map(child => child.pid!)
 
     if (ownedBackendPids.length && work.reporters === 0) {
-      throw new RuntimeUpdateBusy('Waiting for Desktop activity state.')
+      throw new RuntimeUpdateBusy('Waiting for Desktop activity state.', 'activity_unknown')
     }
 
     await deps.reapOrphanedBackends()
@@ -93,7 +93,7 @@ export function createRuntimeSwitchGate<Fence extends UpdateFence>(deps: Runtime
 
       for (const entry of ownership.entries) {
         if ((await deps.identityMatches(entry)) !== false) {
-          throw new RuntimeUpdateBusy('Waiting for a previous Desktop engine worker.')
+          throw new RuntimeUpdateBusy('Waiting for a previous Desktop engine worker.', 'previous_worker')
         }
       }
 

@@ -58,6 +58,7 @@ test('a busy proof names each holder without the secrets in its argv', async () 
 
   expect(isRuntimeUpdateBusy(failure)).toBe(true)
   expect(failure.message).toBe('Waiting for engine workers: 4242, 4343, 4444')
+  expect(failure.reason).toBe('engine_holders')
   expect(failure.idleProof).toEqual({
     ownedProbePid: 900,
     workerPid: 901,

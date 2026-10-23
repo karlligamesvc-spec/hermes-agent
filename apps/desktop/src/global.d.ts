@@ -2534,8 +2534,17 @@ export interface DesktopRuntimeUpdateProgress {
 export type DesktopShellUpdatePhase =
   'available' | 'checking' | 'disabled' | 'downloaded' | 'downloading' | 'error' | 'idle'
 
+/** hc-1030: what a requested shell install waits for (electron/runtime-update-busy.ts). */
+export type DesktopShellUpdateDeferralReason =
+  | 'active_work'
+  | 'activity_unknown'
+  | 'engine_holders'
+  | 'gateway_busy'
+  | 'previous_worker'
+
 export interface DesktopShellUpdateState {
   deferred?: boolean
+  deferredReason?: DesktopShellUpdateDeferralReason | null
   phase: DesktopShellUpdatePhase
   // electron-updater 的裸 semver(如 0.16.1);idle/checking 阶段为 null。
   version: string | null

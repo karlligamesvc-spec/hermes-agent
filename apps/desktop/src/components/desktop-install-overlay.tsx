@@ -16,6 +16,7 @@ import type {
   DesktopBootstrapUpdateInfo
 } from '@/global'
 import { useI18n } from '@/i18n'
+import { describeDesktopUpdateError, useDesktopUpdateCopy } from '@/i18n/desktop-update'
 import { formatEngineDisplayVersion } from '@/lib/engine-display'
 import { ChevronDown, ChevronRight, iconSize } from '@/lib/icons'
 import { cn } from '@/lib/utils'
@@ -293,7 +294,10 @@ function formatUpdateBytes(bytes: number): string {
 function DesktopUpdateProgressCard({ now, progress }: { now: number; progress: DesktopUpdateProgress }) {
   const { t } = useI18n()
   const copy = t.install
+  const updateCopy = useDesktopUpdateCopy()
   const failed = Boolean(progress.error)
+  // hc-1030: a sentence for the code; the raw code stays underneath for support.
+  const errorText = describeDesktopUpdateError(updateCopy, progress.error)
   const failedStage = progress.stages.find(stage => !progress.completedStages.includes(stage)) ?? null
 
   const targetVersion = progress.targetVersion
@@ -336,7 +340,7 @@ function DesktopUpdateProgressCard({ now, progress }: { now: number; progress: D
       durationMs: null,
       startedAt: null,
       json: null,
-      error: state === 'failed' ? progress.error : null
+      error: state === 'failed' ? errorText : null
     }
   }
 
@@ -387,7 +391,8 @@ function DesktopUpdateProgressCard({ now, progress }: { now: number; progress: D
               <ErrorIcon className="mt-0.5 shrink-0" size="1rem" />
               <div className="min-w-0">
                 <div className="font-medium text-destructive">{copy.error}</div>
-                <p className="mt-0.5 whitespace-pre-wrap break-words text-foreground/90">{progress.error}</p>
+                <p className="mt-0.5 whitespace-pre-wrap break-words text-foreground/90">{errorText}</p>
+                <p className="mt-1 break-all text-xs text-muted-foreground">{updateCopy.errorCode(progress.error)}</p>
               </div>
             </div>
           ) : null}

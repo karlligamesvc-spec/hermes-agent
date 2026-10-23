@@ -173,9 +173,14 @@ function runtimeTargetChanged(runtime: DesktopRuntimeUpdateCheck, plan: DesktopU
   )
 }
 
-/** A plan that already failed or ran is not resumed automatically again, unless it only waited for a busy engine. */
+/** hc-1030: the restart did not install the planned shell; the same target is being fetched again. */
+const SHELL_TARGET_REDOWNLOADING = 'shell_target_redownloading'
+
+/** A plan that already failed or ran is not resumed automatically again, unless it only waited (busy engine, shell fetched again). */
 function automaticRetrySpent(plan: DesktopUpdatePlan): boolean {
-  return plan.lastError !== 'runtime_update_busy' && (plan.attempts > 0 || plan.phase === 'failed')
+  const waited = plan.lastError === 'runtime_update_busy' || plan.lastError === SHELL_TARGET_REDOWNLOADING
+
+  return !waited && (plan.attempts > 0 || plan.phase === 'failed')
 }
 
 /** The plan's frozen shell is downloaded but not running yet. */
@@ -394,7 +399,14 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
 
       if (!shellMeetsPlan(runningDesktop?.appVersion, plan.targetShellVersion)) {
         if (!plannedShellDownloaded(plan)) {
-          throw new Error('shell_target_not_running')
+          // hc-1030: this restart did not run the installer (a deferred install, an early
+          // quit, a failed hand-off) and the new process has not fetched the target yet.
+          // Fetch it now and let the update entry offer it again instead of failing.
+          await transitionPlanSafely({ lastError: SHELL_TARGET_REDOWNLOADING, phase: 'resuming' })
+          setProgress({ active: false, currentStage: null, error: null })
+          void checkShellUpdate().catch(() => {})
+
+          return
         }
 
         // Ask for the downloaded target shell again; its install waits for idle.
