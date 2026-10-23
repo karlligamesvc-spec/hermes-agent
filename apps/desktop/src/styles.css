@@ -3119,6 +3119,14 @@ button.p5-update-pill:not(:disabled):hover {
   white-space: nowrap;
 }
 
+/* hc-1030: what a requested install waits for. It wraps instead of
+   truncating like the lines above: a cut-off reason is no reason. */
+.p5-update-pill-deferred {
+  color: var(--ui-text-secondary);
+  font-size: 0.6875rem;
+  line-height: 1.3;
+}
+
 /* Ready-state icon flips from the neutral status blue chip to a green
    "downloaded, sitting there" cue. */
 .p5-update-pill-icon--ready {

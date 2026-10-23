@@ -53,7 +53,7 @@ function DesktopUpdateDeferredNote({ shell }: { shell: DesktopShellUpdateState |
   }
 
   return (
-    <span className="p5-update-pill-notes" data-testid="desktop-update-deferred">
+    <span className="p5-update-pill-deferred" data-testid="desktop-update-deferred">
       {copy.deferred[shell.deferredReason ?? 'active_work']}
     </span>
   )
