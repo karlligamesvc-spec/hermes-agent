@@ -37,6 +37,7 @@ import {
   STATUS_SUCCESS
 } from './apexnodes-telemetry'
 import { isRuntimeUpdateBusy, runtimeUpdateBusyReason, type RuntimeUpdateBusyReason } from './runtime-update-busy'
+import { prepareDifferentialBase } from './shell-update-diff-base'
 
 const SHELL_UPDATE_EVENT_CHANNEL = 'hermes:shell-update:event'
 const SHELL_UPDATE_FEED_BASE = 'https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop'
@@ -139,6 +140,8 @@ function describeDeferral(error: any): string {
  *   函数,缺省真实 apexnodes-telemetry.cjs;测试传假件截获事件。
  * @param {string|null} [options.appVersion] 当前壳版本(app.getVersion());
  *   缺省 null——遥测里的 app_version 字段本就是可选的。
+ * @param {Function} [options.prepareDiffBase] hc-1058 每次检查前核对差分旧包与
+ *   blockmap 是否配对，缺省 shell-update-diff-base.ts;测试可替换。
  */
 function createShellUpdater(options) {
   const {
@@ -155,7 +158,8 @@ function createShellUpdater(options) {
     sendTelemetry = sendDesktopTelemetry,
     appVersion = null,
     beforeInstall = async () => {},
-    installRetryMs = 15_000
+    installRetryMs = 15_000,
+    prepareDiffBase = prepareDifferentialBase
   } = options
 
   const disabled = !isPackaged || !autoUpdater
@@ -383,9 +387,27 @@ function createShellUpdater(options) {
     autoUpdater.on(event, handler)
   }
 
+  // hc-1058: prove the cached old package and its blockmap belong together
+  // before electron-updater plans a differential download from them. A failure
+  // here only costs the saving, never the update.
+  async function prepareCachedDiffBase() {
+    try {
+      const cacheDir = (await autoUpdater.getOrCreateDownloadHelper?.())?.cacheDir
+
+      if (!cacheDir) {return}
+      const { disableDifferential } = await prepareDiffBase({ cacheDir, platform, arch, appVersion, feedUrl, log })
+
+      autoUpdater.disableDifferentialDownload = disableDifferential
+    } catch (error: any) {
+      log(`[shell-update] diff base check failed (ignored): ${error?.message || String(error)}`)
+    }
+  }
+
   async function checkNow() {
     if (requestedVersion) {return { ok: true }}
     try {
+      await prepareCachedDiffBase()
+
       const result = await autoUpdater.checkForUpdates()
 
       // autoDownload: electron-updater returns the download as result.downloadPromise and rethrows
