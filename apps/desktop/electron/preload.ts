@@ -441,6 +441,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     getVersion: () => ipcRenderer.invoke('hermes:runtime:version'),
     checkUpdate: () => ipcRenderer.invoke('hermes:runtime:check-update'),
     applyUpdate: expectedTarget => ipcRenderer.invoke('hermes:runtime:apply-update', expectedTarget),
+    // hc-1033: install the engine this app ships, from the About page's kept-back notice.
+    switchToBundledEngine: () => ipcRenderer.invoke('hermes:runtime:switch-to-bundled-engine'),
     onUpdateProgress: callback => {
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('hermes:runtime-update:progress', listener)

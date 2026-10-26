@@ -21,7 +21,8 @@ vi.mock('@/store/runtime-update', async () => {
     $runtimeVersion: atom<DesktopRuntimeVersion | null>(null),
     applyRuntimeUpdate: () => applyRuntimeUpdateMock(),
     checkRuntimeUpdate: () => checkRuntimeUpdateMock(),
-    loadRuntimeVersion: () => loadRuntimeVersionMock()
+    loadRuntimeVersion: () => loadRuntimeVersionMock(),
+    switchToBundledEngine: async () => ({ ok: false, error: 'unsupported' })
   }
 })
 
@@ -49,6 +50,14 @@ afterEach(() => {
 })
 
 describe('EngineUpdateSection (hc-591 engine version display)', () => {
+  it('hc-1033: says when the engine did not update with the app', () => {
+    $runtimeVersion.set({ ok: true, version: null, commit: null, branch: null, key: null, keptBack: { reason: 'newer-or-unknown', bundledVersion: 'v2026.10.23-fork.a2e1a4b5' } })
+
+    render(<EngineUpdateSection />)
+
+    expect(screen.getByTestId('engine-kept-back-banner').textContent).toContain('Engine 2026.10.23')
+  })
+
   it('keeps an unchecked update state honest instead of claiming latest', () => {
     render(<EngineUpdateSection />)
 
