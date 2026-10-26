@@ -62,8 +62,22 @@ describe('创作档案 settings (hc-991)', () => {
     expect((screen.getByLabelText('其他（自己写）') as HTMLInputElement).value).toBe('宠物日常')
     expect(screen.getByRole('button', { name: '抖音' }).getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByRole('button', { name: '视频号' }).getAttribute('aria-pressed')).toBe('false')
-    expect(screen.getByRole('combobox', { name: s.painPoint }).textContent).toContain('没流量')
+    expect(screen.getByRole('combobox', { name: s.painPoint }).textContent).toContain('拍了没人看')
     expect(englishWords(readableText(container))).toEqual([])
+  })
+
+  // hc-1063: the same wording as the first-open cards in the conversation (prototype v2).
+  it.each([
+    ['no_topic', '不知道拍什么'],
+    ['no_traffic', '拍了没人看'],
+    ['no_editing', '剪辑太费时间'],
+    ['no_script', '不会写文案'],
+    ['no_shooting', '不会拍']
+  ] as const)('names the hardest part %s in the prototype’s words: %s', async (painPoint, label) => {
+    install(async () => ({ ok: true, profile: { ...DONE, answers: { ...DONE.answers, painPoint } } }))
+    renderSettings()
+
+    expect((await screen.findByRole('combobox', { name: s.painPoint })).textContent).toBe(label)
   })
 
   it('a platform toggle saves the whole list in the cards’ order', async () => {

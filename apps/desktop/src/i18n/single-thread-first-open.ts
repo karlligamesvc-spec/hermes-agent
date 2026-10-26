@@ -7,11 +7,12 @@
  * Its own file so the parallel prototype tickets do not edit the same lines of
  * single-thread-chat.ts, and because the main catalogs are at their size cap.
  * Each locale is a whole typed object; zh, zh-hant and en are complete, ja and
- * ar read en. The option labels of the content-type card stay the hc-991 ones
- * (creator-intake-copy.ts), which Settings › 个性化 also shows.
+ * ar read en. The option labels are the hc-991 ones (creator-intake-copy.ts),
+ * which the Start page cards and Settings › 个性化 show too: one wording per
+ * answer everywhere.
  */
 
-import type { DesktopCreatorIntakeStep, DesktopCreatorPainPoint } from '@/global'
+import type { DesktopCreatorIntakeStep } from '@/global'
 
 import { useI18n } from './context'
 import type { Locale } from './types'
@@ -25,8 +26,6 @@ export interface SingleThreadFirstOpenCopy {
   questions: Record<DesktopCreatorIntakeStep, string>
   /** The platform card's one-tap answer for both of the two big platforms. */
   douyinAndXiaohongshu: string
-  /** In the prototype's words; the ids are the cloud's (DesktopCreatorPainPoint). */
-  painPoints: Record<DesktopCreatorPainPoint, string>
   otherPlaceholder: string
   /** APEX's line after the content-type answer. */
   contentTypeAck: (answer: string) => string
@@ -56,13 +55,6 @@ const en: SingleThreadFirstOpenCopy = {
     pain_point: 'What’s the hardest part right now?'
   },
   douyinAndXiaohongshu: 'Both Douyin and Xiaohongshu',
-  painPoints: {
-    no_topic: 'Not knowing what to shoot',
-    no_traffic: 'Nobody watches',
-    no_editing: 'Editing takes too long',
-    no_script: 'Writing the script',
-    no_shooting: 'Shooting it'
-  },
   otherPlaceholder: 'Something else (type it)',
   contentTypeAck: answer => `${answer}, got it.`,
   lastQuestion: 'OK, last one.',
@@ -92,13 +84,6 @@ const zh: SingleThreadFirstOpenCopy = {
     pain_point: '现在最头疼的是？'
   },
   douyinAndXiaohongshu: '抖音和小红书都发',
-  painPoints: {
-    no_topic: '不知道拍什么',
-    no_traffic: '拍了没人看',
-    no_editing: '剪辑太费时间',
-    no_script: '不会写文案',
-    no_shooting: '不会拍'
-  },
   otherPlaceholder: '其他（自己写）',
   contentTypeAck: answer => `${answer}，懂了。`,
   lastQuestion: '好，最后一个。',
@@ -128,13 +113,6 @@ const zhHant: SingleThreadFirstOpenCopy = {
     pain_point: '現在最頭痛的是？'
   },
   douyinAndXiaohongshu: '抖音和小紅書都發',
-  painPoints: {
-    no_topic: '不知道拍什麼',
-    no_traffic: '拍了沒人看',
-    no_editing: '剪輯太費時間',
-    no_script: '不會寫文案',
-    no_shooting: '不會拍'
-  },
   otherPlaceholder: '其他（自己寫）',
   contentTypeAck: answer => `${answer}，懂了。`,
   lastQuestion: '好，最後一個。',

@@ -94,7 +94,7 @@ function optionsFor(step: DesktopCreatorIntakeStep, { copy, intake }: Labels): O
     }))
   }
 
-  return FIRST_OPEN_PAIN_POINTS.map(id => ({ id, label: copy.painPoints[id], patch: { painPoint: id } }))
+  return FIRST_OPEN_PAIN_POINTS.map(id => ({ id, label: intake.painPoints[id], patch: { painPoint: id } }))
 }
 
 function answered(step: DesktopCreatorIntakeStep, answers: Answers): boolean {
