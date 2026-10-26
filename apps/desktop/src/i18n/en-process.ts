@@ -27,7 +27,7 @@ const each = (verb: string, one: string, single: string, many?: string) => (fact
   facts.calls > 1 ? `${verb} ${n(facts.calls, one, many)}` : single
 
 const publicData = (facts: StepFacts) => (facts.platform ? `Public data on ${facts.platform}` : 'Public platform data')
-const douyinIndex = () => "Douyin's official trend data (Juliang Suanshu)"
+const douyinIndex = () => "Juliang Suanshu trend data, via a third-party data service"
 
 const KANBAN: Record<string, [string, string]> = {
   kanban_attach: ['Attaching a file to the task', 'Attach file'],
@@ -111,7 +111,7 @@ export const enProcess: ProcessCopy = {
       'Finding creators',
       'Find creators',
       found('creator'),
-      () => "Douyin's official creator directory"
+      () => "Juliang Suanshu creator directory, via a third-party data service"
     ),
     social_keyword_insight: step(
       'Checking how hot the keyword is',

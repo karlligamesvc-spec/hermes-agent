@@ -163,7 +163,7 @@ INSIGHT_SCHEMAS: dict[str, dict[str, Any]] = {
     "social_keyword_insight": {
         "name": "social_keyword_insight",
         "description": (
-            "抖音官方（巨量算数）关键词洞察：一个题材/关键词现在热不热、趋势往哪走、有哪些关联长尾词、"
+            "巨量算数（字节跳动的指数平台，数据经第三方数据服务 TikHub 获取）关键词洞察：一个题材/关键词现在热不热、趋势往哪走、有哪些关联长尾词、"
             "当前有哪些实时热点。找选题、判断题材热度时用这个，而不是用 social_search 抓几条样本去猜。"
             "focus 选择要哪一面：trend=热度日趋势(默认)｜overview=一句话水位概览｜related=关联词/长尾选题｜"
             "hot_topics=实时热点榜(不传关键词时的默认)｜topic=某个热点的详情(topic 必须逐字来自 hot_topics)。"
@@ -171,7 +171,7 @@ INSIGHT_SCHEMAS: dict[str, dict[str, Any]] = {
         "parameters": {
             "type": "object",
             "properties": {
-                "platform": {"type": "string", "description": "目前仅 douyin（巨量算数是抖音官方数据）。"},
+                "platform": {"type": "string", "description": "目前仅 douyin（巨量算数是字节跳动的指数平台；数据经 TikHub 转接，不是直连抖音）。"},
                 "keyword": {"type": "string", "description": "要看的关键词，例如「猫粮」。"},
                 "keyword_list": {"type": "string", "description": "多个关键词做对比，英文逗号分隔，例如「猫粮,狗粮」。"},
                 "focus": {"type": "string", "description": "trend | overview | related | hot_topics | topic"},
@@ -185,7 +185,7 @@ INSIGHT_SCHEMAS: dict[str, dict[str, Any]] = {
     "social_audience": {
         "name": "social_audience",
         "description": (
-            "抖音官方（巨量算数）人群画像：某个题材/关键词的受众是谁 —— 年龄、性别、地域、兴趣等维度的"
+            "巨量算数（数据经 TikHub 获取）人群画像：某个题材/关键词的受众是谁 —— 年龄、性别、地域、兴趣等维度的"
             "占比与 TGI 偏好强度。回答「谁在看/谁在买」时用。注意这是**题材的人群**，不是某个账号的粉丝。"
         ),
         "parameters": {
@@ -202,7 +202,7 @@ INSIGHT_SCHEMAS: dict[str, dict[str, Any]] = {
     "social_creator_discovery": {
         "name": "social_creator_discovery",
         "description": (
-            "按关键词找达人/对标账号（抖音官方达人库）：返回候选达人的名字、粉丝数、点赞总数、作品数、"
+            "按关键词找达人/对标账号（巨量算数达人库，数据经 TikHub 获取）：返回候选达人的名字、粉丝数、点赞总数、作品数、"
             "垂类标签与主页链接。用户说「帮我找几个对标账号」「这个品类谁在做」但**给不出链接**时用这个；"
             "已经有账号链接/ID 时用 social_profile 或 social_posts。"
         ),

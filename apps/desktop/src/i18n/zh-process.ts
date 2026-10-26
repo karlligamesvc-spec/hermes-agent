@@ -25,7 +25,7 @@ const each = (verb: string, unit: string, single: string) => (facts: StepFacts) 
   facts.calls > 1 ? `${verb} ${facts.calls} ${unit}` : single
 
 const publicData = (facts: StepFacts) => `来源：${facts.platform ?? '平台'}上的公开数据。`
-const douyinIndex = () => '来源：巨量算数（抖音官方数据）。'
+const douyinIndex = () => '来源：巨量算数，经第三方数据服务获取。'
 
 const tenths = (value: number) => String(Math.round(value * 10) / 10)
 
@@ -102,7 +102,7 @@ export const zhProcess: ProcessCopy = {
       facts => (facts.count && facts.count > 1 ? `看了 ${facts.count} 条作品` : '看过了'),
       publicData
     ),
-    social_creator_discovery: step('正在找博主', '找博主', found('位博主'), () => '来源：抖音官方达人库。'),
+    social_creator_discovery: step('正在找博主', '找博主', found('位博主'), () => '来源：巨量算数达人库，经第三方数据服务获取。'),
     social_keyword_insight: step(
       '正在看关键词热度',
       '看关键词热度',

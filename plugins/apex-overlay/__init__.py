@@ -83,6 +83,12 @@ _CONTEXT_SEAMS = (
         "register (see prior warning). With desktop_features.single_thread "
         "on, answers may name tools, skills and models again.",
     ),
+    (
+        "honesty_prompt",
+        "apex-overlay: hc-1036 evidence and delivery honesty section did "
+        "not register (see prior warning). Desktop sessions will not carry "
+        "the evidence levels, the provenance rule or the no-unasked-switch rule.",
+    ),
 )
 
 
