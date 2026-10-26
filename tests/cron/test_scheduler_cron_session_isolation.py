@@ -41,7 +41,7 @@ class _FakeCronAgent:
         assert isinstance(task_id, str)
         assert task_id.startswith("cron:ctx-isolation:")
         result = approval_module.check_execute_code_guard(
-            "import os; print(1)", "local"
+            "import os; os.listdir('.')", "local"
         )
         assert result["approved"] is False
         assert result["outcome"] == "blocked"
@@ -151,8 +151,9 @@ def test_run_job_cron_execute_code_deny_does_not_pollute_later_gateway_execute_c
     monkeypatch.setenv("HERMES_GATEWAY_SESSION", "1")
     try:
         _register_gateway_auto_approve(session_key)
+        # hc-1034: imports and prints alone are a read-only probe that skips the prompt.
         result = approval_module.check_execute_code_guard(
-            "import os; print(2)", "local"
+            "import os; os.listdir('.')", "local"
         )
         assert result["approved"] is True
         assert result.get("user_approved") is True
