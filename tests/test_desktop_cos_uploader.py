@@ -131,6 +131,7 @@ def test_cli_transport_failover_keeps_service_and_public_size_gates(tmp_path, mo
         stable = [{k:v for k,v in upload.items() if k != 'progress_callback'} for upload in uploads]
         assert stable[0] == stable[1] and uploads[0]['EnableMD5']
         assert all(c.get('Domain') is None for c in configurations)
+        assert all(c.get('Endpoint') == 'cos.accelerate.myqcloud.com' for c in configurations)
         assert all(c['Scheme'] == 'https' and c['AutoSwitchDomainOnRetry'] for c in configurations)
     assert 'credential-redline-test-value' not in ''.join(capsys.readouterr())
 
