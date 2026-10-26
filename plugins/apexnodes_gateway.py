@@ -98,6 +98,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from collections.abc import Callable
@@ -1805,7 +1806,7 @@ def guess_media_content_type(path: Path | str) -> str:
 # ---------------------------------------------------------------------------
 #
 # 两个出片插件共用这一份。``source`` 是之前结果里的 ``image_ref``(``media:…``)、平台签发
-# 的图片链接、本机文件(对话里 [Image attached at: …] 的路径)或别的图片链接：句柄和平台
+# 的图片链接、本机文件(对话里 [Image attached at: …] 或 @image:`…` 的路径)或别的图片链接：句柄和平台
 # 链接原样交，本机文件和外链先上传(网关腿 /tools/v1/media/reference-upload,legacy 腿
 # /media/reference-upload),交回传回来的 ``image_ref``。任何一张图用不了，整次调用报错，
 # 绝不改成不带图的请求(那会按文生出片)。服务端没在 check 里声明 ``input_images.supported``
@@ -1907,9 +1908,31 @@ def legacy_upload_input_image(api_base: str, data: bytes, filename: str, index: 
     return _uploaded_ref(answer, index)
 
 
+# hc-939: a chat attachment as the conversation shows it. The APEX Desktop composer writes
+# ``@image:`<path>``` (``@file:`` for a dragged file), the runtime's hint reads
+# ``[Image attached at: <path>]``, a link may be ``file://``: a token copied whole still
+# names its file instead of failing as a missing one.
+_ATTACHMENT_RE = re.compile(r"^(?:\[Image attached at:\s*(?P<hint>.+?)\s*\]|@(?:image|file):(?P<token>.+))$", re.DOTALL)
+
+
+def attachment_path(source: str) -> str:
+    """The file a chat attachment token names; any other source as it is."""
+    match = _ATTACHMENT_RE.match(source)
+    if match:
+        source = (match.group("hint") or match.group("token")).strip()
+        if len(source) >= 2 and source[0] == source[-1] and source[0] in "`\"'":
+            source = source[1:-1]
+    if source.lower().startswith("file://"):
+        source = urllib.parse.unquote(urllib.parse.urlsplit(source).path)
+        if re.match(r"^/[A-Za-z]:/", source):
+            source = source[1:]
+    return source
+
+
 def _input_image_source(
     source: str, index: int, *, upload: Callable[[bytes, str, int], str], server_paths: bool
 ) -> dict[str, str]:
+    source = attachment_path(source)
     if source.startswith("media:"):
         return {"ref": source}
     if source.lower().startswith(("http://", "https://")):
@@ -1929,7 +1952,9 @@ def _input_image_source(
     if server_paths:
         # Not a file here: a master path from an earlier result; the platform checks it is ours.
         return {"path": source}
-    raise InputImageError(say("input_image_missing", index=index, source=source[:120]))
+    # The tail names the file; a long folder path is what gets cut.
+    shown = source if len(source) <= 120 else "…" + source[-119:]
+    raise InputImageError(say("input_image_missing", index=index, source=shown))
 
 
 def input_images(
