@@ -91,12 +91,13 @@ def main() -> int:
     # SDK exception logging may include signed headers. Keep diagnostics below
     # limited to classes and the owned object key.
     logging.getLogger('qcloud_cos').setLevel(logging.CRITICAL)
-    # The classic route previously uploaded 64/65 large-file parts from CI.
-    # The forced backup route passed HK canaries but completed zero CI parts.
-    # Let the SDK switch official domains only when a request actually fails.
+    # Bucket acceleration was enabled on 2026-10-26. Hosted runners enter COS
+    # near their region; public verification still uses the consumer's BASE URL.
+    # Each worker keeps the existing bounded multipart retries.
     for attempt in range(1, 3):
         client = CosS3Client(CosConfig(
             Region=REGION, SecretId=identity, SecretKey=secret,
+            Endpoint='cos.accelerate.myqcloud.com',
             Scheme='https', Timeout=60,
             AutoSwitchDomainOnRetry=True,
         ))
