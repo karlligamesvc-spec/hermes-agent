@@ -1,0 +1,67 @@
+/*
+ * hc-1064 G2: the APEX avatar's three motions, copied unchanged from
+ * 「APEX 极简助手原型 v2」 (ax-eye, ax-look, ax-talk). Under reduced motion it
+ * holds still and keeps only its pose.
+ */
+
+@keyframes apex-avatar-blink {
+  0%,
+  90%,
+  100% {
+    transform: scaleY(1);
+  }
+
+  95% {
+    transform: scaleY(0.15);
+  }
+}
+
+@keyframes apex-avatar-look {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  30% {
+    transform: translate(-1px, 1px);
+  }
+
+  70% {
+    transform: translate(1px, 1px);
+  }
+}
+
+@keyframes apex-avatar-talk {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.apex-avatar rect {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.apex-avatar[data-apex-avatar='idle'] rect {
+  animation: apex-avatar-blink 4.5s infinite;
+}
+
+.apex-avatar[data-apex-avatar='working'] rect {
+  animation: apex-avatar-look 1.4s ease-in-out infinite;
+}
+
+.apex-avatar[data-apex-avatar='talking'] {
+  animation: apex-avatar-talk 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .apex-avatar,
+  .apex-avatar rect {
+    animation: none;
+  }
+}

@@ -3,8 +3,8 @@
 import { useAuiState } from '@assistant-ui/react'
 import type { FC } from 'react'
 
+import { ApexAvatar } from '@/components/apex-avatar'
 import { useStatusHint, useThreadSessionStatus } from '@/components/assistant-ui/thread/status'
-import { BrandMark } from '@/components/brand-mark'
 import { SCAFFOLD_GLYPH_CLASS, SCAFFOLD_META_CLASS } from '@/components/chat/scaffold-row'
 import { useI18n } from '@/i18n'
 import { useSingleThreadCopy } from '@/i18n/single-thread'
@@ -31,11 +31,12 @@ import { turnBounds, useTurnView } from './turn-state'
  *
  * Kael 2026-10-21 (decision 6): one line of status, and 「看过程」 under the
  * result. While the turn runs, its work is one activity line at the foot of the
- * conversation, the way Grok Bot and Muse show it: APEX's mark and what it is
- * doing now (「正在识别语音… 第 2 步」), 「等你决定」 while a question or an
- * approval waits. Once it is done the answer stands alone, with
- * 「用时 2 分 10 秒 · 看过程」 under it opening the same plain-language steps
- * and sources as the process block. Thoughts are not shown.
+ * conversation, the way Grok Bot and Muse show it: APEX's avatar, looking down
+ * at the work (hc-1064), and what it is doing now (「正在识别语音… 第 2 步」),
+ * 「等你决定」 while a question or an approval waits. Once it is done the answer
+ * stands alone, with 「用时 2 分 10 秒 · 看过程」 under it opening the same
+ * plain-language steps and sources as the process block. Thoughts are not
+ * shown.
  *
  * What protects the user stays: an approval bar for a command hangs off the
  * activity line exactly as it hangs off the process line, a stuck task keeps
@@ -79,7 +80,7 @@ export const SingleThreadActivityLine: FC = () => {
   return (
     <div className="grid min-w-0 max-w-full gap-1" data-conversation-scaffold="" data-single-thread-activity="">
       <div aria-label={copy.activity} aria-live="polite" className={ACTIVITY_CLASS} role="status">
-        <BrandMark aria-hidden="true" className="size-5 rounded-full motion-safe:animate-pulse" />
+        <ApexAvatar className="size-[1.375rem]" mood={awaitingInput ? 'idle' : 'working'} />
         <span className={cn('min-w-0 truncate', !awaitingInput && 'shimmer')}>{text}</span>
         {meta.map(item => (
           <span className={cn(SCAFFOLD_META_CLASS, 'text-[length:var(--conversation-caption-font-size)]')} key={item}>
