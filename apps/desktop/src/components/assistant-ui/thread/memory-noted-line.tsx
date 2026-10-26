@@ -1,9 +1,11 @@
 import { useAuiState } from '@assistant-ui/react'
 import { useStore } from '@nanostores/react'
-import { type FC, useEffect, useMemo, useState } from 'react'
+import { type FC, type ReactNode, useEffect, useMemo, useState } from 'react'
 
 import { MEMORY_LEDGER_COPY } from '@/app/memory-ledger/memory-ledger-copy'
 import { useI18n } from '@/i18n'
+import { SINGLE_THREAD_CHAT_COPY } from '@/i18n/single-thread-chat'
+import { Check } from '@/lib/icons'
 import { type MemoryNote, memoryNotesFromParts } from '@/lib/memory-ledger'
 import { $authState } from '@/store/auth'
 import { $memoryLedger, memoryLedgerOn, removeMemory, syncMemoryLedger } from '@/store/memory-ledger'
@@ -12,9 +14,41 @@ import { useSingleThreadMode } from '@/store/single-thread'
 /** Entries already announced to the main process, so a re-render does not re-read the ledger. */
 const refreshedFor = new Set<string>()
 
+/** The undo button on a noted line (prototype v2: the link colour, underlined). */
+export const NOTED_ACTION_CLASS = 'text-primary underline underline-offset-2 hover:text-primary/80 disabled:opacity-60'
+
+/**
+ * One centred system line: 「✓ APEX 记下了：… · 撤销」 (hc-1063, prototype v2).
+ * Shared by the memory notes below and the first-open intake, so both read the
+ * same way.
+ */
+export const NotedLine: FC<{ action?: ReactNode; checked: boolean; children: ReactNode; error?: ReactNode }> = ({
+  action,
+  checked,
+  children,
+  error
+}) => (
+  <p className="max-w-full text-center text-xs leading-5 text-(--ui-text-tertiary)" role="status">
+    {checked && (
+      <Check
+        aria-hidden="true"
+        className="me-1 inline size-3.5 align-[-0.2em] text-emerald-600 dark:text-emerald-400"
+      />
+    )}
+    <span className="wrap-anywhere">{children}</span>
+    {action && (
+      <>
+        <span aria-hidden="true"> · </span>
+        {action}
+      </>
+    )}
+    {error && <span className="block text-destructive">{error}</span>}
+  </p>
+)
+
 /**
  * hc-1016 记得你 v1: one centred line under a reply when the assistant remembered
- * something new this turn — 「记下了：… · 撤销」 (Grok's "Updated memory" line,
+ * something new this turn — 「APEX 记下了：… · 撤销」 (Grok's "Updated memory" line,
  * with Muse's undo). 撤销 deletes the entry from the account's ledger for real.
  * Shows only in single-thread product mode (`$singleThreadMode`); otherwise
  * renders nothing. One line per new entry, each undoable.
@@ -59,6 +93,7 @@ export const MemoryNotedLine: FC = () => {
 const NotedRow: FC<{ accountId: null | string | undefined; note: MemoryNote }> = ({ accountId, note }) => {
   const { locale } = useI18n()
   const copy = MEMORY_LEDGER_COPY[locale].noted
+  const name = SINGLE_THREAD_CHAT_COPY[locale].assistantName
   const [state, setState] = useState<'failed' | 'noted' | 'undoing' | 'undone'>('noted')
 
   const undo = async () => {
@@ -67,22 +102,23 @@ const NotedRow: FC<{ accountId: null | string | undefined; note: MemoryNote }> =
   }
 
   return (
-    <p className="max-w-full text-center text-xs leading-5 text-(--ui-text-tertiary)" role="status">
-      <span className="wrap-anywhere">{state === 'undone' ? copy.undone(note.content) : copy.line(note.content)}</span>
-      {(state === 'noted' || state === 'undoing') && (
-        <>
-          <span aria-hidden="true"> · </span>
+    <NotedLine
+      action={
+        (state === 'noted' || state === 'undoing') && (
           <button
-            className="text-(--ui-text-secondary) underline-offset-2 hover:underline disabled:opacity-60"
+            className={NOTED_ACTION_CLASS}
             disabled={state === 'undoing'}
             onClick={() => void undo()}
             type="button"
           >
             {copy.undo}
           </button>
-        </>
-      )}
-      {state === 'failed' && <span className="block text-destructive">{copy.undoFailed}</span>}
-    </p>
+        )
+      }
+      checked={state !== 'undone'}
+      error={state === 'failed' && copy.undoFailed}
+    >
+      {state === 'undone' ? copy.undone(note.content) : copy.line(note.content, name)}
+    </NotedLine>
   )
 }
