@@ -28,6 +28,9 @@
     路径由运行时的 HERMES_HOME 算出(云端是助手自己的持久卷,桌面端是本机
     ``~/.apexnodes``),模型不用猜。
 
+* ``post_tool_call`` + ``transform_llm_output``(hc-1036):这一轮 generate_video / generate_image
+  花钱生成的文件，回复里没给用户看的，列在正文后面、「下一步」之前(见下面 hc-1036 一节)。
+
 同一份文件逐字节复制在 hermes-agent fork 的 ``plugins/apexnodes-next-steps/``:
 APEX Desktop 的聊天(选题库路径)和本机网关接的 IM(编号)都靠那份。
 apex-nodes ``tests/test_next_steps_block.py`` 在 CI 里比对两份字节相同。
@@ -272,6 +275,93 @@ def _take(session_id: str) -> Optional[list[tuple[str, str]]]:
 def _reset_state() -> None:
     with _state_lock:
         _pending.clear()
+        _paid_outputs.clear()
+
+
+# ---------------------------------------------------------------------------
+# hc-1036:这一轮花钱生成的素材，回复里没给用户看的，补在正文后面(「下一步」之前)
+# ---------------------------------------------------------------------------
+#
+# 这一层是每轮回复的最后一道，运行时只认第一个改写回复的插件，所以清单放在这里，和「下一步」块
+# 一起排版;apexnodes-creator-tips 用 requires_plugins 排在本插件后面。post_tool_call 记下
+# generate_video / generate_image 成功产出的每个文件，transform_llm_output 时回复里没出现它的
+# 路径、文件名或链接，就列出来：桌面端和终端列本机路径，其余出口列链接(没有链接就单独一行 MEDIA:)。
+# 开关：HONESTY_GUARDS_DISABLE=1(和 apexnodes-honesty-tools 的 hc-1036 钩子共用)。
+
+PAID_MEDIA_TOOLS = {"generate_video": ("视频", "Video"), "generate_image": ("图片", "Image")}
+LOCAL_PATH_PLATFORMS = frozenset({"desktop", "cli"})
+MAX_LISTED_OUTPUTS = 20
+UNSHOWN_CHROME = {
+    "zh": "这一轮还生成了下面这些素材(都已计费)，上面没给你看，放在这里：",
+    "en": "This turn also made the files below (already billed); they were not shown above:",
+}
+
+_paid_outputs: OrderedDict[str, list[dict]] = OrderedDict()
+
+
+def _honesty_disabled() -> bool:
+    return (os.getenv("HONESTY_GUARDS_DISABLE") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def paid_outputs(tool_name: str, result: Any) -> list[dict]:
+    """每个成功产出的文件一项：{"tool", "path", "url", "keys"(回复里出现任一个就算给看过)}。"""
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except ValueError:
+            return []
+    if not isinstance(result, dict) or result.get("error") or result.get("ok") is False:
+        return []
+    if isinstance(result.get("data"), dict):
+        result = {**result["data"], **{k: v for k, v in result.items() if k != "data"}}
+    items = [item for item in result.get("images") or [] if isinstance(item, dict)] or [result]
+    outputs = []
+    for item in items:
+        path = str(item.get("video_path") or item.get("image_path") or "").strip()
+        url = str(item.get("video_url") or item.get("image_url") or item.get("video") or item.get("image") or "").strip()
+        tag = str(item.get("media_tag") or "").removeprefix("MEDIA:").strip()
+        keys = {key for key in (path, os.path.basename(path), url, tag) if key}
+        if keys:
+            outputs.append({"tool": tool_name, "path": path or tag, "url": url, "keys": keys})
+    return outputs
+
+
+def _record_paid_outputs(session_id: str, outputs: list[dict]) -> None:
+    with _state_lock:
+        pending = _paid_outputs.pop(session_id, [])
+        _paid_outputs[session_id] = (pending + outputs)[-MAX_LISTED_OUTPUTS * 2 :]
+        while len(_paid_outputs) > _MAX_SESSIONS:
+            _paid_outputs.popitem(last=False)
+
+
+def unshown_media_note(session_id: str, text: str, platform: str) -> str:
+    """把本会话记下的产出取走;回复里没提到的列成一段，都提到了(或没有)返回 ""。"""
+    with _state_lock:
+        outputs = _paid_outputs.pop(session_id, [])
+    unshown = [o for o in outputs if not any(key in text for key in o["keys"])]
+    if not unshown:
+        return ""
+    zh = _has_cjk(text) or not text.strip()
+    lines = [UNSHOWN_CHROME["zh" if zh else "en"]]
+    for output in unshown[:MAX_LISTED_OUTPUTS]:
+        label = PAID_MEDIA_TOOLS[output["tool"]][0 if zh else 1]
+        where = output["path"] or output["url"] if platform in LOCAL_PATH_PLATFORMS else output["url"]
+        # 没有链接的 IM 出口：MEDIA: 单独一行，网关把文件直接发过去。
+        lines.append(f"- {label}{'：' if zh else ': '}{where}" if where else f"- {label}\nMEDIA:{output['path']}")
+    more = len(unshown) - MAX_LISTED_OUTPUTS
+    if more > 0:
+        lines.append(f"- ……还有 {more} 个" if zh else f"- …and {more} more")
+    _log_event("unshown_media", platform=platform, count=len(unshown))
+    return "\n".join(lines)
+
+
+def _before_block(text: str, note: str) -> str:
+    """桌面端块原样留给渲染层：清单放在第一个块前面。"""
+    match = re.search(r"<!--\s*apex:next(?![A-Za-z0-9_])", text)
+    if match is None:
+        return f"{text.rstrip()}\n\n{note}"
+    head = text[: match.start()].rstrip()
+    return f"{head}\n\n{note}\n\n{text[match.start():]}" if head else f"{note}\n\n{text[match.start():]}"
 
 
 def _log_event(event: str, **fields: Any) -> None:
@@ -290,13 +380,17 @@ def _on_transform_llm_output(
     platform: str = "",
     **_: Any,
 ) -> Optional[str]:
-    if not isinstance(response_text, str) or "<!--" not in response_text:
+    if not isinstance(response_text, str):
         return None
+    note = unshown_media_note(session_id, response_text, platform) if session_id and not _honesty_disabled() else ""
+    if "<!--" not in response_text:
+        return f"{response_text.rstrip()}\n\n{note}" if note else None
     if platform in RENDERED_PLATFORMS and not _disabled():
-        return None
+        return _before_block(response_text, note) if note else None
     visible, block = parse_next_steps(response_text)
-    if visible == response_text:
+    if visible == response_text and not note:
         return None
+    visible = "\n\n".join(part for part in (visible, note) if part)
     if _disabled() or platform in NON_INTERACTIVE_PLATFORMS or block is None:
         _log_event("stripped", platform=platform, had_block=block is not None)
         return visible or None
@@ -330,6 +424,17 @@ def _on_pre_llm_call(
     return "\n\n".join(parts) or None
 
 
+def _on_post_tool_call(
+    tool_name: str = "", result: Any = None, status: Any = None, session_id: str = "", **_: Any
+) -> None:
+    if tool_name not in PAID_MEDIA_TOOLS or not session_id or status not in (None, "ok"):
+        return
+    outputs = paid_outputs(tool_name, result)
+    if outputs:
+        _record_paid_outputs(session_id, outputs)
+
+
 def register(ctx) -> None:
     ctx.register_hook("transform_llm_output", _on_transform_llm_output)
     ctx.register_hook("pre_llm_call", _on_pre_llm_call)
+    ctx.register_hook("post_tool_call", _on_post_tool_call)

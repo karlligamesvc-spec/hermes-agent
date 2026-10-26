@@ -18,6 +18,7 @@ this runtime's own machinery, the way APEX Desktop loads it:
 from __future__ import annotations
 
 import importlib.util
+import json
 import logging
 import sys
 import types
@@ -65,7 +66,7 @@ def plugin(monkeypatch, tmp_path, caplog):
     monkeypatch.setattr(plugins_mod, "_plugin_manager", manager)
     module = _load_plugin()
     module._reset_state()
-    manifest = PluginManifest(name="apexnodes-next-steps", version="0.1.0", description="test", source="bundled")
+    manifest = PluginManifest(name="apexnodes-next-steps", version="0.2.0", description="test", source="bundled")
     with caplog.at_level(logging.WARNING, logger="hermes_cli.plugins"):
         module.register(PluginContext(manifest, manager))
     assert "unknown hook" not in caplog.text
@@ -140,6 +141,35 @@ def test_topic_library_path_is_under_this_runtimes_home(plugin, tmp_path):
     path = Path(get_hermes_home()) / "apex" / "选题库.md"
     assert str(path).startswith(str(tmp_path / "home"))
     assert context.startswith(f"【选题库】这位用户的选题库是一个 Markdown 文件：{path}")
+
+
+def test_paid_clips_the_reply_never_showed_are_listed_before_the_block(plugin):
+    """hc-1036: four paid clips made and dropped (2026-10-22). The executor's terminal
+    post_tool_call notes each local file; the Desktop reply then lists them above the block."""
+    from agent.inline_tool_executors import emit_terminal_post_tool_call
+    from agent.turn_finalizer import apply_llm_output_transform
+
+    agent = _agent("desktop", "paid")
+    for n in range(1, 5):
+        path = f"/Users/u/.apexnodes/media/ai{n}.mp4"
+        result = json.dumps({"video_url": f"https://apex-nodes.com/m/v{n}", "video_path": path, "media_tag": f"MEDIA:{path}"})
+        emit_terminal_post_tool_call(
+            agent, function_name="generate_video", function_args={"prompt": "p"}, result=result,
+            effective_task_id="task", tool_call_id=f"c{n}", middleware_trace=[], status="ok", duration_ms=1,
+        )
+    emit_terminal_post_tool_call(
+        agent, function_name="generate_video", function_args={"prompt": "p"},
+        result="Error executing tool 'generate_video': timed out after 420.0s",
+        effective_task_id="task", tool_call_id="c5", middleware_trace=[], status="timeout", duration_ms=420000,
+    )
+    reply = "成片：/Users/u/Desktop/final.mp4\n\n<!-- apex:next\n再剪一版 | 用没用上的素材再剪一版\n-->"
+
+    final, transformed = apply_llm_output_transform(agent, reply, turn_id="t1", platform="desktop")[:2]
+
+    assert transformed is True
+    listed = [line for line in final.splitlines() if line.startswith("- 视频：")]
+    assert listed == [f"- 视频：/Users/u/.apexnodes/media/ai{n}.mp4" for n in range(1, 5)]
+    assert final.index("ai4.mp4") < final.index("<!-- apex:next")
 
 
 def test_desktop_config_example_enables_the_plugin():

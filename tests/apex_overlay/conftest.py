@@ -45,6 +45,8 @@ _SEAM_MODULES = (
     "memory_ledger",
     # hc-1015 how APEX talks in single-thread mode.
     "single_thread_prompt",
+    # hc-1036 evidence levels and delivery honesty in every Desktop session.
+    "honesty_prompt",
 )
 
 

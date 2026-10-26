@@ -579,6 +579,207 @@ def _handle_honesty_verify(args: dict, **_kwargs) -> str:
     return tool_result(**result)
 
 
+# --------------------------------------------------------------------------- #
+# hc-1036 交付诚实：两道钩子，只看工具调用，不改任何工具。规则全文在 honesty-verification 技能里。
+#
+# 1. 证据等级：要写进技能或记忆的内容(skill_manage / memory / 桌面 apex_memory / 云端 IM memory_ledger，以及写进 skills/、
+#    memories/ 目录的 write_file / patch)把资料标成「官方」，或在定义了「✅=官方」的内容里打 ✅，
+#    那一行就得写着本会话真打开过的页面(web_extract / browser_navigate 成功过的网址)，或写明是
+#    用户给的材料;转述(社媒、博主、公众号)打 ✅、说「直连抖音」也不让存。工具结果说清哪几行、怎么改。
+# 2. 不自己换模型：这一轮里 generate_video / generate_image / text_to_speech 已经失败或超时过，
+#    又换了一个这一轮没用过的 model / provider，就拦下，让助手先问用户。同样的设置重试不拦，
+#    用户回了话(新的一轮)再换也不拦。
+# 开关：HONESTY_GUARDS_DISABLE=1 两道都关。
+# --------------------------------------------------------------------------- #
+
+DURABLE_WRITE_TOOLS = frozenset({"skill_manage", "memory", "apex_memory", "memory_ledger"})
+DURABLE_FILE_TOOLS = frozenset({"write_file", "patch"})
+PAGE_OPEN_TOOLS = {"web_extract": ("urls", "url"), "browser_navigate": ("url",)}
+SWITCH_KEYS = {"generate_video": ("model", "provider"), "generate_image": ("model", "provider"), "text_to_speech": ("provider",)}
+SWITCH_LABELS = {"generate_video": "生成视频", "generate_image": "生成图片", "text_to_speech": "配音"}
+FAILED_STATUSES = frozenset({"error", "timeout"})
+
+_TEXT_KEYS = ("content", "new_string", "file_content", "new_text")
+_DURABLE_PATH = re.compile(r"(?:^|[\\/])(?:skills|memories)[\\/]")
+_LEVEL_MARKS = ("✅", "🔶", "⚠️", "❓")
+_OFFICIAL_CLAIM = re.compile(
+    r"官方(?:口径|精确值|精确|数据|发布|公布|通知|文件|原文|确认|方案|规定|标准|统计|时间|日期|来源|渠道|值)"
+    r"|✅\s*官方|[（(【\[]官方[）)】\]]|官方[:：]"
+)
+# 图例(一行里有两种以上标记)或定义(「✅=官方口径」)说明这份内容里 ✅ 就是官方。
+_CHECK_MEANS_OFFICIAL = re.compile(r"✅\s*[=＝:：]?\s*官方")
+_DEFINITION = re.compile(r"✅\s*[=＝:：]")
+_DEFERRAL = re.compile(r"以[^，。；;\n]{0,30}为准")
+_SECOND_HAND = re.compile(r"社媒|转述|转引|博主|笔记|公众号|网友|自媒体|引官方|二手|搜索结果")
+_USER_PROVIDED = re.compile(r"用户(?:提供|给的|发的|上传)|你(?:提供|给|发|上传)的")
+_DIRECT_CLAIM = re.compile(
+    r"直连(?:抖音|小红书|快手|视频号|B站|微博|知乎|TikTok|平台|官方)|直接(?:对|从)抖音(?:发起|拉取|调用|抓取)"
+)
+_URL_HOST = re.compile(r"https?://([^/\s)）】\]>'\"，。；?#]+)")
+_DOMAIN = re.compile(r"(?<![A-Za-z0-9.-])((?:[A-Za-z0-9-]+\.)+(?:cn|com|org|net|gov|edu))(?![A-Za-z0-9-])", re.IGNORECASE)
+_MAX_GUARD_SESSIONS = 512
+_MAX_PROBLEM_LINES = 6
+
+_guard_lock = threading.Lock()
+_guard_sessions: dict[str, dict[str, Any]] = {}
+
+
+def _guards_disabled() -> bool:
+    return (os.getenv("HONESTY_GUARDS_DISABLE") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _guard_session(session_id: str) -> dict[str, Any]:
+    """This session's state, most recent last (callers hold _guard_lock)."""
+    state = _guard_sessions.pop(session_id, None) or {"turn": 0, "pages": set(), "attempts": {}}
+    _guard_sessions[session_id] = state
+    while len(_guard_sessions) > _MAX_GUARD_SESSIONS:
+        _guard_sessions.pop(next(iter(_guard_sessions)))
+    return state
+
+
+def _hosts(text: str) -> set[str]:
+    hosts = {host.strip().lower().split(":")[0] for host in _URL_HOST.findall(text) + _DOMAIN.findall(text)}
+    return {host.removeprefix("www.") for host in hosts}
+
+
+def _is_legend(line: str) -> bool:
+    return sum(mark in line for mark in _LEVEL_MARKS) >= 2 or bool(_DEFINITION.search(line))
+
+
+def _claims_official(line: str, check_means_official: bool) -> bool:
+    for match in _OFFICIAL_CLAIM.finditer(line):
+        start, end = _span(line, match.start(), match.end())
+        if not _DEFERRAL.search(line[start:end]):  # 「以官方通知为准」是提醒，不是说自己是官方
+            return True
+    return check_means_official and "✅" in line
+
+
+def _cites_opened_page(line: str, opened: set[str]) -> bool:
+    return any(h == o or h.endswith("." + o) or o.endswith("." + h) for h in _hosts(line) for o in opened)
+
+
+def evidence_problems(text: str, opened: set[str]) -> list[tuple[str, str]]:
+    """(kind, line) for each line whose evidence level is higher than this session can back."""
+    lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+    check_means_official = any(_is_legend(line) and _CHECK_MEANS_OFFICIAL.search(line) for line in lines)
+    problems = []
+    for line in lines:
+        if _DIRECT_CLAIM.search(line):
+            problems.append(("direct", line))
+        elif _is_legend(line) or _USER_PROVIDED.search(line):
+            continue
+        elif "✅" in line and _SECOND_HAND.search(line):
+            problems.append(("second_hand", line))
+        elif _claims_official(line, check_means_official) and not _cites_opened_page(line, opened):
+            problems.append(("official", line))
+    return problems
+
+
+def evidence_block_message(problems: list[tuple[str, str]], opened: set[str]) -> str:
+    kinds = {kind for kind, _ in problems}
+    parts = ["没存：要写进技能或记忆的内容里，有资料的证据等级写高了。"]
+    if "official" in kinds:
+        seen = f"这次打开过：{'、'.join(sorted(opened)[:5])}" if opened else "这次一个网页都没打开过"
+        parts.append(
+            f"标成「官方」(或按「✅=官方」打了 ✅)的条目，那一行要写着这次真打开过的官方页面的网址({seen})，"
+            "或写明是用户给的材料。搜索结果、博主笔记、机构和自媒体的公众号都是二手，它们自称「官方口径」也一样。"
+        )
+    if "second_hand" in kinds:
+        parts.append("✅ 只给官方原文和一手数据(你自己打开的页面、工具返回的原始数据、用户给的材料);转述的标 🔶 二手。")
+    if "direct" in kinds:
+        parts.append("APEX 拿抖音等平台的数据都经第三方数据服务(TikHub)转接，没有直连平台：写成「经 TikHub 拿到的抖音公开数据」。")
+    parts.append("照实标等级(官方 / 一手 / 二手 / 推测)并写上来源，再存一次;存进技能和记忆时等级不能往高了写。")
+    shown = [f"- {line.lstrip('-*•# ')[:80]}" for _, line in problems[:_MAX_PROBLEM_LINES]]
+    if len(problems) > _MAX_PROBLEM_LINES:
+        shown.append(f"- ……还有 {len(problems) - _MAX_PROBLEM_LINES} 行")
+    return "\n".join(parts) + "\n有问题的行：\n" + "\n".join(shown)
+
+
+def _durable_texts(tool_name: str, args: dict) -> list[str]:
+    if tool_name in DURABLE_FILE_TOOLS and not _DURABLE_PATH.search(str(args.get("path") or args.get("file_path") or "")):
+        return []
+    items = [args] + [op for op in args.get("operations") or [] if isinstance(op, dict)]
+    return [item[key] for item in items for key in _TEXT_KEYS if isinstance(item.get(key), str) and item[key]]
+
+
+def _call_failed(status: Any, result: Any) -> bool:
+    if status:
+        return status in FAILED_STATUSES
+    if isinstance(result, str):
+        if result.startswith("Error executing tool"):
+            return True
+        try:
+            result = json.loads(result)
+        except ValueError:
+            return False
+    return isinstance(result, dict) and bool(result.get("error") or result.get("success") is False or result.get("ok") is False)
+
+
+def _choice(tool_name: str, args: dict) -> tuple[str, ...]:
+    return tuple(str(args.get(key) or "").strip() for key in SWITCH_KEYS[tool_name])
+
+
+def switch_block_message(tool_name: str, failed: tuple[str, ...], wanted: tuple[str, ...]) -> str:
+    def show(choice: tuple[str, ...]) -> str:
+        return "、".join(f"{key}={value}" for key, value in zip(SWITCH_KEYS[tool_name], choice) if value) or "平台默认设置"
+
+    return (
+        f"没执行：这一轮「{SWITCH_LABELS[tool_name]}」用「{show(failed)}」已经失败或超时过，不能自己换成「{show(wanted)}」。"
+        "先告诉用户上次没成功，问他要不要换、换成哪个;他同意了，下一条消息里再换。用同样的设置重试不受这条限制。"
+    )
+
+
+def _switch_block(state: dict[str, Any], tool_name: str, args: dict) -> str | None:
+    choice = _choice(tool_name, args)
+    record = state["attempts"].get(tool_name)
+    if record is None or record["turn"] != state["turn"]:
+        record = state["attempts"][tool_name] = {"turn": state["turn"], "tried": set(), "failed": []}
+    if record["failed"] and choice not in record["tried"]:
+        return switch_block_message(tool_name, record["failed"][-1], choice)
+    record["tried"].add(choice)
+    return None
+
+
+def _on_pre_llm_call(session_id: str = "", **_: Any) -> None:
+    with _guard_lock:
+        _guard_session(session_id or "")["turn"] += 1
+
+
+def _on_pre_tool_call(tool_name: str = "", args: Any = None, session_id: str = "", **_: Any) -> dict | None:
+    if not isinstance(args, dict) or _guards_disabled():
+        return None
+    message = None
+    if tool_name in SWITCH_KEYS:
+        with _guard_lock:
+            message = _switch_block(_guard_session(session_id or ""), tool_name, args)
+    elif tool_name in DURABLE_WRITE_TOOLS or tool_name in DURABLE_FILE_TOOLS:
+        texts = _durable_texts(tool_name, args)
+        if texts:
+            with _guard_lock:
+                opened = set(_guard_session(session_id or "")["pages"])
+            problems = [problem for text in texts for problem in evidence_problems(text, opened)]
+            message = evidence_block_message(problems, opened) if problems else None
+    return {"action": "block", "message": message} if message else None
+
+
+def _on_post_tool_call(
+    tool_name: str = "", args: Any = None, result: Any = None, status: Any = None, session_id: str = "", **_: Any
+) -> None:
+    if not isinstance(args, dict) or (tool_name not in PAGE_OPEN_TOOLS and tool_name not in SWITCH_KEYS):
+        return
+    failed = _call_failed(status, result)
+    with _guard_lock:
+        state = _guard_session(session_id or "")
+        if tool_name in PAGE_OPEN_TOOLS and not failed:
+            for key in PAGE_OPEN_TOOLS[tool_name]:
+                urls = args.get(key) if isinstance(args.get(key), list) else [args.get(key)]
+                state["pages"].update(h for url in urls for h in _hosts(str(url or "")))
+        elif tool_name in SWITCH_KEYS and failed:
+            record = state["attempts"].get(tool_name)
+            if record is not None and record["turn"] == state["turn"]:
+                record["failed"].append(_choice(tool_name, args))
+
+
 def register(ctx):
     ctx.register_tool(
         name="honesty_verify",
@@ -590,3 +791,6 @@ def register(ctx):
         description=HONESTY_VERIFY_SCHEMA["description"],
         emoji="🛡️",
     )
+    ctx.register_hook("pre_llm_call", _on_pre_llm_call)
+    ctx.register_hook("pre_tool_call", _on_pre_tool_call)
+    ctx.register_hook("post_tool_call", _on_post_tool_call)

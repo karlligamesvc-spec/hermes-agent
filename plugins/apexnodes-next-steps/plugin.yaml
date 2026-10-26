@@ -1,5 +1,5 @@
 name: apexnodes-next-steps
-version: "0.1.0"
+version: "0.2.0"
 description: >-
   「下一步」块(协议 apex-next/1,docs/NEXT-STEPS-BLOCK-PROTOCOL.md)的文字层。
   创作者技能在结果末尾写 <!-- apex:next ... --> 块(最多 3 项「按钮字 | 那句话」,
@@ -10,6 +10,9 @@ description: >-
   (只用一次);消息提到「选题库」时附上选题库文件的绝对路径(HERMES_HOME/apex/选题库.md)
   和读写规则。与 hermes-agent fork plugins/apexnodes-next-steps/ 逐字节相同。
   NEXT_STEPS_DISABLE=1 只删块,不出编号、不注入。
+  hc-1036:post_tool_call 记下本轮 generate_video / generate_image 花钱生成的文件，回复里没给
+  用户看的,transform_llm_output 时列在正文后面、「下一步」之前(HONESTY_GUARDS_DISABLE=1 关)。
 hooks:
   - transform_llm_output
   - pre_llm_call
+  - post_tool_call
