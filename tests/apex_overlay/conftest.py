@@ -37,6 +37,8 @@ _SEAM_MODULES = (
     "cn_im_messages",
     # hc-976 runtime session banners stripped on CN IM channels.
     "cn_im_banners",
+    # hc-1018 cloud IM: no status lines, plain failure replies (behind a config switch).
+    "im_question_reply_only",
     # hc-539 IM ↔ local coding-agent passthrough.
     "im_passthrough",
     # hc-991 first-use creator answers in each new Desktop session's prompt.
