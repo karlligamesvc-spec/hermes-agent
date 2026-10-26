@@ -43,7 +43,8 @@
  *     → may short-circuit to { manifest_hash, unchanged: true }
  *   GET …/platform-plugins/<name>/package                        (JWT Bearer)
  *     → deterministic tar.gz bytes; sha256(bytes) === the manifest entry's sha256
- *   401 → expired/absent JWT; treated as "nothing to sync" (installed set stands).
+ *   401 → expired/absent JWT; treated as "nothing to sync" (installed set stands),
+ *     and main's apex-cloud-login.ts asks the user to sign in again (hc-1073).
  *
  * The persisted state (userData/apex-platform-plugins.json) is plain JSON
  * ({ manifestHash, installedAt, plugins: { <name>: <sha256> } }) — no secrets,

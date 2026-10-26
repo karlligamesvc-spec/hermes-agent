@@ -125,7 +125,8 @@ describe('provision-key refusal marker', () => {
 
     // The parser above reads `${status}: ${body}`; a reworded rejection would silently drop every code.
     expect(post).toContain("const err: any = new Error(`${statusCode}: ${text || ''}`)")
-    expect(post).toContain('err.statusCode = statusCode')
+    // hc-1073: the status passes through cloudLogin unchanged (apex-cloud-login.test.ts pins that).
+    expect(post).toContain('err.statusCode = cloudLogin.noteFailure(bearer, statusCode)')
     expect(provision).toContain(
       "return { ...result, ok: false, message: provisionFailure.code || 'MANAGED_PROVISION_UNAVAILABLE' }"
     )

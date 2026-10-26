@@ -81,6 +81,7 @@ import {
   normalizeStoredClientConfig,
   shouldApply as shouldApplyClientConfig
 } from './apex-client-config'
+import { registerCloudLoginHealth } from './apex-cloud-login'
 import { guardConfigYamlOnArrival } from './apex-config-arrival'
 import {
   bridgeResultUrl,
@@ -19651,16 +19652,17 @@ function beginManagedKeyMutationRecovery(): () => void {
   }
 }
 
-// hc-529: slide the stored login JWT forward when the cloud hands back a renewed
-// one (X-Apex-Renewed-Token) on an authenticated response. Rewrites ONLY the
-// accessToken, preserving the encrypted relay key + baseUrl/model/account, so the
-// desktop's login token (used for provision-key / feishu-credentials /
-// platform-skills) never dies at the 7-day mark for an active user. Best-effort
-// and never throws — a persist hiccup must not fail the request the user made.
-// Skips when: managed isn't signed in (no stored key), there is no existing login
-// JWT to slide (env-key path stores none), or the token is unchanged.
+const cloudLogin = registerCloudLoginHealth(ipcMain, { currentToken: () => String(resolveManagedConfig().accessToken || '').trim(), log: message => rememberLog(message), windows: () => BrowserWindow.getAllWindows() })
+
+// hc-529: slide the stored login JWT forward when an authed response carries a
+// renewed one (X-Apex-Renewed-Token), rewriting ONLY accessToken. It only slides
+// when some JWT call lands in the token's last 3.5 days. Best-effort, never throws;
+// skips when managed isn't signed in, there is no JWT (env-key path) or it is
+// unchanged. hc-1073: every authed 2xx lands here, so it also tells cloudLogin the
+// stored JWT works; each transport's error branch reports the 401s.
 function persistRenewedLoginToken(token, requestBearer: string) {
   try {
+    cloudLogin.noteSuccess(requestBearer)
     const next = String(token || '').trim()
 
     if (!next) {
@@ -20765,9 +20767,7 @@ async function refreshPlatformSkillsFromPlatform(reason) {
       token
     })
 
-    if (!fetched) {
-      return
-    } // offline / 401 / garbage → installed set stands
+    if (!fetched) {return} // offline / 401 (cloudLogin shows 「登录已失效」) / garbage → installed set stands
 
     if (fetched.unchanged) {
       rememberLog(`[platform-skills] manifest ${fetched.manifestHash.slice(0, 12)} unchanged (${reason})`)
@@ -21246,7 +21246,7 @@ function apexAuthPostJson(url, { body, bearer, method = 'POST', timeoutMs = 12_0
 
         if (statusCode >= 400) {
           const err: any = new Error(`${statusCode}: ${text || ''}`)
-          err.statusCode = statusCode
+          err.statusCode = cloudLogin.noteFailure(bearer, statusCode)
           reject(err)
 
           return
@@ -21288,8 +21288,8 @@ function apexAuthPostJson(url, { body, bearer, method = 'POST', timeoutMs = 12_0
 
 // Bearer-authed body-less JSON request (GET / DELETE) — the read/revoke
 // counterpart to apexAuthPostJson (same electronNet transport + explicit
-// timeout + statusCode on the rejection). A >=400 rejects with an Error
-// carrying `.statusCode` so the caller can distinguish 401 (expired JWT →
+// timeout). A >=400 rejects with an Error carrying `.statusCode` (reported to
+// cloudLogin on the way, hc-1073), so the caller can tell 401 (expired JWT →
 // re-login) from a transient failure.
 function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any = {}): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -21344,7 +21344,7 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
 
         if (statusCode >= 400) {
           const err: any = new Error(`${statusCode}: ${text || ''}`)
-          err.statusCode = statusCode
+          err.statusCode = cloudLogin.noteFailure(bearer, statusCode)
           reject(err)
 
           return
@@ -21474,7 +21474,7 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
 
         if (statusCode >= 400) {
           const err: any = new Error(`${statusCode}: ${body.toString('utf8').slice(0, 200)}`)
-          err.statusCode = statusCode
+          err.statusCode = cloudLogin.noteFailure(bearer, statusCode)
           reject(err)
 
           return
@@ -22461,7 +22461,7 @@ function analysisUploadFile(url: string, bearer: string, filename: string, bytes
 
         if ((response.statusCode || 500) >= 400) {
           const error: any = new Error(text.slice(0, 300))
-          error.statusCode = response.statusCode
+          error.statusCode = cloudLogin.noteFailure(bearer, response.statusCode)
           reject(error)
 
           return

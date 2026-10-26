@@ -37,6 +37,7 @@ import { $planUsage, planUsageFor, planUsageReadFor, refreshPlanUsage } from '@/
 import { $threadPresence } from '@/store/single-thread-presence'
 
 import { AccountPanel } from '../chat/sidebar/account-panel'
+import { CloudLoginNotice } from '../chat/sidebar/cloud-login-notice'
 import { ASSISTANT_ROUTE, DELIVERABLES_ROUTE, HISTORY_ROUTE, PROFILE_STATS_ROUTE, SETTINGS_ROUTE } from '../routes'
 
 import { useSingleThreadNavLabels } from './nav-labels'
@@ -90,7 +91,13 @@ export function SingleThreadAccountRow(props: SingleThreadAccountRowProps) {
     return <AccountPanel businessChrome onNavigateBusiness={props.onNavigateBusiness} />
   }
 
-  return <SignedInAccountRow {...props} />
+  // hc-1073: the 「登录已失效」 card AccountPanel puts above its row goes above this one too.
+  return (
+    <>
+      <CloudLoginNotice />
+      <SignedInAccountRow {...props} />
+    </>
+  )
 }
 
 function SignedInAccountRow({ onAnalysis, onNavigateBusiness }: SingleThreadAccountRowProps) {

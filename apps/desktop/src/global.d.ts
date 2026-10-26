@@ -287,6 +287,11 @@ declare global {
         // single-thread sidebar's account row. Optional: an older main process
         // may not expose it (the row then shows the email).
         planUsage?: () => Promise<DesktopPlanUsageResult>
+        // hc-1073: whether the cloud answered 401 to the stored login JWT, so
+        // platform skills and plugins stopped updating; onCloudLogin hears each
+        // change. Optional: an older main process may expose neither (no card).
+        cloudLogin?: () => Promise<DesktopCloudLoginState>
+        onCloudLogin?: (callback: (state: DesktopCloudLoginState) => void) => () => void
         // hc-991 first-use creator intake: the account's three answers, read or
         // written with the stored login JWT. Optional: an older main process may
         // not expose it (the Start page then shows no cards).
@@ -1747,6 +1752,12 @@ export interface DesktopPlanUsageResult {
   needsSignIn?: boolean
   ok: boolean
   usage: DesktopPlanUsage | null
+}
+
+/** hc-1073: main's view of the stored login JWT (electron/apex-cloud-login.ts). */
+export interface DesktopCloudLoginState {
+  rejected: boolean
+  since: null | number
 }
 
 export interface DesktopTeamResult {
