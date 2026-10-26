@@ -1,0 +1,21 @@
+{
+  "format": "hypit.runtime-local@1",
+  "dataRoot": "apex-runtime-data",
+  "endpoints": {
+    "media.local": {
+      "use": "@hypit/provider-media-local",
+      "config": {
+        "ffmpegPath": "<FFMPEG>",
+        "ffprobePath": "<FFPROBE>"
+      }
+    },
+    "hyperframes.local": {
+      "use": "@hypit/provider-hyperframes-local",
+      "config": {
+        "ffmpegPath": "<FFMPEG>",
+        "ffprobePath": "<FFPROBE>",
+        "chromePath": "<BROWSER>"
+      }
+    }
+  }
+}

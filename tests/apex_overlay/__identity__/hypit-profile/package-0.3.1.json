@@ -1,0 +1,9 @@
+{
+  "name": "retained",
+  "scripts": {
+    "test": "original"
+  },
+  "hypit": {
+    "project": true
+  }
+}
