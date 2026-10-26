@@ -29,6 +29,7 @@ approval:
     notify_failed: "Não foi possível entregar o pedido de aprovação — {noun} não rodou."
     cancelled: "O pedido de aprovação foi retirado ou nunca chegou até você — {noun} não rodou."
     blocked: "Em uma sessão sem supervisão, {noun} não tem permissão — nada foi executado."
+    held: "{noun} precisa da sua aprovação, mas um pedido de aprovação anterior ficou sem resposta — foi pausado e não rodou. Responda e eu continuo."
     default: "Sem execução: {noun} não rodou."
   noun:
     command: "este comando"

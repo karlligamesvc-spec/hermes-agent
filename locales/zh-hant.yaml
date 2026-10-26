@@ -25,10 +25,11 @@ approval:
     confirm_cancel: "cancel,nevermind,no,deny,取消,算了,否,不,拒絕"
   summary:
     denied: "你已拒絕此{noun} — 它並未執行。"
-    timeout: "在 {window} 內未收到回應 — 此{noun}並未執行。"
+    timeout: "此{noun}需要你批准，{window}內沒有收到回應，所以沒有執行。你回覆後我再繼續。"
     notify_failed: "批准請求無法送達 — 此{noun}並未執行。"
     cancelled: "批准提示已撤回或從未送達給你 — 此{noun}並未執行。"
     blocked: "無人看管的工作階段中不允許此{noun} — 它並未執行。"
+    held: "此{noun}需要你批准，但前面的批准請求沒有人回應，所以先暫停了，沒有執行。你回覆後我再繼續。"
     default: "此{noun}並未執行。"
   noun:
     command: "指令"

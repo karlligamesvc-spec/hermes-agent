@@ -29,6 +29,7 @@ approval:
     notify_failed: "La demande d'approbation n'a pas pu être transmise — la {noun} n'a pas été exécutée."
     cancelled: "La demande d'approbation a été retirée ou ne vous est jamais parvenue — la {noun} n'a pas été exécutée."
     blocked: "Cette {noun} n'est pas autorisée dans une session sans supervision — elle n'a pas été exécutée."
+    held: "Cette {noun} nécessite votre approbation, mais une demande d'approbation précédente est restée sans réponse — elle a été mise en pause et n'a pas été exécutée. Répondez et je continuerai."
     default: "Cette {noun} n'a pas été exécutée."
   noun:
     command: "commande"

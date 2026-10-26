@@ -83,6 +83,13 @@ _CONTEXT_SEAMS = (
         "register (see prior warning). With desktop_features.single_thread "
         "on, answers may name tools, skills and models again.",
     ),
+    (
+        "approval_rules_prompt",
+        "apex-overlay: hc-1034 approval rules prompt section did not register "
+        "(see prior warning). Read-only checks may be bundled into lines that "
+        "need approval again, and a declined or unanswered approval may not be "
+        "explained to the user.",
+    ),
 )
 
 

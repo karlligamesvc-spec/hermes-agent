@@ -29,6 +29,7 @@ approval:
     notify_failed: "Die goedkeuringsversoek kon nie afgelewer word nie — die {noun} is nie uitgevoer nie."
     cancelled: "Die goedkeuringsprompt is teruggetrek of het jou nooit bereik nie — die {noun} is nie uitgevoer nie."
     blocked: "Hierdie {noun} word nie in 'n onbewaakte sessie toegelaat nie — dit is nie uitgevoer nie."
+    held: "Hierdie {noun} het jou goedkeuring nodig, maar 'n vorige goedkeuringsversoek is nie beantwoord nie, dus is dit onderbreek en nie uitgevoer nie. Antwoord en ek gaan voort."
     default: "Hierdie {noun} is nie uitgevoer nie."
   noun:
     command: "opdrag"

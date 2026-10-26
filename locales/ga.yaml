@@ -29,6 +29,7 @@ approval:
     notify_failed: "Níorbh fhéidir an iarratas ceada a sheachadadh — níor ritheadh {noun}."
     cancelled: "Tarraingíodh siar an leid cheada nó níor shroich sí tú — níor ritheadh {noun}."
     blocked: "Ní cheadaítear {noun} seo i seisiún gan fhreastal — níor ritheadh é."
+    held: "Teastaíonn do chead le haghaidh {noun} seo, ach níor freagraíodh iarratas ceada roimhe seo, mar sin cuireadh ar sos é agus níor ritheadh é. Freagair agus leanfaidh mé ar aghaidh."
     default: "Níor ritheadh {noun} seo."
   noun:
     command: "an t-ordú"

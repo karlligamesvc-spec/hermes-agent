@@ -26,10 +26,11 @@ approval:
 
   summary:
     denied: "You denied this {noun} — it did not run."
-    timeout: "No answer within {window} — the {noun} did not run."
+    timeout: "This {noun} needed your approval and got no answer within {window}, so it did not run. Reply and I'll continue."
     notify_failed: "The approval request could not be delivered — the {noun} did not run."
     cancelled: "The approval prompt was withdrawn or never reached you — the {noun} did not run."
     blocked: "This {noun} is not allowed in an unattended session — it did not run."
+    held: "This {noun} needs your approval, but an earlier approval request got no answer, so it was paused and did not run. Reply and I'll continue."
     default: "This {noun} did not run."
   noun:
     command: "command"

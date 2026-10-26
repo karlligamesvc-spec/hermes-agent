@@ -45,6 +45,8 @@ _SEAM_MODULES = (
     "memory_ledger",
     # hc-1015 how APEX talks in single-thread mode.
     "single_thread_prompt",
+    # hc-1034 one simple command per read-only check; stop and explain after a refusal.
+    "approval_rules_prompt",
 )
 
 
