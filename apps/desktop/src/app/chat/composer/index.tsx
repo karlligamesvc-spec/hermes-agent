@@ -42,7 +42,6 @@ import {
   slashArgStage
 } from './composer-utils'
 import { COMPOSER_AREAS, runComposerMiddleware } from './contrib'
-import { ComposerControls } from './controls'
 import { ComposerDirectiveActions } from './directive-actions'
 import { COMPOSER_DROP_ACTIVE_CLASS, COMPOSER_DROP_FADE_CLASS } from './drop-affordance'
 import { markActiveComposer, onComposerAttachImagesRequest } from './focus'
@@ -82,6 +81,7 @@ import {
   RICH_INPUT_SLOT
 } from './rich-editor'
 import { useComposerScope } from './scope'
+import { ComposerControls } from './single-thread-actions'
 import { ComposerStatusStack } from './status-stack'
 import { CodingStatusRow } from './status-stack/coding-row'
 import { SuggestionPills } from './suggestion-pills'
@@ -414,7 +414,7 @@ export function ChatBar({
 
   // Resting / reconnecting / starting placeholder text, re-rolled only on a real
   // conversation change.
-  const placeholder = useComposerPlaceholder({ disabled, reconnecting, sessionId })
+  const { label: inputLabel, placeholder } = useComposerPlaceholder({ disabled, reconnecting, sessionId })
 
   // Trigger / completion engine: @// detection, the adapter-driven item list,
   // popover selection, and chip insertion. The keydown nav block below consumes
@@ -1088,7 +1088,7 @@ export function ChatBar({
     <div className={cn('relative', stackToolbar ? 'w-full' : 'min-w-(--composer-input-inline-min-width) flex-1')}>
       <div
         aria-disabled={inputDisabled ? true : undefined}
-        aria-label={t.composer.message}
+        aria-label={inputLabel}
         autoCapitalize="off"
         autoCorrect="off"
         className={cn(

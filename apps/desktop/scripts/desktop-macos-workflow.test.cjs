@@ -4,6 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const os = require('node:os')
 const test = require('node:test')
+const { pathToFileURL } = require('node:url')
 const { MacTargetHelper } = require('app-builder-lib/out/mac/MacTargetHelper')
 const dynamicImport = require('app-builder-lib/out/util/dynamicImport')
 const { resolveFunction } = require('app-builder-lib/out/util/resolve')
@@ -156,6 +157,22 @@ test('macOS matrix stages and reads back the requested package architecture', ()
   assert.match(source, /npm_config_arch: \$\{\{ matrix\.arch \}\}/)
   assert.match(architectureStep, /EXPECTED_ARCH: \$\{\{ matrix\.arch \}\}/)
   assert.match(architectureStep, /assert-macos-package-arch\.mjs "\$APP" "\$EXPECTED_ARCH"/)
+})
+
+test('the macOS matrix builds only arm64 and the parity readback covers exactly what it builds', async () => {
+  // Mac x64 (Intel) stopped after 0.17.63. A Mac arch built but not read back would
+  // advance one feed unchecked; one read back but not built fails every release.
+  const source = workflowSource()
+  const matrixAt = source.indexOf('      matrix:')
+  assert.notEqual(matrixAt, -1, 'missing build matrix')
+  const matrix = source.slice(matrixAt, source.indexOf('\n    steps:', matrixAt))
+  const arches = [...matrix.matchAll(/^ +- arch: (\S+)$/gm)].map(match => match[1])
+  assert.deepEqual(arches, ['arm64'])
+  assert.doesNotMatch(source, /runner: macos-\d+-intel/)
+
+  const { DEFAULT_FEEDS } = await import(pathToFileURL(path.resolve(__dirname, 'verify-cross-platform-release.mjs')).href)
+  const macFeeds = DEFAULT_FEEDS.map(feed => feed.platform).filter(platform => platform.startsWith('mac-'))
+  assert.deepEqual(macFeeds, arches.map(arch => `mac-${arch}`))
 })
 
 test('direct single-platform dispatches are artifact-only', () => {

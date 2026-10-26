@@ -23,6 +23,7 @@ import {
   StepsList,
   useDisclosure
 } from './process-block'
+import { SingleThreadStopButton } from './single-thread-stop'
 import { wholeSeconds } from './turn-process'
 import { turnBounds, useTurnView } from './turn-state'
 
@@ -86,6 +87,7 @@ export const SingleThreadActivityLine: FC = () => {
             {item}
           </span>
         ))}
+        <SingleThreadStopButton />
       </div>
       {process?.phase === 'running' && <PendingApproval process={process} />}
       {process && view && (
