@@ -138,6 +138,8 @@ const SLOW_TOOLS = new Set([
   'social_batch_status',
   'social_batch_submit',
   'video_generate',
+  'video_highlights',
+  'video_moment_search',
   'xai_video_edit',
   'xai_video_extend'
 ])

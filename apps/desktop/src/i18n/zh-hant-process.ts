@@ -130,6 +130,12 @@ export const zhHantProcess: ProcessCopy = {
     generate_video: step('正在生成影片', '生成影片', facts =>
       facts.count ? `生成了 ${facts.count} 部影片` : '影片做好了'
     ),
+    video_highlights: step('正在挑選影片精華', '挑選影片精華', facts =>
+      facts.count ? `挑出 ${facts.count} 段` : facts.empty ? '沒挑出能用的段落' : '已交給平台'
+    ),
+    video_moment_search: step('正在依描述找畫面', '依描述找畫面', facts =>
+      facts.count ? `找到 ${facts.count} 處畫面` : facts.empty ? '沒找到' : '已交給平台'
+    ),
     live_record_start: step('正在開始錄直播', '開始錄直播', said('開始錄了')),
     live_record_status: step('正在查看錄製進度', '查看錄製進度', said('看過了')),
     live_record_stop: step('正在結束錄製', '結束錄製', said('錄好了')),

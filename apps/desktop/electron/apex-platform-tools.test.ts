@@ -70,7 +70,13 @@ function readPluginSources() {
     sources.push({ id: entry.name, source: fs.readFileSync(init, 'utf8') })
   }
 
-  sources.push({ id: 'apexnodes_gateway.py', source: fs.readFileSync(GATEWAY_CLIENT, 'utf8') })
+  // The shared modules next to them (the gateway client, hc-1054's video analysis): a
+  // plugin can reach the platform through one of these as well.
+  for (const entry of fs.readdirSync(PLUGINS_ROOT, { withFileTypes: true })) {
+    if (entry.isFile() && /^apexnodes_\w+\.py$/.test(entry.name)) {
+      sources.push({ id: entry.name, source: fs.readFileSync(path.join(PLUGINS_ROOT, entry.name), 'utf8') })
+    }
+  }
 
   return sources
 }

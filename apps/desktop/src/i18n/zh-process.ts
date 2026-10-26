@@ -135,6 +135,12 @@ export const zhProcess: ProcessCopy = {
     generate_video: step('正在生成视频', '生成视频', facts =>
       facts.count ? `生成了 ${facts.count} 条视频` : '视频做好了'
     ),
+    video_highlights: step('正在挑选视频高光', '挑选视频高光', facts =>
+      facts.count ? `挑出 ${facts.count} 段` : facts.empty ? '没挑出能用的段落' : '已交给平台'
+    ),
+    video_moment_search: step('正在按描述找画面', '按描述找画面', facts =>
+      facts.count ? `找到 ${facts.count} 处画面` : facts.empty ? '没找到' : '已交给平台'
+    ),
     live_record_start: step('正在开始录直播', '开始录直播', said('开始录了')),
     live_record_status: step('正在查看录制进度', '查看录制进度', said('看过了')),
     live_record_stop: step('正在结束录制', '结束录制', said('录好了')),
