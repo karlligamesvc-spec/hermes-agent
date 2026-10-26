@@ -54,6 +54,18 @@ def test_foreign_or_mismatched_objects_never_upload(tmp_path, key):
     client.upload_file.assert_not_called()
 
 
+@pytest.mark.parametrize('name', ['latest-mac.yml', 'APEX-0.17.64-mac-x64.zip'])
+def test_frozen_intel_feed_is_never_written(tmp_path, monkeypatch, name):
+    # Mac x64 is no longer built; installed Intel shells keep polling desktop/mac-x64/ at 0.17.63.
+    local = tmp_path / name
+    local.write_bytes(b'version: 0.17.64\n')
+    client = Mock()
+    monkeypatch.setattr(publisher.urllib.request, 'urlopen', Mock(side_effect=AssertionError('no network in tests')))
+    with pytest.raises(ValueError, match='invalid Desktop object key'):
+        publisher.upload_and_verify(local, 'desktop/mac-x64/' + name, client)
+    client.upload_file.assert_not_called()
+
+
 def test_cli_never_prints_signed_sdk_exception_headers(tmp_path):
     package = tmp_path / 'qcloud_cos'
     package.mkdir()

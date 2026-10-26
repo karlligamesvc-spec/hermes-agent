@@ -1,14 +1,13 @@
 import assert from 'node:assert/strict'
 import { pathToFileURL } from 'node:url'
 
+// The feeds a paired release advances: one per platform desktop-macos.yml and
+// desktop-windows.yml build. desktop/mac-x64/ is not read: Intel is no longer
+// built and that feed stays at 0.17.63, so it would fail every later release.
 const DEFAULT_FEEDS = [
   {
     platform: 'mac-arm64',
     url: 'https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-arm64/latest-mac.yml'
-  },
-  {
-    platform: 'mac-x64',
-    url: 'https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-x64/latest-mac.yml'
   },
   {
     platform: 'win-x64',

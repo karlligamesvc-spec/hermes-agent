@@ -46,7 +46,9 @@ def size_budget_workers(local: Path) -> int:
 
 
 def upload_and_verify(local: Path, key: str, client) -> dict:
-    if not re.fullmatch(r'desktop/(?:mac-arm64|mac-x64|win-x64)/[A-Za-z0-9_.-]+', key):
+    # desktop/mac-x64/ is left out on purpose: Intel is no longer built, and installed
+    # Intel shells keep polling that feed, which must stay at 0.17.63.
+    if not re.fullmatch(r'desktop/(?:mac-arm64|win-x64)/[A-Za-z0-9_.-]+', key):
         raise ValueError('invalid Desktop object key')
     if not local.is_file() or local.is_symlink() or local.stat().st_size == 0:
         raise ValueError('missing or empty release file')

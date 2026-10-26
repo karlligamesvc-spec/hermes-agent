@@ -1,6 +1,6 @@
 """ApexNodes hc-911: upstream tests that drive upstream Desktop artifacts APEX does not carry.
 
-apps/desktop stays on the APEX baseline (paired Mac arm64/x64 + Windows x64 NSIS release,
+apps/desktop stays on the APEX baseline (paired Mac arm64 + Windows x64 NSIS release,
 hard rule #15), so upstream's Desktop identity/packaging modules and shared fixtures are absent
 from this tree. Each entry names the exact test id (or module) and the upstream Desktop paths
 it needs. An entry only takes effect while ALL of its paths are absent: once a path is ported,

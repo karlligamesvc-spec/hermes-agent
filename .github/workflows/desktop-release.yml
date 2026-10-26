@@ -1,10 +1,11 @@
 name: Desktop synchronized release
 
-# Production Desktop releases are one cross-platform operation. Both reusable
-# workflows run from this caller's exact SHA; the final job rejects identity or
-# public-feed drift. Direct single-platform dispatches remain useful for
-# diagnostics, but default to artifact-only and cannot silently advance one
-# production updater feed.
+# Production Desktop releases are one cross-platform operation: Mac arm64 and
+# Windows x64. Both reusable workflows run from this caller's exact SHA; the
+# final job rejects identity or public-feed drift. Direct single-platform
+# dispatches remain useful for diagnostics, but default to artifact-only and
+# cannot silently advance one production updater feed. Mac x64 (Intel) is no
+# longer built; its feed stays at 0.17.63 and the parity readback skips it.
 on:
   workflow_dispatch:
     inputs:
@@ -19,7 +20,7 @@ permissions:
 
 jobs:
   macos:
-    name: Build macOS arm64/x64
+    name: Build macOS arm64
     uses: ./.github/workflows/desktop-macos.yml
     with:
       publish: ${{ inputs.publish }}
