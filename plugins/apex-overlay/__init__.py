@@ -84,6 +84,13 @@ _CONTEXT_SEAMS = (
         "on, answers may name tools, skills and models again.",
     ),
     (
+        "proactive_prompt",
+        "apex-overlay: hc-1071 proactive prompt section did not register "
+        "(see prior warning). With desktop_features.single_thread on, APEX "
+        "may start without asking for facts only the user knows, and results "
+        "may end without next-step buttons or an offer of the next job.",
+    ),
+    (
         "honesty_prompt",
         "apex-overlay: hc-1036 evidence and delivery honesty section did "
         "not register (see prior warning). Desktop sessions will not carry "
