@@ -407,15 +407,29 @@ def _download_candidates(result: dict[str, Any], media_url: str) -> list[str]:
     return list(dict.fromkeys(item for item in raw if item))
 
 
-class _ResolvedMediaDownloadError(_gateway.GatewayError if _gateway is not None else RuntimeError):
-    """本地候选均失败；保留最新签名供既有网关自取 ASR 兜底。"""
+# hc-1035: 源站对每一次下载(含刷新后的新签名)都答这些状态 = 拒绝下载，不是断流。
+_REFUSED_DOWNLOAD_STATUSES = frozenset({401, 403, 404, 410, 451})
 
-    def __init__(self, result: dict[str, Any], media_url: str):
-        super().__init__(
-            "视频直链下载中断,主线路、备用线路和链接刷新均未完成;"
-            "请稍后重试或直接上传视频文件。",
-            code="media_download_exhausted",
-        )
+
+class _ResolvedMediaDownloadError(_gateway.GatewayError if _gateway is not None else RuntimeError):
+    """本地候选均失败；保留最新签名供既有网关自取 ASR 兜底。
+
+    ``refused_status``:每次尝试都被源站拒绝(且已刷新过签名)时的状态码。10-05 的用户
+    连发 3 次同一条链接——刷新签名本插件已经自动做过，重发也一样，所以这一类不说「稍后重试」。"""
+
+    def __init__(self, result: dict[str, Any], media_url: str, refused_status: int | None = None):
+        if refused_status is None:
+            message = (
+                "视频直链下载中断,主线路、备用线路和链接刷新均未完成;"
+                "请稍后重试或直接上传视频文件。"
+            )
+        else:
+            message = (
+                f"源站拒绝了这个视频的下载(HTTP {refused_status}):主线路、备用线路都试过，"
+                "也重新取过一次下载地址，仍被拒绝。重发同一条链接大概率还是一样；"
+                "这条作品可能设了禁止下载、已删除或仅自己可见，请直接上传视频文件。"
+            )
+        super().__init__(message, code="media_download_exhausted", status=refused_status)
         self.result = result
         self.media_url = media_url
 
@@ -428,6 +442,7 @@ def _gateway_download_resolved_media(
     """按网关契约下载：main → fallbacks → 最多一次重新解析新签名。"""
     current_result = result
     current_media_url = media_url
+    statuses: list[int | None] = []
     for resolution_round in range(2):
         headers = current_result.get("download_headers")
         for candidate in _download_candidates(current_result, current_media_url):
@@ -439,11 +454,13 @@ def _gateway_download_resolved_media(
                 )
                 current_result.pop("download_headers", None)
                 return current_result, path
-            except _gateway.GatewayError:
+            except _gateway.GatewayError as exc:
+                statuses.append(exc.status if exc.code == "media_download_http_error" else None)
                 continue
         if resolution_round == 0:
             current_result, current_media_url = _gateway_resolve_download(source_url)
-    raise _ResolvedMediaDownloadError(current_result, current_media_url)
+    refused = bool(statuses) and all(status in _REFUSED_DOWNLOAD_STATUSES for status in statuses)
+    raise _ResolvedMediaDownloadError(current_result, current_media_url, statuses[-1] if refused else None)
 
 
 def _gateway_social_download(url: str) -> str:

@@ -217,7 +217,8 @@ def test_other_422_verdicts_stay_tool_errors(legacy_env, douyin_mod, gateway_htt
     responses, _urls = gateway_http
     responses.append(FakeResponse(422, other))
     gateway = json.loads(douyin_mod._handle_media_transcribe({"video_path": str(_clip(tmp_path, "b.mp4"))}))
-    assert "HTTP 422" in gateway["error"]
+    # hc-1035: a 4xx is said in the server's own sentence, no longer wrapped in "HTTP 422".
+    assert gateway["error"] == "视频转写失败: 不支持的音频格式"
 
 
 @pytest.mark.parametrize(
