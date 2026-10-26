@@ -209,6 +209,24 @@ def _healthy_check() -> Answer:
     return Answer(200, {"ok": True, "image": {"legs": {}}, "video": {"configured": True, "serving": True, "health": {}, "legs": {}}})
 
 
+def _answer_generation(server, media, answer: Answer, *, at: str) -> None:
+    """Queue the generation's answer. Video is a job (hc-1000, hc-978's video follow-up): a
+    refusal at the gate (sign-in, quota, size, an unreadable answer) answers the submit;
+    a failure while rendering is a failed job carrying what /video/generate would have
+    answered, which the Desktop reads through the same mapping."""
+    if media.kind != "video":
+        server.answer(media.generate, answer)
+        return
+    if at == "submit":
+        server.answer("/tools/v1/video/jobs", answer)
+        return
+    running = {"ok": True, "job_id": "j1", "status": "running", "poll_after_seconds": 5}
+    failed = {"ok": False, "job_id": "j1", "status": "failed",
+              "error": {"status_code": answer.status_code, "detail": answer.json().get("detail")}}
+    server.answer("/tools/v1/video/jobs", Answer(202, running))
+    server.answer("/tools/v1/video/jobs/j1", Answer(200, failed))
+
+
 def _run(media, args=None) -> dict:
     return json.loads(getattr(media.module, media.handler)(args or {"prompt": "收纳架开箱"}))
 
@@ -290,8 +308,16 @@ def test_every_sentence_has_a_chinese_and_an_english_version():
     ],
 )
 def test_a_generation_failure_reads_as_the_servers_sentence(desktop_env, server, media, answer, expected):
+    response = answer(media)
     server.answer("/tools/v1/check", _healthy_check())
-    server.answer(media.generate, answer(media))
+    if media.kind == "video" and response._raw is not None:
+        if response.status_code in (502, 503, 504):
+            pytest.skip("a video submit answered 502-504 is sent again under the same Idempotency-Key "
+                        "(tests/plugins/test_apexnodes_video_jobs.py)")
+        # A body that is not our JSON comes from the way in, so it answers the submit.
+        _answer_generation(server, media, response, at="submit")
+    else:
+        _answer_generation(server, media, response, at="render")
 
     error = _run(media)["error"]
 
@@ -305,14 +331,14 @@ def test_a_generation_failure_reads_as_the_servers_sentence(desktop_env, server,
 )
 def test_the_desktop_guidance_statuses_keep_their_guidance(desktop_env, server, media, status, marker):
     server.answer("/tools/v1/check", _healthy_check())
-    server.answer(media.generate, Answer(status, {"detail": {"code": "x", "message": "server text"}}))
+    _answer_generation(server, media, Answer(status, {"detail": {"code": "x", "message": "server text"}}), at="submit")
     assert marker in _run(media)["error"]
 
 
 @pytest.mark.parametrize("raw", [b"", b"<html>oops</html>", b"[1, 2]"], ids=["empty", "html", "list"])
 def test_an_unreadable_answer_promises_nothing(desktop_env, server, media, raw):
     server.answer("/tools/v1/check", _healthy_check())
-    server.answer(media.generate, Answer(200, raw=raw) if raw != b"[1, 2]" else Answer(200, [1, 2]))
+    _answer_generation(server, media, Answer(200, raw=raw) if raw != b"[1, 2]" else Answer(200, [1, 2]), at="submit")
 
     error = _run(media)["error"]
 

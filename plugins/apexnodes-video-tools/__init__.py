@@ -2,12 +2,14 @@
 
 平台工具网关 P1(DESKTOP-CLOUD-CAPABILITY-PARITY-PD D1/D2):本插件自
 hermes-cloud ``app/runtime_plugins/apexnodes-video-tools`` 迁入 fork,
-桌面与云端同一份代码。默认走平台工具网关 ``/tools/v1/video/generate``
-(vendor key 永不出云);``TOOLS_GATEWAY_DISABLED=1`` 时回退迁移前的
-Scheduler 端点路径(云端 P1 回退通道,P2 删)。
+桌面与云端同一份代码。默认走平台工具网关(vendor key 永不出云):提交
+``/tools/v1/video/jobs`` 再轮询(hc-1000,hc-978 的视频后续票,见
+``apexnodes_gateway.generate_video``),旧网关回退 ``/tools/v1/video/generate``;
+``TOOLS_GATEWAY_DISABLED=1`` 时回退迁移前的 Scheduler 端点路径(云端 P1 回退通道,P2 删)。
 
-Video rendering is async + heavy, so the request can take a few minutes —
-the proxy waits while the platform submits, polls, and downloads.
+Video rendering is async + heavy and takes a few minutes. On the gateway leg no
+single request waits for it: one silent request across the public internet lost
+its answer once the render was already billed.
 """
 
 from __future__ import annotations
@@ -38,8 +40,9 @@ def _say(key: str, fallback: str, **fields: Any) -> str:
     return fallback.format(**fields)
 
 
-# The Scheduler holds the request open while it submits→polls→downloads the
-# render, so the proxy must wait longer than the server-side poll budget.
+# The legacy leg (and an old gateway without /video/jobs) holds one request open while
+# the Scheduler submits→polls→downloads the render, so it waits longer than the
+# server-side poll budget; the gateway job polls within the same budget.
 # hc-941: register() reports it as execution_timeout, or the runtime's shared
 # 420 s tool deadline cuts the call while the server is still rendering.
 _VIDEO_REQUEST_TIMEOUT = 660
@@ -338,10 +341,11 @@ def _localize_gateway_video(result: dict[str, Any], prompt: str) -> str:
     try:
         local_path = _gateway.download_media(video_url, filename_hint=prompt[:40] or "generated_video")
     except _gateway.GatewayError:
-        result["note"] = (
+        note = (
             "视频已生成，但保存到本机失败：请尽快通过 video_url 查看/下载"
             "（该链接有有效期，过期后需重新生成）。"
         )
+        result["note"] = f"{result['note']} {note}" if result.get("note") else note
         return tool_result(**result)
     result["video_path"] = str(local_path)
     result["media_tag"] = f"MEDIA:{local_path}"
@@ -386,13 +390,17 @@ def _handle_generate_video(args: dict, **_kwargs) -> str:
         payload["images"] = images
         payload["rights_confirmed"] = args.get("rights_confirmed") is True
     if _use_gateway():
+        # The call as the agent made it (before input images are uploaded): an identical
+        # call after one whose end never arrived gets that job's clip back.
+        call_args = {**payload, "images": args.get("images"), "rights_confirmed": args.get("rights_confirmed") is True}
         try:
-            response = _gateway.request_json(
-                "POST", "/tools/v1/video/generate", payload, timeout=_VIDEO_REQUEST_TIMEOUT
-            )
+            response = _gateway.generate_video(payload, call_args=call_args, timeout=_VIDEO_REQUEST_TIMEOUT)
         except _gateway.GatewayError as exc:
             return tool_error(_say("media_failed", "视频生成失败: {reason}", reason=exc))
-        return _localize_gateway_video(_gateway.unwrap(response), prompt)
+        result = _gateway.unwrap(response)
+        if response.get("recovered"):
+            result["note"] = _gateway.say("video_job_recovered")
+        return _localize_gateway_video(result, prompt)
     try:
         return tool_result(**_request("POST", "/media/video-generate", payload))
     except RuntimeError as exc:

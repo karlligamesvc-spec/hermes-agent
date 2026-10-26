@@ -79,7 +79,7 @@ class Gateway:
         self.calls: list[dict] = []
         gateway = _gateway()
 
-        def request_json(method, path, payload=None, *, timeout=90, files=None, form_data=None):
+        def request_json(method, path, payload=None, *, timeout=90, files=None, form_data=None, headers=None):
             self.calls.append({"method": method, "path": path, "payload": payload, "files": files})
             if path == "/tools/v1/check":
                 section = {"configured": True, "serving": True, "legs": {}}
@@ -90,6 +90,9 @@ class Gateway:
                 if isinstance(upload, BaseException):
                     raise upload
                 return {"ok": True, "data": {"image_ref": UPLOADED}}
+            if path == "/tools/v1/video/jobs":
+                # The video job submit, answered as already done (hc-1000, hc-978's video follow-up).
+                return {"job_id": "j1", "status": "done", **(generate or {"ok": True, "data": {}})}
             return generate or {"ok": True, "data": {"image_url": "https://cdn.example/i.png", "image_ref": "media:" + "e" * 32 + "/image_1.png"}}
 
         monkeypatch.setattr(gateway, "request_json", request_json)
