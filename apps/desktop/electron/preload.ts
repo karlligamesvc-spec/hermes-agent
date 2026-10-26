@@ -258,6 +258,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     status: () => ipcRenderer.invoke('hermes:managed:status'),
     // hc-971: the light team the signed-in account belongs to (apex-team.ts).
     team: () => ipcRenderer.invoke('hermes:managed:team'),
+    // hc-1061: the plan and its usage for the single-thread account row (apex-plan-usage.ts).
+    planUsage: () => ipcRenderer.invoke('hermes:managed:planUsage'),
     // hc-991 first-use creator intake: read or write the account's three answers
     // (apex-creator-profile.ts); main keeps the local agent's prompt copy in step.
     creatorProfile: request => ipcRenderer.invoke('hermes:managed:creatorProfile', request),

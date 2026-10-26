@@ -10,6 +10,7 @@ import { useI18n } from '@/i18n'
 import { useSingleThreadCopy } from '@/i18n/single-thread'
 import { cn } from '@/lib/utils'
 import { useSingleThreadMode } from '@/store/single-thread'
+import { ThreadActivityPresence } from '@/store/thread-signals'
 
 import { CreatorTipSlot } from './creator-tip'
 import {
@@ -102,6 +103,7 @@ export const SingleThreadActivityLine: FC = () => {
           turnKey={view.key}
         />
       )}
+      <ThreadActivityPresence text={text} waiting={awaitingInput} />
     </div>
   )
 }

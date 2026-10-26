@@ -45,6 +45,7 @@ const read = (...parts: string[]) => readFileSync(join(SRC, ...parts), 'utf8')
 
 /** The only files allowed to draw the avatar: each renders only in single-thread product mode. */
 const AVATAR_SURFACES = [
+  'app/single-thread/sidebar.tsx',
   'app/single-thread/thread-header.tsx',
   'components/assistant-ui/process/single-thread-process.tsx'
 ]
@@ -121,6 +122,15 @@ describe('hc-1064 the avatar appears only in single-thread product mode', () => 
     expect(renderSidebar().container.querySelector('[data-apex-avatar]')).toBeNull()
     cleanup()
     expect((await renderTranscript(remixRunningTurn())).querySelector('[data-apex-avatar]')).toBeNull()
+  })
+
+  it('the switch on in product mode: the sidebar’s assistant row wears it', () => {
+    setSingleThreadFlagForTest(true)
+
+    const avatars = [...renderSidebar().container.querySelectorAll('[data-apex-avatar]')]
+
+    expect(avatars).toHaveLength(1)
+    expect(avatars[0]!.closest('[data-single-thread-nav="thread"]')).not.toBeNull()
   })
 
   it('the switch on in product mode: the activity line wears it, looking down at the work', async () => {
