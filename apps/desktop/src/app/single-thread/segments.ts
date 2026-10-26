@@ -98,6 +98,50 @@ export function turnDivider(
   return started || atSeconds - prevAtSeconds >= IDLE_SEGMENT_SECONDS ? { kind: 'segment' } : null
 }
 
+export type TurnTimeDay = 'today' | 'yesterday' | null
+
+/** The centred time line under a turn's divider (hc-1059): when the conversation picked up again. */
+export interface TurnTimeLine {
+  at: number
+  /** Set only where the line stands in for the date line above the thread's first turn. */
+  day: TurnTimeDay
+}
+
+/** `atSeconds`' local day as seen from `nowSeconds`: today, yesterday, or neither. */
+export function relativeDay(atSeconds: number, nowSeconds: number): TurnTimeDay {
+  const yesterday = new Date(nowSeconds * 1000)
+  yesterday.setDate(yesterday.getDate() - 1)
+
+  const day = localDayKey(atSeconds)
+
+  return day === localDayKey(nowSeconds)
+    ? 'today'
+    : day === localDayKey(yesterday.getTime() / 1000)
+      ? 'yesterday'
+      : null
+}
+
+/**
+ * The time line wherever a divider is drawn (prototype v2 1:1, hc-1059): under the date line
+ * or 「新的一段」, the time the conversation picked up. Above the first turn of a thread from
+ * today or yesterday it replaces the date line — the prototype opens with 「今天 14:20」 and
+ * keeps date lines for the days that follow. Null where no divider is drawn.
+ */
+export function turnTimeLine(
+  prevAtSeconds: null | number,
+  atSeconds: null | number,
+  segmentStarts: readonly number[],
+  nowSeconds: number
+): null | TurnTimeLine {
+  const divider = turnDivider(prevAtSeconds, atSeconds, segmentStarts)
+
+  if (divider === null || atSeconds === null) {
+    return null
+  }
+
+  return { at: atSeconds, day: prevAtSeconds === null ? relativeDay(atSeconds, nowSeconds) : null }
+}
+
 /** A primitive key for a divider, so a selector can return it without re-rendering on every token. */
 export function turnDividerKey(divider: TurnDivider): string {
   return divider === null ? '' : divider.kind === 'date' ? `date:${divider.day}` : 'segment'
