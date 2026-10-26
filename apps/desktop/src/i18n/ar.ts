@@ -1723,7 +1723,7 @@ export const ar = defineLocale({
     soulPlaceholder: mode =>
       `الموجّه (prompt) النظامي / الشخصية لهذا الملف الشخصي.\nاتركه فارغا للإبقاء على افتراضي ${mode}.`,
     soulPlaceholderCloned: 'مستنسخ',
-    soulPlaceholderEmpty: 'فارغ',
+    soulPlaceholderEmpty: 'APEX',
     unsavedChanges: 'تغييرات غير محفوظة',
     loadingSoul: 'جار تحميل SOUL.md...',
     emptySoul: 'SOUL.md فارغ — ابدأ بكتابة الشخصية...',

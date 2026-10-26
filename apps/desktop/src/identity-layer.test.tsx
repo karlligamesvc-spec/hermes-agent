@@ -605,6 +605,22 @@ describe('identity: the home zero-state is ours', () => {
   })
 })
 
+// hc-1042: installers and engines before hc-813 wrote upstream's SOUL.md, so an
+// APEX install introduced itself as "Hermes Agent, made by Nous Research".
+// electron/apex-default-soul.test.ts proves the upgrade works; this pins that
+// boot still runs it on the real home before any runtime child can read SOUL.md.
+describe('identity: the assistant introduces itself as APEX', () => {
+  it('upgrades upstream SOUL.md files at boot, before the runtime starts', () => {
+    const main = readSource('electron', 'main.ts').replace(/^\s*\/\/.*$/gm, '')
+    const boot = main.slice(main.indexOf('app.whenReady().then(() => {'))
+    const soul = boot.indexOf('ensureApexDesktopSouls(HERMES_HOME)')
+
+    expect(soul).toBeGreaterThan(0)
+    expect(soul).toBeLessThan(boot.indexOf('augmentDesktopProcessPath()'))
+    expect(soul).toBeLessThan(boot.indexOf('reconcileAndGcBundleRuntime()'))
+  })
+})
+
 describe('identity: the brand skin survives', () => {
   it('seeds the ApexNodes violet rather than the upstream blue', () => {
     // presets.ts is the runtime truth (applyTheme repaints the seeds from it);

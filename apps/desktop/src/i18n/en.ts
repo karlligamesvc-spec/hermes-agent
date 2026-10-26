@@ -2573,7 +2573,7 @@ export const en: Translations = {
     soulOptional: 'optional',
     soulPlaceholder: mode => `The system prompt / persona for this profile.\nLeave blank to keep the ${mode} default.`,
     soulPlaceholderCloned: 'cloned',
-    soulPlaceholderEmpty: 'empty',
+    soulPlaceholderEmpty: 'APEX',
     unsavedChanges: 'Unsaved changes',
     loadingSoul: 'Loading SOUL.md...',
     emptySoul: 'Empty SOUL.md — start writing the persona...',

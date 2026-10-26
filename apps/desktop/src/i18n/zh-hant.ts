@@ -1805,7 +1805,7 @@ export const zhHant = defineLocale({
     soulOptional: '選填',
     soulPlaceholder: mode => `此設定檔的系統提示詞 / 角色說明。\n留空則保留${mode}預設值。`,
     soulPlaceholderCloned: '複製的',
-    soulPlaceholderEmpty: '空的',
+    soulPlaceholderEmpty: ' APEX ',
     unsavedChanges: '有未儲存的變更',
     loadingSoul: '正在載入 SOUL.md…',
     emptySoul: '空的 SOUL.md — 開始撰寫角色設定…',

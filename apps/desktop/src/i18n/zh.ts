@@ -2261,7 +2261,7 @@ export const zh = defineLocale({
     soulOptional: '可选',
     soulPlaceholder: mode => `此配置档案的系统提示词 / 人格说明。\n留空则保留${mode}默认值。`,
     soulPlaceholderCloned: '克隆的',
-    soulPlaceholderEmpty: '空的',
+    soulPlaceholderEmpty: ' APEX ',
     unsavedChanges: '有未保存的更改',
     loadingSoul: '正在加载 SOUL.md…',
     emptySoul: '空的 SOUL.md —— 开始撰写人格设定…',

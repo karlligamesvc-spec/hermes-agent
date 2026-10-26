@@ -20,6 +20,8 @@ import { AlertTriangle } from '@/lib/icons'
 import { slug } from '@/lib/sanitize'
 import type { ProfileInfo } from '@/types/hermes'
 
+import { APEX_DESKTOP_DEFAULT_SOUL } from '../../../shared/apex-default-soul'
+
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
 
 export function isValidProfileName(name: string): boolean {
@@ -28,7 +30,8 @@ export function isValidProfileName(name: string): boolean {
 
 // Self-contained create flow (name + clone toggle + optional SOUL.md). Owns the
 // createProfile/updateProfileSoul calls so every caller just refreshes/selects
-// via onCreated. SOUL left blank keeps the cloned/blank persona untouched.
+// via onCreated. SOUL left blank keeps the cloned persona; a blank profile gets
+// the APEX identity instead of the engine's upstream Hermes seed (hc-1042).
 export function CreateProfileDialog({
   onClose,
   onCreated,
@@ -78,9 +81,10 @@ export function CreateProfileDialog({
 
     try {
       await createProfile({ name: trimmed, clone_from: cloneFrom })
+      const initialSoul = soul.trim() || cloneFrom ? soul : `${APEX_DESKTOP_DEFAULT_SOUL}\n`
 
-      if (soul.trim()) {
-        await updateProfileSoul(trimmed, soul)
+      if (initialSoul.trim()) {
+        await updateProfileSoul(trimmed, initialSoul)
       }
 
       await onCreated?.(trimmed)
