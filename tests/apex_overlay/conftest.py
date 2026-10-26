@@ -45,6 +45,8 @@ _SEAM_MODULES = (
     "memory_ledger",
     # hc-1015 how APEX talks in single-thread mode.
     "single_thread_prompt",
+    # hc-1032 relay stream byte deadline, keepalive and call id.
+    "relay_stream_liveness",
 )
 
 

@@ -83,6 +83,12 @@ _CONTEXT_SEAMS = (
         "register (see prior warning). With desktop_features.single_thread "
         "on, answers may name tools, skills and models again.",
     ),
+    (
+        "relay_stream_liveness",
+        "apex-overlay: hc-1032 relay stream liveness seam did not apply "
+        "(see prior error). A Desktop chat stream whose bytes stop arriving "
+        "waits out the 600 s stale timer again, and its retry is metered twice.",
+    ),
 )
 
 
