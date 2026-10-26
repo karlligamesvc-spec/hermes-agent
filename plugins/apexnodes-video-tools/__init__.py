@@ -233,8 +233,8 @@ GENERATE_VIDEO_SCHEMA = {
                 "description": (
                     "Optional input images that pin who / what / where the clip shows (镜头连贯). "
                     "source: an image_ref from an earlier result (generate_image's image_ref, "
-                    "generate_video's last_frame_ref), a path from [Image attached at: …], or an image "
-                    "link. role: first_frame = the clip starts from this picture and takes its shape; "
+                    "generate_video's last_frame_ref), the path in a chat attachment ([Image attached at: …] or "
+                    "@image:`…`), or an image link. role: first_frame = the clip starts from this picture and takes its shape; "
                     "last_frame = only with one first_frame, the clip ends on it; reference = 1-9 "
                     "pictures of the character / outfit / product / scene, called 图片1, 图片2 … in the "
                     "prompt in this order. Frames and references cannot be mixed. kind: person / product "

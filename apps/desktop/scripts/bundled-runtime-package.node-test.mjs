@@ -108,3 +108,45 @@ test('a source-only, unlocked, mismatched or unnotarized payload cannot become a
     } finally { fs.rmSync(root, { recursive: true, force: true }) }
   }
 })
+
+// hc-1033: the shell installs over a listed engine with no marker proof, so a wrong row could replace
+// an engine newer than the pin. The format and date rules run everywhere; git ancestry (the real
+// proof) runs wherever the commits are present, which excludes CI's shallow checkouts. Run this file
+// in a full clone after editing bundled-runtime.json.
+test('hc-1033: every engine the pin supersedes is a git ancestor of it', t => {
+  const pin = readBundledRuntimePin()
+  const repository = path.resolve(import.meta.dirname, '../../..')
+  const git = (...args) => spawnSync('git', ['-C', repository, '--no-lazy-fetch', ...args], { encoding: 'utf8' })
+  const listed = Object.keys(pin.supersedes || {})
+  assert.ok(listed.length > 0, 'the pin lists the engines it replaces')
+  if (git('cat-file', '-e', `${pin.runtime_commit}^{commit}`).status !== 0) {
+    t.skip('this checkout lacks the pinned commit (shallow clone); ancestry needs a full clone')
+    return
+  }
+  const notAncestors = listed.filter(commit => git('merge-base', '--is-ancestor', commit, pin.runtime_commit).status !== 0)
+  assert.deepEqual(notAncestors, [])
+})
+
+test('hc-1033: a supersedes row must name its own commit, never the pin, and never a later day', () => {
+  const pin = readBundledRuntimePin()
+  const [listed, label] = Object.entries(pin.supersedes)[0]
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-runtime-supersedes-'))
+  const read = supersedes => {
+    const file = path.join(root, 'bundled-runtime.json')
+    fs.writeFileSync(file, JSON.stringify({ ...pin, supersedes }))
+    return readBundledRuntimePin(file)
+  }
+  try {
+    assert.deepEqual(read({ [listed]: label }).supersedes, { [listed]: label })
+    assert.equal(read(undefined).supersedes, undefined)
+    for (const supersedes of [
+      [listed],
+      { [listed]: label.replace(/fork\.[0-9a-f]{8}$/, 'fork.ffffffff') },
+      { [pin.runtime_commit]: pin.runtime_version },
+      { [listed.slice(0, 12)]: label },
+      { [listed]: label.replace(/^v\d{4}\.\d+\.\d+/, 'v2099.1.1') }
+    ]) {
+      assert.throws(() => read(supersedes), /supersedes/)
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }) }
+})

@@ -649,8 +649,8 @@ test('main.ts (hc-532 gate 3): all three desktop_install_events entry points car
 })
 
 test('runtime version IPC reports the declared engine floor and confirms the active source', async () => {
-  let handler: () => Promise<any>
-  const ipcMain = { handle: (_channel: string, listener: () => Promise<any>) => { handler = listener } } as unknown as Pick<IpcMain, 'handle'>
+  const handlers = new Map<string, () => Promise<any>>()
+  const ipcMain = { handle: (channel: string, listener: () => Promise<any>) => handlers.set(channel, listener) } as unknown as Pick<IpcMain, 'handle'>
 
   registerRuntimeVersionIpc(ipcMain, {
     waitForRuntimePreparation: async () => {},
@@ -659,7 +659,7 @@ test('runtime version IPC reports the declared engine floor and confirms the act
     minEngineVersion: () => 'v2026.7.15-fork.b21a7e0d',
     log: () => {}
   })
-  const result = await handler!()
+  const result = await handlers.get('hermes:runtime:version')!()
 
   assert.equal(result.minEngineVersion, 'v2026.7.15-fork.b21a7e0d')
   assert.equal(result.meetsMinEngine, false)

@@ -3,5 +3,25 @@
   "runtime_commit": "d33534879169a44141e78746bf879fe1e1fcaeb0",
   "runtime_version": "v2026.10.17-fork.d3353487",
   "min_desktop_version": "0.17.58",
-  "uv_version": "0.12.3"
+  "uv_version": "0.12.3",
+  "supersedes": {
+    "8fe26a5454384a3aaecd564910d71d9e4bdf792c": "v2026.8.8-fork.8fe26a54",
+    "73034154eba0223b036af3cb0239021cce145514": "v2026.9.19-fork.73034154",
+    "f8d9cbebee9baa018cf8a8866ecb896e9f70fa5a": "v2026.9.22-fork.f8d9cbeb",
+    "36db3bdc67c03f6149b9ad7e503d953ed662d752": "v2026.10.1-fork.36db3bdc",
+    "4e8299b39d0f774df86d78aeff03ce29397143ce": "v2026.10.4-fork.4e8299b3",
+    "ba8e344e9c48607b5b6002652e4e52b772fb1e12": "v2026.10.6-fork.ba8e344e",
+    "cc17f53b3e1848865230c30f29cfaba7dd9d4e45": "v2026.10.6-fork.cc17f53b",
+    "600ff7936e5c08dcab349153439d300b549f33e2": "v2026.10.6-fork.600ff793",
+    "40d4bee92772fdac6f7c7edfe1b76fafed90ba65": "v2026.10.6-fork.40d4bee9",
+    "de0c14e7761aa3afb28b084d527a5a4ae1b1365c": "v2026.10.6-fork.de0c14e7",
+    "d4a31394f437a669ba0ff9ef6902ef22cecacbeb": "v2026.10.6-fork.d4a31394",
+    "89e03f7ba5cbb3e3855cc8d3109c1819e4ce2080": "v2026.10.8-fork.89e03f7b",
+    "accb19d75e7100542a32b5c5569b4c863a650a8f": "v2026.10.8-fork.accb19d7",
+    "e2b810579e79a57476fcfc32586a8407c68efddb": "v2026.10.8-fork.e2b81057",
+    "365889bdfc8b2d6df045099b4378642614dc2ead": "v2026.10.8-fork.365889bd",
+    "123f411d9dec389db44e297e62438dea525c28af": "v2026.10.9-fork.123f411d",
+    "f043a490e0f8895425a20a69063cf56b2d7247d2": "v2026.10.13-fork.f043a490",
+    "145bc76984eb9167704268b8433a611675d9a8f3": "v2026.10.17-fork.145bc769"
+  }
 }

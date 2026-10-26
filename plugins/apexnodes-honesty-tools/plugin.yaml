@@ -1,9 +1,17 @@
 name: apexnodes-honesty-tools
-version: "0.2.0"
+version: "0.3.0"
 description: >-
   Deterministic honesty and ad-compliance check (honesty_verify) for customer-facing text.
   Rules come from the copy-compliance-check skill's graded lexicon (references/ad-lexicon.json,
   hc-1022), the single source for cloud agents and APEX Desktop; no lexicon, no check.
+  hc-1036 hooks: a skill or memory write that labels second-hand material 「官方」 (or says
+  「直连抖音」) is refused with the lines and the fix; after a generation or voice call failed or
+  timed out, the same turn may not switch to a model/provider it has not tried (ask the user first).
+  HONESTY_GUARDS_DISABLE=1 turns both hooks off.
   Byte-identical to hermes-agent fork plugins/apexnodes-honesty-tools/ (hc-1023).
 provides_tools:
   - honesty_verify
+hooks:
+  - pre_llm_call
+  - pre_tool_call
+  - post_tool_call

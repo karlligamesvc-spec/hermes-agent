@@ -47,6 +47,7 @@ import {
   systemProxyToUrls
 } from './apex-agent-proxy'
 import { createSourceAnswerHandlers } from './apex-analysis-answer'
+import { transcribeAnalysisVideoLink } from './apex-analysis-asr-job'
 import { createDeepReportHandlers } from './apex-analysis-deep-report'
 import {
   addLocalNote,
@@ -484,7 +485,8 @@ import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
 import { LEGACY_OAUTH_PARTITION, resolveOauthPartition } from './oauth-partition'
 import { mintGatewayWsTicket as mintOauthGatewayWsTicket, requestWithOauthFallback } from './oauth-rest-request'
 import { wireOauthSessionResponse } from './oauth-session-response'
-import { armPackagedRuntimeUpdate, createPackagedRuntimeGate, installPackagedRuntime, offlineBundledOutcome, packagedRuntimeMatchesPin, packagedRuntimeShipped, shouldInstallPackagedRuntime } from './packaged-runtime'
+import { armPackagedRuntimeUpdate, bundledEnginePin, createPackagedRuntimeGate, installPackagedRuntime, offlineBundledOutcome, packagedEngineKeptBack, packagedRuntimeMatchesPin, packagedRuntimeShipped, readPackagedRuntime, shouldInstallPackagedRuntime } from './packaged-runtime'
+import { repairEngineMarker } from './packaged-runtime-marker'
 import { createParentStartMarkerResolver, parentWatchdogEnv } from './parent-process-identity'
 import { registerPetOverlayIpc } from './pet-overlay-ipc'
 import {
@@ -15635,20 +15637,11 @@ ipcMain.handle('hermes:bootstrap:reset', async () => {
 })
 
 async function repairBootstrapForProduction() {
-  // Forceful repair: drop the bootstrap-complete marker so the next
-  // startHermes() re-runs the full installer (refreshing a broken/partial
-  // venv), and clear any latched failure + live connection. The renderer
-  // reloads afterwards to re-drive the boot flow from scratch.
-  rememberLog('[bootstrap] repair requested by renderer; clearing marker + latched failure')
-
-  try {
-    if (fileExists(BOOTSTRAP_COMPLETE_MARKER)) {
-      fs.rmSync(BOOTSTRAP_COMPLETE_MARKER, { force: true })
-    }
-  } catch (error) {
-    rememberLog(`[bootstrap] failed to remove marker during repair: ${error.message}`)
-  }
-
+  // hc-1033: a package that ships its engine keeps the marker. Either way, re-run the engine check (it
+  // would hand back this session's earlier result otherwise), clear any latched failure + live
+  // connection; the renderer reloads afterwards to re-drive the boot flow from scratch.
+  repairEngineMarker({ markerPath: BOOTSTRAP_COMPLETE_MARKER, keepMarker: IS_PACKAGED && packagedRuntimeShipped(process.resourcesPath), log: rememberLog })
+  ensurePackagedEngine.reset()
   bootstrapFailure = null
   backendStartFailure = null
   resetHermesConnection()
@@ -22161,6 +22154,10 @@ registerRuntimeVersionIpc(ipcMain, {
   readTreeCommit: () => readSourceCommitStamp(ACTIVE_HERMES_ROOT),
   minEngineVersion: readDeclaredMinEngineVersion,
   updateDeferred: packagedDeferral.isDeferred,
+  keptBack: () => packagedEngineKeptBack(ensurePackagedEngine.waitForPending(), () => readPackagedRuntime(process.resourcesPath).release, HERMES_HOME),
+  // Only where applyResolvedRuntimeUpdate takes its offline packaged branch, never the source installer.
+  bundledEnginePin: () => (IS_PACKAGED && !IS_DIAGNOSTIC_TRIAL && !process.env.HERMES_DESKTOP_HERMES_ROOT ? bundledEnginePin(process.resourcesPath) : null),
+  applyPin: applyResolvedRuntimeUpdate,
   log: rememberLog
 })
 
@@ -22695,9 +22692,8 @@ ipcMain.handle('hermes:analysis:transcribeVideoLink', async (_event, sourceUrl) 
 
     if (!url || url.length > 2048) {return { ok: false, code: 'unsupported_video_link' }}
 
-    const response: any = await context.run(() => apexAuthPostJson(`${context.apiBase}/api/v1/account/analysis/video-links/transcribe`, {
-      body: { url, storage_mode: context.policy.mode }, bearer: context.bearer, timeoutMs: 1_850_000
-    }))
+    const { body: response, renewedToken } = await context.run(() => transcribeAnalysisVideoLink(context.apiBase, context.bearer, url, context.policy.mode, (input, init) => electronNet.fetch(input, init)))
+    persistRenewedLoginToken(renewedToken, context.bearer)
 
     const current = await analysisIpcContext(true)
 

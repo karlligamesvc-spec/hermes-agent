@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { isDeepStrictEqual } from 'node:util'
 import { removeOwnedRuntimeTree } from '../../../scripts/runtime-bundle-offline-smoke.mjs'
 
 const desktopRoot = path.resolve(import.meta.dirname, '..')
@@ -18,7 +19,32 @@ export function readBundledRuntimePin(file = pinFile) {
       !/^\d+\.\d+\.\d+$/.test(pin.min_desktop_version) || !/^\d+\.\d+\.\d+$/.test(pin.uv_version)) {
     throw new Error('Invalid bundled runtime release pin')
   }
+  assertSupersedes(pin)
   return pin
+}
+
+const calver = label => /^v(\d{4})\.(\d+)\.(\d+)-/.exec(label).slice(1).map(Number)
+
+// hc-1033: the engines this pin replaces (commit -> label). The shell installs over a listed engine with
+// no marker proof, so a wrong row would let it replace a newer engine: every row must name a 40-hex
+// commit, carry that commit's own label, and be no later than the pin. Git ancestry is the real
+// proof; the node test checks it wherever the history is present.
+function assertSupersedes(pin) {
+  if (pin.supersedes === undefined) return
+  if (!pin.supersedes || typeof pin.supersedes !== 'object' || Array.isArray(pin.supersedes)) {
+    throw new Error('Invalid bundled runtime supersedes list')
+  }
+  const [year, month, day] = calver(pin.runtime_version)
+  for (const [commit, label] of Object.entries(pin.supersedes)) {
+    if (!/^[0-9a-f]{40}$/.test(commit) || commit === pin.runtime_commit || typeof label !== 'string' ||
+        !/^v\d{4}\.\d+\.\d+-fork\.[0-9a-f]{8}$/.test(label) || !label.endsWith(`.${commit.slice(0, 8)}`)) {
+      throw new Error(`Invalid bundled runtime supersedes entry ${commit}`)
+    }
+    const [y, m, d] = calver(label)
+    if (y * 10000 + m * 100 + d > year * 10000 + month * 100 + day) {
+      throw new Error(`Bundled runtime supersedes entry ${label} is later than the pin ${pin.runtime_version}`)
+    }
+  }
 }
 
 export function sha256File(file) {
@@ -93,7 +119,7 @@ export function assertBundledRuntimePackage(resources, platform, arch, pin = rea
   const root = path.join(resources, 'bundled-runtime')
   const release = JSON.parse(fs.readFileSync(path.join(root, 'release.json'), 'utf8'))
   for (const field of Object.keys(pin)) {
-    if (release[field] !== pin[field]) throw new Error(`Bundled runtime release pin differs at ${field}`)
+    if (!isDeepStrictEqual(release[field], pin[field])) throw new Error(`Bundled runtime release pin differs at ${field}`)
   }
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'))
   const identity = validateBundledRuntimeManifest(manifest, pin, platform, arch)

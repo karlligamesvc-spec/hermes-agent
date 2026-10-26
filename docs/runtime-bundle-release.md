@@ -9,6 +9,18 @@ Desktop shell's source commit. All three installers must carry the same full
 engine commit and release label. Changing the pin does not change the Cloud
 default runtime.
 
+The pin's `supersedes` map (full commit -> release label) lists engines the pin
+descends from. On start, the shell replaces an installed engine whose source
+stamp is on that list even when its version marker is missing or names another
+engine (hc-1033: a deleted marker otherwise kept a machine on its old engine
+for good). When a bump moves the pin, add the outgoing pin and any other
+engine a published Desktop or the runtime-update channel shipped since, but
+only commits that are git ancestors of the new pin: an engine built from a
+side branch is not proven older. `readBundledRuntimePin` rejects a row whose
+label names another commit or a later day than the pin, and
+`npm run test:release-gates` checks ancestry in a full clone (CI checkouts are
+shallow and skip that step).
+
 `Resources/bundled-runtime/` contains the compressed native archive,
 `manifest.json` and `release.json`. The archive includes CPython, its locked
 Python dependencies, portable Node, uv, ripgrep, and on Windows PortableGit

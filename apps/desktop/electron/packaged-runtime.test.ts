@@ -410,6 +410,24 @@ nativeTest('newer or unknown healthy engine is preserved, including a lying vers
   })
 })
 
+// hc-1033: a deleted marker froze a real Mac on its engine. The release's own list of older engines
+// is proof enough; an unlisted engine without a marker is still kept.
+nativeTest('an engine the release lists as older is replaced even after its marker is gone', async () => {
+  for (const [listed, expected] of [[true, 'installed'], [false, 'preserved']] as const) {
+    await withHome(async (home, options) => {
+      const previous = 'd4a31394f437a669ba0ff9ef6902ef22cecacbeb'
+      const old = legacy(home, previous, 'v2026.10.6-fork.d4a31394')
+      fs.rmSync(path.join(old, '.hermes-bootstrap-complete'))
+      const copied = path.join(home, 'listed-resources')
+      fs.cpSync(resources, copied, { recursive: true })
+      fs.writeFileSync(path.join(copied, 'bundled-runtime', 'release.json'), JSON.stringify({ ...release, ...(listed ? { supersedes: { [previous]: 'v2026.10.6-fork.d4a31394' } } : {}) }))
+      const result = await installPackagedRuntime({ ...options, resourcesPath: copied }, true)
+      assert.equal(result.status, expected)
+      assert.equal(fs.readFileSync(path.join(home, 'hermes-agent', '.hermes-source-commit'), 'utf8').trim(), listed ? commit : previous)
+    })
+  }
+})
+
 nativeTest('an explicitly confirmed source can replace a same-day engine without ordering commit hashes', async () => {
   for (const previous of ['1'.repeat(40), 'f'.repeat(40)]) {
     await withHome(async (home, options) => {

@@ -132,3 +132,26 @@ export async function applyRuntimeUpdate(
     $runtimeUpdateApplying.set(false)
   }
 }
+
+/**
+ * hc-1033: install the engine this app ships over one it kept back (About page notice). Never throws;
+ * ok + reloadRequired means the install is armed and the caller reloads to run it, `deferred` means
+ * the engine is busy and nothing changed.
+ */
+export async function switchToBundledEngine(): Promise<DesktopRuntimeUpdateApply> {
+  const bridge = window.hermesDesktop?.runtime
+
+  if (!bridge?.switchToBundledEngine) {
+    return { ok: false, error: 'unsupported' }
+  }
+
+  $runtimeUpdateApplying.set(true)
+
+  try {
+    return await bridge.switchToBundledEngine()
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  } finally {
+    $runtimeUpdateApplying.set(false)
+  }
+}

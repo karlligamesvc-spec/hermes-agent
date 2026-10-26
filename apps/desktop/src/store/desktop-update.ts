@@ -190,6 +190,45 @@ function plannedShellDownloaded(plan: DesktopUpdatePlan): boolean {
   return shellReady(shell) && comparableVersion(shell?.version) === comparableVersion(plan.targetShellVersion)
 }
 
+/** The plan's frozen shell is still being fetched: a check resolves on update-available, before the download lands. */
+function plannedShellFetching(plan: DesktopUpdatePlan): boolean {
+  const shell = $shellUpdate.get()
+  const fetching = shell?.phase === 'checking' || shell?.phase === 'available' || shell?.phase === 'downloading'
+
+  return fetching && comparableVersion(shell?.version) === comparableVersion(plan.targetShellVersion)
+}
+
+/** How long a retry waits for the frozen shell. A cached download lands about a second after the check. */
+const SHELL_DOWNLOAD_WAIT_MS = 10_000
+
+/** hc-1030: true once the frozen shell is downloaded; false when it stops being fetched or the wait runs out. */
+async function plannedShellArrives(plan: DesktopUpdatePlan): Promise<boolean> {
+  let stop = (): void => {}
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  const settled = new Promise<boolean>(resolve => {
+    timer = setTimeout(() => resolve(false), SHELL_DOWNLOAD_WAIT_MS)
+    stop = $shellUpdate.subscribe(() => {
+      if (!plannedShellFetching(plan)) {
+        resolve(plannedShellDownloaded(plan))
+      }
+    })
+  })
+
+  try {
+    return await settled
+  } finally {
+    stop()
+    clearTimeout(timer)
+  }
+}
+
+/** hc-1030: the plan waits, not failed, while its shell is fetched again; the sidebar offers it once downloaded. */
+async function waitForShellRedownload(): Promise<void> {
+  await transitionPlanSafely({ lastError: SHELL_TARGET_REDOWNLOADING, phase: 'resuming' })
+  setProgress({ active: false, currentStage: null, error: null })
+}
+
 /** A continuation the main process could not persist stops the update before anything restarts. */
 function requirePlanSaved(result: { error?: string; ok: boolean } | null | undefined): void {
   if (!result?.ok) {
@@ -402,8 +441,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
           // hc-1030: this restart did not run the installer (a deferred install, an early
           // quit, a failed hand-off) and the new process has not fetched the target yet.
           // Fetch it now and let the update entry offer it again instead of failing.
-          await transitionPlanSafely({ lastError: SHELL_TARGET_REDOWNLOADING, phase: 'resuming' })
-          setProgress({ active: false, currentStage: null, error: null })
+          await waitForShellRedownload()
           void checkShellUpdate().catch(() => {})
 
           return
@@ -537,9 +575,24 @@ export async function retryDesktopUpdate(options: { reload?: () => void } = {}):
 
       if (!shellMeetsPlan(runningDesktop?.appVersion, plan.targetShellVersion)) {
         await checkShellUpdate()
-        const shell = $shellUpdate.get()
+        setProgress({
+          active: true,
+          completedStages: ['check'],
+          currentStage: 'shell',
+          error: null,
+          runtimeProgress: null,
+          stages: ['check', 'shell', 'restart'],
+          targetVersion: plan.targetShellVersion
+        })
 
-        if (!shellReady(shell) || comparableVersion(shell?.version) !== comparableVersion(plan.targetShellVersion)) {
+        // hc-1030: the check answers before the download, even a cached one, lands.
+        if (!(await plannedShellArrives(plan))) {
+          if (plannedShellFetching(plan)) {
+            await waitForShellRedownload()
+
+            return
+          }
+
           await transitionPlanSafely({ lastError: 'shell_update_not_ready', phase: 'failed' })
           setProgress({ active: false, currentStage: null, error: 'shell_update_not_ready' })
           throw new Error('shell_update_not_ready')

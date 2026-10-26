@@ -58,6 +58,11 @@ interface RuntimeVersionDependencies {
   readTreeCommit: () => string | null
   minEngineVersion: () => string | null
   updateDeferred?: () => boolean
+  /** hc-1033: this boot kept an engine other than the shipped one (packagedEngineKeptBack). */
+  keptBack?: () => Promise<{ reason: string; bundledVersion: string } | null>
+  /** hc-1033: the shipped engine as a pin, or null where this build may not switch engines by itself. */
+  bundledEnginePin?: () => { key: string; version: string } | null
+  applyPin?: (pin: any) => Promise<unknown>
   log: (message: string) => void
 }
 
@@ -87,6 +92,7 @@ export function registerRuntimeVersionIpc(
         meetsMinEngine: engineMeetsMinVersion(version, minEngineVersion),
         treeCommit,
         updateDeferred: dependencies.updateDeferred?.() ?? false,
+        keptBack: (await dependencies.keptBack?.()) ?? null,
         // A marker records the last target; the source stamp confirms its activation.
         treeMatchesMarker: treeCommit && commit ? commitKeysMatch(treeCommit, commit) : null
       }
@@ -104,6 +110,23 @@ export function registerRuntimeVersionIpc(
         treeCommit: null,
         treeMatchesMarker: null
       }
+    }
+  })
+
+  // hc-1033: the kept-back notice's action. It reuses the opt-in apply: the pin is the shipped payload,
+  // so apply arms the offline install as a confirmed source and the renderer's reload performs it.
+  ipcMain.handle('hermes:runtime:switch-to-bundled-engine', async () => {
+    try {
+      const pin = dependencies.bundledEnginePin?.()
+
+      if (!pin || !dependencies.applyPin) {return { ok: false, error: 'unsupported' }}
+      dependencies.log(`[runtime-update] switching to the bundled engine on request: ${pin.version}`)
+
+      return await dependencies.applyPin(pin)
+    } catch (error: any) {
+      dependencies.log(`[runtime-update] switch to the bundled engine failed: ${error && error.message}`)
+
+      return { ok: false, error: (error && error.message) || String(error) }
     }
   })
 }

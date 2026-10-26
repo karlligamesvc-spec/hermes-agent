@@ -62,9 +62,10 @@ ASR 族(hc-978:先提交任务再轮询,旧网关没有 /asr/jobs 时回退同�
 
 错误语义(全部显式降级文案,不静默吞):
   401 key 失效→提示重新登录;402 配额/余额;429 限流(本客户端带有限退避重试,
-  日限 429 除外);503 按 download resolve / ASR / 图片视频生成 / 其他能力分段,
-  不向用户暴露供应商细节;其余透传 detail。图片/视频生成只在能自己恢复的失败上
-  提示再试(hc-969,见 media_error_message)。
+  日限 429 除外);503 只代表平台这边服务不了:按 vendor_code 分「配置坏了,重试无用」
+  「排队满了,1 分钟后再试」,其余按 download resolve / ASR / 其他能力分段,不向用户
+  暴露供应商细节;其余 4xx(链接不完整、参数被拒、内容不存在)直接用服务端原句
+  (hc-1035)。图片/视频生成只在能自己恢复的失败上提示再试(hc-969,见 media_error_message)。
 ──────────────────────────────────────────────────────────────────────────────
 
 模式解析(insight:云端 P1 回退通道 = 旧 master 内网端点,PD §8):
@@ -97,6 +98,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from collections.abc import Callable
@@ -346,19 +348,31 @@ _COPY: dict[str, tuple[str, str]] = {
         "Too many platform tool requests (429): still rate-limited after backing off. Wait 1-2 "
         "minutes and try again.",
     ),
+    # hc-1035: a 503 is said only for the platform being unable to serve; the server
+    # answers a link, parameter or rate-limit problem with a 4xx and its own sentence.
     "download_unavailable_503": (
-        "视频链接解析/下载服务暂不可用(503),请稍后重试或直接上传视频文件。",
-        "The video link resolving/download service is unavailable right now (503). Try again later "
-        "or upload the video file directly.",
+        "视频链接解析/下载服务暂不可用(503),请过几分钟再试，或直接上传视频文件。",
+        "The video link resolving/download service is unavailable right now (503). Try again in a "
+        "few minutes, or upload the video file directly.",
     ),
     "asr_unavailable_503": (
-        "视频转写服务暂不可用(503),请稍后重试或先提供已有文字稿。",
-        "The video transcription service is unavailable right now (503). Try again later or provide "
-        "an existing transcript first.",
+        "视频转写服务暂不可用(503),请过几分钟再试，或先提供已有文字稿。",
+        "The video transcription service is unavailable right now (503). Try again in a few minutes, "
+        "or provide an existing transcript first.",
     ),
     "capability_unavailable_503": (
-        "平台能力暂不可用(503),请稍后重试。",
-        "This platform capability is unavailable right now (503). Try again later.",
+        "平台能力暂不可用(503),请过几分钟再试。",
+        "This platform capability is unavailable right now (503). Try again in a few minutes.",
+    ),
+    "capability_busy_503": (
+        "平台的数据服务这会儿排队的请求太多(503),这次没轮到；过 1 分钟再试。",
+        "The platform's data service has too many requests queued right now (503); try again in "
+        "about a minute.",
+    ),
+    "capability_setup_503": (
+        "平台这项能力的配置出了问题(503),要等平台修好才能用，现在重试也不会成功。",
+        "This platform capability is misconfigured (503) and works again only once the platform "
+        "fixes it; retrying now will not help.",
     ),
     "gateway_error_status": ("平台工具网关返回错误(HTTP {status})", "The platform tool gateway returned an error (HTTP {status})"),
     "with_detail": ("{message}(详情: {detail})", "{message} (details: {detail})"),
@@ -735,6 +749,26 @@ def _server_code(response: httpx.Response, key: str = "code") -> str | None:
     return str(detail[key]).strip() or None
 
 
+# vendor_code behind a 503 that decides the sentence (hc-1035): our own outbound queue
+# was full (retry in a minute), or the platform's setup is broken (retrying cannot help).
+_BUSY_VENDOR_CODES = frozenset({"provider_busy"})
+_SETUP_VENDOR_CODES = frozenset(
+    {"provider_not_configured", "provider_auth_failed", "asr_auth_failed", "asr_quota_insufficient"}
+)
+
+
+def _outage_message(path: str, vendor_code: str | None) -> str:
+    if vendor_code in _SETUP_VENDOR_CODES:
+        return say("capability_setup_503")
+    if vendor_code in _BUSY_VENDOR_CODES:
+        return say("capability_busy_503")
+    if path.startswith("/tools/v1/social/") and path.endswith("/download"):
+        return say("download_unavailable_503")
+    if path.startswith("/tools/v1/asr/"):
+        return say("asr_unavailable_503")
+    return say("capability_unavailable_503")
+
+
 def _error_from_response(
     response: httpx.Response,
     source: str = SOURCE_ENV,
@@ -761,12 +795,12 @@ def _error_from_response(
     elif status == 429:
         message = say("rate_limited_429")
     elif status == 503:
-        if path.startswith("/tools/v1/social/") and path.endswith("/download"):
-            message = say("download_unavailable_503")
-        elif path.startswith("/tools/v1/asr/"):
-            message = say("asr_unavailable_503")
-        else:
-            message = say("capability_unavailable_503")
+        message = _outage_message(path, vendor_code)
+    elif 400 <= status < 500 and _server_sentence(response):
+        # hc-1035: a 4xx is the server's answer about this call (an incomplete link, a
+        # parameter the source refused, content that is gone); its sentence says what
+        # helps, so it is not wrapped in "平台工具网关返回错误(HTTP n)".
+        return GatewayError(_server_sentence(response), status=status, code=code, vendor_code=vendor_code)
     else:
         message = say("gateway_error_status", status=status)
     # 413 不拼服务端 detail:旧版云端的 413 文案带「请在本地抽音轨并压缩」类
@@ -1772,7 +1806,7 @@ def guess_media_content_type(path: Path | str) -> str:
 # ---------------------------------------------------------------------------
 #
 # 两个出片插件共用这一份。``source`` 是之前结果里的 ``image_ref``(``media:…``)、平台签发
-# 的图片链接、本机文件(对话里 [Image attached at: …] 的路径)或别的图片链接：句柄和平台
+# 的图片链接、本机文件(对话里 [Image attached at: …] 或 @image:`…` 的路径)或别的图片链接：句柄和平台
 # 链接原样交，本机文件和外链先上传(网关腿 /tools/v1/media/reference-upload,legacy 腿
 # /media/reference-upload),交回传回来的 ``image_ref``。任何一张图用不了，整次调用报错，
 # 绝不改成不带图的请求(那会按文生出片)。服务端没在 check 里声明 ``input_images.supported``
@@ -1874,9 +1908,31 @@ def legacy_upload_input_image(api_base: str, data: bytes, filename: str, index: 
     return _uploaded_ref(answer, index)
 
 
+# hc-939: a chat attachment as the conversation shows it. The APEX Desktop composer writes
+# ``@image:`<path>``` (``@file:`` for a dragged file), the runtime's hint reads
+# ``[Image attached at: <path>]``, a link may be ``file://``: a token copied whole still
+# names its file instead of failing as a missing one.
+_ATTACHMENT_RE = re.compile(r"^(?:\[Image attached at:\s*(?P<hint>.+?)\s*\]|@(?:image|file):(?P<token>.+))$", re.DOTALL)
+
+
+def attachment_path(source: str) -> str:
+    """The file a chat attachment token names; any other source as it is."""
+    match = _ATTACHMENT_RE.match(source)
+    if match:
+        source = (match.group("hint") or match.group("token")).strip()
+        if len(source) >= 2 and source[0] == source[-1] and source[0] in "`\"'":
+            source = source[1:-1]
+    if source.lower().startswith("file://"):
+        source = urllib.parse.unquote(urllib.parse.urlsplit(source).path)
+        if re.match(r"^/[A-Za-z]:/", source):
+            source = source[1:]
+    return source
+
+
 def _input_image_source(
     source: str, index: int, *, upload: Callable[[bytes, str, int], str], server_paths: bool
 ) -> dict[str, str]:
+    source = attachment_path(source)
     if source.startswith("media:"):
         return {"ref": source}
     if source.lower().startswith(("http://", "https://")):
@@ -1896,7 +1952,9 @@ def _input_image_source(
     if server_paths:
         # Not a file here: a master path from an earlier result; the platform checks it is ours.
         return {"path": source}
-    raise InputImageError(say("input_image_missing", index=index, source=source[:120]))
+    # The tail names the file; a long folder path is what gets cut.
+    shown = source if len(source) <= 120 else "…" + source[-119:]
+    raise InputImageError(say("input_image_missing", index=index, source=shown))
 
 
 def input_images(
