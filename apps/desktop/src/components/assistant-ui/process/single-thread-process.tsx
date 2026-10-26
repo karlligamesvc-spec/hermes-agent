@@ -141,7 +141,8 @@ function TurnProcessFooter() {
   const { t } = useI18n()
   const copy = useSingleThreadCopy()
   const view = useTurnView()
-  const process = view?.process ?? null
+  // N10 (hc-1063): no 「用到的方法：…」 — it names the skills, the mechanism this mode keeps out of sight.
+  const process = view?.process ? { ...view.process, skills: [] } : null
   const stuck = process?.phase === 'failed' || process?.phase === 'stopped'
   const [open, toggle] = useDisclosure(`process:${view?.key ?? ''}`, stuck)
 
@@ -150,7 +151,7 @@ function TurnProcessFooter() {
   }
 
   const processCopy = t.assistant.tool.process
-  const hasProcess = process.steps.length > 0 || process.skills.length > 0
+  const hasProcess = process.steps.length > 0
 
   if (!hasProcess && process.phase !== 'failed') {
     return null

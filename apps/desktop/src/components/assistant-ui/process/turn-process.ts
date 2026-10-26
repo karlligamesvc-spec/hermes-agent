@@ -7,6 +7,7 @@ import {
   parseMaybeObject
 } from '@/components/assistant-ui/tool/fallback-model/format'
 import { runtimeTranslations, translateNow } from '@/i18n'
+import { desktopOnlyStepCopy, MEMORY_FORGET_STEP } from '@/i18n/desktop-only-steps'
 import type { StepCopy, StepFacts } from '@/i18n/types-process'
 import { connectorCalls } from '@/lib/connector-tools'
 import { isOnboardingEnabled } from '@/lib/onboarding-enabled'
@@ -571,7 +572,15 @@ export function hasSources(sources: StepSources): boolean {
 export function stepCopyFor(toolName: string): StepCopy {
   const copy = runtimeTranslations().assistant.tool.process
 
-  return copy.steps[toolName] ?? copy.unknownStep
+  return copy.steps[toolName] ?? desktopOnlyStepCopy(toolName) ?? copy.unknownStep
+}
+
+/** hc-1063: a memory-ledger step that only forgot entries is named for that, not for remembering. */
+function stepCopyKey(calls: ProcessCall[]): string {
+  const toolName = calls[0].toolName
+  const forgetOnly = calls.every(call => parseMaybeObject(call.part.args).action === 'forget')
+
+  return toolName === 'apex_memory' && forgetOnly ? MEMORY_FORGET_STEP : toolName
 }
 
 function stepState(calls: ProcessCall[]): { failedCalls: number; state: CallState } {
@@ -591,7 +600,7 @@ function stepState(calls: ProcessCall[]): { failedCalls: number; state: CallStat
 function buildStep(calls: ProcessCall[], prep: ProcessCall[], plain: boolean): ProcessStep {
   const toolName = calls[0].toolName
   const named = plain ? plainStep(calls) : null
-  const copy = named?.copy ?? stepCopyFor(toolName)
+  const copy = named?.copy ?? stepCopyFor(stepCopyKey(calls))
   const facts = stepFacts(calls)
   const { failedCalls, state } = stepState(calls)
 

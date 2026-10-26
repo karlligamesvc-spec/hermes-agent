@@ -226,12 +226,14 @@ describe('a finished task: only the question and the answer', () => {
       '下载了 1 个视频，1 分 43 秒，12.6 万赞',
       '识别语音',
       '来源：抖音公开链接里的这条作品。只读公开数据，没有登录你的账号。',
-      '用到的方法：视频脚本拆解、事实核验',
       '收起过程'
     ]) {
       expect(text).toContain(expected)
     }
 
+    // N10 (hc-1063): the methods line names the skills, which this mode keeps out of sight.
+    expect(text).not.toContain('用到的方法')
+    expect(text).not.toContain('视频脚本拆解')
     expectNoMechanism(text)
     expect(text).not.toMatch(/想了|想过了/)
 

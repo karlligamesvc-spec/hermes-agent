@@ -1,3 +1,5 @@
+import '@/app/single-thread/single-thread-chat.css'
+
 import { createContext, memo, useCallback, useContext, useMemo, useRef, useState } from 'react'
 
 import { SingleThreadEmptyState } from '@/app/single-thread/thread-empty'
@@ -194,9 +196,14 @@ export const Thread = memo(function Thread({
   // always correct.
   const loadingIndicator = useMemo(() => <BackgroundResumeNotice />, [])
 
+  // hc-1059: prototype v2's bubbles and centred column (single-thread-chat.css) key off this
+  // attribute, so developer mode and the switch off never carry it.
   return (
     <ThreadEditContext.Provider value={editContext}>
-      <div className="relative grid h-full min-h-0 max-w-full grid-rows-[minmax(0,1fr)] overflow-hidden bg-transparent contain-[layout_paint]">
+      <div
+        className="relative grid h-full min-h-0 max-w-full grid-rows-[minmax(0,1fr)] overflow-hidden bg-transparent contain-[layout_paint]"
+        data-single-thread-chat={singleThread ? '' : undefined}
+      >
         <ThreadMessageList
           clampToComposer={clampToComposer}
           components={messageComponents}
