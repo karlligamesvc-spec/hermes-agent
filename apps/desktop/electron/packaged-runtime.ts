@@ -21,6 +21,7 @@ import { redactArgv } from './argv-redaction'
 import { buildDesktopBackendEnv } from './backend-env'
 import { RUNTIME_YAML_IMPORT } from './bootstrap-platform'
 import type { DesktopBootstrapEvent } from './bootstrap-types'
+import { releaseSupersedes, supersededByRelease } from './packaged-runtime-marker'
 import { RuntimeUpdateBusy } from './runtime-update-busy'
 
 const exec = promisify(execFile)
@@ -34,6 +35,8 @@ export interface PackagedRuntimeRelease {
   runtime_version: string
   min_desktop_version: string
   uv_version: string
+  /** hc-1033: engines this pin descends from, full commit -> version label (packaged-runtime-marker.ts). */
+  supersedes?: Record<string, string>
 }
 
 export interface PackagedRuntimeOptions {
@@ -115,6 +118,7 @@ export function readPackagedRuntime(resourcesPath: string, platform: NodeJS.Plat
     throw new Error('The installer is missing a valid bundled engine release descriptor.')
   }
 
+  releaseSupersedes(release)
   const target = nativeTarget(platform, arch)
   const manifest = parseBundleManifest(readJson(path.join(resources, 'manifest.json')))
   const key = release.runtime_commit.slice(0, 12)
@@ -184,6 +188,14 @@ function actualCommit(root: string): string | null {
   }
 }
 
+/** compareSemver(marker label, shipped label) when the marker names the installed source; else null. */
+function markerOrder(root: string, commit: string | null, release: PackagedRuntimeRelease) {
+  const marker = readJson(path.join(root, MARKER))
+  const matches = commit && typeof marker?.pinnedCommit === 'string' && marker.pinnedCommit.length >= 7 && commit.startsWith(marker.pinnedCommit)
+
+  return matches && /^v\d{4}\.\d{1,2}\.\d{1,2}-fork\.[a-f0-9]+$/.test(marker.version) ? compareSemver(marker.version, release.runtime_version) : null
+}
+
 /** A marker may provide ordering only when the actual installed source agrees. */
 export function packagedRuntimeDecision(root: string, release: PackagedRuntimeRelease, usable: boolean, confirmedRuntimeCommit?: string | null) {
   const commit = actualCommit(root)
@@ -199,11 +211,41 @@ export function packagedRuntimeDecision(root: string, release: PackagedRuntimeRe
   }
   // Same-day release labels cannot establish chronological source ordering.
   if (confirmedRuntimeCommit === release.runtime_commit) {return 'install' as const}
-  const marker = readJson(path.join(root, MARKER))
-  const matches = commit && typeof marker?.pinnedCommit === 'string' && marker.pinnedCommit.length >= 7 && commit.startsWith(marker.pinnedCommit)
-  const order = matches && /^v\d{4}\.\d{1,2}\.\d{1,2}-fork\.[a-f0-9]+$/.test(marker.version) ? compareSemver(marker.version, release.runtime_version) : null
+
+  // hc-1033: the release's own list of older engines proves order with no marker at all.
+  if (supersededByRelease(root, commit, release)) {return 'install' as const}
+  const order = markerOrder(root, commit, release)
 
   return order !== null && order < 0 ? 'install' as const : 'preserve' as const
+}
+
+/** hc-1033: the shipped engine as an update pin, so the About page can install it on the user's say-so. */
+export function bundledEnginePin(resourcesPath: string, platform: NodeJS.Platform = process.platform, arch: string = process.arch) {
+  const { release } = readPackagedRuntime(resourcesPath, platform, arch)
+
+  return { commit: release.runtime_commit, key: release.runtime_commit, branch: null, version: release.runtime_version, minDesktopVersion: release.min_desktop_version }
+}
+
+/**
+ * hc-1033: this boot kept an engine other than the shipped one, for the About page. Null when it runs
+ * the shipped engine, is only waiting for idle (`busy` has its own notice), or the kept engine's own
+ * marker proves it newer (a shell downgrade: keeping it is right, nothing to fix).
+ */
+export async function packagedEngineKeptBack(prepared: Promise<PackagedRuntimeResult | null>, readRelease: () => PackagedRuntimeRelease, hermesHome: string) {
+  const result = await prepared.catch(() => null)
+
+  if (result?.status !== 'preserved' || (result.reason !== 'newer-or-unknown' && result.reason !== 'upgrade-failed')) {return null}
+
+  try {
+    const release = readRelease()
+    const root = layout.bundlePaths(hermesHome).activeLink
+
+    if (result.reason === 'newer-or-unknown' && markerOrder(root, actualCommit(root), release) === 1) {return null}
+
+    return { reason: result.reason, bundledVersion: release.runtime_version }
+  } catch {
+    return null
+  }
 }
 
 /** Bind the executable verifier to the hash-checked installer manifest, even on reuse. */

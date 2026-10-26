@@ -24,6 +24,7 @@ import { $shellUpdate, initShellUpdateSubscription } from '@/store/shell-update'
 import { $desktopVersion, refreshDesktopVersion } from '@/store/updates'
 
 import { ChangelogSection } from './changelog-section'
+import { EngineKeptBackNotice } from './engine-kept-back-notice'
 import { SectionHeading, SettingsContent } from './primitives'
 import { UninstallSection } from './uninstall-section'
 
@@ -161,6 +162,8 @@ export function EngineUpdateSection({ dialogLayer }: { dialogLayer?: number } = 
           </div>
         </div>
       )}
+
+      <EngineKeptBackNotice />
 
       <div
         className={cn('p5-panel px-4 py-3.5 text-sm', statusTone === 'error' ? 'text-destructive' : 'text-foreground')}

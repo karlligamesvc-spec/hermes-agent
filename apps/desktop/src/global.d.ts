@@ -491,6 +491,9 @@ declare global {
         getVersion: () => Promise<DesktopRuntimeVersion>
         checkUpdate: () => Promise<DesktopRuntimeUpdateCheck>
         applyUpdate: (expectedTarget?: DesktopRuntimeUpdateExpectedTarget) => Promise<DesktopRuntimeUpdateApply>
+        // hc-1033: install the shipped engine over one this app could not prove older. Optional: an
+        // older main process has no such channel.
+        switchToBundledEngine?: () => Promise<DesktopRuntimeUpdateApply>
         onUpdateProgress: (callback: (progress: DesktopRuntimeUpdateProgress) => void) => () => void
       }
       // 壳(Electron 应用本体)自更新 — electron-updater 通道,和 runtime(引擎)
@@ -2474,6 +2477,15 @@ export interface DesktopRuntimeVersion {
   // there is no stamp to check (git checkout / legacy tree) — treat as unknown.
   treeCommit?: string | null
   treeMatchesMarker?: boolean | null
+  // hc-1033: this boot kept an engine other than the one this app ships. `newer-or-unknown`: nothing
+  // proves the kept engine older; `upgrade-failed`: installing the shipped one failed. Null otherwise.
+  keptBack?: DesktopEngineKeptBack | null
+}
+
+export interface DesktopEngineKeptBack {
+  reason: 'newer-or-unknown' | 'upgrade-failed'
+  /** The engine this app ships (calver+fork label). */
+  bundledVersion: string
 }
 
 // Result of hermesDesktop.runtime.checkUpdate(). ok:false only on an unexpected
