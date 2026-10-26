@@ -19,6 +19,7 @@ import { $clarifyRequests, setClarifyRequest } from '@/store/clarify'
 import { clearAllPrompts, setApprovalRequest } from '@/store/prompts'
 import { $activeSessionId, $gatewayState } from '@/store/session'
 import { $singleThreadFlag } from '@/store/single-thread'
+import { $threadActivity } from '@/store/thread-signals'
 import { clearDismissedToolRows } from '@/store/tool-dismiss'
 import { $toolDisclosureStates, setToolViewMode } from '@/store/tool-view'
 import {
@@ -311,6 +312,14 @@ describe('while a task runs: one activity line at the foot', () => {
     expect(onScreen(activity(container)!.querySelector('[role="status"]')!)).toBe('等你决定')
     // Waiting on the user, APEX looks up at them instead of down at the work.
     expect(activity(container)!.querySelector('[data-apex-avatar]')?.getAttribute('data-apex-avatar')).toBe('idle')
+  })
+
+  it('tells the sidebar what it says, and stops when it goes away (hc-1061)', async () => {
+    const view = renderZh(remixRunningTurn())
+
+    await waitFor(() => expect($threadActivity.get()).toEqual({ text: '正在识别语音…', waiting: false }))
+    view.unmount()
+    expect($threadActivity.get()).toBeNull()
   })
 })
 

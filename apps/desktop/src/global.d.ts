@@ -283,6 +283,10 @@ declare global {
         // cloud with the stored login JWT. Optional: an older main process may
         // not expose it (the account menu then shows no team line).
         team?: () => Promise<DesktopTeamResult>
+        // hc-1061: the plan and how much of its allowance is used, for the
+        // single-thread sidebar's account row. Optional: an older main process
+        // may not expose it (the row then shows the email).
+        planUsage?: () => Promise<DesktopPlanUsageResult>
         // hc-991 first-use creator intake: the account's three answers, read or
         // written with the stored login JWT. Optional: an older main process may
         // not expose it (the Start page then shows no cards).
@@ -1728,6 +1732,21 @@ export interface DesktopTeamSummary {
   isAdmin: boolean
   name: string
   status: 'active' | 'pending'
+}
+
+// hc-1061 / hc-1062 (apex-nodes account_plan_usage router): electron/apex-plan-usage.ts.
+export interface DesktopPlanUsage {
+  period: 'month' | 'week'
+  planName: string
+  /** Share of the allowance used (1.25 = 125%); null when the plan is unlimited. */
+  usedRatio: null | number
+}
+
+export interface DesktopPlanUsageResult {
+  message?: 'FETCH_FAILED' | 'NOT_SIGNED_IN' | 'SESSION_EXPIRED'
+  needsSignIn?: boolean
+  ok: boolean
+  usage: DesktopPlanUsage | null
 }
 
 export interface DesktopTeamResult {
