@@ -125,12 +125,21 @@ def ensure_font(name: str = 'subtitle') -> Path:
     return destination
 
 
+def _bundled_hypit_version() -> str:
+    package = ROOT / '.runtime/hypit/node_modules/@hypit/hypit/package.json'
+    return json.loads(package.read_text(encoding='utf-8'))['version']
+
+
 def prepare_hypit(workspace: Path, version: str | None = None) -> Path:
-    from apex_overlay.hypit_profile import prepare_profile
-    if version is None:
-        package = ROOT / '.runtime/hypit/node_modules/@hypit/hypit/package.json'
-        version = json.loads(package.read_text(encoding='utf-8'))['version']
-    return prepare_profile(workspace, ROOT, version, ensure_browser)
+    from apex_overlay.hypit_profile import hosted_active, prepare_profile
+    return prepare_profile(workspace, ROOT, version or _bundled_hypit_version(), ensure_browser, hosted=hosted_active())
+
+
+def enable_hosted_hypit(workspace: Path, version: str | None = None) -> Path:
+    from apex_overlay.hypit_profile import hosted_active, merge_hosted_endpoint
+    if not hosted_active():
+        raise ValueError('APEX hosted generation is not enabled for this Desktop')
+    return merge_hosted_endpoint(workspace, version or _bundled_hypit_version())
 
 
 def apply() -> bool:
@@ -165,7 +174,7 @@ def apply() -> bool:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['browser', 'prepare-hypit', 'font'])
+    parser.add_argument('command', choices=['browser', 'prepare-hypit', 'enable-hosted-hypit', 'font'])
     parser.add_argument('--workspace', '--project', type=Path, default=Path.cwd())
     parser.add_argument('--hypit-version')
     args = parser.parse_args()
@@ -174,5 +183,10 @@ if __name__ == '__main__':
             print(ensure_font())
         except (OSError, ValueError, KeyError) as exc:  # the Agent relays this line instead of a traceback
             raise SystemExit(f'APEX subtitle font unavailable: {type(exc).__name__}: {exc}') from None
+    elif args.command == 'enable-hosted-hypit':
+        try:
+            print(enable_hosted_hypit(args.workspace, args.hypit_version))
+        except (OSError, ValueError) as exc:  # the Agent relays this line instead of a traceback
+            raise SystemExit(f'APEX hosted generation not added: {exc}') from None
     else:
         print(ensure_browser() if args.command == 'browser' else prepare_hypit(args.workspace, args.hypit_version))
