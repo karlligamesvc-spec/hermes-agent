@@ -42,7 +42,7 @@ describe('hc-1014 the header over the one thread', () => {
     expect(renderHook(() => useSingleThreadHeader(selected)).result.current).toBe(expected)
   })
 
-  it('shows only APEX: the mark and the name, no title and no session menu', () => {
+  it('shows only APEX: the avatar and the name, no title and no session menu', () => {
     const { container } = render(
       <I18nProvider configClient={null} initialLocale="zh">
         <SingleThreadHeader />
@@ -50,7 +50,8 @@ describe('hc-1014 the header over the one thread', () => {
     )
 
     expect(container.querySelector('[data-single-thread-header]')?.textContent).toBe('APEX')
-    expect(screen.getByLabelText('APEX').querySelector('img')).toBeTruthy()
+    expect(screen.getByLabelText('APEX').querySelector('[data-apex-avatar="idle"]')).toBeTruthy()
+    expect(screen.getByLabelText('APEX').querySelector('img')).toBeNull()
     expect(screen.queryByRole('button')).toBeNull()
   })
 })

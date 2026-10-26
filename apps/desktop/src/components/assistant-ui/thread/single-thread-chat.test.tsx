@@ -252,7 +252,7 @@ describe('a finished task: only the question and the answer', () => {
 })
 
 describe('while a task runs: one activity line at the foot', () => {
-  it('names the step in progress next to APEX’s mark, and nothing else', async () => {
+  it('names the step in progress next to APEX looking down at the work, and nothing else', async () => {
     const { container } = renderZh(remixRunningTurn())
 
     const line = await waitFor(() => {
@@ -267,7 +267,7 @@ describe('while a task runs: one activity line at the foot', () => {
 
     expect(status.getAttribute('aria-label')).toBe('APEX 在做的事')
     expect(onScreen(status)).toBe('正在识别语音… 第 2 步')
-    expect(status.querySelector('img')).not.toBeNull()
+    expect(status.querySelector('[data-apex-avatar]')?.getAttribute('data-apex-avatar')).toBe('working')
     expect(container.querySelectorAll('[data-single-thread-activity]')).toHaveLength(1)
     // It is the thread's tail: after everything the turn has said so far.
     const tail = [...container.querySelectorAll('[data-slot="aui_assistant-message-content"]')].at(-1)!
@@ -309,6 +309,8 @@ describe('while a task runs: one activity line at the foot', () => {
     await waitFor(() => expect(activity(container)).not.toBeNull())
 
     expect(onScreen(activity(container)!.querySelector('[role="status"]')!)).toBe('等你决定')
+    // Waiting on the user, APEX looks up at them instead of down at the work.
+    expect(activity(container)!.querySelector('[data-apex-avatar]')?.getAttribute('data-apex-avatar')).toBe('idle')
   })
 })
 
