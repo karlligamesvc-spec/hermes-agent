@@ -12,6 +12,7 @@
  * aliases: src/lib/model-tiers.ts (MODEL_TIER_ALIAS).
  */
 
+import { applyHypihubApexSwitch, HYPIHUB_APEX_ACTIVE_ENV } from './apex-hypihub'
 import { MANAGED_PROVIDER_NAME } from './apex-relay-key-anchors'
 import { applySingleThreadSwitch, isSingleThreadActive, SINGLE_THREAD_ACTIVE_ENV } from './apex-single-thread'
 
@@ -157,15 +158,18 @@ export function applyModelTierSwitches(
 }
 
 /** Every launch-time `desktop_features` switch main settles into the env: the
- *  tier switches above and hc-1015 single-thread (apex-single-thread.ts). */
+ *  tier switches above, hc-1015 single-thread (apex-single-thread.ts) and
+ *  APEX-hosted Hypit generation (apex-hypihub.ts). */
 export function applyDesktopFeatureSwitches(
   env: Record<string, string | undefined>,
   clientConfigPayload: unknown,
   log: (line: string) => void = () => undefined
 ): string[] {
   const set = applyModelTierSwitches(env, clientConfigPayload, log)
+  const singleThread = applySingleThreadSwitch(env, clientConfigPayload, log) ? [SINGLE_THREAD_ACTIVE_ENV] : []
+  const hosted = applyHypihubApexSwitch(env, clientConfigPayload, log) ? [HYPIHUB_APEX_ACTIVE_ENV] : []
 
-  return applySingleThreadSwitch(env, clientConfigPayload, log) ? [...set, SINGLE_THREAD_ACTIVE_ENV] : set
+  return [...set, ...singleThread, ...hosted]
 }
 
 function trimTrailingSlash(value: string): string {
