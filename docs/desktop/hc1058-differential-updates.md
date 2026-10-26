@@ -28,7 +28,7 @@ Measured on the published 0.17.60 → 0.17.63 blockmaps:
 
 | Piece | Where | Guard |
 | --- | --- | --- |
-| Deterministic engine archive: sorted entries, fixed mtime 2000-01-01, owner 0/0, gzip in ~64 KiB content-defined segments deflated on their own | `scripts/runtime-bundle-archive.mjs`, used by `build-runtime-bundle.mjs` | `runtime-bundle-archive.node-test.mjs` |
+| Deterministic engine archive: sorted entries, fixed mtime 2000-01-01, owner 0/0, hard links stored once (as bsdtar did), gzip in ~64 KiB content-defined segments, each a fresh deflate primed with the previous 32 KiB | `scripts/runtime-bundle-archive.mjs`, used by `build-runtime-bundle.mjs` | `runtime-bundle-archive.node-test.mjs` |
 | The Mac update zip stores the engine entry instead of deflating it: Info-ZIP `ZIPOPT -n …:.gz`, set in `afterPack` | `scripts/after-pack.mjs` | `desktop-macos.yml` "Assert update zip stores the engine archive" |
 | The Windows installer carries the engine archive verbatim: `nsis.preCompressedFileExtensions` adds `.tar.gz`, NSIS `SetCompress auto` stores it | `package.json` | `desktop-windows.yml` "Assert installer stores the engine archive" |
 | The cached old package and blockmap are proved to match before each check | `electron/shell-update-diff-base.ts` (fork #485) | its tests |
@@ -40,7 +40,7 @@ The engine is still installed exactly as before: the packaged-engine gate extrac
 - **Patch releases (0.17.x)** are minor versions. Users get them by self-update, downloading only what changed: the shell code plus the engine files that changed, normally tens of MB.
 - **Minor releases (0.18.0 and up)** are major versions and may ship as a full package. Electron major upgrades, a new Python minor version and packaging-format changes belong here.
 - The client needs no rule of its own. The planner downloads whatever changed and falls back to the full package by itself.
-- These are part of the archive format: the gear table, segment sizes, deflate level, fixed mtime and the Node major version the release builds with (zlib output). Changing any of them makes the next release a full download once, so change them only in a minor release.
+- These are part of the archive format: the gear table, segment sizes, priming window, deflate level, fixed mtime and the Node major version the release builds with (zlib output). Changing any of them makes the next release a full download once, so change them only in a minor release.
 
 ## Measuring a release
 
@@ -53,16 +53,28 @@ Record the result for each platform in the release readback.
 
 ## Measured
 
-Real Mac arm64 0.17.62 → 0.17.63, including an engine pin change (a2e1a4b5 → 7ae7a561). Each published zip was rebuilt the way this pipeline builds it: the engine re-archived by the new writer, then zipped like electron-builder 26 with the `afterPack` ZIPOPT. Code signatures were not redone; that does not change which blocks differ.
+Real published releases. Each published package was rebuilt the way this pipeline builds it:
+- **Mac:** the engine is re-archived by the new writer, then the App is zipped like electron-builder 26 with the `afterPack` ZIPOPT. Code signatures were not redone; that does not change which blocks differ.
+- **Windows:** the engine archive comes out of the published installer's 7z and is re-archived.
 
-| | Download | Share |
+Mac arm64 update zip:
+
+| Release | Today | With this change |
 | --- | --- | --- |
-| Published zips (today) | 377.7 MB of 502.6 MB | 75.1% |
-| Engine archive, `tar -czf` | 360.4 MB | 100% |
-| Engine archive, new writer | 15.8 MB | 4.2% |
-| **Update zip with this change** | **34.4 MB of 518.2 MB** | **6.6%** |
+| 0.17.62 → 0.17.63 (engine a2e1a4b5 → 7ae7a561) | 377.7 MB of 502.6 MB (75.1%) | **34.9 MB of 508.6 MB (6.9%)** |
+| 0.17.63 → 0.17.64 | 375.1 MB of 502.6 MB (74.6%) | **26.3 MB of 508.7 MB (5.2%)** |
 
-The engine archive grows about 4% (360.5 → 374.9 MB for a2e1a4b5), and the update zip by 15.6 MB.
+Engine archive alone:
+
+| Release | Today | With this change |
+| --- | --- | --- |
+| Mac 0.17.62 → 0.17.63 | 360.4 MB (100%) | 16.3 MB (4.5%) |
+| Mac 0.17.63 → 0.17.64 | 359.3 MB (99.6%) | 10.1 MB (2.8%) |
+| Windows 0.17.62 → 0.17.63 | 494.5 MB (99.9%) | 8.1 MB (1.6%) |
+
+Cost:
+- the Mac engine archive grows 1.4% (360.5 → 365.4 MB), so the update zip grows by about 6 MB;
+- the Windows engine archive grows 1.5% (495.0 → 502.4 MB).
 
 ## Still a full download
 

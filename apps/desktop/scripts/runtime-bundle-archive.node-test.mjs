@@ -235,6 +235,61 @@ test('a minor engine change re-downloads a small share of the archive; one gzip 
   assert.ok(stream > 0.5, `single gzip stream re-downloads ${(stream * 100).toFixed(1)}%`)
 })
 
+test('a file linked under several names is stored once and extracts as a hard link', t => {
+  if (!POSIX) return t.skip('hard links in the fixture need a POSIX filesystem')
+  const dir = tempDir(t, 'hardlink')
+  const stage = path.join(dir, 'stage')
+  const first = path.join(stage, '.runtime', 'git', 'mingw64', 'bin', 'git.exe')
+  const deepName = `${'g'.repeat(70)}/${'h'.repeat(70)}/git-upload-pack.exe`
+  fs.mkdirSync(path.dirname(first), { recursive: true })
+  fs.writeFileSync(first, noise('git', 300_000))
+  for (const rel of ['.runtime/git/mingw64/libexec/git-core/git.exe', `.runtime/git/${deepName}`]) {
+    fs.mkdirSync(path.dirname(path.join(stage, ...rel.split('/'))), { recursive: true })
+    fs.linkSync(first, path.join(stage, ...rel.split('/')))
+  }
+  const archive = path.join(dir, 'a.tar.gz')
+  writeRuntimeArchive(stage, archive)
+  const tarBytes = zlib.gunzipSync(fs.readFileSync(archive))
+  assert.ok(tarBytes.length < 600_000, `content stored once (${tarBytes.length} tar bytes)`)
+  const links = tarHeaders(tarBytes).filter(header => header.type === '1')
+  // The first name in archive order carries the content (here the long one, so
+  // both links need a pax linkpath); the others link to it.
+  assert.deepEqual(links.map(header => [header.name, header.linkname]), [
+    ['./.runtime/git/mingw64/bin/git.exe', `./.runtime/git/${deepName}`],
+    ['./.runtime/git/mingw64/libexec/git-core/git.exe', `./.runtime/git/${deepName}`]
+  ])
+  const out = path.join(dir, 'out')
+  fs.mkdirSync(out)
+  run(TAR, ['-xzf', archive, '-C', out])
+  const extracted = ['.runtime/git/mingw64/bin/git.exe', '.runtime/git/mingw64/libexec/git-core/git.exe', `.runtime/git/${deepName}`]
+    .map(rel => path.join(out, ...rel.split('/')))
+  for (const file of extracted) assert.deepEqual(fs.readFileSync(file), noise('git', 300_000))
+  assert.equal(new Set(extracted.map(file => fs.statSync(file).ino)).size, 1)
+})
+
+test('priming each segment keeps the archive within 3% of one gzip stream', t => {
+  const dir = tempDir(t, 'ratio')
+  const stage = path.join(dir, 'stage')
+  // Many small source-like files sharing a header and a vocabulary, like a venv.
+  const words = Array.from({ length: 400 }, (_, i) => createHash('sha256').update(`w${i}`).digest('hex').slice(0, 3 + (i % 7)))
+  const header = `# Copyright APEX. Licensed under the MIT License.\n${words.slice(0, 120).join(' ')}\n`
+  for (let i = 0; i < 600; i++) {
+    const lines = [header]
+    for (let line = 0; line < 40; line++) {
+      const hash = createHash('sha256').update(`${i}:${line}`).digest()
+      lines.push(Array.from({ length: 8 }, (_, k) => words[hash[k] + (hash[k + 8] % 2) * 144]).join(' '))
+    }
+    const file = path.join(stage, `pkg${i % 30}`, `mod${i}.py`)
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, lines.join('\n'))
+  }
+  const archive = path.join(dir, 'a.tar.gz')
+  writeRuntimeArchive(stage, archive)
+  const segmented = fs.statSync(archive).size
+  const stream = zlib.gzipSync(zlib.gunzipSync(fs.readFileSync(archive))).length
+  assert.ok(segmented <= stream * 1.03, `segmented ${segmented} vs one stream ${stream} (${(segmented / stream).toFixed(3)}×)`)
+})
+
 test('the bundle builder archives with this writer, not with `tar -czf`', () => {
   const builder = fs.readFileSync(path.join(repoRoot, 'scripts', 'build-runtime-bundle.mjs'), 'utf8')
   assert.match(builder, /import \{ writeRuntimeArchive \} from '\.\/runtime-bundle-archive\.mjs'/)

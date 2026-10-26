@@ -12,14 +12,19 @@
 // GNU tar extract it like before) whose bytes depend only on the tree:
 //   - entries sorted by name, the root first and every directory before its
 //     children; mtime fixed, owner 0/0 with no names, the file's own mode bits;
-//   - gzip in content-defined segments (~64 KiB) that are deflated on their
-//     own and end on a full flush, so unchanged regions compress to identical
-//     bytes wherever they sit (the idea behind `gzip --rsyncable`).
-// Between two real engines (1fd75201 → a2e1a4b5) the blockmap download fell
-// from 360 MB (99.3%) to 20.9 MB (5.6%); the archive grew by 3.4%.
+//   - a file already archived under another name (same inode) becomes a hard
+//     link entry, as bsdtar wrote it (Windows PortableGit ships such files);
+//   - gzip in content-defined segments (~64 KiB) that each start a fresh
+//     deflate primed with the 32 KiB before them and end on a full flush, so
+//     unchanged regions compress to identical bytes wherever they sit (the idea
+//     behind `gzip --rsyncable`), at almost the ratio of one stream.
+// Real 0.17.62 → 0.17.63 engines (blockmap download, old → new format):
+//   Mac 360.4 MB (100%) → 16.3 MB (4.5%), archive +1.4%;
+//   Windows 494.5 MB (99.9%) → 8.1 MB (1.6%), archive +1.5%.
 //
-// The gear table, segment sizes, deflate level and fixed mtime are part of the
-// format: changing any of them makes the next release a full download once.
+// The gear table, segment sizes, priming window, deflate level and fixed mtime
+// are part of the format: changing any of them makes the next release a full
+// download once.
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -30,6 +35,7 @@ const SEGMENT_MIN = 16 * 1024
 const SEGMENT_MAX = 256 * 1024
 const SEGMENT_MASK = 0xffff0000 // top 16 bits clear: ~64 KiB average segment
 const DEFLATE_LEVEL = 6
+const PRIMING_WINDOW = 32 * 1024 // all of deflate's back-reference window
 const READ_CHUNK = 4 * 1024 * 1024
 const MAX_USTAR_SIZE = 0o77777777777
 
@@ -115,7 +121,7 @@ function paxRecord(key, value) {
 
 const padding = size => Buffer.alloc((512 - (size % 512)) % 512)
 
-/** Gzip writer: content-defined segments, each deflated alone and ended with a full flush. */
+/** Gzip writer: content-defined segments, each a primed deflate ended with a full flush. */
 class SegmentedGzip {
   constructor(fd) {
     this.fd = fd
@@ -126,6 +132,7 @@ class SegmentedGzip {
     this.size = 0
     this.bytes = 0
     this.segments = 0
+    this.window = null
     this.out(Buffer.from([0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3])) // no name, mtime 0, unix
   }
 
@@ -137,7 +144,13 @@ class SegmentedGzip {
   emit(segment) {
     this.crc = zlib.crc32(segment, this.crc)
     this.size += segment.length
-    this.out(zlib.deflateRawSync(segment, { level: DEFLATE_LEVEL, finishFlush: zlib.constants.Z_FULL_FLUSH }))
+    // The dictionary is the uncompressed stream's last 32 KiB, which the inflater
+    // already holds, so the output stays one valid deflate stream. A change in a
+    // segment can alter the next one too, never anything further.
+    const options = { level: DEFLATE_LEVEL, finishFlush: zlib.constants.Z_FULL_FLUSH }
+    this.out(zlib.deflateRawSync(segment, this.window ? { ...options, dictionary: this.window } : options))
+    const joined = this.window ? Buffer.concat([this.window, segment]) : segment
+    this.window = Buffer.from(joined.subarray(Math.max(0, joined.length - PRIMING_WINDOW)))
     this.segments++
   }
 
@@ -181,13 +194,21 @@ export function writeRuntimeArchive(root, outFile, { platform = process.platform
   const fd = fs.openSync(outFile, 'w')
   const gzip = new SegmentedGzip(fd)
   const chunk = Buffer.alloc(READ_CHUNK)
+  const archivedInodes = new Map()
   let entries = 0
   try {
     for (const entry of archiveEntries(root)) {
       const stat = fs.lstatSync(entry.abs)
       const name = entry.rel ? `./${entry.rel}${entry.kind === 'dir' ? '/' : ''}` : './'
-      const linkname = entry.kind === 'link' ? fs.readlinkSync(entry.abs) : ''
-      const size = entry.kind === 'file' ? stat.size : 0
+      let kind = entry.kind
+      let linkname = kind === 'link' ? fs.readlinkSync(entry.abs) : ''
+      if (kind === 'file' && stat.nlink > 1) {
+        // bigint: Windows file indexes exceed 2^53.
+        const { dev, ino } = fs.lstatSync(entry.abs, { bigint: true })
+        const inode = `${dev}:${ino}`
+        if (archivedInodes.has(inode)) { kind = 'hardlink'; linkname = archivedInodes.get(inode) } else archivedInodes.set(inode, name)
+      }
+      const size = kind === 'file' ? stat.size : 0
       if (size > MAX_USTAR_SIZE) throw new Error(`${entry.rel} is too large for a ustar entry`)
       const split = splitUstarName(name)
       const records = (split ? '' : paxRecord('path', name)) +
@@ -202,12 +223,12 @@ export function writeRuntimeArchive(root, outFile, { platform = process.platform
         ...(split || { prefix: '', name: 'PaxHeader/name' }),
         mode: entryMode(stat, entry.kind, platform),
         size,
-        type: { dir: '5', file: '0', link: '2' }[entry.kind],
+        type: { dir: '5', file: '0', link: '2', hardlink: '1' }[kind],
         // A target that only fits the pax record still needs a non-empty ustar
         // linkname, or libarchive (bsdtar) drops it; bsdtar writes this placeholder.
         linkname: !linkname ? '' : isAscii(linkname) && linkname.length <= 100 ? linkname : '././@LongSymLink'
       }))
-      if (entry.kind === 'file') {
+      if (kind === 'file') {
         const file = fs.openSync(entry.abs, 'r')
         try {
           let copied = 0
