@@ -776,6 +776,86 @@ describe('desktop update orchestration', () => {
     })
   })
 
+  // hc-1030 follow-up: on 2026-10-26 two retries failed with shell_update_not_ready
+  // because the check answered on update-available and the cached download landed
+  // about 0.5 s later. Pushes are simulated with $shellUpdate.set, as onEvent does.
+  function retryBridge(checked: DesktopShellUpdateState, later?: DesktopShellUpdateState) {
+    const install = vi.fn(async () => ({ ok: true }))
+    const transitionPlan = vi.fn(async () => ({ ok: true }))
+
+    const check = vi.fn(async () => {
+      if (later) {setTimeout(() => $shellUpdate.set(later), 500)}
+
+      return { ok: true, state: checked }
+    })
+
+    window.hermesDesktop = {
+      getVersion: vi.fn(async () => ({ appVersion: '0.17.14' })),
+      shellUpdate: { check, getState: vi.fn(async () => null), install, onEvent: vi.fn(() => () => {}) },
+      updateCenter: { getPlan: vi.fn(async () => updatePlan({ kind: 'shell-only' })), transitionPlan }
+    } as unknown as typeof window.hermesDesktop
+
+    return { install, transitionPlan }
+  }
+
+  it('a retry waits for the frozen shell the check is still fetching, then installs it (hc-1030)', async () => {
+    vi.useFakeTimers()
+    const { install, transitionPlan } = retryBridge({ ...SHELL_UPDATE, percent: null, phase: 'available' }, SHELL_UPDATE)
+    const retrying = retryDesktopUpdate({ reload: vi.fn() })
+
+    await vi.advanceTimersByTimeAsync(100)
+    expect(install).not.toHaveBeenCalled()
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: true, currentStage: 'shell', error: null })
+
+    await vi.advanceTimersByTimeAsync(400)
+    await retrying
+
+    expect(transitionPlan).toHaveBeenLastCalledWith({ phase: 'ready-to-restart' })
+    expect(install).toHaveBeenCalledTimes(1)
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: true, currentStage: 'restart', error: null })
+  })
+
+  it('a retry whose shell is still downloading after the wait keeps the plan waiting, not failed (hc-1030)', async () => {
+    vi.useFakeTimers()
+    const { install, transitionPlan } = retryBridge({ ...SHELL_UPDATE, percent: 12, phase: 'downloading' })
+    let settled = false
+    const retrying = retryDesktopUpdate({ reload: vi.fn() }).then(() => { settled = true })
+
+    await vi.advanceTimersByTimeAsync(9_000)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(settled).toBe(true)
+    await retrying
+
+    expect(transitionPlan).toHaveBeenLastCalledWith({ lastError: 'shell_target_redownloading', phase: 'resuming' })
+    expect(transitionPlan).not.toHaveBeenCalledWith(expect.objectContaining({ phase: 'failed' }))
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: false, currentStage: null, error: null })
+    expect(install).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { name: 'nothing to fetch', checked: { ...SHELL_UPDATE, percent: null, phase: 'idle' as const }, later: undefined },
+    { name: 'a different version', checked: { ...SHELL_UPDATE, percent: null, phase: 'available' as const, version: '0.18.1' }, later: undefined },
+    {
+      name: 'a failed download',
+      checked: { ...SHELL_UPDATE, percent: null, phase: 'available' as const },
+      later: { ...SHELL_UPDATE, error: 'net::ERR_TIMED_OUT', phase: 'error' as const }
+    }
+  ])('a retry fails as soon as the frozen shell cannot arrive: $name (hc-1030)', async ({ checked, later }) => {
+    vi.useFakeTimers()
+    const { install, transitionPlan } = retryBridge(checked, later)
+    let failure: unknown = null
+    const retrying = retryDesktopUpdate({ reload: vi.fn() }).catch(error => { failure = error })
+
+    await vi.advanceTimersByTimeAsync(500)
+    expect(failure).toEqual(new Error('shell_update_not_ready'))
+    await retrying
+
+    expect(transitionPlan).toHaveBeenLastCalledWith({ lastError: 'shell_update_not_ready', phase: 'failed' })
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: false, error: 'shell_update_not_ready' })
+    expect(install).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['shell-only', false],
     ['shell-only', true],
