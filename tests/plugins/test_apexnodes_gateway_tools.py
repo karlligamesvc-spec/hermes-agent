@@ -55,7 +55,8 @@ EXPECTED_TOOLS = {
         "social_creator_discovery",
         "social_product",
     },
-    "apexnodes-video-tools": {"generate_video"},
+    # hc-1054: long-video analysis registers from the same plugin (plugins/apexnodes_video_analysis.py).
+    "apexnodes-video-tools": {"generate_video", "video_highlights", "video_moment_search"},
 }
 
 # 桌面机器上不存在的 vendor/master 侧 env——冒烟前必须全空。
