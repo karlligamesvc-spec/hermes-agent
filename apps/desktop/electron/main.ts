@@ -47,6 +47,7 @@ import {
   systemProxyToUrls
 } from './apex-agent-proxy'
 import { createSourceAnswerHandlers } from './apex-analysis-answer'
+import { transcribeAnalysisVideoLink } from './apex-analysis-asr-job'
 import { createDeepReportHandlers } from './apex-analysis-deep-report'
 import {
   addLocalNote,
@@ -22691,9 +22692,8 @@ ipcMain.handle('hermes:analysis:transcribeVideoLink', async (_event, sourceUrl) 
 
     if (!url || url.length > 2048) {return { ok: false, code: 'unsupported_video_link' }}
 
-    const response: any = await context.run(() => apexAuthPostJson(`${context.apiBase}/api/v1/account/analysis/video-links/transcribe`, {
-      body: { url, storage_mode: context.policy.mode }, bearer: context.bearer, timeoutMs: 1_850_000
-    }))
+    const { body: response, renewedToken } = await context.run(() => transcribeAnalysisVideoLink(context.apiBase, context.bearer, url, context.policy.mode, (input, init) => electronNet.fetch(input, init)))
+    persistRenewedLoginToken(renewedToken, context.bearer)
 
     const current = await analysisIpcContext(true)
 
