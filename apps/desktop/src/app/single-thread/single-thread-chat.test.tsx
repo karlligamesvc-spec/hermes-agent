@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { type ThreadMessage } from '@assistant-ui/react'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { stubThreadEnvironment, stubThreadViewportSize, ThreadRuntime } from '@/components/assistant-ui/test-utils'
@@ -315,7 +315,18 @@ describe('hc-1059 bubbles hold the words, and only the words', () => {
 })
 
 describe('hc-1059 the centred time line', () => {
-  const at = (day: number, hour: number, minute: number) => new Date(2026, 9, day, hour, minute)
+  // The fake clock stays in the past. The transcript's stick-to-bottom loop keeps asking
+  // for frames while `Date.now()` is behind the moment a scroll started, so a scroll still
+  // in flight when a clock ahead of the real one is put back runs on until the test
+  // environment is gone (an unhandled rejection that failed #487's first CI run).
+  const REAL_NOW = Date.now()
+  const at = (day: number, hour: number, minute: number) => new Date(2026, 0, day, hour, minute)
+
+  /** Lets the mount-time scroll finish before the test ends and the real clock comes back. */
+  const settle = () =>
+    act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 30))
+    })
 
   const said = (id: string, role: 'assistant' | 'user', createdAt: Date, text: string) =>
     ({
@@ -343,12 +354,14 @@ describe('hc-1059 the centred time line', () => {
     )
 
   async function renderAt(now: Date, messages: ThreadMessage[]) {
+    expect(now.getTime()).toBeLessThan(REAL_NOW)
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(now)
 
     const view = renderZh(messages)
 
     await screen.findByText(`答 ${messages.at(-1)!.id.replace(/-answer$/, '')}`)
+    await settle()
 
     return view
   }
@@ -356,39 +369,39 @@ describe('hc-1059 the centred time line', () => {
   it.each([
     [
       'a thread that started today opens on 「今天」',
-      [...exchange('a', at(26, 14, 20)), ...exchange('b', at(26, 14, 40))],
+      [...exchange('a', at(14, 14, 20)), ...exchange('b', at(14, 14, 40))],
       ['今天 14:20']
     ],
     [
       'yesterday, then today: 「昨天」, the new day, its time',
-      [...exchange('a', at(25, 14, 52)), ...exchange('b', at(26, 9, 10))],
-      ['昨天 14:52', '—10 月 26 日 周一—', '09:10']
+      [...exchange('a', at(13, 14, 52)), ...exchange('b', at(14, 9, 10))],
+      ['昨天 14:52', '—1 月 14 日 周三—', '09:10']
     ],
     [
       'older than yesterday keeps the date line, with the time under it',
-      exchange('a', at(20, 14, 20)),
-      ['—10 月 20 日 周二—', '14:20']
+      exchange('a', at(8, 14, 20)),
+      ['—1 月 8 日 周四—', '14:20']
     ],
     [
       'six idle hours in one day: 「新的一段」 and its time',
-      [...exchange('a', at(26, 8, 0)), ...exchange('b', at(26, 14, 5))],
+      [...exchange('a', at(14, 8, 0)), ...exchange('b', at(14, 14, 5))],
       ['今天 08:00', '—新的一段—', '14:05']
     ]
   ])('%s', async (_label, messages, expected) => {
-    const { container } = await renderAt(at(26, 16, 0), messages)
+    const { container } = await renderAt(at(14, 16, 0), messages)
 
     expect(lines(container)).toEqual(expected)
   })
 
   it('after midnight the next message turns 「今天」 into 「昨天」 and adds the new day', async () => {
-    const first = exchange('a', at(26, 14, 20))
-    const { container, rerender } = await renderAt(at(26, 23, 59), first)
+    const first = exchange('a', at(14, 14, 20))
+    const { container, rerender } = await renderAt(at(14, 23, 59), first)
 
     expect(lines(container)).toEqual(['今天 14:20'])
 
-    vi.setSystemTime(at(27, 0, 1))
+    vi.setSystemTime(at(15, 0, 1))
 
-    const next = [...first, ...exchange('b', at(27, 0, 1))]
+    const next = [...first, ...exchange('b', at(15, 0, 1))]
 
     rerender(
       <I18nProvider configClient={null} initialLocale="zh">
@@ -399,7 +412,8 @@ describe('hc-1059 the centred time line', () => {
     )
 
     await screen.findByText('答 b')
-    expect(lines(container)).toEqual(['昨天 14:20', '—10 月 27 日 周二—', '00:01'])
+    await settle()
+    expect(lines(container)).toEqual(['昨天 14:20', '—1 月 15 日 周四—', '00:01'])
   })
 
   it.each([
@@ -409,9 +423,9 @@ describe('hc-1059 the centred time line', () => {
     setSingleThreadFlagForTest(on)
     setToolViewMode(view)
 
-    const { container } = await renderAt(at(26, 16, 0), [
-      ...exchange('a', at(25, 14, 52)),
-      ...exchange('b', at(26, 9, 10))
+    const { container } = await renderAt(at(14, 16, 0), [
+      ...exchange('a', at(13, 14, 52)),
+      ...exchange('b', at(14, 9, 10))
     ])
 
     expect(lines(container)).toEqual([])
