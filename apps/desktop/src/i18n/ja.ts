@@ -1819,7 +1819,7 @@ export const ja = defineLocale({
     soulPlaceholder: mode =>
       `このプロファイルのシステムプロンプト / ペルソナ。\n空欄のままにすると ${mode} のデフォルトを使用します。`,
     soulPlaceholderCloned: 'クローン済み',
-    soulPlaceholderEmpty: '空',
+    soulPlaceholderEmpty: 'APEX',
     unsavedChanges: '未保存の変更',
     loadingSoul: 'SOUL.md を読み込み中...',
     emptySoul: '空の SOUL.md — ペルソナの記述を始めてください...',

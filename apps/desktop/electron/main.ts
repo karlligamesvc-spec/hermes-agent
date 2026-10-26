@@ -100,7 +100,7 @@ import {
   resolveDaemonEndpoints,
   sanitizeDeviceName as sanitizeDaemonDeviceName
 } from './apex-daemon'
-import { ensureApexDesktopSoul } from './apex-default-soul'
+import { ensureApexDesktopSouls } from './apex-default-soul'
 import { clientConfigForRenderer } from './apex-desktop-features'
 import {
   buildFeishuBackendEnv,
@@ -24704,8 +24704,7 @@ app.on('open-url', (event, url) => {
 
 app.whenReady().then(() => {
   try {
-    const soulSeed = ensureApexDesktopSoul(HERMES_HOME)
-    rememberLog(`[soul] APEX default ${soulSeed}`)
+    rememberLog(`[soul] ${ensureApexDesktopSouls(HERMES_HOME)}`)
   } catch (error) {
     rememberLog(`[soul] could not seed APEX default: ${error?.message || error}`)
   }
