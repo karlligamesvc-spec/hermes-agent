@@ -29,8 +29,8 @@ export interface MemoryLedgerCopy {
     refusals: Record<string, string>
   }
   noted: {
-    /** 「记下了：…」 */
-    line: (content: string) => string
+    /** 「APEX 记下了：…」; `name` is single-thread-chat's assistantName. */
+    line: (content: string, name: string) => string
     undo: string
     undone: (content: string) => string
     undoFailed: string
@@ -69,7 +69,7 @@ export const MEMORY_LEDGER_COPY: Record<Locale, MemoryLedgerCopy> = {
       }
     },
     noted: {
-      line: content => `记下了：${content}`,
+      line: (content, name) => `${name} 记下了：${content}`,
       undo: '撤销',
       undone: content => `已撤销：${content}`,
       undoFailed: '没撤销成功，可以去「它记得什么」里删。'
@@ -106,7 +106,7 @@ export const MEMORY_LEDGER_COPY: Record<Locale, MemoryLedgerCopy> = {
       }
     },
     noted: {
-      line: content => `記下了：${content}`,
+      line: (content, name) => `${name} 記下了：${content}`,
       undo: '撤銷',
       undone: content => `已撤銷：${content}`,
       undoFailed: '沒撤銷成功，可以去「它記得什麼」裡刪。'
@@ -149,7 +149,7 @@ export const MEMORY_LEDGER_COPY: Record<Locale, MemoryLedgerCopy> = {
       }
     },
     noted: {
-      line: content => `Noted: ${content}`,
+      line: (content, name) => `${name} noted: ${content}`,
       undo: 'Undo',
       undone: content => `Undone: ${content}`,
       undoFailed: 'Could not undo. You can delete it in “What it remembers”.'
@@ -190,7 +190,7 @@ export const MEMORY_LEDGER_COPY: Record<Locale, MemoryLedgerCopy> = {
       }
     },
     noted: {
-      line: content => `覚えました：${content}`,
+      line: (content, name) => `${name} が覚えました：${content}`,
       undo: '取り消す',
       undone: content => `取り消しました：${content}`,
       undoFailed: '取り消せませんでした。「覚えていること」で削除できます。'

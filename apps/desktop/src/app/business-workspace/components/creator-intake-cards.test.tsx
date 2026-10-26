@@ -155,10 +155,10 @@ describe('first-use creator intake cards (hc-991)', () => {
 
     expect(await screen.findByRole('heading', { name: '现在最头疼的是哪件事？' })).toBeTruthy()
     expect(screen.getByText('第 3 题，共 3 题')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /不会写脚本/ }))
+    fireEvent.click(screen.getByRole('button', { name: /不会写文案/ }))
 
     const done = await screen.findByText(/^记住了：/)
-    expect(done.textContent).toContain('记住了：好物测评 · 抖音、小红书 · 不会写脚本。')
+    expect(done.textContent).toContain('记住了：好物测评 · 抖音、小红书 · 不会写文案。')
     expect(done.textContent).toContain('「设置 › 个性化」')
     expect(done.closest('[role="status"]')).toBeTruthy()
     expect(patches).toEqual([
