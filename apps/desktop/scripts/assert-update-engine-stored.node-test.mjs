@@ -124,6 +124,18 @@ test('electron-builder\'s own macOS zip step honours the ZIPOPT afterPack sets',
   assert.equal(assertMacUpdateZipStoresEngine(path.join(dir, 'seamed.zip')).name, ENGINE)
 })
 
+test('electron-builder writes the macOS update zip with Info-ZIP under the inherited environment', () => {
+  // Runs on every OS (the archive() test above needs macOS). electron-builder 26.15:
+  // ArchiveTarget asks for symlink-preserving zips on macOS, which archive.js builds with
+  // native `zip -q -r -y` and an options object without `env`, so afterPack's ZIPOPT applies.
+  const targets = path.join(path.dirname(require.resolve('app-builder-lib/package.json')), 'out', 'targets')
+  assert.match(fs.readFileSync(path.join(targets, 'ArchiveTarget.js'), 'utf8'), /preserveSymlinks: isMac,/)
+  const archive = fs.readFileSync(path.join(targets, 'archive.js'), 'utf8')
+  assert.match(archive, /const use7z = !\(process\.platform === "darwin" && format === "zip" && options\.preserveSymlinks\);/)
+  assert.match(archive, /const args = \["-q", "-r", "-y"\];/)
+  assert.match(archive, /\.exec\)\("zip", args, \{ cwd: [^}]*\}, /)
+})
+
 test('the stored-suffix list keeps Info-ZIP\'s own defaults and adds gzip', () => {
   assert.deepEqual(MAC_ZIP_STORED_SUFFIXES.split(':'), ['.Z', '.zip', '.zoo', '.arc', '.lzh', '.arj', '.gz'])
 })
