@@ -53,8 +53,20 @@ _CN_IM_SEAMS = (
 )
 
 
-def _apply_cn_im_seams() -> None:
-    for name, warning in _CN_IM_SEAMS:
+# Tool seams, applied last in this order (register() is at its complexity cap, so new plain seams go here).
+_TOOL_SEAMS = (
+    (
+        "vision_answer",
+        "apex-overlay: hc-1065 vision answer seam did not fully apply "
+        "(see prior error). APEX Flash may send images to the auxiliary "
+        "model again, which can return its private reasoning or a cut-off "
+        "answer as if it were complete.",
+    ),
+)
+
+
+def _apply_seams(seams) -> None:
+    for name, warning in seams:
         try:
             if not importlib.import_module(f"apex_overlay.{name}").apply():
                 logger.warning(warning)
@@ -286,7 +298,7 @@ def register(ctx) -> None:
     except Exception:
         logger.warning("apex-overlay: stt_no_lazy_install seam failed to load", exc_info=True)
 
-    _apply_cn_im_seams()
+    _apply_seams(_CN_IM_SEAMS)
 
     try:
         from apex_overlay import cn_mirror_env
@@ -313,3 +325,5 @@ def register(ctx) -> None:
             )
     except Exception:
         logger.warning("apex-overlay: im_passthrough seam failed to load", exc_info=True)
+
+    _apply_seams(_TOOL_SEAMS)
