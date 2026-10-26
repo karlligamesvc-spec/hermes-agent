@@ -14,7 +14,7 @@ function fakeApp() {
   const root = mkdtempSync(join(tmpdir(), 'apex-mac-arch-'))
   const app = join(root, 'APEX.app')
   const macOS = join(app, 'Contents', 'MacOS')
-  const nodePty = join(app, 'Contents', 'Resources', 'native-deps', 'node-pty', 'prebuilds', 'darwin-x64')
+  const nodePty = join(app, 'Contents', 'Resources', 'native-deps', 'node-pty', 'prebuilds', 'darwin-arm64')
   const unpackedNodePty = join(
     app,
     'Contents',
@@ -24,7 +24,7 @@ function fakeApp() {
     'node_modules',
     'node-pty',
     'prebuilds',
-    'darwin-x64'
+    'darwin-arm64'
   )
   const helper = join(app, 'Contents', 'Frameworks', 'APEX Helper.app', 'Contents', 'MacOS')
   mkdirSync(macOS, { recursive: true })
@@ -59,24 +59,26 @@ test('normalizes lipo architecture output', () => {
 })
 
 test('accepts a package only when every inspected binary has the requested architecture', () => {
-  const result = assertMacPackageArchitecture({
-    appPath: fakeApp(),
-    expectedArch: 'x64',
-    readArchitectures: () => ['x86_64']
-  })
-  assert.equal(result.expectedArch, 'x64')
-  assert.equal(result.inspected.length, 6)
+  for (const [expectedArch, lipoArch] of [['arm64', 'arm64'], ['x64', 'x86_64']]) {
+    const result = assertMacPackageArchitecture({
+      appPath: fakeApp(),
+      expectedArch,
+      readArchitectures: () => [lipoArch]
+    })
+    assert.equal(result.lipoArch, lipoArch)
+    assert.equal(result.inspected.length, 6)
+  }
 })
 
-test('rejects a mislabeled x64 package whose app executable is arm64', () => {
+test('rejects a mislabeled arm64 package whose app executable is x86_64', () => {
   assert.throws(
     () =>
       assertMacPackageArchitecture({
         appPath: fakeApp(),
-        expectedArch: 'x64',
-        readArchitectures: path => (basename(path) === 'APEX' ? ['arm64'] : ['x86_64'])
+        expectedArch: 'arm64',
+        readArchitectures: path => (basename(path) === 'APEX' ? ['x86_64'] : ['arm64'])
       }),
-    /expected x86_64:[\s\S]*APEX: arm64/
+    /expected arm64:[\s\S]*APEX: x86_64/
   )
 })
 
@@ -97,7 +99,7 @@ test('rejects universal binaries in single-architecture artifacts', () => {
     () =>
       assertMacPackageArchitecture({
         appPath: fakeApp(),
-        expectedArch: 'x64',
+        expectedArch: 'arm64',
         readArchitectures: () => ['x86_64', 'arm64']
       }),
     /APEX: x86_64, arm64/

@@ -22,17 +22,16 @@ test('parseFeed reads the release identity and rejects nested artifact paths', (
 test('verifyCrossPlatformRelease proves every feed and artifact match one version', async () => {
   const feeds = [
     { platform: 'mac-arm64', url: 'https://release.test/mac-arm64/latest-mac.yml' },
-    { platform: 'mac-x64', url: 'https://release.test/mac-x64/latest-mac.yml' },
     { platform: 'win-x64', url: 'https://release.test/win-x64/latest.yml' }
   ]
   const fetchImpl = async (url, options = {}) => {
     if (options.method === 'HEAD') return response(200, '', 123)
-    const suffix = url.includes('win-x64') ? 'win-x64.exe' : url.includes('arm64') ? 'mac-arm64.zip' : 'mac-x64.zip'
+    const suffix = url.includes('win-x64') ? 'win-x64.exe' : 'mac-arm64.zip'
     return response(200, `version: 0.17.23\npath: APEX-0.17.23-${suffix}\n`)
   }
 
   const results = await verifyCrossPlatformRelease({ expectedVersion: '0.17.23', fetchImpl, feeds })
-  assert.deepEqual(results.map(result => result.platform), ['mac-arm64', 'mac-x64', 'win-x64'])
+  assert.deepEqual(results.map(result => result.platform), ['mac-arm64', 'win-x64'])
   assert.ok(results.every(result => result.contentLength === 123))
 })
 
@@ -51,4 +50,21 @@ test('verifyCrossPlatformRelease fails when one production leg is stale', async 
     verifyCrossPlatformRelease({ expectedVersion: '0.17.23', fetchImpl, feeds }),
     /win-x64 is 0\.17\.21, expected 0\.17\.23/
   )
+})
+
+test('the production readback passes a later release while the Intel feed stays at 0.17.63', async () => {
+  // Mac x64 is no longer built, so desktop/mac-x64/ never advances past 0.17.63.
+  const requested = []
+  const fetchImpl = async (url, options = {}) => {
+    requested.push(url)
+    if (options.method === 'HEAD') return response(200, '', 123)
+    const version = url.includes('/desktop/mac-x64/') ? '0.17.63' : '0.17.64'
+    return response(200, `version: ${version}\npath: APEX-${version}.zip\n`)
+  }
+
+  const results = await verifyCrossPlatformRelease({ expectedVersion: '0.17.64', fetchImpl })
+  assert.deepEqual(results.map(result => result.platform), ['mac-arm64', 'win-x64'])
+  assert.ok(requested.some(url => url.endsWith('/desktop/mac-arm64/latest-mac.yml')))
+  assert.ok(requested.some(url => url.endsWith('/desktop/win-x64/latest.yml')))
+  assert.ok(!requested.some(url => url.includes('/desktop/mac-x64/')), 'the readback must not read the frozen Intel feed')
 })
