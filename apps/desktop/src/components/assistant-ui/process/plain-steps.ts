@@ -1,5 +1,6 @@
 import { singleThreadProcessCopyNow } from '@/i18n/single-thread-process'
 import type { StepCopy } from '@/i18n/types-process'
+import { isSingleThreadMode } from '@/store/single-thread'
 
 import { approvalPurpose, callIntent, isLookTool, mergedLookTopics, stageProgress } from './step-intent'
 
@@ -62,4 +63,10 @@ export function plainApprovalSentence(command: string, description: string): str
   const purpose = approvalPurpose(command, description)
 
   return copy.approval(purpose, purpose.intent ? copy.intents[purpose.intent].title : null)
+}
+
+/** The body of an approval's system notification: the command itself, or in
+ *  single-thread product mode the same sentence the approval bar says. */
+export function approvalNotificationBody(command: string, description: string): string {
+  return isSingleThreadMode() ? plainApprovalSentence(command, description) : command || description
 }

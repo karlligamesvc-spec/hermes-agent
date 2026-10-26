@@ -1,6 +1,7 @@
 import { readActivePreview } from '@/app/chat/right-rail/preview-reader'
 import { readActiveTerminal } from '@/app/right-sidebar/terminal/buffer'
 import { pendingClarifyToolPayload } from '@/app/session/hooks/use-session-actions/restore-pending-clarify'
+import { approvalNotificationBody } from '@/components/assistant-ui/process/plain-steps'
 import { translateNow } from '@/i18n'
 import { restorePendingClarifyToolCall } from '@/lib/chat-messages'
 import type { PreviewActAction } from '@/lib/preview-act/act-in-page'
@@ -199,7 +200,7 @@ const approval: Handler = ctx => {
         { id: 'approve', text: translateNow('notifications.native.approveAction') },
         { id: 'reject', text: translateNow('notifications.native.rejectAction') }
       ],
-      body: command || description,
+      body: approvalNotificationBody(command, description),
       kind: 'approval',
       sessionId: sessionId || null,
       title: translateNow('notifications.native.approvalTitle')
