@@ -582,7 +582,7 @@ def _handle_honesty_verify(args: dict, **_kwargs) -> str:
 # --------------------------------------------------------------------------- #
 # hc-1036 交付诚实：两道钩子，只看工具调用，不改任何工具。规则全文在 honesty-verification 技能里。
 #
-# 1. 证据等级：要写进技能或记忆的内容(skill_manage / memory / apex_memory，以及写进 skills/、
+# 1. 证据等级：要写进技能或记忆的内容(skill_manage / memory / 桌面 apex_memory / 云端 IM memory_ledger，以及写进 skills/、
 #    memories/ 目录的 write_file / patch)把资料标成「官方」，或在定义了「✅=官方」的内容里打 ✅，
 #    那一行就得写着本会话真打开过的页面(web_extract / browser_navigate 成功过的网址)，或写明是
 #    用户给的材料;转述(社媒、博主、公众号)打 ✅、说「直连抖音」也不让存。工具结果说清哪几行、怎么改。
@@ -592,7 +592,7 @@ def _handle_honesty_verify(args: dict, **_kwargs) -> str:
 # 开关：HONESTY_GUARDS_DISABLE=1 两道都关。
 # --------------------------------------------------------------------------- #
 
-DURABLE_WRITE_TOOLS = frozenset({"skill_manage", "memory", "apex_memory"})
+DURABLE_WRITE_TOOLS = frozenset({"skill_manage", "memory", "apex_memory", "memory_ledger"})
 DURABLE_FILE_TOOLS = frozenset({"write_file", "patch"})
 PAGE_OPEN_TOOLS = {"web_extract": ("urls", "url"), "browser_navigate": ("url",)}
 SWITCH_KEYS = {"generate_video": ("model", "provider"), "generate_image": ("model", "provider"), "text_to_speech": ("provider",)}
