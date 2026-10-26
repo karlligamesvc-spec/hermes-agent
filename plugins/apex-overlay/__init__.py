@@ -89,6 +89,19 @@ _CONTEXT_SEAMS = (
         "not register (see prior warning). Desktop sessions will not carry "
         "the evidence levels, the provenance rule or the no-unasked-switch rule.",
     ),
+    (
+        "relay_stream_liveness",
+        "apex-overlay: hc-1032 relay stream liveness seam did not apply "
+        "(see prior error). A Desktop chat stream whose bytes stop arriving "
+        "waits out the 600 s stale timer again, and its retry is metered twice.",
+    ),
+    (
+        "approval_rules_prompt",
+        "apex-overlay: hc-1034 approval rules prompt section did not register "
+        "(see prior warning). Read-only checks may be bundled into lines that "
+        "need approval again, and a declined or unanswered approval may not be "
+        "explained to the user.",
+    ),
 )
 
 

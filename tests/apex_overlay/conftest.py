@@ -47,6 +47,10 @@ _SEAM_MODULES = (
     "single_thread_prompt",
     # hc-1036 evidence levels and delivery honesty in every Desktop session.
     "honesty_prompt",
+    # hc-1032 relay stream byte deadline, keepalive and call id.
+    "relay_stream_liveness",
+    # hc-1034 one simple command per read-only check; stop and explain after a refusal.
+    "approval_rules_prompt",
 )
 
 

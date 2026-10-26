@@ -29,6 +29,7 @@ approval:
     notify_failed: "Impossibile recapitare la richiesta di approvazione — nessuna esecuzione per {noun}."
     cancelled: "La richiesta di approvazione è stata ritirata o non ti ha mai raggiunto — nessuna esecuzione per {noun}."
     blocked: "In una sessione non presidiata non è possibile autorizzare {noun} — nessuna esecuzione."
+    held: "{noun} richiede la tua approvazione, ma una richiesta di approvazione precedente non ha avuto risposta — messo in pausa, nessuna esecuzione. Rispondi e continuo."
     default: "Nessuna esecuzione per {noun}."
   noun:
     command: "il comando"

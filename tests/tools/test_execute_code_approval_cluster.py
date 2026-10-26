@@ -30,6 +30,10 @@ from tools.thread_context import propagate_context_to_thread
 from gateway.session_context import clear_session_vars, reset_session_vars, set_session_vars
 from tests.tools._child_env_fixtures import child_env
 
+# hc-1034: a script of imports and prints is a read-only probe and skips the prompt;
+# tests that need the whole-script prompt run one that calls something.
+SCRIPT = "import os; os.listdir('.')"
+
 
 # ---------------------------------------------------------------------------
 # 1. Context + callback propagation helper
@@ -259,7 +263,7 @@ def test_guard_legacy_env_cron_still_blocks(monkeypatch):
 
 def test_guard_gateway_user_approves_is_one_shot(gw_session):
     _register_resolver(gw_session, "once")
-    res = A.check_execute_code_guard("import os; print(1)", "local")
+    res = A.check_execute_code_guard(SCRIPT, "local")
     assert res["approved"] is True
     assert res.get("user_approved") is True
     # One-shot: approval must NOT persist to future scripts.
@@ -283,7 +287,7 @@ def test_guard_session_approval_short_circuits_prompt(gw_session):
 
 def test_guard_gateway_missing_notify_is_pending(gw_session):
     # No notify callback registered → backward-compat pending approval.
-    res = A.check_execute_code_guard("import os", "local")
+    res = A.check_execute_code_guard(SCRIPT, "local")
     assert res["approved"] is False
     assert res["status"] == "pending_approval"
 
@@ -292,19 +296,19 @@ def test_guard_smart_mode(gw_session, monkeypatch):
     monkeypatch.setattr(approval_context, "_get_approval_mode", lambda: "smart")
 
     monkeypatch.setattr(approval_smart, "_smart_approve", lambda c, d: "approve")
-    res = A.check_execute_code_guard("import os", "local")
+    res = A.check_execute_code_guard(SCRIPT, "local")
     assert res["approved"] is True and res.get("smart_approved") is True
 
     # Smart DENY on an interactive surface now asks the owner. With no bound
     # notifier it remains pending rather than being hard-denied.
     monkeypatch.setattr(approval_smart, "_smart_approve", lambda c, d: "deny")
-    res = A.check_execute_code_guard("import os", "local")
+    res = A.check_execute_code_guard(SCRIPT, "local")
     assert res["approved"] is False and res["status"] == "pending_approval"
 
     # escalate → falls through to manual gateway approval
     monkeypatch.setattr(approval_smart, "_smart_approve", lambda c, d: "escalate")
     _register_resolver(gw_session, "once")
-    res = A.check_execute_code_guard("import os", "local")
+    res = A.check_execute_code_guard(SCRIPT, "local")
     assert res["approved"] is True
 
 

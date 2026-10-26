@@ -117,6 +117,44 @@ describe('buildToolView error confidence', () => {
   })
 })
 
+describe('buildToolView approval outcomes (hc-1034)', () => {
+  // The engine puts one plain sentence for the person beside the model-facing BLOCKED text.
+  const blocked = (toolName: string, result: Record<string, unknown>) =>
+    buildToolView(part({ isError: true, result, toolName }), '')
+
+  it('shows the user summary, not the BLOCKED text addressed to the model', () => {
+    const summary = '此命令需要你批准，5 分钟内没有收到回应，所以没有执行。你回复后我再继续。'
+
+    const view = blocked('terminal', {
+      error: 'BLOCKED: Command timed out without user response. The user has NOT consented to this action.',
+      exit_code: -1,
+      output: '',
+      status: 'blocked',
+      user_summary: summary
+    })
+
+    expect(view.subtitle).toBe(summary)
+    expect(view.status).toBe('error')
+  })
+
+  it('does the same for execute_code and held tool calls', () => {
+    const summary = '此代码需要你批准，但前面的批准请求没有人回应，所以先暂停了，没有执行。你回复后我再继续。'
+
+    expect(
+      blocked('execute_code', { error: 'BLOCKED: not run.', status: 'error', user_summary: summary }).subtitle
+    ).toBe(summary)
+    expect(blocked('browser_exec', { error: 'BLOCKED: not run.', status: 'blocked', user_summary: summary }).subtitle).toBe(
+      summary
+    )
+  })
+
+  it('keeps the BLOCKED text when no summary came with it', () => {
+    expect(blocked('terminal', { error: 'BLOCKED: User denied this command.', status: 'blocked' }).subtitle).toBe(
+      'BLOCKED: User denied this command.'
+    )
+  })
+})
+
 describe('buildToolView envelope errors', () => {
   it('shows the event error when the result carries no explanation', () => {
     const view = buildToolView(

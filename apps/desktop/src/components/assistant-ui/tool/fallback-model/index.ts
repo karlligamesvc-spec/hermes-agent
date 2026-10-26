@@ -682,6 +682,14 @@ function extractSearchResults(result: unknown, limit = 6): SearchResultRow[] {
 }
 
 function toolErrorText(part: ToolPart, result: Record<string, unknown>): string {
+  // hc-1034: an approval gate's non-consent result carries one plain sentence for the person
+  // (`user_summary`, already in the shell language); the BLOCKED text beside it is for the model.
+  const userSummary = typeof result.user_summary === 'string' ? result.user_summary.trim() : ''
+
+  if (userSummary) {
+    return userSummary
+  }
+
   const extractedError = extractToolErrorMessage(part.result)
 
   if (part.isError) {

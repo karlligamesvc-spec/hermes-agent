@@ -29,6 +29,7 @@ approval:
     notify_failed: "A jóváhagyási kérést nem sikerült kézbesíteni — a {noun} nem futott le."
     cancelled: "A jóváhagyási kérést visszavonták, vagy el sem jutott hozzád — a {noun} nem futott le."
     blocked: "Felügyelet nélküli munkamenetben ez a {noun} nem engedélyezett — nem futott le."
+    held: "Ehhez a {noun} futtatáshoz a jóváhagyásod kell, de egy korábbi jóváhagyási kérésre nem jött válasz, ezért szünetel, és nem futott le. Válaszolj, és folytatom."
     default: "Ez a {noun} nem futott le."
   noun:
     command: "parancs"

@@ -21,7 +21,7 @@ from typing import Optional
 
 from utils import env_var_enabled, is_truthy_value
 from agent.i18n import t
-from tools import approval_context
+from tools import approval_context, approval_hold
 from tools.approval_context import (
     _get_session_platform, _is_cron_approval_context,
     _is_gateway_approval_context, _is_interactive_cli, _is_single_query_approval_context,
@@ -36,6 +36,7 @@ from tools.approval_floors import (
     _user_deny_block_result,
 )
 from tools.approval_gateway_wait import _await_gateway_decision
+from tools.approval_probe import is_probe_script
 from tools.approval_prompt import _present_with_selected_transport, _transport_choice, prompt_dangerous_approval
 from tools.approval_smart import _smart_verdict
 
@@ -291,6 +292,7 @@ def clear_session(session_key: str) -> None:
         _session_approved.pop(session_key, None)
         _session_yolo.discard(session_key)
         _pending.pop(session_key, None)
+        approval_hold.clear(session_key)
         for entry in _gateway_queues.pop(session_key, []):
             # Cancel blocked waits now so the old run unwinds instead of idling until timeout;
             # the prompt was withdrawn, nobody denied it.
@@ -502,7 +504,7 @@ def _approved() -> dict:
 # ``approval.summary.<outcome>`` (``approval.summary.default`` for unknown outcomes). ``message`` is
 # addressed to the model ("Do NOT retry ..."); surfaces render ``user_summary`` first and fold the
 # model text away, so a Reject click does not read like an error the user caused.
-_USER_SUMMARY_OUTCOMES = frozenset({"denied", "timeout", "notify_failed", "cancelled", "blocked"})
+_USER_SUMMARY_OUTCOMES = frozenset({"denied", "timeout", "notify_failed", "cancelled", "blocked", "held"})
 # ``_GateSpec.noun`` values (identifiers) -> ``approval.noun.<noun>`` for the human sentence.
 _USER_SUMMARY_NOUNS = frozenset({"command", "code", "action"})
 
@@ -685,6 +687,10 @@ _STOP_ACTION = (
     " The user has NOT consented to this action. Do NOT retry it, do NOT "
     "rephrase it, and do NOT attempt the same outcome via a different path."
 )
+# hc-1034: an unanswered prompt usually means nobody is at the screen, and the model's next reply is
+# what they will read when they come back.
+_SILENCE = (" Silence is not consent. Tell the user in plain words which step is waiting for their "
+            "approval and why; ask again after they reply.")
 
 _COMMAND_GATE = _GateSpec(
     noun="command", transport=True, user_approved=True, redact_cli=False, pending_keys=True,
@@ -696,8 +702,7 @@ _COMMAND_GATE = _GateSpec(
         "transport. The user has NOT consented to this action. Do NOT retry or "
         "attempt the same outcome through another route.{breaker}"
     ),
-    cli_timeout="BLOCKED: Command timed out without user response." + _STOP_COMMAND
-                + " Silence is not consent.{breaker}",
+    cli_timeout="BLOCKED: Command timed out without user response." + _STOP_COMMAND + _SILENCE + "{breaker}",
     cli_denied="BLOCKED: User denied this command." + _STOP_COMMAND + "{breaker}",
     smart_log="Smart approval: auto-approved '{command}' ({description})",
 )
@@ -712,8 +717,7 @@ _EXECUTE_CODE_GATE = _GateSpec(
     transport_denied=(
         "BLOCKED: User denied execute_code through the selected approval transport. The user has NOT consented."
     ),
-    cli_timeout="BLOCKED: Action timed out without user response." + _STOP_ACTION
-                + " Silence is not consent.{breaker}",
+    cli_timeout="BLOCKED: Action timed out without user response." + _STOP_ACTION + _SILENCE + "{breaker}",
     cli_denied=(
         "BLOCKED: User denied execute_code script execution (matched "
         "'{description}'). Do NOT retry — the user has explicitly rejected it.{breaker}"
@@ -728,8 +732,7 @@ _ACTION_GATE = _GateSpec(
     gateway_refused="BLOCKED: Action {reason}.{reason_addendum}" + _STOP_ACTION
                     + "{timeout_addendum}",
     transport_denied="",
-    cli_timeout="BLOCKED: Action timed out without user response." + _STOP_ACTION
-                + " Silence is not consent.",
+    cli_timeout="BLOCKED: Action timed out without user response." + _STOP_ACTION + _SILENCE,
     cli_denied=(
         "BLOCKED: User denied this potentially dangerous action (matched "
         "'{description}'). Do NOT retry — the user has explicitly rejected it."
@@ -770,10 +773,24 @@ def _smart_gate(spec: _GateSpec, command: str, description: str, pattern_key: st
     }, True
 
 
-def _human_decision(spec: _GateSpec, *, command: str, description: str,
-                    pattern_key: str, pattern_keys: list[str],
-                    session_key: str, approval_callback, is_cli: bool, is_gateway: bool,
-                    is_ask: bool, smart: bool = False, pending_body=None) -> dict:
+def _human_decision(spec: _GateSpec, **kwargs) -> dict:
+    """:func:`_ask_human`, then let :mod:`tools.approval_hold` record a denied or unanswered result
+    (or clear the session's hold on a human grant) so equivalent operations are held this turn."""
+    result = _ask_human(spec, **kwargs)
+    approval_hold.observe(kwargs["session_key"], result, noun=spec.noun, target=kwargs["command"])
+    return result
+
+
+def _hold_block(hold, *, pattern_key: str, description: str, noun: str) -> dict:
+    """An operation stopped by an unanswered hold: no new prompt (see :mod:`tools.approval_hold`)."""
+    return _denied(approval_hold.held_message(hold), pattern_key=pattern_key, description=description,
+                   outcome="held", noun=noun)
+
+
+def _ask_human(spec: _GateSpec, *, command: str, description: str,
+               pattern_key: str, pattern_keys: list[str],
+               session_key: str, approval_callback, is_cli: bool, is_gateway: bool,
+               is_ask: bool, smart: bool = False, pending_body=None) -> dict:
     """Ask a human (after the optional guardian-LLM step) and turn the answer into the gate result.
 
     ``pattern_keys`` are what :func:`_persist_choice` stores on session/always; a smart-DENY
@@ -859,8 +876,7 @@ def _human_decision(spec: _GateSpec, *, command: str, description: str,
                             reason_addendum="", timeout_addendum="", deny_reason=None)
             if not decision["resolved"]:
                 return deny(spec.gateway_refused, "timeout", reason="timed out without user response",
-                            reason_addendum="", timeout_addendum=" Silence is not consent.",
-                            deny_reason=deny_reason)
+                            reason_addendum="", timeout_addendum=_SILENCE, deny_reason=deny_reason)
             if choice is None or choice == "deny":
                 return deny(spec.gateway_refused, "denied", reason="denied by user",
                             reason_addendum=(f' Reason given by the user: "{deny_reason}".' if deny_reason else ""),
@@ -899,7 +915,7 @@ def _human_decision(spec: _GateSpec, *, command: str, description: str,
         return deny(spec.gateway_refused, "cancelled",
                     reason="was not approved: the approval prompt could not be delivered or was not answered "
                            f"({getattr(choice, 'cause', 'no answer')})",
-                    reason_addendum="", timeout_addendum=" Silence is not consent.", deny_reason=None)
+                    reason_addendum="", timeout_addendum=_SILENCE, deny_reason=None)
     if choice == "deny":
         # No _record_denial(): the breaker counts consecutive guardian LLM
         # DENY verdicts, not deliberate human denials.
@@ -967,8 +983,11 @@ def _run_approval_gate(
     if _yolo_active() or approval_context._get_approval_mode() == "off":
         return _approved()
     session_key = get_current_session_key()
-    if is_approved(session_key, pattern_key):
+    hold = approval_hold.active(session_key)
+    if hold is None and is_approved(session_key, pattern_key):
         return _approved()
+    if hold is not None and hold.unanswered:
+        return _hold_block(hold, pattern_key=pattern_key, description=description, noun="action")
 
     approval_callback, is_cli, is_gateway, is_ask = _presence(approval_callback)
     if not is_cli and not is_gateway and not is_ask:
@@ -1161,13 +1180,20 @@ def check_all_command_guards(command: str, env_type: str,
 
     is_dangerous, pattern_key, description = detect_dangerous_command(command)
     session_key = get_current_session_key()
-    if not is_dangerous or is_approved(session_key, pattern_key):
+    hold = approval_hold.active(session_key)
+    if hold is not None and not (is_dangerous or approval_hold.runs_code(command)):
+        hold = None
+    if hold is None and (not is_dangerous or is_approved(session_key, pattern_key)):
         return _approved()
+    if not is_dangerous:  # a held code run that normally needs no approval: ask once, persist nothing
+        pattern_key, description = approval_hold.PATTERN_KEY, approval_hold.DESCRIPTION
+    if hold is not None and hold.unanswered:
+        return _hold_block(hold, pattern_key=pattern_key, description=description, noun="command")
     return _human_decision(
         _COMMAND_GATE, command=command, description=description,
-        pattern_key=pattern_key, pattern_keys=[pattern_key],
+        pattern_key=pattern_key, pattern_keys=[pattern_key] if is_dangerous else [],
         session_key=session_key, approval_callback=approval_callback,
-        is_cli=is_cli, is_gateway=is_gateway, is_ask=is_ask, smart=approval_mode == "smart",
+        is_cli=is_cli, is_gateway=is_gateway, is_ask=is_ask, smart=approval_mode == "smart" and hold is None,
     )
 
 
@@ -1222,16 +1248,23 @@ def check_execute_code_guard(code: str, env_type: str, has_host_access: bool = F
     # on every execute_code call. Ask-mode still takes this path even with INTERACTIVE set (how gateway/smart tests
     # and messaging ask-mode drive whole-script approval); when that leaks into a CLI with no notify callback, the
     # engine falls through to the CLI Dangerous Command panel instead of a silent pending_approval.
-    if not is_gateway and not is_ask:
+    # A read-only probe script (imports, prints, shutil.which; tools.approval_probe) needs no human (hc-1034).
+    # After a denied or unanswered approval this turn every other script is held, CLI included (tools.approval_hold).
+    if is_probe_script(code):
+        return _approved()
+    session_key = get_current_session_key()
+    hold = approval_hold.active(session_key)
+    if hold is not None and (hold.unanswered or not (is_cli or is_gateway or is_ask)):
+        return _hold_block(hold, pattern_key=pattern_key, description=description, noun="code")
+    if hold is None and not is_gateway and not is_ask:
         return _approved()
 
-    session_key = get_current_session_key()
     # Built only past the early-return gates so common paths don't copy a potentially-large script into this string.
     command = f"execute_code <<'PY'\n{code}\nPY"
 
     # Without this, "Approve session" / "Always" choices are stored but never
     # consulted, so every execute_code call re-prompts (#39275).
-    if is_approved(session_key, pattern_key):
+    if hold is None and is_approved(session_key, pattern_key):
         return _approved()
 
     # Smart mode: an APPROVE only suppresses the redundant whole-script prompt; the per-call terminal() guards still
@@ -1242,9 +1275,39 @@ def check_execute_code_guard(code: str, env_type: str, has_host_access: bool = F
         _EXECUTE_CODE_GATE, command=command, description=description, pattern_key=pattern_key,
         pattern_keys=[pattern_key], session_key=session_key,
         approval_callback=approval_callback, is_cli=is_cli, is_gateway=is_gateway, is_ask=is_ask,
-        smart=approval_mode == "smart",
+        smart=approval_mode == "smart" and hold is None,
         pending_body=lambda: f"**Code:**\n```python\n{redact_sensitive_text(code)}\n```",
     )
+
+
+def held_tool_call_error(tool_name: str, args: dict) -> str | None:
+    """model_tools' pre-dispatch check for tools that run code outside the gates above
+    (browser_exec, input to a running process): ``None`` to proceed, else the tool-error JSON.
+    Only a hold changes anything; without one these tools run as they always have (hc-1034)."""
+    try:
+        target = approval_hold.code_tool_target(tool_name, args)
+        session_key = get_current_session_key()
+        hold = approval_hold.active(session_key) if target is not None else None
+        if hold is None:
+            return None
+        description = f"{tool_name} {approval_hold.DESCRIPTION}"
+        approval_callback, is_cli, is_gateway, is_ask = _presence()
+        if hold.unanswered or not (is_cli or is_gateway or is_ask):
+            result = _hold_block(hold, pattern_key=approval_hold.PATTERN_KEY, description=description, noun="action")
+        else:
+            result = _human_decision(
+                _ACTION_GATE, command=target, description=description, pattern_key=approval_hold.PATTERN_KEY,
+                pattern_keys=[], session_key=session_key, approval_callback=approval_callback,
+                is_cli=is_cli, is_gateway=is_gateway, is_ask=is_ask,
+            )
+    except Exception:
+        logger.warning("approval hold check failed for %s; the call proceeds as before", tool_name, exc_info=True)
+        return None
+    if result.get("approved"):
+        return None
+    from tools.registry import tool_error
+    return tool_error(result.get("message") or "BLOCKED: not run.", status="blocked",
+                      **({"user_summary": result["user_summary"]} if result.get("user_summary") else {}))
 
 
 # Load permanent allowlist from config on module import

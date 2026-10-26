@@ -353,7 +353,21 @@ def _check_protected_instruction_write(paths: list[str], task_id: str = "default
                            for p in paths) if r]
     if not reasons:
         return None
-    return _request_protected_instruction_approval(reasons, task_id)
+    # hc-1034: this gate waits on its own, so it reads and feeds the approval hold here: no new card
+    # after an unanswered approval this turn; a refusal or silence holds equivalent operations.
+    from tools import approval_hold
+    from tools.approval_context import get_current_session_key
+    session_key = get_current_session_key()
+    hold = approval_hold.active(session_key)
+    if hold is not None and hold.unanswered:
+        return approval_hold.held_message(hold)
+    blocked = _request_protected_instruction_approval(reasons, task_id)
+    outcome = next((o for o, text in (("denied", "was denied by the user"), ("timeout", "timed out without"))
+                    if blocked and text in blocked), None)
+    if blocked is None or outcome:
+        approval_hold.observe(session_key, {"approved": blocked is None, "user_consent": False, "outcome": outcome},
+                              noun="action", target=f"<write to {', '.join(reasons)}>")
+    return blocked
 
 
 def _check_approval_required_write(paths: list[str], task_id: str = "default") -> str | None:
