@@ -12,6 +12,8 @@ import shlex
 import tempfile
 import unicodedata
 
+from tools.approval_probe import is_readonly_probe
+
 logger = logging.getLogger("tools.approval")
 
 # Sensitive write targets, matched via ~ / $HOME / $HERMES_HOME spellings. The resolved absolute
@@ -1554,7 +1556,8 @@ def detect_dangerous_command(command: str) -> tuple:
     """Check dangerous patterns -> (is_dangerous, pattern_key, description)."""
     if _command_parser_limit_exceeded(command):
         return (True, _PARSER_LIMIT_DESCRIPTION, _PARSER_LIMIT_DESCRIPTION)
-    if _is_verification_artifact_cleanup(command):
+    # A whole-command read-only probe (python3 -c "import PIL"; tools.approval_probe) is not flagged (hc-1034).
+    if _is_verification_artifact_cleanup(command) or is_readonly_probe(command):
         return (False, None, None)
     for command_variant in _command_detection_variants(command):
         command_lower = _lower_preserving_flags(command_variant)

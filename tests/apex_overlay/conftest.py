@@ -49,6 +49,8 @@ _SEAM_MODULES = (
     "honesty_prompt",
     # hc-1032 relay stream byte deadline, keepalive and call id.
     "relay_stream_liveness",
+    # hc-1034 one simple command per read-only check; stop and explain after a refusal.
+    "approval_rules_prompt",
 )
 
 

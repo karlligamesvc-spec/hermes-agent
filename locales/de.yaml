@@ -29,6 +29,7 @@ approval:
     notify_failed: "Die Genehmigungsanfrage konnte nicht zugestellt werden — {noun} wurde nicht ausgeführt."
     cancelled: "Die Genehmigungsabfrage wurde zurückgezogen oder hat Sie nie erreicht — {noun} wurde nicht ausgeführt."
     blocked: "{noun} ist in einer unbeaufsichtigten Sitzung nicht erlaubt — nicht ausgeführt."
+    held: "{noun} braucht Ihre Genehmigung, aber eine frühere Genehmigungsanfrage blieb unbeantwortet — daher pausiert und nicht ausgeführt. Antworten Sie, dann mache ich weiter."
     default: "{noun} wurde nicht ausgeführt."
   noun:
     command: "Befehl"

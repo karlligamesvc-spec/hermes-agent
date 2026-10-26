@@ -29,6 +29,7 @@ approval:
     notify_failed: "Onay isteği iletilemedi — {noun} çalıştırılmadı."
     cancelled: "Onay istemi geri çekildi veya size hiç ulaşmadı — {noun} çalıştırılmadı."
     blocked: "Bu {noun} gözetimsiz bir oturumda izinli değil — çalıştırılmadı."
+    held: "Bu {noun} onayınızı gerektiriyor, ancak önceki bir onay isteği yanıtsız kaldı; bu yüzden duraklatıldı ve çalıştırılmadı. Yanıt verirseniz devam ederim."
     default: "Bu {noun} çalıştırılmadı."
   noun:
     command: "komut"

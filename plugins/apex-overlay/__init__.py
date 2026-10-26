@@ -95,6 +95,13 @@ _CONTEXT_SEAMS = (
         "(see prior error). A Desktop chat stream whose bytes stop arriving "
         "waits out the 600 s stale timer again, and its retry is metered twice.",
     ),
+    (
+        "approval_rules_prompt",
+        "apex-overlay: hc-1034 approval rules prompt section did not register "
+        "(see prior warning). Read-only checks may be bundled into lines that "
+        "need approval again, and a declined or unanswered approval may not be "
+        "explained to the user.",
+    ),
 )
 
 

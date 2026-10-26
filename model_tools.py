@@ -798,7 +798,11 @@ def _pre_dispatch_guards(function_name: str, function_args: dict[str, Any], skip
         logger.debug("ACP edit approval guard error: %s", _edit_approval_err)
         if function_name in {"write_file", "patch"}:
             return function_args, (tool_error("Edit approval denied: approval guard failed"), "edit_approval_error", None)
-    return function_args, None
+    # hc-1034: after a denied/unanswered approval this turn, code-running tools without a gate of their own ask again.
+    from tools.approval import held_tool_call_error
+    with _approval_observability(ids):
+        held_error = held_tool_call_error(function_name, function_args)
+    return function_args, (None if held_error is None else (held_error, "approval_hold", None))
 
 
 @contextmanager

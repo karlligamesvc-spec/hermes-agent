@@ -29,6 +29,7 @@ approval:
     notify_failed: "No se pudo entregar la solicitud de aprobación: el {noun} no se ejecutó."
     cancelled: "La solicitud de aprobación se retiró o nunca te llegó: el {noun} no se ejecutó."
     blocked: "Este {noun} no está permitido en una sesión sin supervisión: no se ejecutó."
+    held: "Este {noun} necesita tu aprobación, pero una solicitud de aprobación anterior no tuvo respuesta, así que se pausó y no se ejecutó. Responde y continuaré."
     default: "Este {noun} no se ejecutó."
   noun:
     command: "comando"
