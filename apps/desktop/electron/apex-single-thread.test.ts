@@ -1,7 +1,7 @@
 /**
  * hc-1015: the single-thread switch as main settles it at launch, and the
- * config heal that pins the managed model to the default tier alias while it
- * is on (decision 5: the user sees no tier; the shell sends the default).
+ * config heal's rule for the managed model while it is on (hc-1072, Kael
+ * 2026-10-26: the user's tier is kept; it no longer goes back to Flash).
  *
  * Run with: npx vitest run electron/apex-single-thread.test.ts --project electron
  */
@@ -156,45 +156,88 @@ describe('main never writes hc-1014’s per-install switch', () => {
   })
 })
 
-describe('the default tier alias, pinned in single-thread mode', () => {
+describe('the managed tier in single-thread mode (hc-1072: kept, not pinned to Flash)', () => {
   const block = (provider: string, model: string, baseUrl = RELAY) =>
     `model:\n  default: ${model}\n  provider: ${provider}\n  base_url: ${baseUrl}\n  api_key: sk-test\n`
 
   const managed = { baseUrl: RELAY, key: 'sk-test' }
   const singleThread = { [SINGLE_THREAD_ACTIVE_ENV]: '1' }
+  const ALL = ['apex-flash', 'apex-max', 'apex-pro', 'apex-free']
+  const FAST = ['apex-flash', 'apex-pro', 'apex-free']
+  const FREE = ['apex-flash', 'apex-free']
+
+  const heal = (raw: string, entitled: null | string[] = null) => {
+    const fixed: string[] = []
+    const next = healManagedModelTier(raw, managed, RELAY, singleThread, fixed, entitled)
+
+    return { fixed, next }
+  }
 
   test.each([
-    ['a Pro pick', block('custom:apex-nodes.com', 'apex-pro'), 'apex-pro'],
-    ['a Max pick', block('custom', 'apex-max'), 'apex-max'],
-    ['the -APEX seed', block('custom', 'deepseek-flash-APEX'), 'deepseek-flash-APEX']
-  ])('moves %s to the default', (_label, raw, from) => {
-    const fixed: string[] = []
-    const healed = healManagedModelTier(raw, managed, RELAY, singleThread, fixed)
+    ['a Pro pick, plan unknown', block('custom:apex-nodes.com', 'apex-pro'), null],
+    ['a Max pick, plan unknown', block('custom', 'apex-max'), null],
+    ['a Max pick on a plan with Max', block('custom', 'apex-max'), ALL],
+    ['a Pro pick on a plan with Pro', block('custom:apex-nodes.com', 'apex-pro'), FAST],
+    ['the default', block('custom', TIER_DEFAULT_MANAGED_MODEL), FREE],
+    ['a tier in other case', block('custom', 'APEX-PRO'), FAST],
+    ['a listing that names no tier (an older relay)', block('custom', 'apex-max'), ['deepseek-v4-pro']],
+    ['the user’s own provider', block('deepseek', 'deepseek-chat', 'https://api.deepseek.com/v1'), FREE],
+    ['a custom endpoint elsewhere', block('custom', 'apex-max', 'http://127.0.0.1:8080/v1'), FREE]
+  ])('keeps %s', (_label, raw, entitled) => {
+    const { fixed, next } = heal(raw, entitled)
 
-    assert.match(healed, new RegExp(`^ {2}default: ${TIER_DEFAULT_MANAGED_MODEL}$`, 'm'))
-    assert.deepEqual(fixed, [`model(single-thread:${from}→flash)`])
-    assert.equal(healed.replace(/^ {2}default: .*$/m, ''), raw.replace(/^ {2}default: .*$/m, ''))
-  })
-
-  test.each([
-    ['the default already', block('custom', TIER_DEFAULT_MANAGED_MODEL)],
-    ['the user’s own provider', block('deepseek', 'deepseek-chat', 'https://api.deepseek.com/v1')],
-    ['a custom endpoint elsewhere', block('custom', 'apex-pro', 'http://127.0.0.1:8080/v1')]
-  ])('leaves %s alone', (_label, raw) => {
-    const fixed: string[] = []
-
-    assert.equal(healManagedModelTier(raw, managed, RELAY, singleThread, fixed), raw)
+    assert.equal(next, raw)
     assert.deepEqual(fixed, [])
   })
 
-  test('needs a managed credential, and keeps a tier pick while only tiers are on', () => {
+  test.each([
+    ['the Flash -APEX seed', 'deepseek-flash-APEX', 'apex-flash'],
+    ['the hc-906 Flash seed', 'deepseek-v4-flash-APEX', 'apex-flash'],
+    ['the 06-27 Pro seed', 'deepseek-v4-pro-APEX', 'apex-pro'],
+    ['an old shelf Pro pick', 'deepseek-v4-pro', 'apex-pro'],
+    ['Pro’s first upstream', 'mimo-v2.6-pro', 'apex-pro'],
+    ['an old shelf pick no tier ran', 'kimi-k2.7-code', 'apex-flash'],
+    ['a quoted old id', '"deepseek-v4-pro-APEX"', 'apex-pro']
+  ])('moves %s to the tier it stands for', (_label, model, to) => {
+    const raw = block('custom:apex-nodes.com', model)
+    const { fixed, next } = heal(raw, ALL)
+
+    assert.match(next, new RegExp(`^ {2}default: ${to}$`, 'm'))
+    assert.deepEqual(fixed, [`model(single-thread:${model.replace(/"/g, '')}→${to.replace('apex-', '')})`])
+    assert.equal(next.replace(/^ {2}default: .*$/m, ''), raw.replace(/^ {2}default: .*$/m, ''))
+    assert.equal(heal(next, ALL).next, next, 'a second pass changes nothing')
+  })
+
+  test.each([
+    ['Max on a plan up to Pro', 'apex-max', FAST, 'apex-pro'],
+    ['Max on the free plan', 'apex-max', FREE, 'apex-flash'],
+    ['Pro on the free plan', 'apex-pro', FREE, 'apex-flash'],
+    ['an old Pro id on the free plan', 'deepseek-v4-pro-APEX', FREE, 'apex-flash'],
+    ['Pro on a listing without Flash or Pro', 'apex-pro', ['apex-max'], 'apex-flash']
+  ])('drops %s to the strongest tier the plan grants', (_label, model, entitled, to) => {
+    const raw = block('custom', model)
+    const { fixed, next } = heal(raw, entitled)
+
+    assert.match(next, new RegExp(`^ {2}default: ${to}$`, 'm'))
+    assert.deepEqual(fixed, [`model(single-thread:${model}→${to.replace('apex-', '')})`])
+    assert.equal(heal(next, entitled).next, next, 'a second pass changes nothing')
+  })
+
+  test('needs a managed credential, and leaves tier mode’s rule alone', () => {
     const pro = block('custom:apex-nodes.com', 'apex-pro')
+    const seed = block('custom', 'deepseek-v4-pro-APEX')
     const fixed: string[] = []
 
-    assert.equal(healManagedModelTier(pro, { baseUrl: RELAY }, RELAY, singleThread, fixed), pro, 'no managed key')
-    assert.equal(healManagedModelTier(pro, managed, RELAY, { APEXNODES_MODEL_TIERS: '1' }, fixed), pro, 'tiers only')
-    assert.equal(healManagedModelTier(pro, managed, RELAY, {}, fixed), pro, 'both off')
+    assert.equal(healManagedModelTier(pro, { baseUrl: RELAY }, RELAY, singleThread, fixed, FREE), pro, 'no managed key')
+    assert.equal(healManagedModelTier(pro, managed, RELAY, {}, fixed, FREE), pro, 'both off')
     assert.deepEqual(fixed, [])
+    // Tier mode alone: a tier stays whatever the listing says, every old id goes to Flash.
+    assert.equal(healManagedModelTier(pro, managed, RELAY, { APEXNODES_MODEL_TIERS: '1' }, fixed, FREE), pro)
+    assert.match(
+      healManagedModelTier(seed, managed, RELAY, { APEXNODES_MODEL_TIERS: '1' }, fixed, ALL),
+      /default: apex-flash$/m
+    )
+    assert.deepEqual(fixed, ['model(tier:deepseek-v4-pro-APEX→flash)'])
     assert.equal(migrateManagedModelToTierYaml(pro, RELAY).changed, false, 'the tier migration keeps its tiers')
   })
 })
