@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { managedCaptureArgs } from './hypit_capture.mjs'
-import { hypitEnvironment } from './hypit_environment.mjs'
+import { hostedHypit, hypitEnvironment } from './hypit_environment.mjs'
 import { selectHypit } from './hypit_project.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
@@ -29,13 +29,15 @@ try {
   console.error(`APEX browser preparation failed: ${error.message}`)
   process.exit(1)
 }
-const preparing = args[0] === 'apex-prepare'
+// apex-enable-hosted exists only while hosted generation is on; otherwise Hypit sees it unchanged.
+const apex = { 'apex-prepare': 'prepare-hypit', ...(hostedHypit(env) && { 'apex-enable-hosted': 'enable-hosted-hypit' }) }
+const preparing = Object.hasOwn(apex, args[0])
 const command = preparing ? python : process.execPath
 // Load Koffi before Hypit's TS/package-resolution hooks. Loading the native
 // addon through that hook chain crashes its first flock call on macOS x64.
 // --import keeps the addon in the same child that runs the unchanged CLI.
 const nativeModule = pathToFileURL(selected.nativeModule).href
-const parameters = preparing ? ['-m', 'apex_overlay.media_tools', 'prepare-hypit', '--workspace', selected.project, '--hypit-version', selected.version] : ['--import', nativeModule, upstream, ...args]
+const parameters = preparing ? ['-m', 'apex_overlay.media_tools', apex[args[0]], '--workspace', selected.project, '--hypit-version', selected.version] : ['--import', nativeModule, upstream, ...args]
 const child = spawn(command, parameters, { env, cwd: selected.cwd, stdio: 'inherit', windowsHide: true })
 child.on('error', error => { console.error(`Hypit could not start: ${error.message}`); process.exitCode = 1 })
 child.on('exit', (code, signal) => { process.exitCode = code ?? (signal ? 1 : 0) })
