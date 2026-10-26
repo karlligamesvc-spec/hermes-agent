@@ -5,6 +5,10 @@
  * shown; the platform routes). The user's-own-key path keeps its model pill,
  * as in hc-960 tier mode, and developer mode keeps every control. The flag-off
  * composer is pinned byte for byte in src/single-thread-identity.test.tsx.
+ *
+ * hc-1060 (prototype v2, N6/N7): the row is now attach · 听写 · one round
+ * button (voice while empty), and the "+" menu keeps attach, generate and
+ * 语音设置 only; single-thread-actions.test.tsx covers the rest.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
@@ -125,13 +129,13 @@ afterEach(() => {
 })
 
 describe('single_thread on, APEX account', () => {
-  it('shows attach, voice and send — no model pill', async () => {
+  it('shows attach, dictation and the voice button — no model pill, no Send while empty', async () => {
     await renderChatBar()
 
-    expect(toolbarButtons()).toEqual(['添加图片、文件和更多', '开始语音对话', '发送'])
+    expect(toolbarButtons()).toEqual(['添加图片、文件和更多', '听写', '开始语音对话'])
   })
 
-  it('keeps 高级 without 场景 or 审批方式, and the generation rows without a model picker', async () => {
+  it('keeps attach, generate and 语音设置 in the "+" menu — no 高级, skills, connectors, 场景 or 审批方式', async () => {
     await renderChatBar()
     openPlusMenu()
 
@@ -142,12 +146,10 @@ describe('single_thread on, APEX account', () => {
       expect(row.getAttribute('aria-haspopup')).toBeNull()
     }
 
-    await openSubmenu('高级')
+    await openSubmenu('语音设置')
 
-    expect(await screen.findByRole('menuitem', { name: /^语音设置/ })).toBeTruthy()
-    expect(screen.getByRole('menuitem', { name: /^已启用技能/ })).toBeTruthy()
-    expect(rowNames()).not.toContain('场景…')
-    expect(rowNames().some(name => name.startsWith('审批方式'))).toBe(false)
+    expect(rowNames()).toContain('添加图片')
+    expect(rowNames().some(name => /^(高级|已启用技能|未启用技能|连接器|场景…|审批方式)/.test(name))).toBe(false)
   })
 })
 

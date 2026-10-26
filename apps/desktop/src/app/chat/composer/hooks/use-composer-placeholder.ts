@@ -1,14 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { useI18n } from '@/i18n'
+import { useSingleThreadComposerCopy } from '@/i18n/single-thread-composer'
 import { resetBrowseState } from '@/store/composer-input-history'
 
 import { pickPlaceholder } from '../composer-utils'
+import { useSingleThreadComposer } from '../single-thread-gate'
 
 interface UseComposerPlaceholderOptions {
   disabled: boolean
   reconnecting: boolean
   sessionId: null | string | undefined
+}
+
+/** The input's accessible name and the placeholder it shows while empty. */
+export interface ComposerPlaceholder {
+  label: string
+  placeholder: string
 }
 
 /**
@@ -17,9 +25,19 @@ interface UseComposerPlaceholderOptions {
  * a *different* conversation — the null→id persist of a freshly-started session
  * keeps its starter so the text doesn't flip mid-stream. While the transport is
  * down, it swaps to a reconnecting / starting message instead.
+ *
+ * hc-1060: the single-thread composer rests on one fixed line, 「给 APEX 发消息」,
+ * which is also its accessible name (prototype v2). Starting and reconnecting
+ * still say so.
  */
-export function useComposerPlaceholder({ disabled, reconnecting, sessionId }: UseComposerPlaceholderOptions): string {
+export function useComposerPlaceholder({
+  disabled,
+  reconnecting,
+  sessionId
+}: UseComposerPlaceholderOptions): ComposerPlaceholder {
   const { t } = useI18n()
+  const singleThread = useSingleThreadComposer()
+  const singleThreadCopy = useSingleThreadComposerCopy()
   const newSessionPlaceholders = t.composer.newSessionPlaceholders
   const followUpPlaceholders = t.composer.followUpPlaceholders
 
@@ -48,14 +66,19 @@ export function useComposerPlaceholder({ disabled, reconnecting, sessionId }: Us
     setRestingPlaceholder(pickPlaceholder(sessionId ? followUpPlaceholders : newSessionPlaceholders))
   }, [followUpPlaceholders, newSessionPlaceholders, sessionId])
 
+  const resting = singleThread ? singleThreadCopy.placeholder : restingPlaceholder
+
   // When the transport is disabled it's because the gateway isn't open.
   // Distinguish a cold start ("Starting Hermes...") from a dropped connection
   // we're trying to restore. During reconnect, keep the textbox editable so a
   // flaky network doesn't block drafting; only submit/backend actions stay
   // disabled until the gateway is open again.
-  return disabled
-    ? reconnecting
-      ? t.composer.placeholderReconnecting
-      : t.composer.placeholderStarting
-    : restingPlaceholder
+  return {
+    label: singleThread ? singleThreadCopy.placeholder : t.composer.message,
+    placeholder: disabled
+      ? reconnecting
+        ? t.composer.placeholderReconnecting
+        : t.composer.placeholderStarting
+      : resting
+  }
 }
