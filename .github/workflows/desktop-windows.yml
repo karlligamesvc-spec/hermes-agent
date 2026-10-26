@@ -186,6 +186,14 @@ jobs:
         working-directory: apps/desktop
         run: node scripts/bundled-runtime-package.mjs assert release/win-unpacked/resources win32 x64
 
+      # hc-1058: electron-updater downloads the installer by changed blocks. The
+      # engine archive must sit in it verbatim (nsis.preCompressedFileExtensions
+      # keeps it out of the LZMA 7z); this also fails if NSIS dropped another .tar.gz.
+      - name: Assert installer stores the engine archive
+        working-directory: apps/desktop
+        shell: pwsh
+        run: node scripts/assert-update-engine-stored.mjs nsis (Get-Item release/APEX-*-win-x64.exe).FullName release/win-unpacked
+
       - name: Assert packaged APEX PE identity
         id: exe-identity
         working-directory: apps/desktop

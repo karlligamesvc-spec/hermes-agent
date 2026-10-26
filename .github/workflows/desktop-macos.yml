@@ -269,6 +269,17 @@ jobs:
           node scripts/bundled-runtime-package.mjs assert "$RES" darwin "${{ matrix.arch }}"
           echo "package completeness OK ($(wc -l < /tmp/asar-list.txt) asar entries)"
 
+      # hc-1058: electron-updater downloads this zip by changed blocks. A deflated
+      # engine entry makes every release re-download the whole engine; afterPack
+      # sets ZIPOPT so Info-ZIP stores it, and this proves the shipped zip did.
+      - name: Assert update zip stores the engine archive
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          ZIP="$(find release -maxdepth 1 -name '*-mac-${{ matrix.arch }}.zip' | head -1)"
+          test -n "$ZIP"
+          node scripts/assert-update-engine-stored.mjs mac-zip "$ZIP"
+
       - name: Assert packaged target architecture
         working-directory: apps/desktop
         env:
