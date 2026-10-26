@@ -190,3 +190,72 @@ redirectorTest('a redirected gateway whose chain ends at a foreign owner is kept
     await gateway.cleanup()
   }
 }, 60_000)
+
+// hc-1031: a gateway an earlier Desktop left running (quitting did not stop it) whose gateway.pid
+// then vanished. Its gateway_state.json still carries the same identity, so the switch gate retires
+// it instead of counting it as a foreign engine holder and deferring every update for good.
+redirectorTest('a leftover gateway whose gateway.pid vanished is retired through its runtime status (hc-1031)', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-gateway-leftover-'))
+  const root = path.join(home, 'engine')
+  const verifiedRoot = path.join(home, 'verified')
+  const commonGit = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim()
+  const python = process.env.HERMES_PYTHON || path.join(path.dirname(commonGit), '.venv', 'bin/python')
+  const env = { ...process.env, HERMES_HOME: home, PYTHONPATH: path.resolve('../..'), PYTHONDONTWRITEBYTECODE: '1' }
+  fs.mkdirSync(path.join(root, 'gateway'), { recursive: true })
+  fs.mkdirSync(verifiedRoot)
+  fs.symlinkSync(path.dirname(path.dirname(python)), path.join(verifiedRoot, 'venv'))
+  const script = path.join(root, 'gateway', 'run.py')
+  fs.writeFileSync(script, gatewayFixtureScript({ wedged: false }))
+  const child = spawn(python, [script], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  const closed = once(child, 'close')
+  let stderr = ''
+  child.stderr!.on('data', data => { stderr += data })
+
+  const retire = async (mode: 'inspect' | 'retire') =>
+    JSON.parse((await exec(python, ['-c', RETIRE_GATEWAYS, root, home, String(process.pid), mode], { env, cwd: home, timeout: 30_000 })).stdout.trim()) as number[]
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error(`Gateway did not start: ${stderr}`)), 10_000)
+      child.once('exit', () => { clearTimeout(timeout); reject(new Error(`Gateway exited: ${stderr}`)) })
+      child.stdout!.once('data', () => { clearTimeout(timeout); resolve() })
+    })
+    const pidFile = path.join(home, 'gateway.pid')
+    const record = JSON.parse(fs.readFileSync(pidFile, 'utf8'))
+    const statusFile = path.join(home, 'gateway_state.json')
+    fs.rmSync(pidFile)
+
+    // A runtime status that proves nothing (another home, a recycled or missing start time) leaves
+    // it alone, and the gate keeps seeing an engine holder.
+    for (const forged of [{ ...record, hermes_home: path.join(home, 'other') }, { ...record, start_time: record.start_time + 100 }, { ...record, start_time: undefined }]) {
+      fs.writeFileSync(statusFile, JSON.stringify(gatewayRuntimeState(forged, 0)))
+      assert.deepEqual(await retire('inspect'), [])
+      await assert.rejects(assertPackagedRuntimeIdle(root, verifiedRoot, { retiringGatewayPids: [] }), isRuntimeUpdateBusy)
+    }
+
+    // A live IM turn still defers the switch.
+    fs.writeFileSync(statusFile, JSON.stringify(gatewayRuntimeState(record, 1)))
+    await assert.rejects(retire('inspect'), /APEX_RUNTIME_UPDATE_BUSY/)
+
+    // Idle and proven by its runtime status: exempt while inspecting, then retired by the switch.
+    fs.writeFileSync(statusFile, JSON.stringify(gatewayRuntimeState(record, 0)))
+    const inspected = await retire('inspect')
+    assert.ok(inspected.includes(record.pid), `inspect must list the leftover gateway: ${inspected}`)
+    assert.equal(child.exitCode, null, 'preflight cannot disconnect an idle gateway')
+    assert.deepEqual((await assertPackagedRuntimeIdle(root, verifiedRoot, { retiringGatewayPids: inspected }))?.holderPids, [])
+    assert.deepEqual(await retire('retire'), [record.pid])
+    await closed
+    assert.deepEqual((await assertPackagedRuntimeIdle(root, verifiedRoot))?.holderPids, [])
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) {child.kill('SIGKILL')}
+    const descendantFile = path.join(home, 'descendant.pid')
+
+    if (fs.existsSync(descendantFile)) {
+      const descendant = JSON.parse(fs.readFileSync(descendantFile, 'utf8'))
+      await exec(python, ['-c', 'import psutil,sys; p=int(sys.argv[1]); c=float(sys.argv[2]); (psutil.Process(p).kill() if psutil.pid_exists(p) and psutil.Process(p).create_time()==c else None)', String(descendant.pid), String(descendant.created)], { env, timeout: 5000 }).catch(() => {})
+    }
+
+    await closed
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+}, 60_000)

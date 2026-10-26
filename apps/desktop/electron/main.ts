@@ -13225,7 +13225,7 @@ const backendShutdown = createBackendShutdownCoordinator(async () => {
     poolIdleReaper = null
   }
 
-  await waitForTeardown([localShutdown, waitForBackendExit(primary), pooledStops], 7_000)
+  await waitForTeardown([localShutdown, waitForBackendExit(primary), pooledStops, stopMessagingGateway()], 7_000) // hc-1031: the IM gateway is no lifecycle child; unstopped it outlived every quit
 })
 
 const quitTeardown = createQuitTeardownCoordinator(() => app.quit())
@@ -21995,8 +21995,8 @@ function messagingGatewayChildAlive() {
   return Boolean(child && child.exitCode === null && !child.killed)
 }
 
-// Stop the desktop-managed messaging gateway child (SIGTERM, then SIGKILL on
-// timeout via waitForBackendExit). Idempotent — a no-op when none is running.
+// Stop the desktop-managed messaging gateway child (SIGTERM, then SIGKILL on timeout via
+// waitForBackendExit). Idempotent — a no-op when none is running. Quit runs it too (hc-1031).
 async function stopMessagingGateway() {
   const child = messagingGatewayChildAlive() ? messagingGatewayRuntime.process : null
   messagingGatewayRuntime.process = null
