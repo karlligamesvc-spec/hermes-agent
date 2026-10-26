@@ -62,7 +62,8 @@ export function ComposerToolbarStart({
                 : {
                     hideApprovals: singleThread,
                     onOpenScenarios: scenariosAvailable ? () => setScenariosOpen(true) : undefined,
-                    voice
+                    voice,
+                    voiceOnly: singleThread
                   }
             }
             pickers={pickers}
