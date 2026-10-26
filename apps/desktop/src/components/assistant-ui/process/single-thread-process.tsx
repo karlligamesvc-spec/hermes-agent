@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { useSingleThreadMode } from '@/store/single-thread'
 
 import { CreatorTipSlot } from './creator-tip'
+import { plainStageLine } from './plain-steps'
 import {
   FailureCard,
   LINE_CLASS,
@@ -24,7 +25,7 @@ import {
   useDisclosure
 } from './process-block'
 import { SingleThreadStopButton } from './single-thread-stop'
-import { wholeSeconds } from './turn-process'
+import { type TurnProcess, wholeSeconds } from './turn-process'
 import { turnBounds, useTurnView } from './turn-state'
 
 /**
@@ -90,6 +91,7 @@ export const SingleThreadActivityLine: FC = () => {
         ))}
         <SingleThreadStopButton />
       </div>
+      <StageLine process={process} />
       {process?.phase === 'running' && <PendingApproval process={process} />}
       {process && view && (
         <CreatorTipSlot
@@ -104,6 +106,17 @@ export const SingleThreadActivityLine: FC = () => {
       )}
     </div>
   )
+}
+
+/** hc-1066: where a long task stands — 「已看完素材、生成好素材，正在剪辑」. */
+function StageLine({ process }: { process: null | TurnProcess }) {
+  const stage = process ? plainStageLine(process.steps) : null
+
+  return stage ? (
+    <p className={cn(NOTE_CLASS, 'm-0 ps-[1.875rem]')} data-single-thread-stage="">
+      {stage}
+    </p>
+  ) : null
 }
 
 interface TurnEndSlice {
