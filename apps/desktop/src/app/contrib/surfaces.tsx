@@ -50,6 +50,7 @@ import { useStatusbarItems } from '../shell/hooks/use-statusbar-items'
 import { ModelMenuPanel } from '../shell/model-menu-panel'
 import { ReasoningMenuPanel } from '../shell/reasoning-menu-panel'
 import { StatusbarControls } from '../shell/statusbar-controls'
+import { AnalysisRouteGate } from '../single-thread/analysis-route-gate'
 import { SingleThreadSidebar } from '../single-thread/sidebar'
 import { useSingleThreadShell } from '../single-thread/use-single-thread-shell'
 
@@ -390,7 +391,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
         <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="search" />
         <Route element={page(<AccountWorkspace><HistoryView /></AccountWorkspace>)} path={HISTORY_ROUTE.slice(1)} />
         <Route element={page(<AccountWorkspace><ProjectsView /></AccountWorkspace>)} path="projects" />
-        <Route element={page(<AccountWorkspace><AnalysisRouteView actions={actions} /></AccountWorkspace>)} path={ANALYSIS_ROUTE.slice(1)} />
+        <Route element={<AnalysisRouteGate>{page(<AccountWorkspace><AnalysisRouteView actions={actions} /></AccountWorkspace>)}</AnalysisRouteGate>} path={ANALYSIS_ROUTE.slice(1)} />
         <Route element={page(<AccountWorkspace><WorkflowsView /></AccountWorkspace>)} path="workflows" />
         <Route element={null} path="agents" />
         <Route element={null} path="profile" />

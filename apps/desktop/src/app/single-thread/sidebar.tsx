@@ -10,7 +10,8 @@
  *   reply, what it is doing, 等你决定, 通话中) and a dot for a reply not yet seen;
  * - 「在微信里找 APEX」, which opens the IM entry page;
  * - the account row: the name over 「快速 · 本月用了 18%」 (hc-1062).
- * 「沉浸式分析」 moved from its own row into the account menu (N4).
+ * hc-1070: there is no 「沉浸式分析」 here or in the account menu, and its
+ * route turns back to the conversation (analysis-route-gate.tsx).
  */
 
 import { useStore } from '@nanostores/react'
@@ -48,7 +49,7 @@ import { SingleThreadWechatRow } from './sidebar-wechat'
 /** Working, waiting and in a call read in the avatar's purple, like the prototype's busy line. */
 const BUSY_LINE_CLASS = 'text-[#4127A8] dark:text-[#B9A8FF]'
 
-function contractItem(id: 'analysis' | 'projects' | 'scheduled-runs', icon: string): SidebarNavItem {
+function contractItem(id: 'projects' | 'scheduled-runs', icon: string): SidebarNavItem {
   const item = BUSINESS_SIDEBAR_NAV_CONTRACT.find(candidate => candidate.id === id)
 
   return {
@@ -58,8 +59,6 @@ function contractItem(id: 'analysis' | 'projects' | 'scheduled-runs', icon: stri
     route: item?.route
   }
 }
-
-const ANALYSIS_ITEM = contractItem('analysis', 'book')
 
 const ACCOUNT_MENU_ITEMS = {
   projects: contractItem('projects', 'folder'),
@@ -192,10 +191,7 @@ export function SingleThreadSidebar({
         <div className="min-h-0 flex-1" />
         <DesktopUpdatePill />
         <SingleThreadWechatRow />
-        <SingleThreadAccountRow
-          onAnalysis={() => onNavigate(ANALYSIS_ITEM)}
-          onNavigateBusiness={id => onNavigate(ACCOUNT_MENU_ITEMS[id])}
-        />
+        <SingleThreadAccountRow onNavigateBusiness={id => onNavigate(ACCOUNT_MENU_ITEMS[id])} />
       </SidebarContent>
     </Sidebar>
   )

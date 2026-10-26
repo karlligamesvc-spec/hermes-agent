@@ -324,7 +324,7 @@ describe('hc-1061 the account menu (twin of AccountPanel’s)', () => {
     return screen.getAllByRole('menuitem').map(item => item.textContent?.trim() ?? '')
   }
 
-  it('lists AccountPanel’s destinations in the same order, plus 沉浸式分析 after 设置', async () => {
+  it('lists exactly AccountPanel’s destinations, in the same order: no 沉浸式分析 (hc-1070)', async () => {
     const panel = render(
       <MemoryRouter>
         <I18nProvider configClient={null} initialLocale="zh">
@@ -341,17 +341,35 @@ describe('hc-1061 the account menu (twin of AccountPanel’s)', () => {
     const items = await menuItems(screen.getByRole('button', { name: '打开账户菜单: 小满' }))
 
     expect(expected).toContain('更早的对话')
-    expect(items).toEqual([...expected.slice(0, 2), '沉浸式分析', ...expected.slice(2)])
+    expect(expected).not.toContain('沉浸式分析')
+    expect(items).toEqual(expected)
   })
 
-  it('沉浸式分析 opens the analysis workspace through the shell', async () => {
+  it('pins the menu item by item: AccountPanel’s list with 更早的对话, nothing else (hc-1070)', async () => {
     const onNavigate = vi.fn()
     renderSidebar({ onNavigate })
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: '打开账户菜单: 小满' }), { button: 0, ctrlKey: false })
-    fireEvent.click(await screen.findByRole('menuitem', { name: '沉浸式分析' }))
+    expect(await menuItems(screen.getByRole('button', { name: '打开账户菜单: 小满' }))).toEqual([
+      '个人资料',
+      '设置',
+      '项目',
+      '定时运行',
+      '连接助手',
+      '更早的对话',
+      '交付物',
+      '重新登录',
+      '退出登录'
+    ])
 
-    expect(onNavigate).toHaveBeenCalledWith(expect.objectContaining({ id: 'analysis' }))
+    // The two items that go through the shell's navigation are 项目 and 定时运行, never the analysis workspace.
+    for (const label of ['项目', '定时运行']) {
+      cleanup()
+      renderSidebar({ onNavigate })
+      await menuItems(screen.getByRole('button', { name: '打开账户菜单: 小满' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: label }))
+    }
+
+    expect(onNavigate.mock.calls.map(([item]) => (item as { id: string }).id)).toEqual(['projects', 'scheduled-runs'])
   })
 })
 
