@@ -27,6 +27,7 @@ import {
   probePackagedRuntime,
   readPackagedRuntime
 } from '../electron/packaged-runtime.ts'
+import { supersededByRelease } from '../electron/packaged-runtime-marker.ts'
 
 // This entry runs only owned temp homes, no Electron, provider calls or network installers.
 // CI prepares the genuine historical Git object before this offline consumer gate.
@@ -81,6 +82,39 @@ function switchGate(home: string, gateLog: string[]) {
     readOwnership: () => null, identityMatches: async () => false,
     log: message => { gateLog.push(message) }
   })
+}
+
+/**
+ * hc-1033: a copy of the shipped `bundled-runtime` resources whose release descriptor does not list
+ * `commit` among the engines it supersedes. Files are hard links (a byte copy only across volumes).
+ */
+function resourcesWithout(commit: string): string {
+  const source = path.join(resourcesPath, 'bundled-runtime')
+  const copy = path.join(workspace, `resources-without-${commit.slice(0, 8)}`)
+
+  const mirror = (from: string, to: string) => {
+    fs.mkdirSync(to, { recursive: true })
+
+    for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
+      const [a, b] = [path.join(from, entry.name), path.join(to, entry.name)]
+
+      if (entry.isDirectory()) {
+        mirror(a, b)
+      } else {
+        try { fs.linkSync(a, b) } catch { fs.copyFileSync(a, b) }
+      }
+    }
+  }
+
+  mirror(source, path.join(copy, 'bundled-runtime'))
+  const descriptor = path.join(copy, 'bundled-runtime', 'release.json')
+  const unlisted = JSON.parse(fs.readFileSync(descriptor, 'utf8'))
+  assert.ok(unlisted.supersedes?.[commit], `the shipped release must list ${commit} as superseded`)
+  delete unlisted.supersedes[commit]
+  fs.rmSync(descriptor)
+  fs.writeFileSync(descriptor, JSON.stringify(unlisted, null, 2))
+
+  return copy
 }
 
 function consumer(home: string, gateLog: string[] = []): PackagedRuntimeOptions {
@@ -526,7 +560,11 @@ try {
   const sameDayMarker = path.join(before.root, '.hermes-bootstrap-complete')
   const sameDayVersion = release.runtime_version.replace(/fork\.[a-f0-9]+$/, `fork.${F8.slice(0, 8)}`)
   fs.writeFileSync(sameDayMarker, JSON.stringify({ schemaVersion: 1, pinnedCommit: F8, version: sameDayVersion }))
-  assert.equal((await installPackagedRuntime(consumer(returning), true)).status, 'preserved')
+  // hc-1033: this release's `supersedes` list names F8, so the shipped descriptor replaces it whatever its
+  // marker says. The same-day rule still guards every engine the list does not name: prove it against the
+  // same resources with F8 left off the list.
+  assert.ok(supersededByRelease(before.root, F8, release), 'the shipped supersedes list must replace F8 without a marker')
+  assert.equal((await installPackagedRuntime({ ...consumer(returning), resourcesPath: resourcesWithout(F8) }, true)).status, 'preserved')
   const confirmed = { ...consumer(returning), confirmedRuntimeCommit: release.runtime_commit }
   const failing = { ...confirmed }
 
@@ -553,7 +591,7 @@ try {
   assert.equal(fs.readFileSync(planPath, 'utf8'), originalPlanBytes, 'failed bundle activation must leave the frozen plan intact')
   const upgrade = await installPackagedRuntime(confirmed, true)
   assert.equal(upgrade.status, 'installed')
-  proof.sameDayConfirmedUpdate = { previousSource: F8, previousMarkerVersion: sameDayVersion, targetSource: release.runtime_commit, defaultPreserved: true, confirmedActivated: true }
+  proof.sameDayConfirmedUpdate = { previousSource: F8, previousMarkerVersion: sameDayVersion, targetSource: release.runtime_commit, shippedListSupersedesF8: true, defaultPreservedWhenUnlisted: true, confirmedActivated: true }
   const reconciledPlan = await readPreparedDesktopUpdatePlan(planPath, {
     ...planDependencies, preparedRuntime: async () => upgrade
   })
