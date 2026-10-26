@@ -1,6 +1,6 @@
 /**
- * hc-1014 单线对话: the header over the one thread — a pill with APEX's mark
- * and name, nothing else. No session title, no pin / rename / delete menu: there
+ * hc-1014 单线对话: the header over the one thread — a pill with APEX's avatar
+ * (hc-1064) and name, nothing else. No session title, no pin / rename / delete menu: there
  * is one conversation and it is not managed like a session. Its status goes in
  * the activity line at the foot of the conversation (hc-1015), not here. An
  * earlier conversation keeps today's header, title included, so it reads as an
@@ -10,7 +10,7 @@
 
 import { useStore } from '@nanostores/react'
 
-import { BrandMark } from '@/components/brand-mark'
+import { ApexAvatar } from '@/components/apex-avatar'
 import { useSingleThreadChatCopy } from '@/i18n/single-thread-chat'
 import { cn } from '@/lib/utils'
 import { $mainThread, isMainThreadStoredId } from '@/store/main-thread'
@@ -37,7 +37,7 @@ export function SingleThreadHeader() {
         aria-label={copy.assistantName}
         className="flex min-w-0 items-center gap-2 rounded-full border border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) py-0.5 pl-0.5 pr-3 shadow-xs"
       >
-        <BrandMark aria-hidden="true" className="size-6 rounded-full" />
+        <ApexAvatar className="size-[1.625rem]" />
         <span className="truncate text-[0.875rem] font-semibold text-(--ui-text-primary)">{copy.assistantName}</span>
       </div>
     </header>

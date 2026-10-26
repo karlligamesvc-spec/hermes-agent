@@ -15,17 +15,20 @@
 # (APEX-<version>-mac-<arch>.dmg/.zip + *.blockmap + latest-mac.yml) to
 # desktop/mac-<arch>/ on the public bucket — the electron-updater generic feed
 # the desktop shell polls (electron/shell-updater.cjs). Per-arch prefixes are
-# load-bearing: both matrix jobs emit a file literally named latest-mac.yml,
-# so a flat desktop/ prefix would let the second job clobber the first arch's
-# feed. (≤0.16.0 used lowercased custom names; website links are synced from
-# the cloud repo separately.)
+# load-bearing: every Mac arch emits a file literally named latest-mac.yml,
+# so a flat desktop/ prefix would let one arch clobber another arch's feed.
+# (≤0.16.0 used lowercased custom names; website links are synced from the
+# cloud repo separately.)
+#
+# Only arm64 is built. Mac x64 (Intel) stopped after 0.17.63: installed Intel
+# shells keep polling desktop/mac-x64/, which stays at 0.17.63 and is never
+# written again (scripts/release/upload-desktop-cos.py refuses that prefix).
 #
 # hc-435 — DO NOT "fix" the 404 at the ROOT desktop/latest-mac.yml by also
 # uploading there. The root feed is INTENTIONALLY empty: the installed shell
 # reads its per-arch subdir via runtime setFeedURL (shell-updater.cjs), never
-# the root. Copying arm64 + x64 latest-mac.yml to the flat desktop/ prefix is
-# exactly the clobber this per-arch layout exists to avoid — the second arch's
-# yml would overwrite the first's, and its updater would find no matching zip.
+# the root. A flat copy would be the cross-arch clobber the per-arch layout
+# exists to avoid: an Intel updater handed the arm64 yml finds no matching zip.
 # The root 404 is expected and harmless; verified end-to-end that every shipped
 # arch resolves its subdir feed + installer (both HTTP 200).
 
@@ -93,11 +96,11 @@ jobs:
       fail-fast: false
       matrix:
         # Python and its venv must be built and executed on their native host.
+        # arm64 only: the parity readback (verify-cross-platform-release.mjs) reads
+        # back exactly the Mac arches built here, so the two lists change together.
         include:
           - arch: arm64
             runner: macos-14
-          - arch: x64
-            runner: macos-15-intel
 
     steps:
       - name: Checkout
@@ -265,6 +268,17 @@ jobs:
           node scripts/assert-updater-deps.cjs "$RES"
           node scripts/bundled-runtime-package.mjs assert "$RES" darwin "${{ matrix.arch }}"
           echo "package completeness OK ($(wc -l < /tmp/asar-list.txt) asar entries)"
+
+      # hc-1058: electron-updater downloads this zip by changed blocks. A deflated
+      # engine entry makes every release re-download the whole engine; afterPack
+      # sets ZIPOPT so Info-ZIP stores it, and this proves the shipped zip did.
+      - name: Assert update zip stores the engine archive
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          ZIP="$(find release -maxdepth 1 -name '*-mac-${{ matrix.arch }}.zip' | head -1)"
+          test -n "$ZIP"
+          node scripts/assert-update-engine-stored.mjs mac-zip "$ZIP"
 
       - name: Assert packaged target architecture
         working-directory: apps/desktop

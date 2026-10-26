@@ -63,7 +63,7 @@
     "test:ui": "vitest run --project ui",
     "test:task-scroll": "node --test scripts/tasks-scroll.test.mjs",
     "test:desktop:platforms": "vitest run --project electron",
-    "test:release-gates": "node --test scripts/assert-release-preflight.test.cjs scripts/assert-dist-built.test.cjs scripts/stage-updater-deps.test.cjs scripts/assert-updater-deps.test.cjs scripts/desktop-macos-workflow.test.cjs scripts/electron-builder-target-arch.node-test.mjs scripts/assert-macos-package-arch.node-test.mjs scripts/diagnostic-trial-package.node-test.mjs scripts/windows-exe-identity.node-test.mjs scripts/verify-cross-platform-release.node-test.mjs scripts/runtime-bundle-import-probe.node-test.mjs scripts/bundled-runtime-package.node-test.mjs scripts/mac-runtime-payload.node-test.mjs scripts/runtime-bundle-download.node-test.mjs scripts/runtime-bundle-offline-smoke.node-test.mjs scripts/runtime-bundle-slim.node-test.mjs scripts/owned-cleanup-gate-tap.node-test.mjs && vitest run scripts/before-pack.test.mjs scripts/after-pack.test.mjs",
+    "test:release-gates": "node --test scripts/assert-release-preflight.test.cjs scripts/assert-dist-built.test.cjs scripts/stage-updater-deps.test.cjs scripts/assert-updater-deps.test.cjs scripts/desktop-macos-workflow.test.cjs scripts/electron-builder-target-arch.node-test.mjs scripts/assert-macos-package-arch.node-test.mjs scripts/diagnostic-trial-package.node-test.mjs scripts/windows-exe-identity.node-test.mjs scripts/verify-cross-platform-release.node-test.mjs scripts/runtime-bundle-import-probe.node-test.mjs scripts/bundled-runtime-package.node-test.mjs scripts/mac-runtime-payload.node-test.mjs scripts/runtime-bundle-download.node-test.mjs scripts/runtime-bundle-offline-smoke.node-test.mjs scripts/runtime-bundle-slim.node-test.mjs scripts/owned-cleanup-gate-tap.node-test.mjs scripts/runtime-bundle-archive.node-test.mjs scripts/assert-update-engine-stored.node-test.mjs scripts/measure-update-download.node-test.mjs && vitest run scripts/before-pack.test.mjs scripts/after-pack.test.mjs",
     "test:find-in-page-native": "electron electron/find-in-page-native-fixture",
     "test": "vitest run",
     "preview": "node scripts/assert-root-install.mjs && vite preview --host 127.0.0.1 --port 4174",
@@ -338,6 +338,19 @@
       ]
     },
     "nsis": {
+      "include": "scripts/nsis-store-engine.nsh",
+      "preCompressedFileExtensions": [
+        ".avi",
+        ".mov",
+        ".m4v",
+        ".mp4",
+        ".m4p",
+        ".qt",
+        ".mkv",
+        ".webm",
+        ".vmdk",
+        ".tar.gz"
+      ],
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
