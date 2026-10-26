@@ -30,7 +30,7 @@ Measured on the published 0.17.60 → 0.17.63 blockmaps:
 | --- | --- | --- |
 | Deterministic engine archive: sorted entries, fixed mtime 2000-01-01, owner 0/0, hard links stored once (as bsdtar did), gzip in ~64 KiB content-defined segments, each a fresh deflate primed with the previous 32 KiB | `scripts/runtime-bundle-archive.mjs`, used by `build-runtime-bundle.mjs` | `runtime-bundle-archive.node-test.mjs` |
 | The Mac update zip stores the engine entry instead of deflating it: Info-ZIP `ZIPOPT -n …:.gz`, set in `afterPack` | `scripts/after-pack.mjs` | `desktop-macos.yml` "Assert update zip stores the engine archive" |
-| The Windows installer carries the engine archive verbatim: `nsis.preCompressedFileExtensions` adds `.tar.gz`, NSIS `SetCompress auto` stores it | `package.json` | `desktop-windows.yml` "Assert installer stores the engine archive" |
+| The Windows installer carries the engine archive verbatim: `nsis.preCompressedFileExtensions` adds `.tar.gz` (out of the LZMA 7z), and `nsis.include` sets `COMPRESS=off` for those files. Under `auto`, NSIS's zlib shrinks gzip data by about 0.25% and stores it compressed; the first real Windows build (run 40345990841) showed exactly that | `package.json`, `scripts/nsis-store-engine.nsh` | `desktop-windows.yml` "Assert installer stores the engine archive" |
 | The cached old package and blockmap are proved to match before each check | `electron/shell-update-diff-base.ts` (fork #485) | its tests |
 
 The engine is still installed exactly as before: the packaged-engine gate extracts the bundled archive with the system tar.

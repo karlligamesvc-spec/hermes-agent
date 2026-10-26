@@ -178,6 +178,19 @@ test('package.json keeps electron-builder\'s pre-compressed list and adds the en
   assert.deepEqual(ours, [...defaults, '.tar.gz'])
 })
 
+test('the NSIS include turns compression off exactly where electron-builder adds the pre-compressed files', () => {
+  const config = JSON.parse(fs.readFileSync(path.join(desktopRoot, 'package.json'), 'utf8')).build.nsis
+  const include = fs.readFileSync(path.join(desktopRoot, config.include), 'utf8').replace(/;.*$/gm, '')
+  assert.match(include, /!ifdef COMPRESS\s+!undef COMPRESS\s+!define COMPRESS off\s+!endif/)
+  // electron-builder 26.15: COMPRESS=auto reaches makensis as a define, the custom include
+  // sits in the common header, and the pre-compressed files follow `SetCompress "${COMPRESS}"`.
+  const target = fs.readFileSync(require.resolve('app-builder-lib/out/targets/nsis/NsisTarget.js'), 'utf8')
+  assert.match(target, /defines\.COMPRESS = "auto";/)
+  assert.match(target, /getResource\(this\.options\.include, "installer\.nsh"\)[\s\S]{0,200}scriptGenerator\.include\(customInclude\)/)
+  const extract = fs.readFileSync(path.join(path.dirname(require.resolve('app-builder-lib/package.json')), 'templates', 'nsis', 'include', 'extractAppPackage.nsh'), 'utf8')
+  assert.match(extract, /!ifdef COMPRESS\s+SetCompress "\$\{COMPRESS\}"\s+!endif\s+!insertmacro decompress\s+!insertmacro custom_files_post_decompression/)
+})
+
 test('both platform workflows gate the shipped package after building it', () => {
   const yaml = require('js-yaml')
   const steps = workflow => Object.values(yaml.load(fs.readFileSync(path.join(repoRoot, '.github', 'workflows', workflow), 'utf8')).jobs)
