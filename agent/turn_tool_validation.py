@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 from agent.message_metadata import append_message
@@ -51,6 +52,57 @@ def _append_tool_error_results(messages, tool_calls, content_for) -> None:
             "tool_call_id": coalesce_tool_call_id(tc),
             "content": content_for(tc),
         })
+
+
+def _repair_or_bridge(agent, tc, provider_data) -> Optional[str]:
+    """The name an unknown-name call gets: the agent's own repair, unless the closest real
+    tool is one the model cannot see (hc-1040).
+
+    ``repair_tool_call`` matches only the visible names. Tools behind the ``tool_call``
+    bridge (plugin, MCP, deferred built-ins) are not among them, so a model calling one
+    directly landed on the nearest visible name: ``apex_memory`` -> ``memory`` wrote the
+    local MEMORY.md instead of the account ledger, ``social_search`` -> ``tool_search``,
+    ``read_terminal`` -> ``terminal``. Repeat the repair over the visible names plus every
+    registered or bridge-reachable tool. A bridge-reachable winner gets this call wrapped
+    into ``tool_call``. A registered tool this session cannot reach gets no repair, so the
+    model is told the name is unavailable. A string that does not parse stays the outer
+    arguments, so the JSON retry and truncation refusal below treat it as before."""
+    from agent.agent_runtime_helpers import repair_tool_call
+    from agent.tool_executor import _tool_search_scoped_names
+    from tools.registry import registry
+    from tools.tool_search import TOOL_CALL_NAME
+
+    repaired = agent._repair_tool_call(tc.function.name)
+    visible = set(agent.valid_tool_names or ())
+    bridged = _tool_search_scoped_names(agent) if TOOL_CALL_NAME in visible else frozenset()
+    hidden = (set(registry.get_all_tool_names()) | bridged) - visible
+    best = repair_tool_call(SimpleNamespace(valid_tool_names=visible | hidden), tc.function.name)
+    if best not in hidden:
+        return repaired
+    if best not in bridged:
+        return None
+    raw, wrapped = tc.function.arguments, None
+    try:
+        raw = json.loads(raw.strip() or "{}") if isinstance(raw, str) else raw
+    except json.JSONDecodeError:
+        pass
+    else:
+        wrapped = {"calls": [{"name": best, "arguments": {} if raw is None else raw}]}
+        tc.function.arguments = json.dumps(wrapped, ensure_ascii=False)
+    _bridge_native_blocks(provider_data, coalesce_tool_call_id(tc), TOOL_CALL_NAME, wrapped)
+    return TOOL_CALL_NAME
+
+
+def _bridge_native_blocks(provider_data, call_id: str, name: str, arguments) -> None:
+    """Native providers replay the ordered block sidecars, not ``tool_calls`` (see
+    ``agent.tool_call_batches``): the call's tool block takes the bridge name too, and its
+    input when the arguments parsed."""
+    blocks = [b for b in (provider_data or {}).get("anthropic_content_blocks") or ()
+              if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("id") == call_id]
+    blocks += [b["toolUse"] for b in (provider_data or {}).get("bedrock_content_blocks") or ()
+               if isinstance(b, dict) and isinstance(b.get("toolUse"), dict) and b["toolUse"].get("toolUseId") == call_id]
+    for block in blocks:
+        block.update(name=name, **({} if arguments is None else {"input": arguments}))
 
 
 def _partial_exit(agent, messages, conversation_history, api_call_count, final_response: str) -> dict[str, Any]:
@@ -102,7 +154,7 @@ def validate_tool_calls(
     repaired_ids = set()
     for tc in tool_calls:
         if tc.function.name not in valid_names:
-            repaired = agent._repair_tool_call(tc.function.name)
+            repaired = _repair_or_bridge(agent, tc, getattr(assistant_message, "provider_data", None))
             if repaired:
                 agent._vprint(f"{agent.log_prefix}🔧 Auto-repaired tool name: '{tc.function.name}' -> '{repaired}'",
                               force=True, diagnostic=True)
