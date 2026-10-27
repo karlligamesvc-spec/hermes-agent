@@ -12,7 +12,7 @@ import { buildBlockMap } from 'app-builder-lib/out/targets/blockmap/blockmap.js'
 import { configureRequestOptions, configureRequestUrl } from 'builder-util-runtime'
 import { NodeHttpExecutor } from 'builder-util/out/nodeHttpExecutor.js'
 import { NsisUpdater } from 'electron-updater/out/NsisUpdater.js'
-import { afterEach, describe, test } from 'vitest'
+import { afterEach, beforeAll, describe, test } from 'vitest'
 
 process.env.APEXNODES_TELEMETRY = 'off'
 
@@ -65,6 +65,27 @@ const RELEASES: Record<string, Buffer> = { '1.0.1': v1, '1.0.2': v2, '1.0.3': v3
 
 const sha512 = (data: Buffer) => createHash('sha512').update(data).digest('base64')
 
+// buildBlockMap is a pure function of the bytes (the entry is always named
+// "file", gzip writes no mtime) and the slow part of a feed: pure-JS Rabin
+// chunking + blake2b over 3 MB, ~70 ms per release on an idle M4 and up to ~15x
+// that on a busy CI runner. Each release's blockmap is built once here and
+// copied into every feed, so a test's time is only its own steps.
+const RELEASE_BLOCKMAPS = new Map<string, Buffer>()
+
+beforeAll(async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hc1058-blockmaps-'))
+
+  try {
+    for (const [version, data] of Object.entries(RELEASES)) {
+      fs.writeFileSync(path.join(dir, version), data)
+      await buildBlockMap(path.join(dir, version), 'gzip', path.join(dir, `${version}.blockmap`))
+      RELEASE_BLOCKMAPS.set(version, fs.readFileSync(path.join(dir, `${version}.blockmap`)))
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 // Writes every release + its blockmap into `dir` under the shipped artifact names.
 async function writeFeed(dir: string, platform: 'darwin' | 'win32', latest = '1.0.3') {
   fs.mkdirSync(dir, { recursive: true })
@@ -73,7 +94,7 @@ async function writeFeed(dir: string, platform: 'darwin' | 'win32', latest = '1.
     const name = artifactName(version, platform, platform === 'darwin' ? 'arm64' : 'x64')
 
     fs.writeFileSync(path.join(dir, name), data)
-    await buildBlockMap(path.join(dir, name), 'gzip', path.join(dir, `${name}.blockmap`))
+    fs.writeFileSync(path.join(dir, `${name}.blockmap`), RELEASE_BLOCKMAPS.get(version)!)
   }
 
   const name = artifactName(latest, platform, platform === 'darwin' ? 'arm64' : 'x64')
@@ -345,7 +366,13 @@ async function serveFeed(root: string) {
   })
 
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
-  cleanups.push(() => new Promise<void>(resolve => server.close(() => resolve())))
+  // Drop open sockets first: after a stalled download, close() alone would wait
+  // on them and the cleanup would time out on top of the test.
+  cleanups.push(() => {
+    server.closeAllConnections()
+
+    return new Promise<void>(resolve => server.close(() => resolve()))
+  })
 
   return { base: `http://127.0.0.1:${(server.address() as any).port}/desktop`, served }
 }
@@ -429,7 +456,11 @@ async function runWindowsUpdate({ installed, cachedBlockMap, withCheck }: { inst
   return { lines: lines.join('\n'), servedPackage: served.get('APEX-1.0.3-win-x64.exe') || 0, file, cacheDir }
 }
 
-describe('shell update end to end (NsisUpdater, loopback feed)', () => {
+// Real NsisUpdater + loopback HTTP + disk. On CI these took 0.9–2.6 s (up to 15x
+// local) and the unsampled one hit vitest's 5 s default (5013 ms, 2026-10-27).
+// With the shared blockmaps the slowest is ~0.1 s locally; 30 s also covers the
+// old per-test fixture cost at 15x, and a stalled feed still fails.
+describe('shell update end to end (NsisUpdater, loopback feed)', { timeout: 30_000 }, () => {
   test('control: a downloaded-but-not-installed blockmap makes the differential fail its sha512 and download twice', async () => {
     const run = await runWindowsUpdate({ installed: v1, cachedBlockMap: '1.0.2', withCheck: false })
 
