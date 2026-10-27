@@ -36,6 +36,8 @@ OLD_KEY = "sk-relay-rotated-out-0000"
 PLUGINS = ["apex-overlay", "apexnodes-image-tools", "apexnodes-video-tools"]
 DATE = "Conversation started: Monday, October 26, 2026 (Asia/Shanghai, UTC+08:00)"
 SKILL = "---\nname: short-video-studio\nversion: 2.8.1\n---\n# 短视频工作室\n"
+# hc-1078 writes this first line into a new assistant's SOUL.md; hc-1082's apex_rename rewrites the name in it.
+SOUL_LINE = "You are {name}, an AI assistant from ApexNodes HK, working alongside APEX for the same person."
 
 
 def _config(key: str = KEY, base_url: str = RELAY, plugins: list[str] = PLUGINS) -> dict:
@@ -51,7 +53,8 @@ def _write_home(home: Path, name: str | None, prompt: str) -> None:
     home.mkdir(parents=True, exist_ok=True)
     _dump(home / "config.yaml", _config())
     (home / ".env").write_text(f"APEXNODES_API_KEY={KEY}\nTZ=Asia/Shanghai\n", encoding="utf-8")
-    (home / "SOUL.md").write_text(f"# 你是 {name or 'APEX'}\n\n## 分工\n剪辑出片\n", encoding="utf-8")
+    first = SOUL_LINE.format(name=name) if name else "# APEX"
+    (home / "SOUL.md").write_text(f"{first}\n\n## 分工\n剪辑出片\n", encoding="utf-8")
     skill = home / "skills" / "apexnodes" / "short-video-studio"
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text(SKILL, encoding="utf-8")
@@ -109,7 +112,7 @@ def _edit_yaml(path: Path, mutate) -> None:
 def test_healthy_home_passes_every_check(home: Path) -> None:
     results = _results(home)
 
-    assert {cid: status for cid, (status, _) in results.items()} == {f"C{i}": "PASS" for i in range(1, 8)}
+    assert {cid: status for cid, (status, _) in results.items()} == {f"C{i}": "PASS" for i in range(1, 9)}
     assert "3 个主线" in results["C6"][1]  # prompts are read from the system_prompts table, not sessions.system_prompt
     assert "['apex-bot-2', 'apex-bot-3']" in results["C7"][1]
 
@@ -160,6 +163,10 @@ def _replace_prompt(home: Path, prompt: str) -> None:
     _add_main_thread(home / "profiles/apex-bot-2", prompt)
 
 
+def _soul_name_stale(home: Path) -> None:
+    _edit_yaml(home / "profiles/apex-bot-2/profile.yaml", lambda d: d["ui_meta"]["apex"].update(name="小剪"))
+
+
 def _too_many_bots(home: Path) -> None:
     for n in (4, 5, 6):
         _write_home(home / "profiles" / f"apex-bot-{n}", f"助手{n}", _prompt(f"助手{n}"))
@@ -178,6 +185,7 @@ FAULTS = [
     ("bot-protocol", lambda h: _replace_prompt(h, _prompt("剪辑助手") + "\n\n" + qa.BOT_PROTOCOL_HEADING), "C6"),
     ("wrong-name", lambda h: _replace_prompt(h, _prompt("APEX")), "C6"),
     ("too-many-bots", _too_many_bots, "C7"),
+    ("soul-name-stale", _soul_name_stale, "C8"),
 ]
 
 
@@ -216,49 +224,87 @@ def test_diff_of_a_rename_touches_only_that_bot(home: Path, tmp_path: Path) -> N
     assert any("ui_meta_apex.name" in line and "小剪" in line for line in lines)
 
 
+def test_snapshot_counts_requested_and_ran_tool_calls(home: Path) -> None:
+    """G2 in the checklist: a one-sentence rename must show apex_rename called, and no apex_memory write."""
+    before = qa.take_snapshot(home)
+    db = SessionDB(home / "profiles/apex-bot-2/state.db")
+    try:
+        call = {"id": "call-1", "type": "function", "function": {"name": "apex_rename", "arguments": '{"name": "小剪"}'}}
+        db.append_message("segment", "assistant", content="", tool_calls=[call])
+        db.append_message("segment", "tool", content="已改名为小剪", tool_name="apex_rename", tool_call_id="call-1")
+    finally:
+        db.close()
+
+    after = qa.take_snapshot(home)
+
+    assert after["homes"]["apex-bot-2"]["sessions"]["tool_calls"] == {"requested": {"apex_rename": 1}, "ran": {"apex_rename": 1}}
+    assert after["homes"]["apex-bot-3"]["sessions"]["tool_calls"] == {"requested": {}, "ran": {}}
+    lines = qa.diff_snapshots(before, after)
+    assert "+ homes.apex-bot-2.sessions.tool_calls.requested.apex_rename = 1" in lines
+    assert not [line for line in lines if "apex_memory" in line or line[2:].startswith("shared")]
+
+
 def test_tokens_sums_every_assistant(home: Path, capsys) -> None:
     assert qa.main(["tokens", "--home", str(home)]) == 0
     assert "合计：调用 3，输入 135000，输出 2700" in capsys.readouterr().out
 
 
-# Product log text the watcher matches: (event, source file, literal in that file, rendered line).
+# Product log text the watcher matches: (event, [(source file, literal in it), ...], rendered line).
+# Any listed source may carry it: hc-1080 (fork #500) moves the reap and relay-key lines out of main.ts.
+_MAIN = "apps/desktop/electron/main.ts"
+_POOL = "apps/desktop/electron/apex-pool-engines.ts"
+_PROFILE_CONFIG = "apps/desktop/electron/apex-profile-config.ts"
 LOG_CONTRACT = [
-    ("pool_start", "apps/desktop/electron/main.ts", 'Starting Hermes backend for profile "${profile}" via ${backend.label}',
+    ("pool_start", [(_MAIN, 'Starting Hermes backend for profile "${profile}" via ${backend.label}')],
      'Starting Hermes backend for profile "apex-bot-2" via bundled runtime'),
-    ("primary_start", "apps/desktop/electron/main.ts", "rememberLog(`Starting Hermes backend via ${backend.label}`)",
+    ("primary_start", [(_MAIN, "rememberLog(`Starting Hermes backend via ${backend.label}`)")],
      "Starting Hermes backend via bundled runtime"),
-    ("ready", "hermes_cli/web_server.py", 'f"HERMES_BACKEND_READY port={actual_port}"', "HERMES_BACKEND_READY port=50123"),
-    ("slot_wait", "apps/desktop/electron/main.ts",
-     'waiting for a free local slot (${localBackendSpawnCoordinator.activeCount}/${poolMaxBackends()} busy, '
-     "${localBackendSpawnCoordinator.queuedCount} queued)",
+    ("ready", [("hermes_cli/web_server.py", 'f"HERMES_BACKEND_READY port={actual_port}"')], "HERMES_BACKEND_READY port=50123"),
+    ("slot_wait", [(_MAIN, "waiting for a free local slot (${localBackendSpawnCoordinator.activeCount}/${poolMaxBackends()} busy, "
+                           "${localBackendSpawnCoordinator.queuedCount} queued)")],
      'Profile backend "apex-bot-5" waiting for a free local slot (3/3 busy, 1 queued)'),
-    ("slot_timeout", "apps/desktop/electron/pool-spawn-coordinator.ts",
-     "`Local backend start for \"${key}\" timed out while waiting for a free slot.`",
+    ("slot_timeout", [("apps/desktop/electron/pool-spawn-coordinator.ts",
+                       "`Local backend start for \"${key}\" timed out while waiting for a free slot.`")],
      'Local backend start for "apex-bot-5" timed out while waiting for a free slot.'),
-    ("evict", "apps/desktop/electron/main.ts", 'Evicting idle profile backend "${profile}" (LRU cap',
+    ("evict", [(_MAIN, 'Evicting idle profile backend "${profile}" (LRU cap')],
      'Evicting idle profile backend "apex-bot-2" (LRU cap 3)'),
-    ("reap", "apps/desktop/electron/main.ts", 'Reaping idle profile backend "${profile}" (idle >',
-     'Reaping idle profile backend "apex-bot-2" (idle > 600s)'),
-    ("start_failed", "apps/desktop/electron/main.ts", 'Hermes backend for profile "${profile}" exited before it became ready',
+    ("reap", [(_MAIN, 'Reaping idle profile backend "${profile}" (idle >'),
+              (_POOL, 'const reaping = `Reaping idle profile backend "${label}" (idle >')],
+     'Reaping idle profile backend "apex-bot-2" (idle > 600s): committed'),
+    ("reap_kept", [(_POOL, 'Keeping idle profile backend "${label}" another ${deps.idleSeconds}s: '
+                           "the engine did not retire (${verdict.reason})")],
+     'Keeping idle profile backend "apex-bot-2" another 600s: the engine did not retire (turn-running)'),
+    ("start_failed", [(_MAIN, 'Hermes backend for profile "${profile}" exited before it became ready')],
      'Hermes backend for profile "apex-bot-2" exited before it became ready (1).'),
-    ("exit", "apps/desktop/electron/main.ts", 'Hermes backend for profile "${profile}" exited (${signal || code})',
+    ("exit", [(_MAIN, 'Hermes backend for profile "${profile}" exited (${signal || code})')],
      'Hermes backend for profile "apex-bot-2" exited (SIGTERM)'),
-    ("relay_key", "apps/desktop/electron/main.ts", "[apexnodes] config.yaml relay key refreshed (${reason})",
+    ("relay_key", [(_MAIN, "[apexnodes] config.yaml relay key refreshed (${reason})"),
+                   (_PROFILE_CONFIG, "`[apexnodes] ${subject} relay key refreshed (${reason})")],
      "[apexnodes] config.yaml relay key refreshed (sign-in) to sk-…0001 — model.api_key:updated"),
-    ("relay_key", "apps/desktop/electron/main.ts", "[apexnodes] config.yaml relay key write FAILED (${reason})",
+    ("relay_key", [(_MAIN, "[apexnodes] config.yaml relay key refreshed (${reason})"),
+                   (_PROFILE_CONFIG, "`[apexnodes] ${subject} relay key refreshed (${reason})")],
+     "[apexnodes] profile apex-bot-2 config.yaml relay key refreshed (sign-in) to sk-…0001 — model.api_key:updated"),
+    ("relay_key", [(_MAIN, "[apexnodes] config.yaml relay key write FAILED (${reason})"),
+                   (_PROFILE_CONFIG, "`[apexnodes] ${subject} relay key write FAILED (${reason})")],
      "[apexnodes] config.yaml relay key write FAILED (sign-in): unreadable"),
 ]
 
 
-@pytest.mark.parametrize(("event", "source", "literal", "line"), LOG_CONTRACT, ids=[f"{c[0]}-{i}" for i, c in enumerate(LOG_CONTRACT)])
-def test_log_patterns_match_the_product_text(event: str, source: str, literal: str, line: str) -> None:
-    assert literal in (REPO / source).read_text(encoding="utf-8"), f"{source} no longer logs: {literal}"
+@pytest.mark.parametrize(("event", "sources", "line"), LOG_CONTRACT, ids=[f"{c[0]}-{i}" for i, c in enumerate(LOG_CONTRACT)])
+def test_log_patterns_match_the_product_text(event: str, sources: list[tuple[str, str]], line: str) -> None:
+    present = [(path, literal) for path, literal in sources if (REPO / path).exists()]
+    if not present:
+        pytest.skip(f"none of {[p for p, _ in sources]} is on this tree yet")
+    assert any(literal in (REPO / path).read_text(encoding="utf-8") for path, literal in present), \
+        f"no longer logged anywhere: {sources}"
     stamp_format = (REPO / "apps/desktop/electron/desktop-log-line.ts").read_text(encoding="utf-8")
     assert "`[${stamp}] [hermes] ${text}`" in stamp_format
 
     parsed = qa.parse_log_line(f"[2026-10-26T12:00:00.000Z] [hermes] {line}")
 
     assert parsed is not None and parsed["event"] == event
+    if "profile apex-bot-2 config.yaml" in line:
+        assert parsed["profile"] == "apex-bot-2"
 
 
 def _ev(t: float, kind: str, **fields) -> dict:
@@ -284,6 +330,7 @@ def test_report_times_cold_starts_and_slot_waits() -> None:
         _ev(300.0, "log", event="slot_wait", profile="apex-bot-5", text="waiting"),
         _ev(314.0, "log", event="evict", profile="apex-bot-3", text="Evicting idle profile backend"),
         _ev(314.5, "proc_gone", pid=12, proc_kind="engine", profile="apex-bot-3"),
+        _ev(314.8, "log", event="reap_kept", profile="apex-bot-2", reason="turn-running", text="Keeping idle profile backend"),
         _ev(315.0, "log", event="pool_start", profile="apex-bot-5", text="Starting …"),
         _ev(315.1, "proc_new", pid=14, proc_kind="engine", profile="apex-bot-5"),
         _ev(321.9, "listen", pid=14, ports=[50004], profile="apex-bot-5"),
@@ -300,7 +347,7 @@ def test_report_times_cold_starts_and_slot_waits() -> None:
     assert (rows["apex-bot-2"]["mark"], rows["apex-bot-2"]["mark_to_ready"]) == ("点了剪辑助手", 9.0)
     assert (rows["apex-bot-5"]["slot_wait"], rows["apex-bot-5"]["cold_start"]) == (15.0, 22.0)
     assert report["memory"] == [{"profile": "apex-bot-2", "pid": 11, "rss_settled_mb": 300, "uss_settled_mb": 200, "tree_peak_mb": 500}]
-    assert [e["event"] for e in report["pool_events"]] == ["slot_wait", "evict"]
+    assert [e["event"] for e in report["pool_events"]] == ["slot_wait", "evict", "reap_kept"]
     assert report["engine_exits"] == [{"iso": qa.iso(314.5), "profile": "apex-bot-3", "pid": 12}]
     assert (report["peak_all_rss_mb"], report["peak_engines"]) == (1100, 1)
     assert "| apex-bot-5 | 14 | 15.0 | 22.0 | READY |" in qa.render_report(report)

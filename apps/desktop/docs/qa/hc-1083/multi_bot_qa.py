@@ -172,8 +172,10 @@ def soul_summary(home: Path) -> dict | None:
     if not path.is_file():
         return None
     text = path.read_text(encoding="utf-8-sig")
-    headings = [line.strip() for line in text.splitlines() if line.lstrip().startswith("#")]
-    return {"sha": fingerprint(text), "chars": len(text), "headings": headings}
+    lines = text.splitlines()
+    headings = [line.strip() for line in lines if line.lstrip().startswith("#")]
+    first = lines[0].strip() if lines else ""
+    return {"sha": fingerprint(text), "chars": len(text), "first_line": first[:200], "headings": headings}
 
 
 def profile_meta(home: Path) -> dict:
@@ -223,6 +225,36 @@ def prompt_checks(prompt: str | None, name: str | None) -> dict | None:
     }
 
 
+def _tool_names(raw: str | None) -> list[str]:
+    try:
+        calls = json.loads(raw) if raw else []
+    except ValueError:
+        return ["(unparsed)"]
+    names = []
+    for call in calls if isinstance(calls, list) else []:
+        fn = call.get("function") if isinstance(call, dict) else None
+        name = (fn or {}).get("name") if isinstance(fn, dict) else (call.get("name") if isinstance(call, dict) else None)
+        names.append(str(name or "(unnamed)"))
+    return names
+
+
+def tool_call_counts(db: Path) -> dict[str, dict[str, int]]:
+    """模型要调的工具（assistant 消息的 tool_calls）和真跑了的工具（tool 消息的 tool_name），按名字计数。"""
+    con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True, timeout=5)
+    try:
+        if not con.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'messages'").fetchone():
+            return {"requested": {}, "ran": {}}
+        requested: dict[str, int] = {}
+        for (raw,) in con.execute("SELECT tool_calls FROM messages WHERE role = 'assistant' AND tool_calls IS NOT NULL"):
+            for name in _tool_names(raw):
+                requested[name] = requested.get(name, 0) + 1
+        ran = dict(con.execute("SELECT tool_name, COUNT(*) FROM messages WHERE role = 'tool' AND tool_name IS NOT NULL "
+                               "GROUP BY tool_name").fetchall())
+        return {"requested": dict(sorted(requested.items())), "ran": dict(sorted(ran.items()))}
+    finally:
+        con.close()
+
+
 def sessions_summary(home: Path, name: str | None) -> dict | None:
     db = home / "state.db"
     if not db.is_file():
@@ -237,6 +269,7 @@ def sessions_summary(home: Path, name: str | None) -> dict | None:
         "main_thread_segments": len(main_chain),
         "bot_chat": sum(1 for row in rows if row.get("title") == BOT_CHAT_TITLE),
         "main_thread_prompt": prompt_checks(latest.get("system_prompt") if latest else None, name),
+        "tool_calls": tool_call_counts(db),
     }
 
 
@@ -451,6 +484,25 @@ def check_prompts(snap: dict, _args) -> tuple[str, str]:
     return ("PASS", f"{seen} 个主线的系统提示：有日期行、没有互发协议、名字对") if seen else ("WARN", "还没有主线会话")
 
 
+# 新助手 SOUL.md 第一行的模板（hc-1078 写、hc-1082 改名时跟着改）；手写过的第一行不算
+SOUL_NAME_LINE = re.compile(r"^You are (?P<name>.+?), an AI assistant from ApexNodes HK, working alongside APEX for the same person\.$")
+
+
+def check_soul_name(snap: dict, _args) -> tuple[str, str]:
+    bad, seen = [], 0
+    for name, home in _bots(snap).items():
+        stored = (home["meta"]["ui_meta_apex"] or {}).get("name")
+        match = SOUL_NAME_LINE.match((home.get("soul") or {}).get("first_line") or "")
+        if not stored or not match:
+            continue
+        seen += 1
+        if match.group("name") != stored:
+            bad.append(f"{name}: SOUL 写的是「{match.group('name')}」，名字是「{stored}」")
+    if bad:
+        return "FAIL", "；".join(bad)
+    return ("PASS", f"{seen} 个助手的 SOUL 第一行和名字一致") if seen else ("WARN", "没有模板形状的 SOUL 第一行可比")
+
+
 def check_count(snap: dict, args) -> tuple[str, str]:
     bots = sorted(_bots(snap))
     if len(bots) > args.max_bots:
@@ -466,6 +518,7 @@ CHECKS = (
     ("C5", "不碰 Bot 模式资料", check_ui_meta),
     ("C6", "系统提示", check_prompts),
     ("C7", "助手个数", check_count),
+    ("C8", "SOUL 第一行的名字", check_soul_name),
 )
 
 
@@ -514,13 +567,17 @@ LOG_EVENTS = (
     ("slot_timeout", re.compile(r'Local backend start for "(?P<profile>[^"]+)" timed out while waiting for a free slot')),
     ("evict", re.compile(r'Evicting idle profile backend "(?P<profile>[^"]+)"')),
     ("reap", re.compile(r'Reaping idle profile backend "(?P<profile>[^"]+)"')),
+    # hc-1080（fork #500）：回收前先问引擎，有回合在跑就留着
+    ("reap_kept", re.compile(r'Keeping idle profile backend "(?P<profile>[^"]+)" another \d+s: '
+                             r"the engine did not retire \((?P<reason>[^)]*)\)")),
     ("start_failed", re.compile(r'Hermes backend for profile "(?P<profile>[^"]+)" '
                                 r"(?:failed to start|exited before it became ready)")),
     ("exit", re.compile(r'Hermes backend for profile "(?P<profile>[^"]+)" exited \((?P<code>[^)]*)\)')),
-    ("relay_key", re.compile(r"\[apexnodes\] config\.yaml relay key (?P<what>refreshed|write FAILED)")),
+    # hc-1080（fork #500）起每个托管 profile 各记一行：「[apexnodes] profile <名字> config.yaml relay key …」
+    ("relay_key", re.compile(r"\[apexnodes\] (?:profile (?P<profile>\S+) )?config\.yaml relay key (?P<what>refreshed|write FAILED)")),
     ("http_401", re.compile(r"\b401\b")),
 )
-POOL_EVENTS = ("slot_wait", "slot_timeout", "evict", "reap", "start_failed", "exit")
+POOL_EVENTS = ("slot_wait", "slot_timeout", "evict", "reap", "reap_kept", "start_failed", "exit")
 
 
 def parse_log_line(line: str) -> dict | None:
@@ -702,7 +759,8 @@ def build_report(events: list[dict]) -> dict:
                          for e in events if e["kind"] == "proc_gone" and e.get("proc_kind") == "engine"],
         "marks": [{"iso": e["iso"], "label": e["label"]} for e in events if e["kind"] == "mark"],
         "http_401": sum(1 for e in events if e.get("event") == "http_401"),
-        "relay_key": [{"iso": e["iso"], "what": e.get("what")} for e in events if e.get("event") == "relay_key"],
+        "relay_key": [{"iso": e["iso"], "what": e.get("what"), "profile": e.get("profile") or "default"}
+                      for e in events if e.get("event") == "relay_key"],
         "peak_all_rss_mb": round(max((e["all_rss"] for e in mem), default=0) / 2**20),
         "peak_engines": max((len(e["engines"]) for e in mem), default=0),
     }
@@ -724,7 +782,7 @@ def render_report(report: dict) -> str:
     out += [f"- {e['iso']} {e['event']} {_cell(e['profile'])} — {e['text']}" for e in report["pool_events"]]
     out += [f"- {e['iso']} 引擎进程退出 {_cell(e['profile'])}（pid {e['pid']}）" for e in report["engine_exits"]]
     out += ["", "## 其他", "", f"- 含 401 的日志行：{report['http_401']}"]
-    out += [f"- {k['iso']} 中转 key {k['what']}" for k in report["relay_key"]]
+    out += [f"- {k['iso']} {k['profile']} 的中转 key {k['what']}" for k in report["relay_key"]]
     out += [f"- 标记 {m['iso']} {m['label']}" for m in report["marks"]]
     return "\n".join(out) + "\n"
 
