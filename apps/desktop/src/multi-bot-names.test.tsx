@@ -153,7 +153,8 @@ describe('hc-1077 the lines name the assistant on screen', () => {
       </MemoryRouter>
     )
 
-    expect(view.container.textContent).toContain('我是 小红书文案，帮你做短视频的。')
+    // hc-1079: an assistant the user made greets with its own first-open line (bot-intake.tsx).
+    expect(view.container.textContent).toContain('你好，我是小红书文案。你的账号情况 APEX 已经告诉我了，不用再说一遍。')
     expect(view.container.querySelector('[data-first-open-ideas]')).toBeNull()
   })
 

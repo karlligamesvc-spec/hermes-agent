@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DesktopCreatorPlatform, DesktopCreatorProfile, DesktopCreatorProfileResult } from '@/global'
@@ -6,15 +7,21 @@ import { I18nProvider, type Locale, setRuntimeI18nLocale } from '@/i18n'
 import { $authState } from '@/store/auth'
 import { BOT_INTAKE_META_KEY, resetBotIntakeForTest } from '@/store/bot-intake'
 import { $creatorProfile } from '@/store/creator-profile'
+import { $mainThread, resetMainThreadForTest } from '@/store/main-thread'
+import { $activeGatewayProfile } from '@/store/profile'
+import { setSingleThreadFlagForTest } from '@/store/single-thread'
+import { botRosterFrom, resetBotRosterForTest, setMultiBotFlagForTest } from '@/store/single-thread-bots'
 import { fakeProfileEngine, type FakeProfileEngine } from '@/test/fake-profile-engine'
 import { englishWords, readableText } from '@/test/zh-copy'
 
 import { BotIntake } from './bot-intake'
 import { divisionSection } from './bot-intake-soul'
+import { SingleThreadEmptyState } from './thread-empty'
 
 const gateway = vi.hoisted(() => ({ engine: null as FakeProfileEngine | null, profiles: [] as string[] }))
 
-vi.mock('@/store/gateway', () => ({
+vi.mock('@/store/gateway', async importOriginal => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   requestGatewayForProfile: (profile: string, method: string, params?: Record<string, unknown>) => {
     gateway.profiles.push(profile)
 
@@ -332,5 +339,100 @@ describe('hc-1079: a new assistant asks three cards before its first message', (
 
     expect(text()).toContain(greeting)
     expect(card.querySelector('h3')!.textContent).toBe(title)
+  })
+})
+
+describe('hc-1079: the empty thread of each assistant', () => {
+  const ROWS = [
+    { name: 'apex-bot-2', ui_meta: { apex: { created: 1, name: '剪辑助手' } } },
+    { name: 'apex-bot-3', ui_meta: { apex: { created: 2, name: '带货脚本' } } }
+  ]
+
+  const show = (profile: string) =>
+    act(() => {
+      $activeGatewayProfile.set(profile)
+      $mainThread.set({ ids: [], profile, rootId: null, status: 'absent', tipId: null })
+    })
+
+  function renderEmptyThread() {
+    return render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <div data-testid="thread">
+            <SingleThreadEmptyState />
+          </div>
+        </I18nProvider>
+      </MemoryRouter>
+    )
+  }
+
+  beforeEach(() => {
+    setRuntimeI18nLocale('zh')
+    resetBotIntakeForTest()
+    resetMainThreadForTest()
+    $creatorProfile.set({ accountId: null, profile: null, status: 'idle' })
+    $authState.set({
+      account: { email: 'a@example.test', name: '小满', plan: 'free' },
+      accountId: 'acc-1',
+      enabled: true,
+      gateReason: null,
+      loginTruth: true,
+      status: 'signed-in'
+    })
+    install()
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(true)
+    resetBotRosterForTest(botRosterFrom(ROWS, () => true))
+    gateway.engine = fakeProfileEngine({
+      'apex-bot-2': { soul: TEMPLATE },
+      'apex-bot-3': { soul: TEMPLATE.replace('剪辑助手', '带货脚本') },
+      default: { soul: 'APEX\n' }
+    })
+  })
+
+  afterEach(() => {
+    cleanup()
+    setMultiBotFlagForTest(false)
+    setSingleThreadFlagForTest(false)
+    resetBotRosterForTest()
+    resetMainThreadForTest()
+    $activeGatewayProfile.set('default')
+    ;(window as unknown as { hermesDesktop?: unknown }).hermesDesktop = undefined
+  })
+
+  it('an assistant the user made asks its own three questions in its own name', async () => {
+    await show('apex-bot-2')
+    renderEmptyThread()
+
+    const card = await waitForCard('role')
+
+    expect(thread().querySelector('p')!.textContent).toBe(
+      '你好，我是剪辑助手。你的账号情况 APEX 已经告诉我了，不用再说一遍。'
+    )
+    expect(card.querySelector('h3')!.textContent).toBe('我主要帮你做什么？1 / 3')
+    expect(text()).not.toMatch(/你主要做什么内容|这个名字不喜欢/)
+  })
+
+  it('switching to another assistant starts its own cards; the first one’s answer stays with it', async () => {
+    await show('apex-bot-2')
+    renderEmptyThread()
+    await pick('role', '剪辑出片')
+    await waitForCard('style')
+
+    await show('apex-bot-3')
+    await screen.findByText('你好，我是带货脚本。你的账号情况 APEX 已经告诉我了，不用再说一遍。')
+    await waitForCard('role')
+
+    expect(answeredCards()).toHaveLength(0)
+    expect(gateway.engine!.profiles.get('apex-bot-3')!.soul).not.toContain('## 分工')
+    expect(gateway.engine!.profiles.get('apex-bot-2')!.soul).toContain('- 主要帮用户：剪辑出片')
+  })
+
+  it('APEX on screen keeps its own first open', async () => {
+    await show('default')
+    renderEmptyThread()
+
+    await screen.findByText('你好，我是 APEX，帮你做短视频的。这个名字不喜欢的话，随时跟我说一声就能改。')
+    expect(gateway.engine!.calls).toEqual([])
   })
 })

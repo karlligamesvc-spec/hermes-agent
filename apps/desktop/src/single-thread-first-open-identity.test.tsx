@@ -8,6 +8,10 @@
  * three cards answered here (the 「APEX 记下了」 line), and with the intake
  * already finished (the closing tip). A diff here means APEX's path moved:
  * fix the code, do not re-record the golden.
+ *
+ * The same three goldens hold with `multi_bot` on and APEX on screen, and with
+ * the switch off while another profile is active (one made in developer mode):
+ * only an assistant made next to APEX, with several on, asks other questions.
  */
 import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
@@ -20,7 +24,10 @@ import { $authState } from '@/store/auth'
 import { $creatorProfile } from '@/store/creator-profile'
 import { resetDailyIdeasForTest } from '@/store/daily-ideas'
 import { $mainThread, resetMainThreadForTest } from '@/store/main-thread'
+import { $activeGatewayProfile } from '@/store/profile'
 import { $gatewayState } from '@/store/session'
+import { setSingleThreadFlagForTest } from '@/store/single-thread'
+import { botRosterFrom, resetBotRosterForTest, setMultiBotFlagForTest } from '@/store/single-thread-bots'
 
 const GOLDEN = './__identity__/single-thread-first-open'
 
@@ -104,14 +111,24 @@ async function pick(root: HTMLElement, label: string) {
   fireEvent.click(within(card).getByRole('button', { name: new RegExp(label) }))
 }
 
-describe('hc-1079: APEX’s own first open is unchanged', () => {
+describe.each([
+  ['as recorded: single_thread alone', false, 'default'],
+  ['multi_bot on, APEX on screen', true, 'default'],
+  ['multi_bot off, a profile made in developer mode active', false, 'writer']
+] as const)('hc-1079: APEX’s own first open is unchanged (%s)', (_label, multiBot, profile) => {
   beforeEach(() => {
     setRuntimeI18nLocale('zh')
     resetMainThreadForTest()
     resetDailyIdeasForTest()
     $creatorProfile.set({ accountId: null, profile: null, status: 'idle' })
     $gatewayState.set('open')
-    $mainThread.set({ ids: [], profile: 'default', rootId: null, status: 'absent', tipId: null })
+    $activeGatewayProfile.set(profile)
+    setSingleThreadFlagForTest(multiBot)
+    setMultiBotFlagForTest(multiBot)
+    resetBotRosterForTest(
+      botRosterFrom([{ name: 'writer', ui_meta: { apex: { created: 1, name: '小红书文案' } } }], () => true)
+    )
+    $mainThread.set({ ids: [], profile, rootId: null, status: 'absent', tipId: null })
     $authState.set({
       account: { email: 'a@example.test', name: '小满', plan: 'free' },
       accountId: 'acc-1',
@@ -124,6 +141,10 @@ describe('hc-1079: APEX’s own first open is unchanged', () => {
 
   afterEach(() => {
     cleanup()
+    setMultiBotFlagForTest(false)
+    setSingleThreadFlagForTest(false)
+    resetBotRosterForTest()
+    $activeGatewayProfile.set('default')
     ;(window as unknown as { hermesDesktop?: unknown }).hermesDesktop = undefined
   })
 
