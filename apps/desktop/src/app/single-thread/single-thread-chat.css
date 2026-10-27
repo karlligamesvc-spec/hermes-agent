@@ -1,0 +1,220 @@
+/*
+ * hc-1059 单线消息样式 — prototype v2 1:1 (「APEX 极简助手原型 v2」, Kael N2).
+ *
+ * Product single-thread mode only: every rule sits under [data-single-thread-chat], which
+ * the Thread root carries only while $singleThreadMode is on. Developer mode and the
+ * switch off never match, so their transcript stays as it was.
+ *
+ * Your message is a violet bubble on the right and APEX's words a grey bubble on the
+ * left, in one centred 720px column; the time and 「记下了」 are centred system lines.
+ * Everything else a reply carries — 用时 · 看过程 and its steps, question and failure
+ * cards, the next-step buttons, the activity line — is a sibling of the text, so it
+ * stays outside the bubble, in the prototype's order. Sizes are the prototype's px
+ * (1rem is 17px here, --dt-base-size); light colours are its literals, and dark
+ * appearance maps them onto theme tokens.
+ */
+
+[data-single-thread-chat] {
+  --st-me-bubble: #6a4ceb;
+  --st-me-bubble-hover: #5b3fd0;
+  --st-me-text: #ffffff;
+  --st-ai-bubble: #ececf1;
+  --st-system-text: #5e5e6a;
+  --st-meta-text: #55555f;
+  --st-link: #5b3fd0;
+  --st-rule: #dcdce5;
+  --st-card: #ffffff;
+  --st-card-border: #e2e2e8;
+  --st-chip-border: #dadae3;
+
+  /* One centred column: 720px with 28px gutters, 10px between items. */
+  --composer-width: 720px;
+  --conversation-turn-gap: 10px;
+}
+
+.dark [data-single-thread-chat] {
+  --st-ai-bubble: color-mix(in srgb, var(--ui-base) 10%, transparent);
+  --st-system-text: var(--ui-text-tertiary);
+  --st-meta-text: var(--ui-text-secondary);
+  --st-link: color-mix(in srgb, var(--theme-primary) 70%, #ffffff);
+  --st-rule: var(--ui-stroke-tertiary);
+  --st-card: var(--ui-bg-elevated);
+  --st-card-border: var(--ui-stroke-tertiary);
+  --st-chip-border: var(--ui-stroke-secondary);
+}
+
+[data-single-thread-chat] [data-slot='aui_thread-content'] {
+  padding-inline: 28px;
+}
+
+/* Your message: a violet bubble on the right, scrolling with the conversation. */
+
+[data-single-thread-chat] [data-slot='aui_user-message-root'] {
+  position: static;
+  padding-block: 0;
+}
+
+[data-single-thread-chat] [data-slot='aui_user-message-root'] [data-slot='popover-anchor'] {
+  width: fit-content;
+  max-width: min(500px, 100%);
+  margin-left: auto;
+}
+
+[data-single-thread-chat] button.composer-human-message {
+  --conversation-text-font-size: 14.5px;
+  --dt-line-height: 1.7;
+  --human-msg-line-height: 1.7;
+  border-color: transparent;
+  border-radius: 18px;
+  background-color: var(--st-me-bubble);
+  padding: 10px 15px;
+  color: var(--st-me-text);
+}
+
+[data-single-thread-chat] button.composer-human-message .sticky-human-clamp {
+  max-height: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+[data-single-thread-chat] button.composer-human-message :is(a, .ref) {
+  color: inherit;
+  text-decoration: underline;
+}
+
+[data-single-thread-chat] button.composer-human-message code {
+  background-color: rgb(255 255 255 / 0.18);
+  color: inherit;
+}
+
+/* Pictures and files you sent line up under your bubble, on the right. */
+[data-single-thread-chat] [data-slot='aui_user-message-root'] + div:not([data-slot]) {
+  justify-content: flex-end;
+  margin-block: 0;
+}
+
+/* The hover restore / stop icon moves beside the bubble, on its left. */
+[data-single-thread-chat] [data-slot='aui_user-message-root'] [data-slot='popover-anchor'] > div {
+  right: calc(100% + 4px);
+  bottom: 6px;
+}
+
+/* APEX's words: a grey bubble on the left (text parts only). What follows the words —
+   用时 · 看过程, its steps, then the next-step buttons — stacks under it 10px apart. */
+
+[data-single-thread-chat] [data-slot='aui_assistant-message-content'] {
+  display: flex;
+  flex-direction: column;
+  row-gap: 10px;
+}
+
+[data-single-thread-chat] [data-slot='aui_assistant-message-content'] > .aui-md {
+  --conversation-text-font-size: 14.5px;
+  --dt-line-height: 1.7;
+  --paragraph-gap: 6px;
+  width: fit-content;
+  max-width: min(560px, 100%);
+  border-radius: 18px;
+  background-color: var(--st-ai-bubble);
+  padding: 10px 15px;
+}
+
+/* A text part that is only a 下一步 block (or has not streamed a word yet) draws no bubble. */
+[data-single-thread-chat] [data-slot='aui_assistant-message-content'] > .aui-md:is(:empty, :has(> :only-child:empty)) {
+  display: none;
+}
+
+/* 用时 · 看过程, and the steps it opens as a card under the bubble. */
+
+[data-single-thread-chat] [data-single-thread-process] {
+  row-gap: 10px;
+  padding-top: 0;
+}
+
+[data-single-thread-chat] [data-process-status] {
+  --conversation-caption-font-size: 12.5px;
+  padding-inline-start: 8px;
+  color: var(--st-meta-text);
+}
+
+[data-single-thread-chat] [data-process-toggle] {
+  color: var(--st-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+[data-single-thread-chat] [data-process-steps] {
+  width: min(500px, 100%);
+  border: 1px solid var(--st-card-border);
+  border-radius: 12px;
+  background-color: var(--st-card);
+  padding: 10px 14px;
+}
+
+/* Next steps: pills under the reply, the first one filled. */
+
+[data-single-thread-chat] [data-next-steps] {
+  order: 1;
+  margin-top: 0;
+}
+
+[data-single-thread-chat] [data-next-steps=''] {
+  padding-inline-start: 2px;
+}
+
+[data-single-thread-chat] [data-next-steps=''] > button {
+  border-color: var(--st-chip-border);
+  background-color: var(--st-card);
+  padding: 7px 14px;
+  font-size: 13.5px;
+}
+
+[data-single-thread-chat] [data-next-steps=''] > button:hover {
+  border-color: var(--st-me-bubble);
+  color: var(--st-link);
+}
+
+[data-single-thread-chat] [data-next-steps=''] > button:first-child {
+  border-color: var(--st-me-bubble);
+  background-color: var(--st-me-bubble);
+  color: var(--st-me-text);
+}
+
+[data-single-thread-chat] [data-next-steps=''] > button:first-child:hover {
+  border-color: var(--st-me-bubble-hover);
+  background-color: var(--st-me-bubble-hover);
+  color: var(--st-me-text);
+}
+
+/* The copy / read-aloud / retry row sits under the bubble it belongs to, on the left. */
+
+[data-single-thread-chat] [data-slot='aui_assistant-message-root'] > div:has(> div > [data-slot='aui_msg-actions']) {
+  align-items: flex-start;
+}
+
+[data-single-thread-chat] [data-slot='aui_assistant-message-root'] div:has(> [data-slot='aui_msg-actions']) {
+  justify-content: flex-start;
+}
+
+/* Centred system lines: the time a conversation picked up, 记下了 … · 撤销. */
+
+[data-single-thread-chat] [data-turn-time],
+[data-single-thread-chat] [data-memory-noted] > p {
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--st-system-text);
+}
+
+[data-single-thread-chat] [data-memory-noted] button {
+  color: var(--st-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+[data-single-thread-chat] [data-turn-divider='date'] {
+  color: var(--st-meta-text);
+}
+
+[data-single-thread-chat] [data-turn-divider='date'] > :is(:first-child, :last-child) {
+  background-color: var(--st-rule);
+}

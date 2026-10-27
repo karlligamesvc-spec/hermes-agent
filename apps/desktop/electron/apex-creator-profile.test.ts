@@ -281,6 +281,7 @@ test('the registrar wires every account read, and main clears the copy on every 
     'hermes:announcements:list',
     'hermes:announcements:markRead',
     'hermes:managed:team',
+    'hermes:managed:planUsage',
     'hermes:managed:creatorProfile',
     'hermes:managed:creatorTips',
     'hermes:managed:dailyIdeas',

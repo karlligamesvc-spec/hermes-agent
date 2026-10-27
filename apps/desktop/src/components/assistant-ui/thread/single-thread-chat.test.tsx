@@ -19,6 +19,7 @@ import { $clarifyRequests, setClarifyRequest } from '@/store/clarify'
 import { clearAllPrompts, setApprovalRequest } from '@/store/prompts'
 import { $activeSessionId, $gatewayState } from '@/store/session'
 import { $singleThreadFlag } from '@/store/single-thread'
+import { $threadActivity } from '@/store/thread-signals'
 import { clearDismissedToolRows } from '@/store/tool-dismiss'
 import { $toolDisclosureStates, setToolViewMode } from '@/store/tool-view'
 import {
@@ -226,12 +227,14 @@ describe('a finished task: only the question and the answer', () => {
       '下载了 1 个视频，1 分 43 秒，12.6 万赞',
       '识别语音',
       '来源：抖音公开链接里的这条作品。只读公开数据，没有登录你的账号。',
-      '用到的方法：视频脚本拆解、事实核验',
       '收起过程'
     ]) {
       expect(text).toContain(expected)
     }
 
+    // N10 (hc-1063): the methods line names the skills, which this mode keeps out of sight.
+    expect(text).not.toContain('用到的方法')
+    expect(text).not.toContain('视频脚本拆解')
     expectNoMechanism(text)
     expect(text).not.toMatch(/想了|想过了/)
 
@@ -311,6 +314,14 @@ describe('while a task runs: one activity line at the foot', () => {
     expect(onScreen(activity(container)!.querySelector('[role="status"]')!)).toBe('等你决定')
     // Waiting on the user, APEX looks up at them instead of down at the work.
     expect(activity(container)!.querySelector('[data-apex-avatar]')?.getAttribute('data-apex-avatar')).toBe('idle')
+  })
+
+  it('tells the sidebar what it says, and stops when it goes away (hc-1061)', async () => {
+    const view = renderZh(remixRunningTurn())
+
+    await waitFor(() => expect($threadActivity.get()).toEqual({ text: '正在识别语音…', waiting: false }))
+    view.unmount()
+    expect($threadActivity.get()).toBeNull()
   })
 })
 

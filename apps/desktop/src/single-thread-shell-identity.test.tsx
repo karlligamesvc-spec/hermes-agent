@@ -161,13 +161,15 @@ describe('hc-1014 switch on, product mode: one conversation', () => {
     expect((await renderEmptyThread()).querySelector('[data-single-thread-empty]')).toBeNull()
   })
 
-  it('has no session list, no 开始 / ⌘N row and no "+": one row opens the conversation', () => {
+  it('has no session list, no 开始 / ⌘N row and no "+": one APEX row opens the conversation', () => {
     const { container } = renderSidebar()
 
-    expect([...container.querySelectorAll('[data-single-thread-nav]')].map(row => row.textContent)).toEqual([
-      '对话',
-      '沉浸式分析'
-    ])
+    // hc-1061 (N4): the one assistant row is the only nav row; 沉浸式分析 lives in the account menu.
+    expect(
+      [...container.querySelectorAll('[data-single-thread-nav]')].map(row => row.getAttribute('data-single-thread-nav'))
+    ).toEqual(['thread'])
+    expect(container.querySelector('[data-single-thread-nav="thread"]')?.textContent).toMatch(/^APEX/)
+    expect(screen.queryByText('沉浸式分析')).toBeNull()
     expect(container.querySelector('[data-apex-business-nav="start"]')).toBeNull()
     expect(screen.queryByText('开始')).toBeNull()
     expect(screen.queryByText('选题：换季收纳')).toBeNull()

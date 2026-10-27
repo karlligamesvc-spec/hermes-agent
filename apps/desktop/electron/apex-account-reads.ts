@@ -4,7 +4,7 @@
  * best-effort read receipt), hc-971 the account's team, the hc-991
  * first-use creator profile (read and written), the hc-995 creator-tip
  * catalog, the hc-995 今日点子 (read, 开做 and 不喜欢) and the hc-1016 memory
- * ledger (read and edited). Each handler's
+ * ledger (read and edited) and the hc-1061 plan usage line. Each handler's
  * request and ok:false shapes live in its own module;
  * this file only registers them, so main.ts holds one call instead of one
  * handler per read.
@@ -15,6 +15,7 @@ import { type CreatorProfileDeps, creatorProfileRequest } from './apex-creator-p
 import { type CreatorTipsCache, fetchCreatorTips } from './apex-creator-tips'
 import { dailyIdeasRequest } from './apex-daily-ideas'
 import { memoryLedgerRequest } from './apex-memory-ledger'
+import { fetchPlanUsage } from './apex-plan-usage'
 import { fetchMyTeam } from './apex-team'
 
 export interface IpcHandleRegistry {
@@ -31,6 +32,7 @@ export function registerApexAccountReads(
     markAnnouncementRead(reads, announcementId)
   )
   ipcMain.handle('hermes:managed:team', async () => fetchMyTeam(reads))
+  ipcMain.handle('hermes:managed:planUsage', async () => fetchPlanUsage(reads))
   ipcMain.handle('hermes:managed:creatorProfile', async (_event, request) =>
     creatorProfileRequest(reads, hermesHome, request)
   )
