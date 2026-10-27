@@ -20,6 +20,7 @@ import fs from 'node:fs'
 import type { IpcHandleRegistry } from './apex-account-reads'
 import {
   accountTierInRoot,
+  followedTier,
   guardProductBlocksInHome,
   persistRelayKeyInHome,
   type ProductBlocksContext
@@ -79,7 +80,7 @@ export function healProfileConfig(profile: unknown, deps: ProfileConfigHealDeps)
 
   // A named profile follows the root's tier, as in the guard.
   const rootHome = listProfileHomes(deps.root)[0]
-  const accountTier = name === DEFAULT_PROFILE ? null : accountTierInRoot(rootHome, context)
+  const accountTier = name === DEFAULT_PROFILE ? null : followedTier(home, accountTierInRoot(rootHome, context))
   const { fixed, outcome } = guardProductBlocksInHome(home, { ...context, accountTier }, REASON, deps.log)
 
   if (outcome === 'stale' || outcome === 'error' || outcome === 'absent') {

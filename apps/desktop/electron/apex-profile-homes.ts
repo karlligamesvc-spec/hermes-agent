@@ -21,6 +21,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+import yaml from 'js-yaml'
+
 import { locateManagedKeyAnchors } from './apex-relay-key-anchors'
 
 /** The name Hermes gives the root home's profile. */
@@ -115,4 +117,26 @@ export function managedProfileHomes(
       }
     })
   ]
+}
+
+/**
+ * True when this named profile is an assistant the product mode created:
+ * hc-1078 writes its name and look under `ui_meta.apex` in profile.yaml (the
+ * engine's profiles.configure). A profile made by upstream Bot mode or in
+ * developer mode carries no such key, so its own choices — a tier picked on the
+ * hc-960 card among them — stay its own. Missing, unreadable or malformed
+ * profile.yaml, or an empty `apex` entry: false.
+ */
+export function isProductAssistant(
+  home: string,
+  read: (file: string) => string = file => fs.readFileSync(file, 'utf8')
+): boolean {
+  try {
+    const meta = yaml.load(read(path.join(home, 'profile.yaml'))) as { ui_meta?: { apex?: unknown } } | null
+    const apex = meta?.ui_meta?.apex
+
+    return Boolean(apex) && typeof apex === 'object' && !Array.isArray(apex) && Object.keys(apex as object).length > 0
+  } catch {
+    return false
+  }
 }

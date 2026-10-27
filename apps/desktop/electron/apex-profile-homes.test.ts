@@ -5,7 +5,13 @@ import path from 'node:path'
 
 import { afterEach, describe, test } from 'vitest'
 
-import { configUsesManagedRelay, DEFAULT_PROFILE, listProfileHomes, managedProfileHomes } from './apex-profile-homes'
+import {
+  configUsesManagedRelay,
+  DEFAULT_PROFILE,
+  isProductAssistant,
+  listProfileHomes,
+  managedProfileHomes
+} from './apex-profile-homes'
 
 const RELAY = 'https://apex-nodes.com/relay/v1'
 const roots: string[] = []
@@ -146,5 +152,38 @@ describe('managedProfileHomes', () => {
       managedProfileHomes(dir, RELAY, read).map(home => home.profile),
       [DEFAULT_PROFILE, 'writer']
     )
+  })
+})
+
+describe('isProductAssistant', () => {
+  test.each([
+    [
+      'an assistant the product mode created (safe_dump, escaped name)',
+      'ui_meta:\n  apex:\n    name: "\\u5C0F\\u7EA2\\u4E66"\n    shape: circle\n    color: \'#E5484D\'\n_ui_meta_revisions:\n  apex: 1\n',
+      true
+    ],
+    [
+      'an apex entry next to an upstream Bot-mode one',
+      'ui_meta:\n  hermes-bots:\n    rune: spark\n  apex:\n    name: X\n',
+      true
+    ],
+    ['an upstream Bot-mode profile', 'ui_meta:\n  hermes-bots:\n    rune: spark\n', false],
+    ['an empty apex entry', 'ui_meta:\n  apex: {}\n', false],
+    ['a null apex entry', 'ui_meta:\n  apex: null\n', false],
+    ['apex as a list', 'ui_meta:\n  apex:\n    - name\n', false],
+    ['apex at the top level, not under ui_meta', 'apex:\n  name: X\n', false],
+    ['malformed YAML', 'ui_meta: [unclosed\n', false],
+    ['an empty file', '', false]
+  ])('%s', (_label, text, expected) => {
+    const dir = root({})
+    const home = path.join(dir, 'profiles', 'x')
+    fs.mkdirSync(home, { recursive: true })
+    fs.writeFileSync(path.join(home, 'profile.yaml'), text)
+
+    assert.equal(isProductAssistant(home), expected)
+  })
+
+  test('no profile.yaml at all is not a product assistant', () => {
+    assert.equal(isProductAssistant(path.join(root({}), 'profiles', 'nowhere')), false)
   })
 })

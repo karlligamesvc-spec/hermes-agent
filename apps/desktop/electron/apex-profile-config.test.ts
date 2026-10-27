@@ -71,6 +71,17 @@ function hermesRoot(profiles: Record<string, string>, rootConfig = managedConfig
   return dir
 }
 
+// What the engine's profiles.configure writes for an assistant hc-1078 creates (yaml.safe_dump, block style).
+const PRODUCT_PROFILE_YAML =
+  'ui_meta:\n  apex:\n    name: "\\u5C0F\\u7EA2\\u4E66\\u6587\\u6848"\n    shape: circle\n    color: \'#E5484D\'\n' +
+  '_ui_meta_revisions:\n  apex: 1\n'
+
+function markProduct(dir: string, ...profiles: string[]) {
+  for (const profile of profiles) {
+    fs.writeFileSync(path.join(dir, 'profiles', profile, 'profile.yaml'), PRODUCT_PROFILE_YAML)
+  }
+}
+
 const read = (dir: string, profile: string) =>
   fs.readFileSync(
     profile === DEFAULT_PROFILE ? path.join(dir, 'config.yaml') : path.join(dir, 'profiles', profile, 'config.yaml'),
@@ -158,7 +169,7 @@ describe('with several assistants on, the named profiles follow the root (accoun
   const ST = { APEXNODES_SINGLE_THREAD: '1', APEX_SINGLE_THREAD_ACTIVE: '1', APEX_MULTI_BOT_ACTIVE: '1' }
   const allTiers = ['apex-flash', 'apex-pro', 'apex-max']
 
-  test('every managed profile takes the tier the root settles on, whatever it held', () => {
+  test('every assistant the product mode created takes the tier the root settles on, whatever it held', () => {
     const dir = hermesRoot(
       {
         writer: managedConfig('apex-flash'),
@@ -168,6 +179,8 @@ describe('with several assistants on, the named profiles follow the root (accoun
       },
       managedConfig('apex-pro', NEW_KEY)
     )
+
+    markProduct(dir, 'writer', 'editor', 'maxer', 'mine')
 
     const lines: string[] = []
     const mine = path.join(dir, 'profiles', 'mine', 'config.yaml')
@@ -191,8 +204,40 @@ describe('with several assistants on, the named profiles follow the root (accoun
     )
   })
 
+  // Following goes by where a profile came from, not by the UI mode (the main process cannot see the
+  // mode): a tier picked on the hc-960 card in upstream Bot mode or developer mode stays, even with several assistants on.
+  test('a profile not created by the product mode keeps settling its own tier, byte for byte', () => {
+    const profiles = {
+      writer: managedConfig('apex-flash'),
+      devbot: managedConfig('apex-max'),
+      plain: managedConfig('apex-max'),
+      empty: managedConfig('apex-max'),
+      broken: managedConfig('apex-max')
+    }
+
+    const dir = hermesRoot(profiles, managedConfig('apex-pro', NEW_KEY))
+    markProduct(dir, 'writer')
+    fs.writeFileSync(
+      path.join(dir, 'profiles', 'devbot', 'profile.yaml'),
+      'ui_meta:\n  hermes-bots:\n    rune: spark\n'
+    )
+    fs.writeFileSync(path.join(dir, 'profiles', 'empty', 'profile.yaml'), 'ui_meta:\n  apex: {}\n')
+    fs.writeFileSync(path.join(dir, 'profiles', 'broken', 'profile.yaml'), 'ui_meta: [unclosed\n')
+    const ctx = context({ env: ST, entitled: allTiers })
+
+    guardProductBlocksInHomes(managedProfileHomes(dir, RELAY), ctx, 'boot', () => undefined)
+
+    assert.match(read(dir, 'writer'), /^ {2}default: apex-pro$/m)
+
+    for (const profile of ['devbot', 'plain', 'empty', 'broken'] as const) {
+      assert.equal(read(dir, profile), healProductBlocksYaml(profiles[profile], ctx).next, profile)
+      assert.match(read(dir, profile), /^ {2}default: apex-max$/m, profile)
+    }
+  })
+
   test('the root is capped by the plan first, and the profiles follow the capped tier', () => {
     const dir = hermesRoot({ writer: managedConfig('apex-flash') }, managedConfig('apex-max', NEW_KEY))
+    markProduct(dir, 'writer')
 
     guardProductBlocksInHomes(
       managedProfileHomes(dir, RELAY),
@@ -207,6 +252,7 @@ describe('with several assistants on, the named profiles follow the root (accoun
 
   test('a root on BYOK sets no account tier: each profile settles by the hc-1072 rule on its own', () => {
     const dir = hermesRoot({ writer: managedConfig('apex-max'), editor: managedConfig('deepseek-v4-pro-APEX') }, BYOK)
+    markProduct(dir, 'writer', 'editor')
 
     guardProductBlocksInHomes(
       managedProfileHomes(dir, RELAY),
@@ -221,6 +267,7 @@ describe('with several assistants on, the named profiles follow the root (accoun
 
   test('with tiers and single-thread both off, no profile model is rewritten', () => {
     const dir = hermesRoot({ writer: managedConfig('apex-flash') }, managedConfig('apex-pro', NEW_KEY))
+    markProduct(dir, 'writer')
 
     guardProductBlocksInHomes(managedProfileHomes(dir, RELAY), context(), 'boot', () => undefined)
 
