@@ -164,7 +164,7 @@ describe('hc-1014 switch on, product mode: one conversation', () => {
   it('has no session list, no 开始 / ⌘N row and no "+": one APEX row opens the conversation', () => {
     const { container } = renderSidebar()
 
-    // hc-1061 (N4): the one assistant row is the only nav row; 沉浸式分析 lives in the account menu.
+    // hc-1061: the one assistant row is the only nav row. hc-1070: single-thread mode has no 沉浸式分析 at all.
     expect(
       [...container.querySelectorAll('[data-single-thread-nav]')].map(row => row.getAttribute('data-single-thread-nav'))
     ).toEqual(['thread'])

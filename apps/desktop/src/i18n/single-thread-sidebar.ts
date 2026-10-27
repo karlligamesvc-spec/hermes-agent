@@ -27,8 +27,6 @@ export interface SingleThreadSidebarCopy {
   planUsage: (parts: { percent: string; period: 'month' | 'week'; plan: string }) => string
   /** Used, but under one percent: 「不到 1%」 rather than a misleading 「0%」. */
   underOnePercent: string
-  /** The account menu's entry for the analysis workspace (its sidebar row in other modes). */
-  analysis: string
 }
 
 const en: SingleThreadSidebarCopy = {
@@ -40,8 +38,7 @@ const en: SingleThreadSidebarCopy = {
   wechatBound: 'Connected',
   wechatUnbound: 'Scan once to connect',
   planUsage: ({ percent, period, plan }) => `${plan} · ${percent} used this ${period}`,
-  underOnePercent: 'under 1%',
-  analysis: 'Deep analysis'
+  underOnePercent: 'under 1%'
 }
 
 const zh: SingleThreadSidebarCopy = {
@@ -53,8 +50,7 @@ const zh: SingleThreadSidebarCopy = {
   wechatBound: '已绑定',
   wechatUnbound: '扫一下就绑上',
   planUsage: ({ percent, period, plan }) => `${plan} · ${period === 'week' ? '本周' : '本月'}用了 ${percent}`,
-  underOnePercent: '不到 1%',
-  analysis: '沉浸式分析'
+  underOnePercent: '不到 1%'
 }
 
 const zhHant: SingleThreadSidebarCopy = {
@@ -66,8 +62,7 @@ const zhHant: SingleThreadSidebarCopy = {
   wechatBound: '已綁定',
   wechatUnbound: '掃一下就綁上',
   planUsage: ({ percent, period, plan }) => `${plan} · ${period === 'week' ? '本週' : '本月'}用了 ${percent}`,
-  underOnePercent: '不到 1%',
-  analysis: '沉浸式分析'
+  underOnePercent: '不到 1%'
 }
 
 export const SINGLE_THREAD_SIDEBAR_COPY: Readonly<Record<Locale, SingleThreadSidebarCopy>> = {

@@ -11,6 +11,8 @@ import { $composerAttachments, clearSessionDraft, stashSessionDraft, takeSession
 import { $gateway } from '@/store/gateway'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $selectedStoredSessionId } from '@/store/session'
+import { setSingleThreadFlagForTest } from '@/store/single-thread'
+import { setToolViewMode } from '@/store/tool-view'
 
 import { useVoiceLiveConversation } from '../chat/composer/hooks/use-voice-live-conversation'
 import { VoiceConversationPanel } from '../chat/composer/voice-conversation-panel'
@@ -395,5 +397,66 @@ describe('ChatRoutesSurface', () => {
     fireEvent.keyDown(globalThis.document, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Deliverable details' })).toBeNull())
     expect(screen.getByTestId('location').textContent).toBe('/deliverables')
+  })
+})
+
+describe('hc-1070 single-thread product mode has no 沉浸式分析', () => {
+  const analysisOnScreen = () => screen.queryByRole('button', { name: 'Prepare video' })
+
+  afterEach(() => {
+    setSingleThreadFlagForTest(false)
+    setToolViewMode('product')
+  })
+
+  it('a cold start on /analysis (a remembered route, a deep link at launch) lands on the conversation', async () => {
+    setSingleThreadFlagForTest(true)
+    renderRoutes(['/analysis'])
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    expect(analysisOnScreen()).toBeNull()
+  })
+
+  it('navigating there later (hermes://open, a plugin notification, host.navigate) turns back too', async () => {
+    setSingleThreadFlagForTest(true)
+    renderRoutes(['/chat-1'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go /analysis' }))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    expect(analysisOnScreen()).toBeNull()
+  })
+
+  it('turns back before the sign-in gate: a signed-out window does not sit on a blank analysis page', async () => {
+    setSingleThreadFlagForTest(true)
+    renderRoutes(['/chat-1'])
+    act(() => $authState.set({ ...$authState.get(), status: 'signed-out' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go /analysis' }))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+  })
+
+  it('closes the page that is open when developer mode is switched off', async () => {
+    setSingleThreadFlagForTest(true)
+    setToolViewMode('technical')
+    renderRoutes(['/analysis'])
+    expect(await screen.findByRole('button', { name: 'Prepare video' })).toBeTruthy()
+
+    act(() => setToolViewMode('product'))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    expect(analysisOnScreen()).toBeNull()
+  })
+
+  it.each([
+    ['the switch off', false, 'product'],
+    ['developer mode with the switch on', true, 'technical']
+  ] as const)('%s keeps the workspace on /analysis', async (_label, flag, toolView) => {
+    setSingleThreadFlagForTest(flag)
+    setToolViewMode(toolView)
+    renderRoutes(['/analysis'])
+
+    expect(await screen.findByRole('button', { name: 'Prepare video' })).toBeTruthy()
+    expect(screen.getByTestId('location').textContent).toBe('/analysis')
   })
 })
