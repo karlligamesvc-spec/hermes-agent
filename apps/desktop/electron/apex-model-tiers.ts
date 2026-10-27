@@ -176,20 +176,55 @@ function trimTrailingSlash(value: string): string {
   return String(value || '').replace(/\/+$/, '')
 }
 
+/** The strongest tier at or below `alias` that the account's plan grants
+ *  (`entitled`: the relay's listing, apex-relay-tiers.ts), Flash when none is.
+ *  An unknown listing (null, or one naming no tier) keeps `alias`. */
+function cappedTierAlias(alias: string, entitled: null | readonly string[]): string {
+  const granted = new Set((entitled ?? []).map(model => model.toLowerCase()))
+
+  if (!MODEL_TIER_ALIASES.some(tier => granted.has(tier))) {
+    return alias
+  }
+
+  const fits = MODEL_TIER_ALIASES.slice(0, MODEL_TIER_ALIASES.indexOf(alias) + 1).filter(tier => granted.has(tier))
+
+  return fits.at(-1) ?? TIER_DEFAULT_MANAGED_MODEL
+}
+
 /**
- * Boot migration: with tiers on, an assistant still on a pre-tier managed id
- * (the `-APEX` seed, or a model picked from the old APEX shelf) moves to the
- * Flash alias, so the tier the UI shows is the tier the relay routes. Only the
- * top-level `model:` block is touched, and only when it points at the managed
- * relay (named custom provider, or bare `custom` on the relay base_url). The
- * user's own provider or endpoint is never rewritten.
+ * The managed main model a config heal settles on.
  *
- * `pinDefault` (hc-1015 single-thread mode, where no tier is shown): a Pro or
- * Max pick moves to the default alias too — the shell sends the default and
- * the platform decides the rest.
+ * Tier mode (hc-960): a pre-tier id (the `-APEX` seed, or a model picked from
+ * the old APEX shelf) moves to the Flash alias, so the tier the UI shows is the
+ * tier the relay routes; a tier alias stays as it is.
+ *
+ * Single-thread mode (hc-1072): a tier the user picked stays, unless the plan
+ * does not grant it (per `entitled`) — then it drops to the strongest one the
+ * plan does. A pre-tier id was never a tier pick, Pro-sounding or not (the
+ * 06-27..10-08 seed `deepseek-v4-pro-APEX` was the install default): it moves
+ * to Flash, as in tier mode.
  */
-export function migrateManagedModelToTierYaml(raw: string, relayBaseUrl: string, pinDefault = false) {
-  const unchanged = { changed: false, from: '', next: raw }
+export function settledManagedModel(current: string, singleThread: boolean, entitled: null | readonly string[] = null) {
+  if (!isModelTierAlias(current)) {
+    return TIER_DEFAULT_MANAGED_MODEL
+  }
+
+  return singleThread ? cappedTierAlias(current.toLowerCase(), entitled) : current
+}
+
+/**
+ * Boot/watch migration of the managed main model (settledManagedModel). Only
+ * the top-level `model:` block is touched, and only when it points at the
+ * managed relay (named custom provider, or bare `custom` on the relay
+ * base_url). The user's own provider or endpoint is never rewritten.
+ */
+export function migrateManagedModelToTierYaml(
+  raw: string,
+  relayBaseUrl: string,
+  singleThread = false,
+  entitled: null | readonly string[] = null
+) {
+  const unchanged = { changed: false, from: '', next: raw, to: '' }
   const lines = raw.split('\n')
   const start = lines.findIndex(line => /^model:\s*$/.test(line))
 
@@ -223,29 +258,36 @@ export function migrateManagedModelToTierYaml(raw: string, relayBaseUrl: string,
     provider === MANAGED_PROVIDER_SLUG ||
     (provider === MANAGED_PROVIDER && Boolean(relayBaseUrl) && baseUrl === trimTrailingSlash(relayBaseUrl))
 
-  const settled = pinDefault ? current?.value === TIER_DEFAULT_MANAGED_MODEL : isModelTierAlias(current?.value ?? '')
+  if (!onRelay || !current || !current.value) {
+    return unchanged
+  }
 
-  if (!onRelay || !current || !current.value || settled) {
+  const to = settledManagedModel(current.value, singleThread, entitled)
+
+  if (to.toLowerCase() === current.value.toLowerCase()) {
     return unchanged
   }
 
   const next = [...lines]
-  next[current.index] = `  default: ${TIER_DEFAULT_MANAGED_MODEL}`
+  next[current.index] = `  default: ${to}`
 
-  return { changed: true, from: current.value, next: next.join('\n') }
+  return { changed: true, from: current.value, next: next.join('\n'), to }
 }
 
 /**
  * The config heal's tier step (main.ts healConfigYamlProductBlocks): returns
  * the possibly-migrated source and records what moved in `fixed`. A no-op while
  * tiers and single-thread mode are both off, or without a managed credential.
+ * `entitled`: the tiers the relay last listed for this credential's key
+ * (apex-relay-tiers.ts RelayTierMemo), read only in single-thread mode.
  */
 export function healManagedModelTier(
   raw: string,
   managed: { baseUrl?: string; key?: string },
   relayBaseUrl: string,
   env: Record<string, string | undefined>,
-  fixed: string[]
+  fixed: string[],
+  entitled: null | readonly string[] = null
 ): string {
   const singleThread = isSingleThreadActive(env)
 
@@ -253,10 +295,10 @@ export function healManagedModelTier(
     return raw
   }
 
-  const heal = migrateManagedModelToTierYaml(raw, managed.baseUrl || relayBaseUrl, singleThread)
+  const heal = migrateManagedModelToTierYaml(raw, managed.baseUrl || relayBaseUrl, singleThread, entitled)
 
   if (heal.changed) {
-    fixed.push(`model(${singleThread ? 'single-thread' : 'tier'}:${heal.from}→flash)`)
+    fixed.push(`model(${singleThread ? 'single-thread' : 'tier'}:${heal.from}→${heal.to.replace(/^apex-/, '')})`)
   }
 
   return heal.next

@@ -173,6 +173,7 @@ import {
   shouldApplyManifest
 } from './apex-platform-skills'
 import { buildPlatformToolSpawnEnv, describePlatformToolSpawnEnv } from './apex-platform-tools'
+import { fetchRelayModels, RelayTierMemo } from './apex-relay-tiers'
 import {
   checkForRuntimeUpdate,
   desktopMeetsMinVersion,
@@ -20969,7 +20970,7 @@ function healConfigYamlProductBlocks(reason) {
       fixed.push('model(moa-global)')
     }
 
-    raw = healManagedModelTier(raw, managed, endpoints.relayBaseUrl, process.env, fixed) // hc-960: old ids → Flash
+    raw = healManagedModelTier(raw, managed, endpoints.relayBaseUrl, process.env, fixed, relayTiers.of(managed.key)) // hc-960, hc-1072
 
     // Skills: union the managed disabled names back in — add-only, so a user's
     // enable-toggles (names they removed) survive. This is BOTH the "block was
@@ -21489,83 +21490,16 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
   })
 }
 
-// Probe the relay's OpenAI-compatible model listing with a Bearer relay key —
-// the SAME `GET {base_url}/v1/models` the runtime's model picker calls to build
-// its live "APEX-NODES.COM" model group. We only need the status code: 401/403
-// means the stored relay key is dead (rotated out) and the picker list has
-// collapsed; that is the self-heal trigger. Returns { ok, statusCode }; on a
-// timeout / network error resolves { ok:false, statusCode:0 } (NOT an auth
-// failure — we must not re-provision on a transient outage). Mirrors
-// apexAuthPostJson's transport (electronNet + explicit timeout), GET + no body.
-//
-// base_url already ends at the relay `/v1` segment (see DEFAULT_RELAY_BASE_URL),
-// so the listing path is `${base_url}/models`.
-function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Promise<any> {
-  return new Promise(resolve => {
-    const base = String(baseUrl || '')
-      .trim()
-      .replace(/\/+$/, '')
+// The relay's model listing, the same `GET {base_url}/v1/models` the runtime's
+// picker calls (apex-relay-tiers.ts): 401/403 = the stored relay key is dead,
+// the self-heal trigger. A listing that names new tiers for this key re-runs the
+// config heal, so single-thread mode drops a tier the plan does not grant (hc-1072).
+async function apexRelayGetModels(baseUrl, key, options = {}) {
+  const probe = await fetchRelayModels(electronNet, baseUrl, key, options)
 
-    const relayKey = String(key || '').trim()
+  if (relayTiers.note(key, probe)) {guardConfigYamlProductBlocks('relay-tiers')}
 
-    if (!base || !relayKey) {
-      resolve({ ok: false, statusCode: 0 })
-
-      return
-    }
-
-    const url = `${base}/models`
-    let parsed
-
-    try {
-      parsed = new URL(url)
-    } catch {
-      resolve({ ok: false, statusCode: 0 })
-
-      return
-    }
-
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      resolve({ ok: false, statusCode: 0 })
-
-      return
-    }
-
-    let settled = false
-
-    const done = result => {
-      if (settled) {
-        return
-      }
-
-      settled = true
-      clearTimeout(timer)
-      resolve(result)
-    }
-
-    const request = electronNet.request({ method: 'GET', url, redirect: 'follow' })
-    request.setHeader('Authorization', `Bearer ${relayKey}`)
-    request.setHeader('Accept', 'application/json')
-
-    const timer = setTimeout(() => {
-      try {
-        request.abort()
-      } catch {
-        // already finished
-      }
-
-      done({ ok: false, statusCode: 0 })
-    }, timeoutMs)
-
-    request.on('response', res => {
-      const statusCode = res.statusCode || 0
-      // Drain so the socket can be reused/closed cleanly; body is irrelevant.
-      res.on('data', () => {})
-      res.on('end', () => done({ ok: statusCode >= 200 && statusCode < 400, statusCode }))
-    })
-    request.on('error', () => done({ ok: false, statusCode: 0 }))
-    request.end()
-  })
+  return probe
 }
 
 // Timestamp (ms) of the last self-heal re-provision ATTEMPT — module-level so the
@@ -21584,6 +21518,7 @@ let lastManagedReprovisionAttemptOwner: string | null = null
 // status: 'unknown' (never probed / not applicable) | 'ok' | 'unauthorized' |
 // 'unreachable'; checkedAt: ms timestamp of the last probe (0 = never).
 let lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }
+const relayTiers = new RelayTierMemo() // hc-1072: the tiers the relay last listed for a key
 
 // Relay-key self-heal: if the stored relay key is dead (relay /v1/models →
 // 401/403), re-provision it in place using the stored login JWT, write the fresh

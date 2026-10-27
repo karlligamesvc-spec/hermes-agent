@@ -229,10 +229,28 @@ describe('main.ts wiring', () => {
     assert.match(body, /^\s+\.\.\.modelTierStatus\(process\.env\),/m)
   })
 
-  test('runs the Flash migration step in the boot/watch config heal', () => {
+  test('runs the tier step in the boot/watch config heal, with the tiers the relay listed for this key', () => {
     const heal = main.slice(main.indexOf('function healConfigYamlProductBlocks('))
     const body = heal.slice(0, heal.indexOf('\nfunction '))
 
-    assert.match(body, /^\s+raw = healManagedModelTier\(raw, managed, endpoints\.relayBaseUrl, process\.env, fixed\)/m)
+    assert.match(
+      body,
+      /^\s+raw = healManagedModelTier\(raw, managed, endpoints\.relayBaseUrl, process\.env, fixed, relayTiers\.of\(managed\.key\)\)/m
+    )
+  })
+
+  test('hc-1072: every relay listing probe feeds the memo and re-heals when the tiers change', () => {
+    const strip = (source: string) => source.replace(/^\s*\/\/.*$/gm, '')
+    const code = strip(main)
+    const probe = code.slice(code.indexOf('async function apexRelayGetModels('))
+    const body = probe.slice(0, probe.indexOf('\n}\n'))
+
+    assert.equal(code.split('function apexRelayGetModels(').length, 2, 'one probe, not a second copy')
+    assert.match(body, /const probe = await fetchRelayModels\(electronNet, baseUrl, key, options\)/)
+    assert.match(body, /if \(relayTiers\.note\(key, probe\)\) \{guardConfigYamlProductBlocks\('relay-tiers'\)\}/)
+    assert.match(body, /return probe\s*$/)
+    // Nothing else reads the listing around the memo.
+    assert.equal(code.match(/fetchRelayModels\(/g)?.length, 1)
+    assert.equal(code.match(/\$\{base\}\/models`/g), null)
   })
 })
