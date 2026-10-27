@@ -1,21 +1,20 @@
 /**
  * hc-1078 (multi-bot M2): the 「···」 on the selected sidebar row, as prototype v2 artboard ⑦ draws
  * it: 「改名或换样子」 and, in red, 「删除这个助手」. APEX's row offers 「改名」 only: it cannot be
- * deleted and its look is fixed (K6).
+ * deleted and its look is fixed (K6, hc-1077's canDeleteBot / canRestyleBot).
  */
 
 import { Codicon } from '@/components/ui/codicon'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useSingleThreadBotsCopy } from '@/i18n/single-thread-bots'
+import { type ApexBot, canDeleteBot, canRestyleBot } from '@/store/single-thread-bots'
 
 export function BotRowMenu({
-  isApex,
-  name,
+  bot,
   onDelete,
   onEdit
 }: {
-  isApex: boolean
-  name: string
+  bot: Pick<ApexBot, 'isApex' | 'name'>
   onDelete: () => void
   onEdit: () => void
 }) {
@@ -25,7 +24,7 @@ export function BotRowMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          aria-label={copy.more(name)}
+          aria-label={copy.more(bot.name)}
           className="grid size-7 place-items-center rounded-lg text-(--ui-text-secondary) [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background)"
           data-single-thread-bot-more=""
           type="button"
@@ -35,13 +34,13 @@ export function BotRowMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-40">
         <DropdownMenuItem data-bot-menu="edit" onSelect={onEdit}>
-          {isApex ? copy.rename : copy.edit}
+          {canRestyleBot(bot) ? copy.edit : copy.rename}
         </DropdownMenuItem>
-        {isApex ? null : (
+        {canDeleteBot(bot) ? (
           <DropdownMenuItem data-bot-menu="delete" onSelect={onDelete} variant="destructive">
             {copy.remove}
           </DropdownMenuItem>
-        )}
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   )

@@ -21,7 +21,7 @@ import { APEX_DESKTOP_DEFAULT_SOUL } from '../../shared/apex-default-soul'
 
 import { requestGatewayForProfile } from './gateway'
 import {
-  apexLookFrom,
+  type ApexBotLook,
   botNameProblem,
   BotOpError,
   botsLeft,
@@ -29,7 +29,7 @@ import {
   createBot,
   deleteBot,
   nextBotProfileName,
-  readBotLook,
+  readBotMeta,
   saveBotLook
 } from './single-thread-bot-ops'
 
@@ -44,7 +44,7 @@ const request = vi.mocked(requestGatewayForProfile)
 let calls: Call[] = []
 let answer: (method: string, params: Record<string, unknown>) => unknown
 
-const LOOK = { name: '小红书文案', shape: 'hexagon', color: 'orange' }
+const LOOK: Required<ApexBotLook> = { name: '小红书文案', shape: 'hexagon', color: 'orange' }
 
 /** hc-1079's 「分工」 as it appends it to the SOUL on disk. */
 const HC1079_DUTIES = '\n## 分工\n\n你主要帮我做这些：\n- 剪辑出片\n'
@@ -65,6 +65,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   request.mockReset()
   deleteProfile.mockClear()
   delete (window.hermesDesktop as unknown as Record<string, unknown> | undefined)?.healApexProfileConfig
@@ -186,18 +187,13 @@ describe('names', () => {
   ])('%i assistants of %i leave %i', (count, max, left) => {
     expect(botsLeft(count, max)).toBe(left)
   })
-
-  it('reads only well-formed ui_meta.apex fields', () => {
-    expect(apexLookFrom({ apex: { name: 'A', shape: 3, color: '' }, 'hermes-bots': { title: 'B' } })).toEqual({
-      name: 'A'
-    })
-    expect(apexLookFrom({ apex: ['x'] })).toEqual({})
-    expect(apexLookFrom(null)).toEqual({})
-  })
 })
 
 describe('createBot', () => {
   it('clones default into the next apex-bot-N with the APEX SOUL, then writes ui_meta.apex at revision 0', async () => {
+    // `created` orders the sidebar (hc-1077): the creation time, in epoch ms.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-27T05:00:00Z'))
     answer = method =>
       method === 'profiles.list'
         ? { profiles: [{ name: 'default' }, { name: 'apex-bot-2', previous_names: ['apex-bot-3'] }] }
@@ -219,7 +215,7 @@ describe('createBot', () => {
     })
     expect(calls[2].params).toEqual({
       name: 'apex-bot-4',
-      ui_meta: { apex: LOOK },
+      ui_meta: { apex: { ...LOOK, created: Date.parse('2026-10-27T05:00:00Z') } },
       ui_meta_expected_revisions: { apex: 0 }
     })
   })
@@ -337,7 +333,7 @@ describe('saveBotLook', () => {
   it('renames APEX through ui_meta.apex.name alone and never reads or writes its SOUL', async () => {
     answer = () => ({ applied: { ui_meta: true } })
 
-    await saveBotLook('default', { ...LOOK, name: '小满' }, 2)
+    await saveBotLook('default', { ...LOOK, name: '小满' }, { revision: 2, stored: {} })
 
     expect(calls).toEqual([
       {
@@ -352,7 +348,7 @@ describe('saveBotLook', () => {
     const soul = composeApexBotSoul({ name: '旧名' }) + HC1079_DUTIES
     answer = method => (method === 'profiles.describe' ? { soul } : { applied: { ui_meta: true, soul: true } })
 
-    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, 4)
+    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, { revision: 4, stored: {} })
 
     expect(methods()).toEqual(['profiles.configure', 'profiles.describe', 'profiles.configure'])
     expect(calls[0].params).toEqual({
@@ -370,7 +366,7 @@ describe('saveBotLook', () => {
   ])('writes nothing more over %s', async (_label, soul) => {
     answer = method => (method === 'profiles.describe' ? { soul } : { applied: { ui_meta: true } })
 
-    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, 1)
+    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, { revision: 1, stored: {} })
 
     expect(methods()).toEqual(['profiles.configure', 'profiles.describe'])
   })
@@ -380,7 +376,7 @@ describe('saveBotLook', () => {
     answer = method => (method === 'profiles.describe' ? { soul } : { applied: { ui_meta: true, soul: true } })
 
     // ui_meta already says 新名 (the last save's SOUL write failed); this save only changes the shape.
-    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名', shape: 'pill' }, 5)
+    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名', shape: 'pill' }, { revision: 5, stored: {} })
 
     expect(methods()).toEqual(['profiles.configure', 'profiles.describe', 'profiles.configure'])
     expect(apexBotNameFromSoul(calls[2].params.soul as string)).toBe('新名')
@@ -389,14 +385,16 @@ describe('saveBotLook', () => {
   it('keeps the saved look when the SOUL line cannot be written', async () => {
     answer = method => (method === 'profiles.describe' ? gatewayError(5063, 'busy') : { applied: { ui_meta: true } })
 
-    await expect(saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, 1)).resolves.toBeUndefined()
+    await expect(
+      saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, { revision: 1, stored: {} })
+    ).resolves.toBeUndefined()
     expect(methods()).toEqual(['profiles.configure', 'profiles.describe'])
   })
 
   it('refuses a stale edit instead of overwriting, and then touches nothing else', async () => {
     answer = () => ({ applied: { ui_meta: false, ui_meta_conflicts: { apex: { expected: 1, actual: 2 } } } })
 
-    const failure = saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, 1)
+    const failure = saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, { revision: 1, stored: {} })
 
     await expect(failure).rejects.toBeInstanceOf(BotOpError)
     await expect(failure).rejects.toMatchObject({ kind: 'conflict' })
@@ -412,8 +410,8 @@ describe('saveBotLook', () => {
           : { applied: { ui_meta: true } }
 
     await createBot(LOOK, { count: 1, max: 5 })
-    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, 1)
-    await saveBotLook('default', { name: '小满' }, 0)
+    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, { revision: 1, stored: {} })
+    await saveBotLook('default', { name: '小满' }, { revision: 0, stored: {} })
 
     // Only `apex`: ui_meta merges key by key, so hermes-bots (Bot Mode) and hc-1079's apex-intake stay untouched.
     for (const call of configureCalls().filter(c => c.params.ui_meta)) {
@@ -425,18 +423,46 @@ describe('saveBotLook', () => {
   })
 })
 
-describe('readBotLook', () => {
-  it('returns the stored look and the revision an edit must name', async () => {
+describe('readBotMeta', () => {
+  it('returns ui_meta.apex exactly as stored and the revision an edit must name', async () => {
+    const stored = { ...LOOK, created: 1_761_541_200_000, later: { kept: true } }
     answer = () => ({
       profiles: [
         { name: 'default', ui_meta: { apex: { name: '小满' } }, ui_meta_revisions: { apex: 3 } },
-        { name: 'apex-bot-2', ui_meta: { apex: LOOK }, ui_meta_revisions: { 'hermes-bots': 9 } }
+        {
+          name: 'apex-bot-2',
+          ui_meta: { apex: stored, 'hermes-bots': { title: 'B' } },
+          ui_meta_revisions: { 'hermes-bots': 9 }
+        },
+        { name: 'apex-bot-3', ui_meta: { apex: ['not', 'an', 'object'] } }
       ]
     })
 
-    await expect(readBotLook('default')).resolves.toEqual({ look: { name: '小满' }, revision: 3 })
-    await expect(readBotLook('apex-bot-2')).resolves.toEqual({ look: LOOK, revision: 0 })
-    await expect(readBotLook('apex-bot-9')).rejects.toMatchObject({ kind: 'failed' })
+    await expect(readBotMeta('default')).resolves.toEqual({ meta: { name: '小满' }, revision: 3 })
+    await expect(readBotMeta('apex-bot-2')).resolves.toEqual({ meta: stored, revision: 0 })
+    await expect(readBotMeta('apex-bot-3')).resolves.toEqual({ meta: {}, revision: 0 })
+    await expect(readBotMeta('apex-bot-9')).rejects.toMatchObject({ kind: 'failed' })
+  })
+})
+
+describe('an edit keeps what it does not set', () => {
+  const STORED = { name: '旧名', shape: 'drop', color: 'gold', created: 1_761_541_200_000, later: { kept: true } }
+
+  beforeEach(() => {
+    answer = method =>
+      method === 'profiles.describe' ? { soul: 'You are my editor.' } : { applied: { ui_meta: true } }
+  })
+
+  it('keeps created (the sidebar order) and fields a later build adds', async () => {
+    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, { revision: 6, stored: STORED })
+
+    expect(configureCalls()[0].params.ui_meta).toEqual({ apex: { ...STORED, ...LOOK, name: '新名' } })
+  })
+
+  it('writes only the name over APEX’s stored meta, whatever look the sheet carried', async () => {
+    await saveBotLook('default', { ...LOOK, name: '小满' }, { revision: 2, stored: { name: 'APEX', later: 1 } })
+
+    expect(configureCalls()[0].params.ui_meta).toEqual({ apex: { name: '小满', later: 1 } })
   })
 })
 

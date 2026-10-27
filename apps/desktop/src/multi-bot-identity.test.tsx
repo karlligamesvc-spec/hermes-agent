@@ -63,6 +63,8 @@ import { restoreRecordingTimeZone } from './__identity__/single-thread-shell/tim
  * - multi_bot on with single_thread off: hc-1014's switch-off sidebar golden.
  * - multi_bot on in product mode: the several-assistants sidebar (prototype
  *   v2 ⑥ and ⑨) and the header pill, recorded new here (`multi-bot-*`).
+ *   hc-1078 re-recorded the two sidebars for the 「···」 it puts on the row on
+ *   screen; that row's own button and every other row are unchanged.
  * - K6: APEX is always the first row, always the purple circle, and can never
  *   be deleted or restyled, whatever its profile.yaml says.
  */

@@ -1,23 +1,33 @@
 /**
  * hc-1078 (multi-bot M2): the sheet behind the sidebar's 「+」 and the 「改名或换样子」 menu item,
  * as prototype v2 artboard ⑦ draws it: a live preview of the sidebar row, 「叫它什么」 (required,
- * any language, 12 characters), six shapes and six colors (APEX's purple is not one of them), and
- * the count of assistants left before the limit.
+ * any language, 12 characters), six shapes and six colors (hc-1077's tables; APEX's purple is not
+ * one of them), and the count of assistants left before the limit.
  *
  * APEX's sheet has the name field only: its look is fixed (K6). Saving a new one creates the
  * profile (store/single-thread-bot-ops.ts) and hands its name to `onCreated`, which opens its
- * conversation; an edit is saved against the revision read when the sheet opened, and a conflict
- * reloads the latest look instead of overwriting it.
+ * conversation; an edit is saved over the `ui_meta.apex` read when the sheet opened, against that
+ * read's revision, and a conflict reloads the latest instead of overwriting it.
  */
 
 import { useEffect, useRef, useState } from 'react'
 
-import { APEX_AVATAR_COLOR } from '@/components/apex-avatar'
+import { ApexAvatar } from '@/components/apex-avatar'
+import {
+  APEX_AVATAR_COLOR,
+  APEX_AVATAR_SHAPES,
+  APEX_BOT_COLORS,
+  APEX_BOT_DEFAULT_LOOK,
+  type ApexAvatarShape,
+  type ApexBotColor,
+  apexBotColorHex,
+  isApexAvatarShape,
+  isApexBotColor
+} from '@/components/apex-avatar-look'
 import { Button } from '@/components/ui/button'
-import { Codicon } from '@/components/ui/codicon'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { type BotColorId, type BotShapeId, useSingleThreadBotsCopy } from '@/i18n/single-thread-bots'
+import { useSingleThreadBotsCopy } from '@/i18n/single-thread-bots'
 import { cn } from '@/lib/utils'
 import {
   type ApexBotLook,
@@ -28,14 +38,13 @@ import {
   botsLeft,
   cleanBotName,
   createBot,
-  readBotLook,
-  saveBotLook
+  readBotMeta,
+  saveBotLook,
+  type StoredBotMeta
 } from '@/store/single-thread-bot-ops'
+import type { ApexBot } from '@/store/single-thread-bots'
 
-import { BOT_COLORS, BOT_SHAPES, BotFace, isBotColor, isBotShape } from './bot-face'
-
-export type BotSheetTarget =
-  { kind: 'edit'; color?: string; isApex: boolean; name: string; profile: string; shape?: string } | { kind: 'new' }
+export type BotSheetTarget = { bot: ApexBot; kind: 'edit' } | { kind: 'new' }
 
 interface BotSheetProps {
   /** null keeps the sheet closed. */
@@ -50,30 +59,10 @@ interface BotSheetProps {
   onSaved: (profile: string) => void
 }
 
-/**
- * The round 「+」 beside search atop the sidebar. At the limit it still opens the sheet, whose footer
- * says to delete one first; its label says the same before the click.
- */
-export function BotNewButton({ count, max, onOpen }: { count: number; max: number; onOpen: () => void }) {
-  const copy = useSingleThreadBotsCopy()
-  const label = botsLeft(count, max) > 0 ? copy.newBot : copy.newBotFull(max)
-
-  return (
-    <button
-      aria-label={label}
-      className="grid size-8 place-items-center rounded-full border border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) text-(--ui-text-secondary) transition-colors [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background)"
-      data-single-thread-new-bot={botsLeft(count, max) > 0 ? '' : 'full'}
-      onClick={onOpen}
-      title={label}
-      type="button"
-    >
-      <Codicon name="add" size="1rem" />
-    </button>
-  )
+/** The palette id of a hex the roster drew (hc-1077 keeps the hex on `ApexBot`). */
+function colorIdOf(hex: string): ApexBotColor {
+  return APEX_BOT_COLORS.find(color => color.hex.toLowerCase() === hex.toLowerCase())?.id ?? APEX_BOT_DEFAULT_LOOK.color
 }
-
-/** A new assistant starts as prototype ⑦'s does: rounded square, blue. */
-const NEW_LOOK = { color: 'blue', shape: 'squircle' } as const satisfies { color: BotColorId; shape: BotShapeId }
 
 export function BotSheet({ target, ...props }: BotSheetProps) {
   const [saving, setSaving] = useState(false)
@@ -82,7 +71,7 @@ export function BotSheet({ target, ...props }: BotSheetProps) {
     <Dialog onOpenChange={open => !open && !saving && props.onClose()} open={target !== null}>
       {target ? (
         <BotSheetBody
-          key={target.kind === 'new' ? 'new' : target.profile}
+          key={target.kind === 'new' ? 'new' : target.bot.profile}
           onSavingChange={setSaving}
           target={target}
           {...props}
@@ -92,16 +81,13 @@ export function BotSheet({ target, ...props }: BotSheetProps) {
   )
 }
 
-function lookFields(target: BotSheetTarget): { color: BotColorId; name: string; shape: BotShapeId } {
+/** A new assistant starts as prototype ⑦'s does (hc-1077's default look); an edit, as the sidebar shows it. */
+function lookFields(target: BotSheetTarget): { color: ApexBotColor; name: string; shape: ApexAvatarShape } {
   if (target.kind === 'new') {
-    return { ...NEW_LOOK, name: '' }
+    return { ...APEX_BOT_DEFAULT_LOOK, name: '' }
   }
 
-  return {
-    color: isBotColor(target.color) ? target.color : NEW_LOOK.color,
-    name: target.name,
-    shape: isBotShape(target.shape) ? target.shape : NEW_LOOK.shape
-  }
+  return { color: colorIdOf(target.bot.color), name: target.bot.name, shape: target.bot.shape }
 }
 
 function BotSheetBody({
@@ -117,34 +103,38 @@ function BotSheetBody({
   const copy = useSingleThreadBotsCopy()
   const initial = lookFields(target)
   const [name, setName] = useState(initial.name)
-  const [shape, setShape] = useState<BotShapeId>(initial.shape)
-  const [color, setColor] = useState<BotColorId>(initial.color)
+  const [shape, setShape] = useState<ApexAvatarShape>(initial.shape)
+  const [color, setColor] = useState<ApexBotColor>(initial.color)
   const [touched, setTouched] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<null | string>(null)
-  // The stored look's revision, which an edit must name; null until read.
+  // What `ui_meta.apex` held when read, and the revision an edit must name; null until read.
   const [revision, setRevision] = useState<null | number>(target.kind === 'new' ? 0 : null)
+  const [stored, setStored] = useState<StoredBotMeta>({})
   const [storedName, setStoredName] = useState(initial.name)
   const editedRef = useRef(false)
 
   const isNew = target.kind === 'new'
-  const isApex = target.kind === 'edit' && target.isApex
-  const editProfile = target.kind === 'edit' ? target.profile : null
+  const isApex = target.kind === 'edit' && target.bot.isApex
+  const editProfile = target.kind === 'edit' ? target.bot.profile : null
 
-  function applyStored(look: Partial<ApexBotLook>, fresh: number, force: boolean) {
+  function applyStored(meta: StoredBotMeta, fresh: number, force: boolean) {
+    const storedText = typeof meta.name === 'string' && meta.name.trim() ? meta.name.trim() : null
+
     setRevision(fresh)
+    setStored(meta)
 
-    if (look.name) {
-      setStoredName(look.name)
+    if (storedText) {
+      setStoredName(storedText)
     }
 
     if (!force && editedRef.current) {
       return
     }
 
-    setName(look.name ?? initial.name)
-    setShape(isBotShape(look.shape) ? look.shape : initial.shape)
-    setColor(isBotColor(look.color) ? look.color : initial.color)
+    setName(storedText ?? initial.name)
+    setShape(isApexAvatarShape(meta.shape) ? meta.shape : initial.shape)
+    setColor(isApexBotColor(meta.color) ? meta.color : initial.color)
   }
 
   // An edit reads the stored look first: the sidebar's copy can be a poll behind.
@@ -155,8 +145,8 @@ function BotSheetBody({
 
     let live = true
 
-    readBotLook(editProfile)
-      .then(({ look, revision: fresh }) => live && applyStored(look, fresh, false))
+    readBotMeta(editProfile)
+      .then(({ meta, revision: fresh }) => live && applyStored(meta, fresh, false))
       .catch(() => live && setError(copy.saveFailed))
 
     return () => {
@@ -179,8 +169,8 @@ function BotSheetBody({
   async function reloadAfterConflict(profile: string) {
     setError(copy.conflict)
     editedRef.current = false
-    await readBotLook(profile)
-      .then(({ look: latest, revision: fresh }) => applyStored(latest, fresh, true))
+    await readBotMeta(profile)
+      .then(({ meta, revision: fresh }) => applyStored(meta, fresh, true))
       .catch(() => undefined)
   }
 
@@ -196,7 +186,7 @@ function BotSheetBody({
     setError(null)
 
     try {
-      const done = await persistLook(target, { name: cleaned, shape, color }, { count, max, revision })
+      const done = await persistLook(target, { name: cleaned, shape, color }, { count, max, revision, stored })
 
       setBusy(false)
 
@@ -234,7 +224,7 @@ function BotSheetBody({
       </DialogHeader>
       <form className="grid gap-3.5" noValidate onSubmit={event => void submit(event)}>
         <BotPreview
-          color={isApex ? APEX_AVATAR_COLOR : BOT_COLORS[color]}
+          color={isApex ? APEX_AVATAR_COLOR : apexBotColorHex(color)}
           name={cleaned}
           shape={isApex ? 'circle' : shape}
         />
@@ -269,23 +259,23 @@ function BotSheetBody({
 async function persistLook(
   target: BotSheetTarget,
   look: ApexBotLook,
-  { count, max, revision }: { count: number; max: number; revision: number }
+  { count, max, revision, stored }: { count: number; max: number; revision: number; stored: StoredBotMeta }
 ): Promise<string> {
   if (target.kind === 'new') {
     return createBot(look, { count, max })
   }
 
-  await saveBotLook(target.profile, look, revision)
+  await saveBotLook(target.bot.profile, look, { revision, stored })
 
-  return target.profile
+  return target.bot.profile
 }
 
-function BotPreview({ color, name, shape }: { color: string; name: string; shape: BotShapeId }) {
+function BotPreview({ color, name, shape }: { color: string; name: string; shape: ApexAvatarShape }) {
   const copy = useSingleThreadBotsCopy()
 
   return (
     <div className="flex items-center gap-3.5 rounded-[0.875rem] bg-(--ui-sidebar-surface-background) px-3.5 py-3">
-      <BotFace className="size-16" color={color} shape={shape} />
+      <ApexAvatar className="size-16" color={color} shape={shape} />
       <div className="flex min-w-0 flex-col gap-0.5">
         <span
           className={cn(
@@ -345,10 +335,10 @@ function BotLookPickers({
   onShape,
   shape
 }: {
-  color: BotColorId
-  onColor: (color: BotColorId) => void
-  onShape: (shape: BotShapeId) => void
-  shape: BotShapeId
+  color: ApexBotColor
+  onColor: (color: ApexBotColor) => void
+  onShape: (shape: ApexAvatarShape) => void
+  shape: ApexAvatarShape
 }) {
   const copy = useSingleThreadBotsCopy()
 
@@ -357,7 +347,7 @@ function BotLookPickers({
       <div className="grid gap-1.5">
         <span className="text-[0.8125rem] font-semibold text-(--ui-text-secondary)">{copy.shapeLabel}</span>
         <div aria-label={copy.shapeLabel} className="flex flex-wrap gap-2" role="group">
-          {BOT_SHAPES.map(id => (
+          {APEX_AVATAR_SHAPES.map(id => (
             <button
               aria-pressed={shape === id}
               className={cn(
@@ -369,7 +359,12 @@ function BotLookPickers({
               onClick={() => onShape(id)}
               type="button"
             >
-              <BotFace className="size-[1.625rem]" color={BOT_COLORS[color]} shape={id} />
+              {/* Still, as in the prototype: only the preview above blinks. */}
+              <ApexAvatar
+                className="size-[1.625rem] [&_rect]:animate-none!"
+                color={apexBotColorHex(color)}
+                shape={id}
+              />
               <span>{copy.shapes[id]}</span>
             </button>
           ))}
@@ -378,7 +373,7 @@ function BotLookPickers({
       <div className="grid gap-1.5">
         <span className="text-[0.8125rem] font-semibold text-(--ui-text-secondary)">{copy.colorLabel}</span>
         <div aria-label={copy.colorLabel} className="flex gap-2.5" role="group">
-          {(Object.keys(BOT_COLORS) as BotColorId[]).map(id => (
+          {APEX_BOT_COLORS.map(({ hex, id }) => (
             <button
               aria-label={copy.colors[id]}
               aria-pressed={color === id}
@@ -389,7 +384,7 @@ function BotLookPickers({
               data-bot-color={id}
               key={id}
               onClick={() => onColor(id)}
-              style={{ background: BOT_COLORS[id] }}
+              style={{ background: hex }}
               type="button"
             />
           ))}

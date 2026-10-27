@@ -1,26 +1,44 @@
 /**
- * hc-1078 (multi-bot M2): the new / edit sheet, the 「+」, the selected row's 「···」 menu and the
- * delete confirmation, as prototype v2 artboard ⑦ draws them, on the real components in zh.
+ * hc-1078 (multi-bot M2): the new / edit sheet, the selected row's 「···」 menu and the delete
+ * confirmation, as prototype v2 artboard ⑦ draws them, on the real components in zh. The faces are
+ * hc-1077's ApexAvatar with its shape and color tables.
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApexAvatar } from '@/components/apex-avatar'
+import { APEX_BOT_COLORS, type ApexAvatarShape, apexBotColorHex } from '@/components/apex-avatar-look'
 import { I18nProvider } from '@/i18n'
-import { BotOpError, createBot, deleteBot, readBotLook, saveBotLook } from '@/store/single-thread-bot-ops'
+import { BotOpError, createBot, deleteBot, readBotMeta, saveBotLook } from '@/store/single-thread-bot-ops'
+import { apexBot, namedBot } from '@/store/single-thread-bots'
 
 import { BotDeleteConfirm } from './bot-delete-confirm'
-import { BOT_COLORS } from './bot-face'
 import { BotRowMenu } from './bot-row-menu'
-import { BotNewButton, BotSheet, type BotSheetTarget } from './bot-sheet'
+import { BotSheet, type BotSheetTarget } from './bot-sheet'
 
 vi.mock('@/store/single-thread-bot-ops', async importActual => ({
   ...(await importActual<Record<string, unknown>>()),
   createBot: vi.fn(),
   deleteBot: vi.fn(),
-  readBotLook: vi.fn(),
+  readBotMeta: vi.fn(),
   saveBotLook: vi.fn()
 }))
+
+/** The drawn shape of a face: its body element, path and fill. */
+function bodyOf(svg: Element | null | undefined): null | string {
+  const body = svg?.querySelector('path, circle')
+
+  return body ? `${body.tagName}|${body.getAttribute('d') ?? ''}|${body.getAttribute('fill')}` : null
+}
+
+/** What hc-1077's avatar draws for this look. */
+function drawn(shape: ApexAvatarShape, color: string): null | string {
+  const markup = renderToStaticMarkup(<ApexAvatar color={color} shape={shape} />)
+
+  return bodyOf(new DOMParser().parseFromString(markup, 'image/svg+xml').documentElement)
+}
 
 const zh = (node: ReactNode) =>
   render(
@@ -43,27 +61,21 @@ const nameField = () => screen.getByLabelText('叫它什么')
 const saveButton = (label: string) => within(dialog()).getByRole('button', { name: label })
 const previewName = () => dialog().querySelector('[data-bot-sheet-preview-name]')?.textContent
 
-const BOT_EDIT: BotSheetTarget = {
-  kind: 'edit',
-  profile: 'apex-bot-2',
-  isApex: false,
-  name: '小红书文案',
-  shape: 'hexagon',
-  color: 'rose'
-}
+const STORED = { name: '小红书文案', shape: 'hexagon', color: 'rose', created: 1_761_541_200_000 }
+
+/** The row hc-1077's roster would hand over (its color is the drawn hex). */
+const NAMED = namedBot({ name: 'apex-bot-2', ui_meta: { apex: STORED } })
+const BOT_EDIT: BotSheetTarget = { bot: NAMED, kind: 'edit' }
 
 beforeEach(() => {
-  vi.mocked(readBotLook).mockResolvedValue({
-    look: { name: '小红书文案', shape: 'hexagon', color: 'rose' },
-    revision: 2
-  })
+  vi.mocked(readBotMeta).mockResolvedValue({ meta: STORED, revision: 2 })
 })
 
 afterEach(() => {
   cleanup()
   vi.mocked(createBot).mockReset()
   vi.mocked(deleteBot).mockReset()
-  vi.mocked(readBotLook).mockReset()
+  vi.mocked(readBotMeta).mockReset()
   vi.mocked(saveBotLook).mockReset()
 })
 
@@ -90,7 +102,7 @@ describe('the new-assistant sheet', () => {
 
     expect(shapes.map(button => button.textContent)).toEqual(['圆', '圆角方', '胶囊', '六边形', '云朵', '水滴'])
     expect(colors.map(button => button.getAttribute('aria-label'))).toEqual(['蓝', '青', '绿', '橙', '玫红', '金'])
-    expect(Object.values(BOT_COLORS).map(hex => hex.toUpperCase())).not.toContain('#6A4CEB')
+    expect(APEX_BOT_COLORS.map(({ hex }) => hex.toUpperCase())).not.toContain('#6A4CEB')
     expect(shapes.filter(button => button.getAttribute('aria-pressed') === 'true').map(b => b.textContent)).toEqual([
       '圆角方'
     ])
@@ -101,9 +113,11 @@ describe('the new-assistant sheet', () => {
     fireEvent.click(screen.getByRole('button', { name: '云朵' }))
     fireEvent.click(screen.getByRole('button', { name: '青' }))
 
-    const face = dialog().querySelector('.size-16')
-    expect(face?.getAttribute('data-bot-face')).toBe('cloud')
-    expect(face?.querySelector('path')?.getAttribute('fill')).toBe(BOT_COLORS.teal)
+    expect(bodyOf(dialog().querySelector('.size-16'))).toBe(drawn('cloud', apexBotColorHex('teal')))
+    // Every choice is drawn in the color picked.
+    expect(bodyOf(screen.getByRole('button', { name: '水滴' }).querySelector('svg'))).toBe(
+      drawn('drop', apexBotColorHex('teal'))
+    )
   })
 
   it('creates with the chosen look and opens the new assistant', async () => {
@@ -156,11 +170,18 @@ describe('the new-assistant sheet', () => {
 })
 
 describe('the edit sheet', () => {
-  it('reads the stored look, then saves against that revision', async () => {
-    vi.mocked(readBotLook).mockResolvedValue({
-      look: { name: '小红书', shape: 'drop', color: 'gold' },
-      revision: 7
-    })
+  it('opens on the look the sidebar shows', () => {
+    vi.mocked(readBotMeta).mockReturnValue(new Promise(() => undefined))
+    sheet(BOT_EDIT, { taken: ['APEX'] })
+
+    expect((nameField() as HTMLInputElement).value).toBe('小红书文案')
+    expect(screen.getByRole('button', { name: '六边形' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: '玫红' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('reads the stored look, then saves over it against that revision', async () => {
+    const stored = { name: '小红书', shape: 'drop', color: 'gold', created: 1_761_541_200_000 }
+    vi.mocked(readBotMeta).mockResolvedValue({ meta: stored, revision: 7 })
     vi.mocked(saveBotLook).mockResolvedValue(undefined)
     const props = sheet(BOT_EDIT, { taken: ['APEX'] })
 
@@ -172,12 +193,16 @@ describe('the edit sheet', () => {
     fireEvent.click(saveButton('改好了'))
 
     await waitFor(() => expect(props.onSaved).toHaveBeenCalledWith('apex-bot-2'))
-    expect(readBotLook).toHaveBeenCalledWith('apex-bot-2')
-    expect(saveBotLook).toHaveBeenCalledWith('apex-bot-2', { name: '小红书标题', shape: 'drop', color: 'gold' }, 7)
+    expect(readBotMeta).toHaveBeenCalledWith('apex-bot-2')
+    expect(saveBotLook).toHaveBeenCalledWith(
+      'apex-bot-2',
+      { name: '小红书标题', shape: 'drop', color: 'gold' },
+      { revision: 7, stored }
+    )
   })
 
   it('cannot save before the stored revision is known', () => {
-    vi.mocked(readBotLook).mockReturnValue(new Promise(() => undefined))
+    vi.mocked(readBotMeta).mockReturnValue(new Promise(() => undefined))
     sheet(BOT_EDIT, { taken: ['APEX'] })
 
     // Nothing else holds the button back: a name that is fine, under the limit.
@@ -191,10 +216,7 @@ describe('the edit sheet', () => {
     const props = sheet(BOT_EDIT, { taken: ['APEX'] })
 
     await waitFor(() => expect(saveButton('改好了').hasAttribute('disabled')).toBe(false))
-    vi.mocked(readBotLook).mockResolvedValue({
-      look: { name: '标题助手', shape: 'pill', color: 'green' },
-      revision: 3
-    })
+    vi.mocked(readBotMeta).mockResolvedValue({ meta: { name: '标题助手', shape: 'pill', color: 'green' }, revision: 3 })
     fireEvent.change(nameField(), { target: { value: '我的新名字' } })
     fireEvent.click(saveButton('改好了'))
 
@@ -205,15 +227,13 @@ describe('the edit sheet', () => {
   })
 
   it('gives APEX the name field only: its look stays a purple circle', async () => {
-    vi.mocked(readBotLook).mockResolvedValue({ look: {}, revision: 0 })
+    vi.mocked(readBotMeta).mockResolvedValue({ meta: {}, revision: 0 })
     vi.mocked(saveBotLook).mockResolvedValue(undefined)
-    sheet({ kind: 'edit', profile: 'default', isApex: true, name: 'APEX' }, { taken: ['小红书文案'] })
+    sheet({ bot: apexBot(), kind: 'edit' }, { taken: ['小红书文案'] })
 
     expect(screen.queryByRole('group', { name: '样子' })).toBeNull()
     expect(screen.queryByRole('group', { name: '颜色' })).toBeNull()
-    const face = dialog().querySelector('.size-16')
-    expect(face?.getAttribute('data-bot-face')).toBe('circle')
-    expect(face?.querySelector('path')?.getAttribute('fill')).toBe('#6A4CEB')
+    expect(bodyOf(dialog().querySelector('.size-16'))).toBe(drawn('circle', '#6A4CEB'))
 
     await waitFor(() => expect(saveButton('改好了').hasAttribute('disabled')).toBe(false))
     fireEvent.change(nameField(), { target: { value: '小满' } })
@@ -221,37 +241,22 @@ describe('the edit sheet', () => {
 
     await waitFor(() => expect(saveBotLook).toHaveBeenCalled())
     expect(vi.mocked(saveBotLook).mock.calls[0][0]).toBe('default')
-    expect(vi.mocked(saveBotLook).mock.calls[0][2]).toBe(0)
-  })
-})
-
-describe('the 「+」 button', () => {
-  it.each([
-    [4, '新建一个助手', ''],
-    [5, '已经有 5 个助手了，先删掉一个再建', 'full']
-  ])('with %i assistants says %j', (count, label, state) => {
-    const open = vi.fn()
-    zh(<BotNewButton count={count} max={5} onOpen={open} />)
-
-    const button = screen.getByRole('button', { name: label })
-    expect(button.getAttribute('data-single-thread-new-bot')).toBe(state)
-    fireEvent.click(button)
-    expect(open).toHaveBeenCalled()
+    expect(vi.mocked(saveBotLook).mock.calls[0][2]).toEqual({ revision: 0, stored: {} })
   })
 })
 
 describe('the 「···」 menu', () => {
-  async function openMenu(isApex: boolean, name: string) {
+  async function openMenu(bot: Parameters<typeof BotRowMenu>[0]['bot']) {
     const actions = { onDelete: vi.fn(), onEdit: vi.fn() }
-    zh(<BotRowMenu isApex={isApex} name={name} {...actions} />)
-    const trigger = screen.getByRole('button', { name: `管理${name}` })
+    zh(<BotRowMenu bot={bot} {...actions} />)
+    const trigger = screen.getByRole('button', { name: `管理${bot.name}` })
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
 
     return { actions, menu: await screen.findByRole('menu') }
   }
 
   it('offers rename-or-restyle and delete for an assistant', async () => {
-    const { actions, menu } = await openMenu(false, '小红书文案')
+    const { actions, menu } = await openMenu(NAMED)
 
     expect(
       within(menu)
@@ -263,7 +268,7 @@ describe('the 「···」 menu', () => {
   })
 
   it('offers APEX a rename only', async () => {
-    const { actions, menu } = await openMenu(true, 'APEX')
+    const { actions, menu } = await openMenu(apexBot())
 
     expect(
       within(menu)

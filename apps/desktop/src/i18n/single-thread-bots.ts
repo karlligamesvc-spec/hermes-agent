@@ -12,16 +12,13 @@
  * usage are the account's and stay.
  */
 
+import type { ApexAvatarShape, ApexBotColor } from '@/components/apex-avatar-look'
+
 import { useI18n } from './context'
 import type { Locale } from './types'
 
-export type BotShapeId = 'circle' | 'cloud' | 'drop' | 'hexagon' | 'pill' | 'squircle'
-export type BotColorId = 'blue' | 'gold' | 'green' | 'orange' | 'rose' | 'teal'
-
 export interface SingleThreadBotsCopy {
-  /** The 「+」 atop the sidebar, for screen readers and as its tooltip. */
-  newBot: string
-  /** The same button once the limit is reached; `max` includes APEX. */
+  /** hc-1077's 「+」 atop the sidebar once the limit is reached (its own label otherwise); `max` includes APEX. */
   newBotFull: (max: number) => string
   newTitle: string
   editTitle: (name: string) => string
@@ -33,9 +30,9 @@ export interface SingleThreadBotsCopy {
   nameTooLong: (max: number) => string
   nameTaken: string
   shapeLabel: string
-  shapes: Record<BotShapeId, string>
+  shapes: Record<ApexAvatarShape, string>
   colorLabel: string
-  colors: Record<BotColorId, string>
+  colors: Record<ApexBotColor, string>
   colorHelp: string
   /** Under the fields: what a new assistant shares with APEX. */
   sharedNote: string
@@ -66,7 +63,6 @@ export interface SingleThreadBotsCopy {
 }
 
 const en: SingleThreadBotsCopy = {
-  newBot: 'New assistant',
   newBotFull: max => `You already have ${max} assistants. Delete one to make another.`,
   newTitle: 'New assistant',
   editTitle: name => `Edit ${name}`,
@@ -114,7 +110,6 @@ const en: SingleThreadBotsCopy = {
 }
 
 const zh: SingleThreadBotsCopy = {
-  newBot: '新建一个助手',
   newBotFull: max => `已经有 ${max} 个助手了，先删掉一个再建`,
   newTitle: '新建一个助手',
   editTitle: name => `改一下${name}`,
@@ -162,7 +157,6 @@ const zh: SingleThreadBotsCopy = {
 }
 
 const zhHant: SingleThreadBotsCopy = {
-  newBot: '新建一個助手',
   newBotFull: max => `已經有 ${max} 個助手了，先刪掉一個再建`,
   newTitle: '新建一個助手',
   editTitle: name => `改一下${name}`,

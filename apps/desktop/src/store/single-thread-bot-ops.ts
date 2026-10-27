@@ -10,21 +10,23 @@
  *
  * - The directory name is generated (`apex-bot-2`, `apex-bot-3`, …) and never changes: renaming a
  *   named profile upstream stops its engine and moves its directory.
- * - The name and look live in profile.yaml `ui_meta.apex` = `{ name, shape, color }` (`color` is the
- *   palette id, e.g. `blue`; the sidebar draws the hex), written with
- *   the per-key revision check (`ui_meta_expected_revisions`), so an edit made from a stale sheet
- *   is refused instead of silently overwriting a newer one. `ui_meta['hermes-bots']` is never
- *   touched: once a profile carries it, the engine treats it as a Bot Mode profile.
+ * - The name and look live in profile.yaml `ui_meta.apex` (hc-1077's `ApexBotMeta`: `name`, `shape`,
+ *   `color` as a palette id, and `created` in epoch ms, which orders the sidebar), written with the
+ *   per-key revision check (`ui_meta_expected_revisions`), so an edit made from a stale sheet is
+ *   refused instead of silently overwriting a newer one. An edit keeps every stored field it does
+ *   not set (`created`, or anything a later build adds). `ui_meta['hermes-bots']` is never touched:
+ *   once a profile carries it, the engine treats it as a Bot Mode profile.
  * - A new assistant is always cloned from default (`clone_from: 'default'`): only that copy carries
  *   the plugin enable list with apex-overlay and the generation tools.
  * - APEX keeps its look (K6) and cannot be deleted; renaming it writes only `ui_meta.apex.name`.
  */
 
+import type { ApexAvatarShape, ApexBotColor } from '@/components/apex-avatar-look'
+
 import { apexBotNameFromSoul, composeApexBotSoul, renameInApexBotSoul } from '../../shared/apex-bot-soul'
 
 import { requestGatewayForProfile } from './gateway'
-
-export const APEX_PROFILE = 'default'
+import { APEX_BOT_META_KEY, APEX_PROFILE } from './single-thread-bots'
 
 /** The name field's limit, in characters (prototype ⑦: `maxlength="12"`). */
 export const BOT_NAME_MAX = 12
@@ -39,11 +41,15 @@ const CREATE_ATTEMPTS = 3
 /** How long a new assistant waits for the main process to finish setting it up before opening anyway. */
 const SETUP_WAIT_MS = 20_000
 
+/** What the sheet edits. APEX's look is fixed (K6): only `name` is written for it. */
 export interface ApexBotLook {
   name: string
-  shape?: string
-  color?: string
+  shape?: ApexAvatarShape
+  color?: ApexBotColor
 }
+
+/** `ui_meta.apex` exactly as stored, unknown fields included. */
+export type StoredBotMeta = Readonly<Record<string, unknown>>
 
 export type BotOpFailure = 'apex' | 'conflict' | 'failed' | 'full'
 
@@ -68,9 +74,12 @@ interface ConfigureResult {
   applied?: { soul?: boolean; ui_meta?: boolean; ui_meta_conflicts?: unknown }
 }
 
-function request<T>(method: string, params: Record<string, unknown>): Promise<T> {
+/** A request to APEX's engine; also the door hc-1077's `refreshBotRoster` takes after a change. */
+export function requestOnApex<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
   return requestGatewayForProfile<T>(APEX_PROFILE, method, params)
 }
+
+const request = requestOnApex
 
 /** Trimmed, one line, inner whitespace collapsed: the name as it is shown and stored. */
 export function cleanBotName(raw: string): string {
@@ -116,29 +125,14 @@ export function nextBotProfileName(taken: Iterable<string>): string {
   return `${PROFILE_PREFIX}${n}`
 }
 
-/** `ui_meta.apex` as stored, keeping only well-formed fields. */
-export function apexLookFrom(uiMeta: unknown): Partial<ApexBotLook> {
-  const raw = uiMeta && typeof uiMeta === 'object' ? (uiMeta as { apex?: unknown }).apex : null
+function storedMetaOf(row: ProfileRow): StoredBotMeta {
+  const raw = row.ui_meta?.[APEX_BOT_META_KEY]
 
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return {}
-  }
-
-  const look: Partial<ApexBotLook> = {}
-
-  for (const key of ['name', 'shape', 'color'] as const) {
-    const value = (raw as Record<string, unknown>)[key]
-
-    if (typeof value === 'string' && value.trim()) {
-      look[key] = value
-    }
-  }
-
-  return look
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as StoredBotMeta) : {}
 }
 
 function revisionOf(row: ProfileRow | undefined): number {
-  const value = row?.ui_meta_revisions?.apex
+  const value = row?.ui_meta_revisions?.[APEX_BOT_META_KEY]
 
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0
 }
@@ -170,17 +164,18 @@ function takenProfileNames(rows: readonly ProfileRow[]): Set<string> {
   return taken
 }
 
-function storedLook(profile: string, look: ApexBotLook): ApexBotLook {
+/** The stored meta with this edit over it: APEX takes only its name. */
+function metaToWrite(profile: string, look: ApexBotLook, stored: StoredBotMeta): Record<string, unknown> {
   const name = cleanBotName(look.name)
 
-  return profile === APEX_PROFILE ? { name } : { name, shape: look.shape, color: look.color }
+  return profile === APEX_PROFILE ? { ...stored, name } : { ...stored, name, shape: look.shape, color: look.color }
 }
 
-async function writeLook(profile: string, look: ApexBotLook, revision: number): Promise<void> {
+async function writeMeta(profile: string, meta: Record<string, unknown>, revision: number): Promise<void> {
   const result = await request<ConfigureResult>('profiles.configure', {
     name: profile,
-    ui_meta: { apex: storedLook(profile, look) },
-    ui_meta_expected_revisions: { apex: revision }
+    ui_meta: { [APEX_BOT_META_KEY]: meta },
+    ui_meta_expected_revisions: { [APEX_BOT_META_KEY]: revision }
   })
 
   if (result?.applied?.ui_meta === true) {
@@ -292,7 +287,7 @@ export async function createBot(look: ApexBotLook, { count, max }: { count: numb
 
   try {
     // A brand-new profile.yaml has no ui_meta revisions: 0 is the only right answer.
-    await writeLook(profile, { ...look, name }, 0)
+    await writeMeta(profile, { ...metaToWrite(profile, look, {}), created: Date.now() }, 0)
   } catch (error) {
     // Without its name the assistant would show up as `apex-bot-N`: take the half-made one back.
     await deleteProfileDir(profile).catch(() => undefined)
@@ -305,15 +300,15 @@ export async function createBot(look: ApexBotLook, { count, max }: { count: numb
   return profile
 }
 
-/** The look as stored now and the revision an edit of it must name. */
-export async function readBotLook(profile: string): Promise<{ look: Partial<ApexBotLook>; revision: number }> {
+/** `ui_meta.apex` as stored now and the revision an edit of it must name. */
+export async function readBotMeta(profile: string): Promise<{ meta: StoredBotMeta; revision: number }> {
   const row = (await listProfiles()).find(candidate => candidate.name === profile)
 
   if (!row) {
     throw new BotOpError('failed', `profile ${profile} is gone`)
   }
 
-  return { look: apexLookFrom(row.ui_meta), revision: revisionOf(row) }
+  return { meta: storedMetaOf(row), revision: revisionOf(row) }
 }
 
 /**
@@ -337,13 +332,18 @@ async function syncSoulName(profile: string, name: string): Promise<void> {
 }
 
 /**
- * Save a rename / new look made from a sheet that showed `revision`, then move a named assistant's
- * SOUL line to the saved name. APEX's SOUL is never touched: it is the APEX identity (hc-1042).
+ * Save a rename / new look made from a sheet that read `stored` at `revision` (readBotMeta), then move
+ * a named assistant's SOUL line to the saved name. APEX's SOUL is never touched: it is the APEX
+ * identity (hc-1042).
  */
-export async function saveBotLook(profile: string, look: ApexBotLook, revision: number): Promise<void> {
+export async function saveBotLook(
+  profile: string,
+  look: ApexBotLook,
+  { revision, stored }: { revision: number; stored: StoredBotMeta }
+): Promise<void> {
   const name = cleanBotName(look.name)
 
-  await writeLook(profile, { ...look, name }, revision)
+  await writeMeta(profile, metaToWrite(profile, look, stored), revision)
 
   if (profile !== APEX_PROFILE) {
     await syncSoulName(profile, name)
