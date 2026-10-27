@@ -253,6 +253,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     remember: name => ipcRenderer.invoke('hermes:profile:remember', name),
     set: name => ipcRenderer.invoke('hermes:profile:set', name)
   },
+  // hc-1081: after a new assistant's config is on the relay, copy the root's platform skills
+  // into that profile (apex-platform-skills-sync.ts); resolves { ok, filled }.
+  syncApexProfileSkills: profile => ipcRenderer.invoke('hermes:apex:syncProfileSkills', profile),
   // ApexNodes managed-LLM (zero-key) default path. See electron/apex-managed.cjs.
   managed: {
     status: () => ipcRenderer.invoke('hermes:managed:status'),
