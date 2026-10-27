@@ -241,6 +241,26 @@ describe('the roster', () => {
     ])
   })
 
+  it('carries the profile’s whole ui_meta for the row to read (hc-1079’s apex-intake), and paints it from the cache', async () => {
+    const intake = { a1: 2, done: true }
+
+    await refreshBotRoster((async (method: string) =>
+      method === 'profiles.list'
+        ? {
+            profiles: [row('writer', { name: '文案' }, { ui_meta: { apex: { name: '文案' }, 'apex-intake': intake } })]
+          }
+        : { soul: 'x' }) as never)
+
+    expect($botRoster.get()[1]!.uiMeta['apex-intake']).toEqual(intake)
+    expect($botRoster.get()[0]!.uiMeta).toEqual({})
+
+    vi.resetModules()
+
+    const fresh = await import('./single-thread-bots')
+
+    expect(fresh.$botRoster.get()[1]!.uiMeta['apex-intake']).toEqual(intake)
+  })
+
   it('keeps the roster on screen when the list cannot be read', async () => {
     resetBotRosterForTest([...botRosterFrom([row('writer', { name: '小红书文案' })], () => true)])
 

@@ -19,17 +19,25 @@ import {
 import { MANAGED_PROVIDER_SLUG } from '@/lib/provider-allowlist'
 import { useModelTierMode } from '@/store/model-tiers'
 import { notify, notifyError } from '@/store/notifications'
+import { useAccountModelScope } from '@/store/single-thread-bots'
 
 import { useOnProfileSwitch } from '../hooks/use-on-profile-switch'
 
 import { ModelSettings } from './model-settings'
 import { SectionHeading } from './primitives'
 
-/** Settings › 模型 — or › 档位 on an APEX account in tier mode (hc-960). */
-export function ModelSection(props: {
+/**
+ * Settings › 模型 — or › 档位 on an APEX account in tier mode (hc-960).
+ * hc-1077 (K3: the tier follows the account): with several assistants on, it
+ * edits APEX's, whichever assistant is on screen; the others follow it
+ * (hc-1080). Never one assistant's own.
+ */
+export function ModelSection(section: {
   onMainModelChanged?: (provider: string, model: string) => void
   scopeProfile?: string
 }) {
+  const props = { ...section, scopeProfile: useAccountModelScope(section.scopeProfile) }
+
   return useModelTierMode() ? <ModelTierSettings {...props} /> : <ModelSettings {...props} />
 }
 

@@ -6,8 +6,8 @@
  * the order they were made. A row is the assistant's face (its shape and
  * colour), its name, the same status line APEX's row has always had (the
  * latest reply, what it is doing, 等你决定, 通话中) and a dot for a reply not
- * yet seen. An assistant the user switched away from keeps working in its own
- * engine; its row follows it (bot-activity.ts).
+ * yet seen (all decided in bot-status.ts). An assistant the user switched away
+ * from keeps working in its own engine; its row follows it.
  *
  * A click on another assistant switches to it (store/single-thread-bots.ts
  * `openBot`) and the shell opens its 「APEX 主线」; a click on the one on
@@ -16,39 +16,27 @@
  */
 
 import { useStore } from '@nanostores/react'
-import { useEffect } from 'react'
 
 import { ApexAvatar } from '@/components/apex-avatar'
 import { Codicon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
-import { useSingleThreadSidebarCopy } from '@/i18n/single-thread-sidebar'
+import { type SingleThreadSidebarCopy, useSingleThreadSidebarCopy } from '@/i18n/single-thread-sidebar'
 import { cn } from '@/lib/utils'
-import { $mainThread, $mainThreadsByProfile, type MainThreadState } from '@/store/main-thread'
-import { notifyError } from '@/store/notifications'
-import { $sessionStates } from '@/store/session-states'
+import { notify } from '@/store/notifications'
 import {
-  $botLastSessions,
   $botRoster,
   $currentBotProfile,
   type ApexBot,
+  botFor,
   openBot,
   requestBotCreate
 } from '@/store/single-thread-bots'
-import {
-  $botSeenReplyIds,
-  botUnread,
-  latestReply,
-  mainThreadState,
-  markBotReplySeen,
-  presenceOf,
-  profileThread,
-  type ThreadReply
-} from '@/store/single-thread-presence'
-import { $threadActivity, $threadInCall } from '@/store/thread-signals'
 
-import { backgroundActivity } from './bot-activity'
+import { parsePoolAllBusy } from '../../../shared/apex-pool-busy'
+
+import { useBotRowStatus } from './bot-status'
 import { SINGLE_THREAD_ROW_CLASS } from './sidebar-row'
-import { BUSY_LINE_CLASS, useStatusLine } from './sidebar-status'
+import { BUSY_LINE_CLASS } from './sidebar-status'
 
 const ACTIVE_ROW_CLASS = 'bg-(--ui-row-active-background) shadow-xs hover:bg-(--ui-row-active-background)'
 
@@ -70,20 +58,24 @@ export function NewBotButton() {
 }
 
 /**
- * A row never opened in this window has no session state: its last line comes
- * from `profiles.list` — only when that newest conversation is its thread.
+ * Why an assistant did not open, in words: every pooled engine busy with a
+ * turn (hc-1080) names who is working; anything else says it could not be
+ * opened. Never the engine's error text (that goes to the console). Both offer
+ * to try again.
  */
-function previewReply(
-  thread: MainThreadState | undefined,
-  last: undefined | { id: string; preview: string }
-): null | ThreadReply {
-  if (!last?.preview || thread?.status !== 'found' || !thread.ids.includes(last.id)) {
-    return null
-  }
+function sayWhyNotOpened(error: unknown, bot: ApexBot, copy: SingleThreadSidebarCopy, retry: NotifyRetry): void {
+  const busy = parsePoolAllBusy(error)?.busy ?? []
+  const names = busy.map(profile => botFor($botRoster.get(), profile).name).join(copy.nameSeparator)
 
-  // The same one-line reading the latest reply gets.
-  return latestReply([{ id: `preview:${last.id}`, parts: [{ text: last.preview, type: 'text' }], role: 'assistant' }])
+  console.warn(`[multi-bot] could not open ${bot.profile}`, error)
+  notify({
+    action: retry,
+    kind: names ? 'warning' : 'error',
+    message: names ? copy.allBusy(names) : copy.openBotFailed(bot.name)
+  })
 }
+
+type NotifyRetry = { label: string; onClick: () => void }
 
 function BotRow({
   bot,
@@ -97,31 +89,8 @@ function BotRow({
   viewing: boolean
 }) {
   const copy = useSingleThreadSidebarCopy()
-  const { t } = useI18n()
-  const states = useStore($sessionStates)
-  const activeThread = useStore($mainThread)
-  const threads = useStore($mainThreadsByProfile)
-  const lastSessions = useStore($botLastSessions)
-  const thread = profileThread(bot.profile, activeThread, threads)
-  const state = thread ? mainThreadState(states, thread) : null
-  const reply = latestReply(state?.messages ?? [])
-  // The activity line and the voice panel speak for the conversation on screen only.
-  const signal = useStore($threadActivity)
-  const inCall = useStore($threadInCall)
-  const activity = current ? signal : backgroundActivity(state, t.assistant.tool.process)
-  const preview = previewReply(thread, lastSessions[bot.profile])
-  const presence = presenceOf(state, activity, current && inCall, reply ?? preview)
-  const line = useStatusLine(presence)
-  const seen = useStore($botSeenReplyIds)[bot.profile]
   const onScreen = current && viewing
-  const unread = botUnread(reply, seen) && !onScreen
-
-  // A reply counts as seen once this assistant's conversation is on screen with it in it.
-  useEffect(() => {
-    if (onScreen) {
-      markBotReplySeen(bot.profile, reply?.id ?? null)
-    }
-  }, [bot.profile, onScreen, reply?.id])
+  const status = useBotRowStatus(bot, { current, onScreen })
 
   return (
     <button
@@ -129,31 +98,31 @@ function BotRow({
       className={cn(SINGLE_THREAD_ROW_CLASS, onScreen && ACTIVE_ROW_CLASS)}
       data-single-thread-bot={bot.profile}
       data-single-thread-nav="thread"
-      data-state={presence.kind}
+      data-state={status.kind}
       onClick={onOpen}
       type="button"
     >
       <ApexAvatar
         className="size-[2.125rem]"
         color={bot.color}
-        mood={presence.kind === 'working' ? 'working' : 'idle'}
+        mood={status.kind === 'working' ? 'working' : 'idle'}
         shape={bot.shape}
       />
       <span className="flex min-w-0 flex-1 flex-col leading-tight">
         <span className="truncate text-[0.875rem] font-semibold text-(--ui-text-primary)">{bot.name}</span>
-        {line ? (
+        {status.line ? (
           <span
             className={cn(
               'truncate pt-0.5 text-[0.75rem] text-(--ui-text-tertiary)',
-              presence.kind !== 'idle' && BUSY_LINE_CLASS
+              status.kind !== 'idle' && BUSY_LINE_CLASS
             )}
             data-single-thread-status=""
           >
-            {line}
+            {status.line}
           </span>
         ) : null}
       </span>
-      {unread ? (
+      {status.unread ? (
         <span aria-label={copy.unread} className="size-2 shrink-0 rounded-full bg-[#6A4CEB]" role="img" />
       ) : null}
     </button>
@@ -162,6 +131,7 @@ function BotRow({
 
 export function SingleThreadBotRows({ onOpenCurrent, viewing }: { onOpenCurrent: () => void; viewing: boolean }) {
   const copy = useSingleThreadSidebarCopy()
+  const { t } = useI18n()
   const roster = useStore($botRoster)
   const currentProfile = useStore($currentBotProfile)
 
@@ -172,8 +142,11 @@ export function SingleThreadBotRows({ onOpenCurrent, viewing }: { onOpenCurrent:
       return
     }
 
-    // The switch drops to a fresh draft on `/` from any page; the shell then opens the thread.
-    void openBot(bot.profile).catch((error: unknown) => notifyError(error, copy.openBotFailed(bot.name)))
+    // The switch drops to a fresh draft on `/` from any page; the shell then opens the thread
+    // (while a cold engine starts, the chat says 「正在唤醒 <name>…」).
+    void openBot(bot.profile).catch((error: unknown) =>
+      sayWhyNotOpened(error, bot, copy, { label: t.common.retry, onClick: () => open(bot) })
+    )
   }
 
   return (

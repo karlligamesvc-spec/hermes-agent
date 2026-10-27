@@ -31,6 +31,10 @@ export interface SingleThreadSidebarCopy {
   newBot: string
   /** hc-1077: another assistant's engine could not be reached. */
   openBotFailed: (name: string) => string
+  /** hc-1077: every pooled engine is mid-turn (hc-1080), so no room to open another. `names` already joined. */
+  allBusy: (names: string) => string
+  /** Joins the busy assistants' names. */
+  nameSeparator: string
 }
 
 const en: SingleThreadSidebarCopy = {
@@ -44,7 +48,9 @@ const en: SingleThreadSidebarCopy = {
   planUsage: ({ percent, period, plan }) => `${plan} · ${percent} used this ${period}`,
   underOnePercent: 'under 1%',
   newBot: 'New assistant',
-  openBotFailed: name => `Couldn’t open ${name} right now. Try again in a moment.`
+  openBotFailed: name => `Couldn’t open ${name} right now. Try again in a moment.`,
+  allBusy: names => `${names} are all working. Switch once one of them is done.`,
+  nameSeparator: ', '
 }
 
 const zh: SingleThreadSidebarCopy = {
@@ -58,7 +64,9 @@ const zh: SingleThreadSidebarCopy = {
   planUsage: ({ percent, period, plan }) => `${plan} · ${period === 'week' ? '本周' : '本月'}用了 ${percent}`,
   underOnePercent: '不到 1%',
   newBot: '新建一个助手',
-  openBotFailed: name => `暂时打不开「${name}」，稍后再试。`
+  openBotFailed: name => `暂时打不开「${name}」，稍后再试。`,
+  allBusy: names => `${names}都在做事，等其中一个做完再切过来。`,
+  nameSeparator: '、'
 }
 
 const zhHant: SingleThreadSidebarCopy = {
@@ -72,7 +80,9 @@ const zhHant: SingleThreadSidebarCopy = {
   planUsage: ({ percent, period, plan }) => `${plan} · ${period === 'week' ? '本週' : '本月'}用了 ${percent}`,
   underOnePercent: '不到 1%',
   newBot: '新建一個助手',
-  openBotFailed: name => `暫時打不開「${name}」，稍後再試。`
+  openBotFailed: name => `暫時打不開「${name}」，稍後再試。`,
+  allBusy: names => `${names}都在做事，等其中一個做完再切過來。`,
+  nameSeparator: '、'
 }
 
 export const SINGLE_THREAD_SIDEBAR_COPY: Readonly<Record<Locale, SingleThreadSidebarCopy>> = {

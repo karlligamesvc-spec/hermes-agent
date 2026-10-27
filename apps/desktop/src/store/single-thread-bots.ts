@@ -177,6 +177,8 @@ export interface ApexBot {
   created: null | number
   /** The `apex` key's ui_meta revision (0 when never written): the compare-and-swap value for the next write. */
   revision: number
+  /** The profile's whole `ui_meta` as listed (read-only): other keys (hc-1079's `apex-intake`) for the row to read. */
+  uiMeta: Readonly<Record<string, unknown>>
 }
 
 /** A `profiles.list` row, as far as the roster reads it. */
@@ -186,6 +188,12 @@ export interface BotProfileRow {
   name: string
   ui_meta?: Record<string, unknown>
   ui_meta_revisions?: Record<string, number>
+}
+
+function uiMetaOf(row: BotProfileRow | undefined): Readonly<Record<string, unknown>> {
+  const meta = row?.ui_meta
+
+  return meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {}
 }
 
 function metaOf(row: BotProfileRow | undefined, key: string): Record<string, unknown> {
@@ -234,7 +242,8 @@ export function apexBot(row?: BotProfileRow): ApexBot {
     name: nameOf(row, APEX_NAME),
     profile: APEX_PROFILE,
     revision: revisionOf(row),
-    shape: 'circle'
+    shape: 'circle',
+    uiMeta: uiMetaOf(row)
   }
 }
 
@@ -250,7 +259,8 @@ export function namedBot(row: BotProfileRow): ApexBot {
     name: nameOf(row, normalizeProfileKey(row.name)),
     profile: normalizeProfileKey(row.name),
     revision: revisionOf(row),
-    shape: isApexAvatarShape(meta.shape) ? meta.shape : APEX_BOT_DEFAULT_LOOK.shape
+    shape: isApexAvatarShape(meta.shape) ? meta.shape : APEX_BOT_DEFAULT_LOOK.shape,
+    uiMeta: uiMetaOf(row)
   }
 }
 
@@ -288,6 +298,7 @@ function cachedRoster(): ApexBot[] {
   )
 
   const meta = (row: Partial<ApexBot>) => ({
+    ...(row.uiMeta && typeof row.uiMeta === 'object' ? row.uiMeta : {}),
     [APEX_BOT_META_KEY]: {
       color: APEX_BOT_COLORS.find(color => color.hex === row.color)?.id,
       created: row.created,
@@ -450,6 +461,19 @@ export function canDeleteBot(bot: Pick<ApexBot, 'isApex'>): boolean {
 
 export function canRestyleBot(bot: Pick<ApexBot, 'isApex'>): boolean {
   return !bot.isApex
+}
+
+/**
+ * K3 (the tier follows the account): the profile the model / tier settings
+ * edit. With several assistants on and another one on screen, APEX's — the
+ * root, which hc-1080 makes the others follow; otherwise `scopeProfile`
+ * unchanged (undefined keeps following the active profile).
+ */
+export function useAccountModelScope(scopeProfile: string | undefined): string | undefined {
+  const multiBot = useMultiBotMode()
+  const active = useStore($activeGatewayProfile)
+
+  return multiBot && normalizeProfileKey(scopeProfile ?? active) !== APEX_PROFILE ? APEX_PROFILE : scopeProfile
 }
 
 /** For code outside React (the approval sentence). */

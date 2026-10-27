@@ -30,7 +30,10 @@ import { APEX_PUBLIC_LLM_MODELS, MANAGED_PROVIDER_SLUG } from '@/lib/provider-al
 import { $authState } from '@/store/auth'
 import { $freeTierStatus } from '@/store/free-tier'
 import { $freeTierStatusForChrome, userFacingModelName, useUserFacingModelName } from '@/store/model-tiers'
+import { $activeGatewayProfile } from '@/store/profile'
 import { setGatewayState, setModelPickerOpen } from '@/store/session'
+import { setSingleThreadFlagForTest } from '@/store/single-thread'
+import { setMultiBotFlagForTest } from '@/store/single-thread-bots'
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn()
@@ -397,5 +400,59 @@ describe('换更强的再答一次 offers only a tier the account can use', () =
 
   it('never offers a tier on the user’s own model', () => {
     expect(retryStrongerTier('deepseek-chat', 'deepseek', advanced, true)).toBeNull()
+  })
+})
+
+describe('hc-1077 K3: with several assistants on, the tier is the account’s', () => {
+  afterEach(() => {
+    setMultiBotFlagForTest(false)
+    setSingleThreadFlagForTest(false)
+    $activeGatewayProfile.set('default')
+  })
+
+  it('on another assistant, Settings › 档位 reads and writes APEX’s (the root the others follow)', async () => {
+    setTierMode(true)
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(true)
+    $activeGatewayProfile.set('writer')
+    renderWithClients(<ModelSection />)
+
+    const pro = await screen.findByRole('radio', { name: /Pro/ })
+    await waitFor(() => expect(pro.getAttribute('data-state')).toBe('available'))
+    expect(hermes.getGlobalModelInfo).toHaveBeenCalledWith('default')
+    expect(hermes.getGlobalModelInfo).not.toHaveBeenCalledWith('writer')
+
+    fireEvent.click(pro)
+
+    await waitFor(() =>
+      expect(hermes.setModelAssignment).toHaveBeenCalledWith(
+        { model: 'apex-pro', provider: MANAGED_PROVIDER_SLUG, scope: 'main' },
+        'default'
+      )
+    )
+  })
+
+  it('the model page without tier mode too', async () => {
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(true)
+    $activeGatewayProfile.set('writer')
+    renderWithClients(<ModelSection />)
+
+    await waitFor(() => expect(hermes.getGlobalModelInfo).toHaveBeenCalledWith('default'))
+    expect(hermes.getGlobalModelInfo).not.toHaveBeenCalledWith(undefined)
+  })
+
+  it.each([
+    ['on APEX itself', true, 'default'],
+    ['with the switch off', false, 'writer']
+  ])('(control) %s the page keeps following the active profile', async (_label, multiBot, active) => {
+    setTierMode(true)
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(multiBot)
+    $activeGatewayProfile.set(active)
+    renderWithClients(<ModelSection />)
+
+    await screen.findByRole('radio', { name: /Pro/ })
+    expect(hermes.getGlobalModelInfo).toHaveBeenCalledWith(undefined)
   })
 })

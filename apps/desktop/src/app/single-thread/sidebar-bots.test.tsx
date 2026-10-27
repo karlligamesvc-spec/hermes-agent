@@ -5,12 +5,14 @@
  * (src/multi-bot-identity.test.tsx).
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SidebarSurface } from '@/app/contrib/surfaces'
 import type { SidebarActions } from '@/app/contrib/types'
 import type { AppView } from '@/app/routes'
+import { SingleThreadBotRows } from '@/app/single-thread/sidebar-bots'
 import type { ClientSessionState } from '@/app/types'
 import { apexBotColorHex } from '@/components/apex-avatar-look'
 import { SidebarProvider } from '@/components/ui/sidebar'
@@ -286,6 +288,23 @@ describe('hc-1077 each row follows its own assistant', () => {
     expect(within(rowFor('writer')).getByRole('img', { name: '有新消息' })).toBeTruthy()
   })
 
+  it('the row on screen paints without a dot, even before it marks its reply seen', () => {
+    threads({ default: 'apex-root' })
+    $sessionStates.set({ apex: session('apex-root', { messages: [reply('a-2', '好了')] }) })
+    $botSeenReplyIds.set({ default: 'a-1' })
+
+    // A server render runs no effect: this is the first paint, before markBotReplySeen.
+    const html = renderToStaticMarkup(
+      <I18nProvider configClient={null} initialLocale="zh">
+        <SingleThreadBotRows onOpenCurrent={noop} viewing />
+      </I18nProvider>
+    )
+
+    expect(html).toContain('data-single-thread-bot="default"')
+    expect(html).not.toContain('有新消息')
+    expect($botSeenReplyIds.get().default).toBe('a-1')
+  })
+
   it('no dot for one the user never opened, nor for the one on screen', () => {
     threads({ default: 'apex-root', writer: 'writer-root' })
     $sessionStates.set({
@@ -325,16 +344,51 @@ describe('hc-1077 switching', () => {
     expect(rowFor('writer').getAttribute('aria-current')).toBe('true')
   })
 
-  it('says so when the assistant cannot be opened, and stays on the one on screen', async () => {
-    ensureGatewayProfile.mockRejectedValueOnce(new Error('spawn failed'))
+  it('says so in words when the assistant cannot be opened, offers a retry, and stays on the one on screen', async () => {
+    ensureGatewayProfile.mockRejectedValueOnce(new Error('spawn failed: Traceback (most recent call last)'))
     renderSidebar()
 
     fireEvent.click(rowFor('scripts'))
 
-    await waitFor(() =>
-      expect($notifications.get().map(item => item.title)).toContain('暂时打不开「带货脚本」，稍后再试。')
-    )
+    await waitFor(() => expect($notifications.get()).toHaveLength(1))
+
+    const [notice] = $notifications.get()
+
+    expect([notice!.kind, notice!.message, notice!.action?.label]).toEqual([
+      'error',
+      '暂时打不开「带货脚本」，稍后再试。',
+      '重试'
+    ])
+    expect(JSON.stringify(notice)).not.toMatch(/spawn|Traceback/)
     expect(rowFor('default').getAttribute('aria-current')).toBe('true')
+
+    act(() => notice!.action!.onClick())
+
+    await waitFor(() => expect(ensureGatewayProfile).toHaveBeenCalledTimes(2))
+    expect(ensureGatewayProfile).toHaveBeenLastCalledWith('scripts')
+  })
+
+  it('every pooled engine busy (hc-1080): names who is working, by name, not the code', async () => {
+    ensureGatewayProfile.mockRejectedValueOnce(
+      new Error(
+        "Error invoking remote method 'hermes:connection': Error: APEX_POOL_ALL_BUSY " +
+          '{"busy":["writer","default","editor"],"limit":3}'
+      )
+    )
+    renderSidebar()
+
+    fireEvent.click(rowFor('scripts'))
+
+    await waitFor(() => expect($notifications.get()).toHaveLength(1))
+
+    const [notice] = $notifications.get()
+
+    expect([notice!.kind, notice!.message, notice!.action?.label]).toEqual([
+      'warning',
+      '小红书文案、APEX、editor都在做事，等其中一个做完再切过来。',
+      '重试'
+    ])
+    expect(JSON.stringify(notice)).not.toContain('APEX_POOL_ALL_BUSY')
   })
 
   it('a click on the assistant on screen goes back to its conversation without a switch', () => {
