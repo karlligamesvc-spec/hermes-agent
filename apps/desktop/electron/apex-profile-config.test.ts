@@ -154,6 +154,100 @@ describe('healProductBlocksYaml', () => {
   })
 })
 
+describe('the named profiles follow the root (account) tier', () => {
+  const ST = { APEXNODES_SINGLE_THREAD: '1', APEX_SINGLE_THREAD_ACTIVE: '1' }
+  const allTiers = ['apex-flash', 'apex-pro', 'apex-max']
+
+  test('every managed profile takes the tier the root settles on, whatever it held', () => {
+    const dir = hermesRoot(
+      {
+        writer: managedConfig('apex-flash'),
+        editor: managedConfig('deepseek-v4-pro-APEX'),
+        maxer: managedConfig('apex-max'),
+        mine: BYOK
+      },
+      managedConfig('apex-pro', NEW_KEY)
+    )
+
+    const lines: string[] = []
+    const mine = path.join(dir, 'profiles', 'mine', 'config.yaml')
+    const before = fingerprint(mine)
+
+    guardProductBlocksInHomes(
+      managedProfileHomes(dir, RELAY),
+      context({ env: ST, entitled: allTiers }),
+      'watch',
+      line => lines.push(line)
+    )
+
+    for (const profile of [DEFAULT_PROFILE, 'writer', 'editor', 'maxer']) {
+      assert.match(read(dir, profile), /^ {2}default: apex-pro$/m, profile)
+    }
+
+    assert.deepEqual(fingerprint(mine), before, 'a BYOK profile has no tier to follow')
+    assert.ok(
+      lines.some(line => line.includes('model(account:apex-max→pro)') && line.endsWith('(watch; profile maxer)')),
+      lines.join('\n')
+    )
+  })
+
+  test('the root is capped by the plan first, and the profiles follow the capped tier', () => {
+    const dir = hermesRoot({ writer: managedConfig('apex-max') }, managedConfig('apex-max', NEW_KEY))
+
+    guardProductBlocksInHomes(
+      managedProfileHomes(dir, RELAY),
+      context({ env: ST, entitled: ['apex-flash', 'apex-pro'] }),
+      'relay-tiers',
+      () => undefined
+    )
+
+    assert.match(read(dir, DEFAULT_PROFILE), /^ {2}default: apex-pro$/m)
+    assert.match(read(dir, 'writer'), /^ {2}default: apex-pro$/m)
+  })
+
+  test('a root on BYOK sets no account tier: each profile settles by the hc-1072 rule on its own', () => {
+    const dir = hermesRoot({ writer: managedConfig('apex-max'), editor: managedConfig('deepseek-v4-pro-APEX') }, BYOK)
+
+    guardProductBlocksInHomes(
+      managedProfileHomes(dir, RELAY),
+      context({ env: ST, entitled: allTiers }),
+      'boot',
+      () => undefined
+    )
+
+    assert.match(read(dir, 'writer'), /^ {2}default: apex-max$/m)
+    assert.match(read(dir, 'editor'), /^ {2}default: apex-flash$/m)
+  })
+
+  test('with tiers and single-thread both off, no profile model is rewritten', () => {
+    const dir = hermesRoot({ writer: managedConfig('apex-flash') }, managedConfig('apex-pro', NEW_KEY))
+
+    guardProductBlocksInHomes(managedProfileHomes(dir, RELAY), context(), 'boot', () => undefined)
+
+    assert.match(read(dir, 'writer'), /^ {2}default: apex-flash$/m)
+  })
+
+  test('a profile whose main model is its own keeps it, while its relay entry still gets the key', () => {
+    const own =
+      'model:\n  default: deepseek-v4-flash\n  provider: deepseek\n' +
+      managedConfig('apex-flash')
+        .split('model: apex-flash\n')[0]
+        .slice(managedConfig('apex-flash').indexOf('custom_providers:'))
+
+    const dir = hermesRoot({ writer: own }, managedConfig('apex-pro', NEW_KEY))
+
+    guardProductBlocksInHomes(
+      managedProfileHomes(dir, RELAY),
+      context({ env: ST, entitled: allTiers }),
+      'boot',
+      () => undefined
+    )
+
+    assert.match(read(dir, 'writer'), /^ {2}default: deepseek-v4-flash$/m)
+    assert.equal(auditManagedRelayKeyAnchors(read(dir, 'writer'), RELAY, NEW_KEY).clean, true)
+  })
+})
+
 describe('every managed profile is kept in step, nothing else is touched', () => {
   test('the guard heals the root and each managed profile; a BYOK profile keeps every byte and its mtime', () => {
     const dir = hermesRoot({

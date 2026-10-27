@@ -19,6 +19,7 @@ import {
   resolveApexEndpoints
 } from './apex-managed'
 import {
+  accountTierOfRoot,
   applyModelTierSwitches,
   healManagedModelTier,
   isModelTierAlias,
@@ -210,6 +211,53 @@ describe('the boot migration to Flash', () => {
   })
 })
 
+describe('hc-1080: named profiles follow the root tier', () => {
+  const ST = { APEX_SINGLE_THREAD_ACTIVE: '1' }
+
+  const relayModel = (model: string) =>
+    `model:\n  default: ${model}\n  provider: custom\n  base_url: ${RELAY}\n  api_key: sk-test\n`
+
+  test.each([
+    ['a tier alias on the relay, single-thread on', relayModel('APEX-Pro'), { key: 'sk-test' }, ST, 'apex-pro'],
+    [
+      'a tier alias on the relay, tiers on',
+      relayModel('apex-max'),
+      { key: 'sk-test' },
+      { APEXNODES_MODEL_TIERS: '1' },
+      'apex-max'
+    ],
+    ['an old id (the root heal has not settled it)', relayModel('deepseek-v4-pro-APEX'), { key: 'sk-test' }, ST, null],
+    ['the root on BYOK', 'model:\n  default: apex-pro\n  provider: deepseek\n', { key: 'sk-test' }, ST, null],
+    ['signed out', relayModel('apex-pro'), {}, ST, null],
+    ['tiers and single-thread both off', relayModel('apex-pro'), { key: 'sk-test' }, {}, null]
+  ])('accountTierOfRoot: %s', (_label, raw, managed, env, expected) => {
+    assert.equal(accountTierOfRoot(raw, managed, RELAY, env), expected)
+  })
+
+  test('a followed tier replaces the profile pick, an old id or a tier alike; a non-tier follow is ignored', () => {
+    const fixed: string[] = []
+
+    assert.match(
+      healManagedModelTier(relayModel('apex-max'), { key: 'sk-test' }, RELAY, ST, fixed, null, 'apex-pro'),
+      /^ {2}default: apex-pro$/m
+    )
+    assert.match(
+      healManagedModelTier(relayModel('deepseek-v4-pro-APEX'), { key: 'sk-test' }, RELAY, ST, fixed, null, 'apex-pro'),
+      /^ {2}default: apex-pro$/m
+    )
+    assert.deepEqual(fixed, ['model(account:apex-max→pro)', 'model(account:deepseek-v4-pro-APEX→pro)'])
+    assert.equal(
+      migrateManagedModelToTierYaml(relayModel('apex-max'), RELAY, true, null, 'deepseek-v4-pro').changed,
+      false
+    )
+    assert.equal(
+      healManagedModelTier(relayModel('apex-max'), { key: 'sk-test' }, RELAY, {}, [], null, 'apex-pro'),
+      relayModel('apex-max'),
+      'no tier heal at all with both modes off'
+    )
+  })
+})
+
 describe('main.ts wiring', () => {
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
 
@@ -231,16 +279,26 @@ describe('main.ts wiring', () => {
 
   test('runs the tier step in the boot/watch config heal, with the tiers the relay listed for this key', () => {
     // hc-1080: the heal runs per profile home from apex-profile-config.ts; main hands it the context.
-    const guard = main.slice(main.indexOf('function guardConfigYamlProductBlocks('))
-    const body = guard.slice(0, guard.indexOf('\n}\n'))
+    const slice = (signature: string) => {
+      const from = main.slice(main.indexOf(signature))
+
+      return from.slice(0, from.indexOf('\n}\n'))
+    }
+
     const heal = readFileSync(join(__dirname, 'apex-profile-config.ts'), 'utf8')
 
     assert.match(
-      body,
-      /^\s+const context = \{ managed, endpoints: resolveApexEndpoints\(process\.env\), env: process\.env, entitled: relayTiers\.of\(managed\.key\) \}$/m
+      slice('function productBlocksContext('),
+      /^\s+return \{ managed, endpoints: resolveApexEndpoints\(process\.env\), env: process\.env, entitled: relayTiers\.of\(managed\.key\) \}$/m
     )
-    assert.match(body, /^\s+guardProductBlocksInHomes\(apexConfigHomes\(managed\), context, reason, rememberLog\)$/m)
-    assert.match(heal, /^\s+return healManagedModelTier\(raw, managed, endpoints\.relayBaseUrl, ctx\.env, fixed, ctx\.entitled\)$/m)
+    assert.match(
+      slice('function guardConfigYamlProductBlocks('),
+      /^\s+if \(context\) \{guardProductBlocksInHomes\(apexConfigHomes\(context\.managed\), context, reason, rememberLog\)\}$/m
+    )
+    assert.match(
+      heal,
+      /^\s+const follow = ctx\.accountTier \?\? null\n\n\s+return healManagedModelTier\(raw, managed, endpoints\.relayBaseUrl, ctx\.env, fixed, ctx\.entitled, follow\)$/m
+    )
   })
 
   test('hc-1072: every relay listing probe feeds the memo and re-heals when the tiers change', () => {

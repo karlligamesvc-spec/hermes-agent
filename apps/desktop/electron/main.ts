@@ -165,6 +165,7 @@ import {
 import { buildPlatformToolSpawnEnv, describePlatformToolSpawnEnv } from './apex-platform-tools'
 import { poolKeysOnStaleRelayKey, reapIdlePoolEngine, stampPoolEngine } from './apex-pool-engines'
 import { guardProductBlocksInHomes, persistRelayKeyInHome } from './apex-profile-config'
+import { registerProfileConfigIpc } from './apex-profile-config-ipc'
 import { managedProfileHomes } from './apex-profile-homes'
 import { fetchRelayModels, RelayTierMemo } from './apex-relay-tiers'
 import {
@@ -19027,7 +19028,7 @@ function syncManagedRelayKeyToConfig(reason = 'sync') {
 
 // hc-1080: the homes the APEX config writers keep in step — the root, plus every
 // named profile on the managed relay (apex-profile-homes.ts).
-function apexConfigHomes(managed = resolveManagedConfig()) {
+function apexConfigHomes(managed: { baseUrl?: string } = resolveManagedConfig()) {
   return managedProfileHomes(HERMES_HOME, managed.baseUrl || resolveApexEndpoints(process.env).relayBaseUrl)
 }
 
@@ -20859,17 +20860,27 @@ async function refreshPlatformPluginsFromPlatform(reason) {
 function guardConfigYamlProductBlocks(reason) {
   keepSessionHistoryInEveryProfile(HERMES_HOME, rememberLog)
 
-  // A Native restart must not let the YAML watcher bypass an unresolved
-  // server-side model write. The recovery path fences it before healing.
-  if (modelMutationMetadata.pending().length > 0) {return}
-
   // hc-1080: the root, then every named profile on the managed relay, each with
   // up to three compare-and-swap passes (apex-profile-config.ts).
-  const managed = resolveManagedConfig()
-  const context = { managed, endpoints: resolveApexEndpoints(process.env), env: process.env, entitled: relayTiers.of(managed.key) }
+  const context = productBlocksContext()
 
-  guardProductBlocksInHomes(apexConfigHomes(managed), context, reason, rememberLog)
+  if (context) {guardProductBlocksInHomes(apexConfigHomes(context.managed), context, reason, rememberLog)}
 }
+
+// The heal context every home shares. Null while a Native model write is
+// unresolved: a restart must not let the YAML watcher bypass it, and the
+// recovery path fences it before healing.
+function productBlocksContext() {
+  if (modelMutationMetadata.pending().length > 0) {return null}
+
+  const managed = resolveManagedConfig()
+
+  return { managed, endpoints: resolveApexEndpoints(process.env), env: process.env, entitled: relayTiers.of(managed.key) }
+}
+
+// hc-1080 / hc-1078: heal one just-created profile now instead of at the next guard pass.
+registerProfileConfigIpc(ipcMain, { root: HERMES_HOME, homes: managed => apexConfigHomes(managed), context: productBlocksContext,
+  afterHeal: reason => restartPoolEnginesOnStaleRelayKey(reason), log: rememberLog })
 
 // Keep the guard live while the app runs: any writer (dashboard save, the
 // runtime itself) that drops a product block gets healed within seconds. The

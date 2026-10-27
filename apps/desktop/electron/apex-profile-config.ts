@@ -24,7 +24,7 @@ import {
   migrateApexBudgetDefaultsYaml,
   modelDisabledProvidersYaml
 } from './apex-managed'
-import { healManagedModelTier } from './apex-model-tiers'
+import { accountTierOfRoot, healManagedModelTier } from './apex-model-tiers'
 import { type ApexProfileHome, DEFAULT_PROFILE } from './apex-profile-homes'
 import {
   MANAGED_PROVIDER_NAME,
@@ -44,6 +44,8 @@ export interface ProductBlocksContext {
   env: Record<string, string | undefined>
   /** The tiers the relay last listed for this key (RelayTierMemo); null = unknown. */
   entitled: null | readonly string[]
+  /** For a named profile: the tier the root settled on (accountTierOfRoot), which it follows. */
+  accountTier?: null | string
 }
 
 export type HealOutcome = 'absent' | 'clean' | 'error' | 'healed' | 'stale'
@@ -126,9 +128,11 @@ function healRelayBlocks(raw: string, ctx: ProductBlocksContext, fixed: string[]
     fixed.push('model(moa-global)')
   }
 
-  // hc-960, hc-1072. The relay lists tiers per account, so every managed
-  // profile settles by the same rule against the same listing.
-  return healManagedModelTier(raw, managed, endpoints.relayBaseUrl, ctx.env, fixed, ctx.entitled)
+  // hc-960, hc-1072: the root settles by the rule against the account's relay
+  // listing; a named profile takes the tier the root settled on (accountTier).
+  const follow = ctx.accountTier ?? null
+
+  return healManagedModelTier(raw, managed, endpoints.relayBaseUrl, ctx.env, fixed, ctx.entitled, follow)
 }
 
 // The product half: add-only list and scalar blocks, credential-independent.
@@ -222,13 +226,15 @@ export function healProductBlocksYaml(raw: string, ctx: ProductBlocksContext): {
 /**
  * One home's heal pass. Compare-and-swap against what it read: a file that
  * changed under it yields 'stale' rather than overwriting whatever just landed,
- * and the caller recomputes on the new content.
+ * and the caller recomputes on the new content. A pass that writes adds what it
+ * changed to `fixedOut`.
  */
 export function healProductBlocksInHome(
   home: ApexProfileHome,
   ctx: ProductBlocksContext,
   reason: string,
-  log: Log
+  log: Log,
+  fixedOut: string[] = []
 ): HealOutcome {
   try {
     if (!fs.existsSync(home.configPath)) {
@@ -256,6 +262,7 @@ export function healProductBlocksInHome(
     // In place, NOT a rename: watchConfigYamlProductBlocks holds an fs.watch on
     // the root file, and a rename-over swaps the inode out from under it.
     fs.writeFileSync(home.configPath, next, { encoding: 'utf8' })
+    fixedOut.push(...fixed)
     log(`[config-guard] restored missing block(s): ${fixed.join(', ')} (${where})`)
 
     return 'healed'
@@ -267,37 +274,70 @@ export function healProductBlocksInHome(
 }
 
 /**
- * The guard over every home: up to three passes each, because a pass that loses
- * a race recomputes against the new file. The healers are add-only and
- * idempotent, so re-running on someone else's fresh file is always safe; three
- * losses in a row means a writer is hammering the file, and the next pass (the
- * root watcher, the next boot or sign-in) picks the heal back up.
+ * One home's guard: up to three passes, because a pass that loses a race
+ * recomputes against the new file. The healers are add-only and idempotent, so
+ * re-running on someone else's fresh file is always safe; three losses in a row
+ * means a writer is hammering the file, and the next pass (the root watcher,
+ * the next boot or sign-in) picks the heal back up. `fixed` names what changed.
  */
+export function guardProductBlocksInHome(
+  home: ApexProfileHome,
+  ctx: ProductBlocksContext,
+  reason: string,
+  log: Log
+): { fixed: string[]; outcome: HealOutcome } {
+  const fixed: string[] = []
+  let outcome: HealOutcome = 'stale'
+
+  for (let attempt = 0; attempt < 3 && outcome === 'stale'; attempt += 1) {
+    outcome = healProductBlocksInHome(home, ctx, reason, log, fixed)
+  }
+
+  if (outcome === 'stale') {
+    log(
+      `[config-guard] deferred to the watcher after 3 racing passes (${reason}${profileTag(home) ? `;${profileTag(home)}` : ''})`
+    )
+  }
+
+  return { fixed, outcome }
+}
+
+/** The guard over every home, in order; each home's outcome by profile name. */
 export function guardProductBlocksInHomes(
   homes: ApexProfileHome[],
   ctx: ProductBlocksContext,
   reason: string,
   log: Log
-) {
+): Record<string, HealOutcome> {
   const outcomes: Record<string, HealOutcome> = {}
+  const root = homes.find(home => home.profile === DEFAULT_PROFILE)
 
-  for (const home of homes) {
-    let outcome: HealOutcome = 'stale'
+  // The root first: the named profiles follow the tier it settles on.
+  if (root) {
+    outcomes[root.profile] = guardProductBlocksInHome(root, ctx, reason, log).outcome
+  }
 
-    for (let attempt = 0; attempt < 3 && outcome === 'stale'; attempt += 1) {
-      outcome = healProductBlocksInHome(home, ctx, reason, log)
-    }
+  const named = { ...ctx, accountTier: root ? accountTierInRoot(root, ctx) : null }
 
-    if (outcome === 'stale') {
-      log(
-        `[config-guard] deferred to the watcher after 3 racing passes (${reason}${profileTag(home) ? `;${profileTag(home)}` : ''})`
-      )
-    }
-
-    outcomes[home.profile] = outcome
+  for (const home of homes.filter(candidate => candidate !== root)) {
+    outcomes[home.profile] = guardProductBlocksInHome(home, named, reason, log).outcome
   }
 
   return outcomes
+}
+
+/**
+ * The tier the account runs on: the root's managed main model once the root is
+ * healed (the tier picker and the heal both write the root). Every other
+ * managed profile takes it, so an assistant never keeps a tier of its own.
+ * Null when the root is not on a tier (BYOK, tiers and single-thread off).
+ */
+export function accountTierInRoot(root: ApexProfileHome, ctx: ProductBlocksContext): null | string {
+  try {
+    return accountTierOfRoot(fs.readFileSync(root.configPath, 'utf8'), ctx.managed, ctx.endpoints.relayBaseUrl, ctx.env)
+  } catch {
+    return null
+  }
 }
 
 /**
