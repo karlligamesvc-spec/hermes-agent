@@ -18,7 +18,10 @@ import { $authState } from '@/store/auth'
 import { $creatorProfile } from '@/store/creator-profile'
 import { resetDailyIdeasForTest } from '@/store/daily-ideas'
 import { resetMainThreadForTest } from '@/store/main-thread'
+import { $activeGatewayProfile } from '@/store/profile'
 import { $gatewayState } from '@/store/session'
+import { setSingleThreadFlagForTest } from '@/store/single-thread'
+import { botRosterFrom, resetBotRosterForTest, setMultiBotFlagForTest } from '@/store/single-thread-bots'
 import { englishWords, readableText } from '@/test/zh-copy'
 
 import { FirstOpen } from './first-open'
@@ -550,5 +553,51 @@ describe('hc-1063 today’s ideas in the conversation (desktop_features.daily_id
     await waitFor(() => expect(ideas.bridge).toHaveBeenCalled())
     expect(screen.queryByRole('group', { name: '今天能拍的' })).toBeNull()
     expect(text()).not.toContain('今天能拍的备好')
+  })
+})
+
+describe('hc-1077 several assistants: only APEX brings today’s ideas (K7)', () => {
+  beforeEach(() => {
+    setRuntimeI18nLocale('zh')
+    $creatorProfile.set({ accountId: null, profile: null, status: 'idle' })
+    resetDailyIdeasForTest()
+    $gatewayState.set('open')
+    signIn()
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(true)
+    resetBotRosterForTest(
+      botRosterFrom([{ name: 'writer', ui_meta: { apex: { created: 1, name: '小红书文案' } } }], () => true)
+    )
+  })
+
+  afterEach(() => {
+    cleanup()
+    setMultiBotFlagForTest(false)
+    setSingleThreadFlagForTest(false)
+    resetBotRosterForTest()
+    $activeGatewayProfile.set('default')
+    ;(window as unknown as { hermesDesktop?: unknown }).hermesDesktop = undefined
+  })
+
+  it.each([
+    ['APEX', 'default', true, 'APEX 记下了'],
+    ['another assistant', 'writer', false, '小红书文案 记下了']
+  ])('%s on screen: ideas %s, and it notes in its own name', async (_label, profile, ideasShown, noted) => {
+    $activeGatewayProfile.set(profile)
+    install({ creator: cloud().bridge, ideas: ideasCloud().bridge, ideasOn: true })
+    renderFirstOpen()
+    await pick('好物测评')
+    await pick('抖音和小红书都发')
+    await pick('不知道拍什么')
+
+    await waitFor(() => expect(text()).toContain(noted))
+    await waitFor(() => expect(text()).toContain('以后直接贴链接就行'))
+
+    if (ideasShown) {
+      expect(await screen.findByRole('group', { name: '今天能拍的' })).toBeTruthy()
+    } else {
+      await act(async () => new Promise(resolve => setTimeout(resolve, 50)))
+      expect(screen.queryByRole('group', { name: '今天能拍的' })).toBeNull()
+    }
   })
 })

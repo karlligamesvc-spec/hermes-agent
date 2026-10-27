@@ -10,6 +10,7 @@ import { useI18n } from '@/i18n'
 import { useSingleThreadCopy } from '@/i18n/single-thread'
 import { cn } from '@/lib/utils'
 import { useSingleThreadMode } from '@/store/single-thread'
+import { useBotLook, useBotName, withBotName } from '@/store/single-thread-bots'
 import { ThreadActivityPresence } from '@/store/thread-signals'
 
 import { CreatorTipSlot } from './creator-tip'
@@ -63,6 +64,9 @@ export const SingleThreadActivityLine: FC = () => {
   const compactingHint = useStatusHint(compacting, null, '')
   const messageRunning = useAuiState(s => s.message.status?.type === 'running')
   const view = useTurnView()
+  // hc-1077: the face and name of the assistant on screen.
+  const label = withBotName(copy.activity, useBotName())
+  const look = useBotLook()
 
   if (!busy && !messageRunning) {
     return null
@@ -82,8 +86,8 @@ export const SingleThreadActivityLine: FC = () => {
 
   return (
     <div className="grid min-w-0 max-w-full gap-1" data-conversation-scaffold="" data-single-thread-activity="">
-      <div aria-label={copy.activity} aria-live="polite" className={ACTIVITY_CLASS} role="status">
-        <ApexAvatar className="size-[1.375rem]" mood={awaitingInput ? 'idle' : 'working'} />
+      <div aria-label={label} aria-live="polite" className={ACTIVITY_CLASS} role="status">
+        <ApexAvatar className="size-[1.375rem]" mood={awaitingInput ? 'idle' : 'working'} {...look} />
         <span className={cn('min-w-0 truncate', !awaitingInput && 'shimmer')}>{text}</span>
         {meta.map(item => (
           <span className={cn(SCAFFOLD_META_CLASS, 'text-[length:var(--conversation-caption-font-size)]')} key={item}>

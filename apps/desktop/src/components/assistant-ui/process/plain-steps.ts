@@ -1,6 +1,7 @@
 import { singleThreadProcessCopyNow } from '@/i18n/single-thread-process'
 import type { StepCopy } from '@/i18n/types-process'
 import { isSingleThreadMode } from '@/store/single-thread'
+import { botNameForProfile, currentBotNameNow, withBotName } from '@/store/single-thread-bots'
 
 import { approvalPurpose, callIntent, isLookTool, mergedLookTopics, stageProgress } from './step-intent'
 
@@ -57,16 +58,20 @@ export function plainStageLine(steps: readonly { intent?: string; toolName: stri
   return singleThreadProcessCopyNow().stageLine(progress)
 }
 
-/** The sentence above a command or code waiting on the user's approval. */
-export function plainApprovalSentence(command: string, description: string): string {
+/** The sentence above a command or code waiting on the user's approval, naming
+ *  the assistant asking (hc-1077: the one on screen unless `name` says another). */
+export function plainApprovalSentence(command: string, description: string, name = currentBotNameNow()): string {
   const copy = singleThreadProcessCopyNow()
   const purpose = approvalPurpose(command, description)
 
-  return copy.approval(purpose, purpose.intent ? copy.intents[purpose.intent].title : null)
+  return withBotName(copy.approval(purpose, purpose.intent ? copy.intents[purpose.intent].title : null), name)
 }
 
 /** The body of an approval's system notification: the command itself, or in
- *  single-thread product mode the same sentence the approval bar says. */
-export function approvalNotificationBody(command: string, description: string): string {
-  return isSingleThreadMode() ? plainApprovalSentence(command, description) : command || description
+ *  single-thread product mode the same sentence the approval bar says — by the
+ *  assistant whose engine (`profile`) asked, which may be one in the background. */
+export function approvalNotificationBody(command: string, description: string, profile?: string): string {
+  return isSingleThreadMode()
+    ? plainApprovalSentence(command, description, botNameForProfile(profile))
+    : command || description
 }

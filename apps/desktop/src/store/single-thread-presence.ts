@@ -10,6 +10,11 @@
  * mounted only while the conversation is on screen and the turn runs), and the
  * voice panel says a call is open. Without them the row still says 在做事… or
  * 等你决定.
+ *
+ * hc-1077 (several assistants): every assistant's row reads the same way from
+ * its own profile's thread (`$mainThreadsByProfile`), and remembers its own
+ * last seen reply ({@link markBotReplySeen}); the two signals above belong to
+ * the conversation on screen, so only the assistant on screen reads them.
  */
 
 import { atom, computed } from 'nanostores'
@@ -17,7 +22,7 @@ import { atom, computed } from 'nanostores'
 import type { ClientSessionState } from '@/app/types'
 import { type ChatMessage, chatMessageText } from '@/lib/chat-messages'
 
-import { $mainThread, type MainThreadState } from './main-thread'
+import { $mainThread, $mainThreadsByProfile, type MainThreadState } from './main-thread'
 import { $sessionStates } from './session-states'
 import { $threadActivity, $threadInCall, type ThreadActivity } from './thread-signals'
 
@@ -114,6 +119,42 @@ export const $threadUnread = computed(
   (reply, seen) => reply !== null && seen !== null && reply.id !== seen
 )
 
+/** hc-1077: per profile, the newest reply the user has had that assistant's conversation open for. */
+export const $botSeenReplyIds = atom<Readonly<Record<string, string>>>({})
+
+export function markBotReplySeen(profile: string, id: null | string): void {
+  if (id !== null && $botSeenReplyIds.get()[profile] !== id) {
+    $botSeenReplyIds.set({ ...$botSeenReplyIds.get(), [profile]: id })
+  }
+}
+
+/** A reply came in since the user last had this assistant's conversation open (never before they first did). */
+export function botUnread(reply: null | ThreadReply, seen: string | undefined): boolean {
+  return reply !== null && seen !== undefined && reply.id !== seen
+}
+
+/** `profile`'s thread: the active one's as the shell holds it, else as last looked up. */
+export function profileThread(
+  profile: string,
+  active: MainThreadState,
+  byProfile: Readonly<Record<string, MainThreadState>>
+): MainThreadState | undefined {
+  return active.profile === profile ? active : byProfile[profile]
+}
+
+/** Which profile's thread `storedId` is on, among the threads this window holds; null when none. */
+export function profileOfThreadStoredId(storedId: null | string | undefined): null | string {
+  if (!storedId) {
+    return null
+  }
+
+  const held = Object.values($mainThreadsByProfile.get()).find(
+    thread => thread.status === 'found' && thread.ids.includes(storedId)
+  )
+
+  return held?.profile ?? null
+}
+
 export function markThreadReplySeen(id: null | string): void {
   if (id !== null && $threadSeenReplyId.get() !== id) {
     $threadSeenReplyId.set(id)
@@ -124,4 +165,5 @@ export function resetThreadPresenceForTest(): void {
   $threadActivity.set(null)
   $threadInCall.set(false)
   $threadSeenReplyId.set(null)
+  $botSeenReplyIds.set({})
 }
