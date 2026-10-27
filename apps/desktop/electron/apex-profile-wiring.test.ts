@@ -106,12 +106,39 @@ describe('every APEX config.yaml writer covers the managed profiles', () => {
 
   test('the product-block guard runs over apexConfigHomes and nothing heals the root alone', () => {
     const guard = body('function guardConfigYamlProductBlocks(')
+    const context = body('function productBlocksContext(')
 
-    assert.match(guard, /guardProductBlocksInHomes\(apexConfigHomes\(managed\), context, reason, rememberLog\)/)
+    assert.match(
+      guard,
+      /const context = productBlocksContext\(\)\n\s+if \(context\) \{guardProductBlocksInHomes\(apexConfigHomes\(context\.managed\), context, reason, rememberLog\)\}/
+    )
+    assert.match(
+      context,
+      /^\s+if \(modelMutationMetadata\.pending\(\)\.length > 0\) \{return null\}$/m,
+      'no heal while a Native model write is unresolved'
+    )
     assert.doesNotMatch(code, /function healConfigYamlProductBlocks\(/)
     assert.match(
       body('function apexConfigHomes('),
       /managedProfileHomes\(HERMES_HOME, managed\.baseUrl \|\| resolveApexEndpoints\(process\.env\)\.relayBaseUrl\)/
+    )
+  })
+
+  test('hc-1078 can heal one new profile now: the IPC shares the guard context, homes and pool restart', () => {
+    const registration = code.slice(code.indexOf('registerProfileConfigIpc(ipcMain, {'))
+
+    assert.match(
+      registration.slice(0, registration.indexOf('})\n') + 3),
+      /^registerProfileConfigIpc\(ipcMain, \{ root: HERMES_HOME, homes: managed => apexConfigHomes\(managed\), context: productBlocksContext,\n\s+afterHeal: reason => restartPoolEnginesOnStaleRelayKey\(reason\), log: rememberLog \}\)\n$/m,
+      'registered at module scope, so the handler is live from startup'
+    )
+
+    // The name and argument hc-1078 calls (agreed between the M2 and M4 sessions).
+    const preload = readFileSync(join(import.meta.dirname, 'preload.ts'), 'utf8')
+
+    assert.match(
+      preload,
+      /^ {2}healApexProfileConfig: profile => ipcRenderer\.invoke\('hermes:apex:healProfileConfig', profile\),$/m
     )
   })
 

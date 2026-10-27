@@ -297,6 +297,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     selfHeal: payload => ipcRenderer.invoke('hermes:managed:selfHeal', payload),
     cancelPending: () => ipcRenderer.invoke('hermes:managed:cancelPending')
   },
+  // hc-1080: heal a just-created profile's config.yaml now (relay key, APEX blocks, tier)
+  // instead of at the next guard pass (apex-profile-config-ipc.ts); resolves { ok, profile, reason?, fixed }.
+  healApexProfileConfig: profile => ipcRenderer.invoke('hermes:apex:healProfileConfig', profile),
   workflowDomain: {
     access: () => ipcRenderer.invoke('hermes:workflowDomain:access'),
     localVideoReadiness: () => ipcRenderer.invoke('hermes:workflowDomain:localVideoReadiness'),
