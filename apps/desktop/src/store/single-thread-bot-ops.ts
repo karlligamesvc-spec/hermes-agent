@@ -20,7 +20,7 @@
  * - APEX keeps its look (K6) and cannot be deleted; renaming it writes only `ui_meta.apex.name`.
  */
 
-import { composeApexBotSoul, renameInApexBotSoul } from '../../shared/apex-bot-soul'
+import { apexBotNameFromSoul, composeApexBotSoul, renameInApexBotSoul } from '../../shared/apex-bot-soul'
 
 import { requestGatewayForProfile } from './gateway'
 
@@ -194,35 +194,51 @@ async function writeLook(profile: string, look: ApexBotLook, revision: number): 
   throw new BotOpError('failed', `profiles.configure did not write ui_meta.apex for ${profile}`)
 }
 
-/** The main-process steps that put APEX's config and platform skills into a profile (hc-1080, hc-1081). */
+/**
+ * The main-process steps that put APEX's config and platform skills into a profile. hc-1080 writes the
+ * managed relay config; hc-1081 then copies the root's platform skills into every profile that config
+ * marks as managed, so it must run second (before the first step it does not see the new profile and
+ * answers `{ ok: false, filled: false }`). Typed here: global.d.ts is past its size cap.
+ */
 interface ProfileSetupBridge {
   healApexProfileConfig?: (profile: string) => Promise<unknown>
-  syncApexProfileSkills?: (profile: string) => Promise<unknown>
+  syncApexProfileSkills?: (profile: string) => Promise<{ filled: boolean; ok: boolean }>
 }
 
-/**
- * Run whichever setup steps this build has on a new profile. Each is best-effort: the clone already
- * carries default's config and skills as of now, and both steps also run at every launch.
- */
-export async function prepareNewBotProfile(profile: string): Promise<void> {
-  const bridge = window.hermesDesktop as unknown as ProfileSetupBridge | undefined
-
-  const steps = [bridge?.healApexProfileConfig, bridge?.syncApexProfileSkills]
-    .filter((step): step is (name: string) => Promise<unknown> => typeof step === 'function')
-    .map(step => Promise.resolve().then(() => step.call(bridge, profile)))
-
-  if (!steps.length) {
-    return
-  }
-
+/** `step` settled, or SETUP_WAIT_MS gone by: a stuck main process must not hold the sheet open. */
+async function settleWithin(step: () => Promise<unknown>): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined
 
   const waited = new Promise<void>(resolve => {
     timer = setTimeout(resolve, SETUP_WAIT_MS)
   })
 
-  await Promise.race([Promise.allSettled(steps), waited])
+  await Promise.race([
+    Promise.resolve()
+      .then(step)
+      .catch(() => undefined),
+    waited
+  ])
   clearTimeout(timer)
+}
+
+/**
+ * Run whichever setup steps this build has on a new profile, config first, then skills. Each is
+ * best-effort: the clone already carries default's config and skills as of now, and both steps run
+ * again at every launch and sign-in.
+ */
+export async function prepareNewBotProfile(profile: string): Promise<void> {
+  const bridge = window.hermesDesktop as unknown as ProfileSetupBridge | undefined
+  const heal = bridge?.healApexProfileConfig
+  const skills = bridge?.syncApexProfileSkills
+
+  if (typeof heal === 'function') {
+    await settleWithin(() => heal.call(bridge, profile))
+  }
+
+  if (typeof skills === 'function') {
+    await settleWithin(() => skills.call(bridge, profile))
+  }
 }
 
 /** Delete through the Electron-intercepted door; loaded late, it is the plugin SDK's whole surface. */
@@ -298,33 +314,36 @@ export async function readBotLook(profile: string): Promise<{ look: Partial<Apex
 }
 
 /**
- * Save a rename / new look made from a sheet that showed `revision`. A named assistant's SOUL first
- * line follows its new name; one edited by hand keeps its words (renameInApexBotSoul). APEX's SOUL is
- * never touched.
+ * Bring a named assistant's SOUL first line to `name` (`ui_meta.apex.name` is the authority). Runs
+ * after every save, not only a rename, so a line left behind by an earlier failed write catches up.
+ * A hand-written line keeps its words (renameInApexBotSoul answers null). Best-effort.
  */
-export async function saveBotLook(
-  profile: string,
-  look: ApexBotLook,
-  { previousName, revision }: { previousName: string; revision: number }
-): Promise<void> {
-  const name = cleanBotName(look.name)
-
-  await writeLook(profile, { ...look, name }, revision)
-
-  if (profile === APEX_PROFILE || name === previousName) {
-    return
-  }
-
+async function syncSoulName(profile: string, name: string): Promise<void> {
   try {
     const described = await request<{ soul?: unknown }>('profiles.describe', { name: profile })
     const soul = typeof described?.soul === 'string' ? described.soul : ''
-    const renamed = renameInApexBotSoul(soul, previousName, name)
+    const current = apexBotNameFromSoul(soul)
+    const renamed = current === null || current === name ? null : renameInApexBotSoul(soul, name)
 
     if (renamed !== null) {
       await request('profiles.configure', { name: profile, soul: renamed })
     }
   } catch {
-    // The sidebar already shows the new name; the SOUL line catches up on the next rename.
+    // The sidebar already shows the new name; the line catches up on the next save.
+  }
+}
+
+/**
+ * Save a rename / new look made from a sheet that showed `revision`, then move a named assistant's
+ * SOUL line to the saved name. APEX's SOUL is never touched: it is the APEX identity (hc-1042).
+ */
+export async function saveBotLook(profile: string, look: ApexBotLook, revision: number): Promise<void> {
+  const name = cleanBotName(look.name)
+
+  await writeLook(profile, { ...look, name }, revision)
+
+  if (profile !== APEX_PROFILE) {
+    await syncSoulName(profile, name)
   }
 }
 

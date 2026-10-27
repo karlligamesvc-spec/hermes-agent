@@ -196,7 +196,7 @@ function BotSheetBody({
     setError(null)
 
     try {
-      const done = await persistLook(target, { name: cleaned, shape, color }, { count, max, revision, storedName })
+      const done = await persistLook(target, { name: cleaned, shape, color }, { count, max, revision })
 
       setBusy(false)
 
@@ -269,13 +269,13 @@ function BotSheetBody({
 async function persistLook(
   target: BotSheetTarget,
   look: ApexBotLook,
-  { count, max, revision, storedName }: { count: number; max: number; revision: number; storedName: string }
+  { count, max, revision }: { count: number; max: number; revision: number }
 ): Promise<string> {
   if (target.kind === 'new') {
     return createBot(look, { count, max })
   }
 
-  await saveBotLook(target.profile, look, { previousName: storedName, revision })
+  await saveBotLook(target.profile, look, revision)
 
   return target.profile
 }

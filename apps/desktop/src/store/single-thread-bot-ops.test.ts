@@ -4,10 +4,15 @@
  * `hermes-bots`, which would make the engine treat the profile as a Bot Mode one); APEX keeps its
  * look and cannot be deleted.
  */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   APEX_BOT_SOUL_BODY,
+  APEX_BOT_SOUL_NAME_LINE,
+  apexBotNameFromSoul,
   apexBotSoulNameLine,
   composeApexBotSoul,
   renameInApexBotSoul
@@ -99,19 +104,45 @@ describe('the new assistant SOUL', () => {
 
   it('renames by rewriting the first line only', () => {
     const soul = composeApexBotSoul({ name: '旧名', sections: [{ heading: '分工', body: '剪辑出片' }] })
-    const renamed = renameInApexBotSoul(soul, '旧名', '新名')
+    const renamed = renameInApexBotSoul(soul, '新名')
 
     expect(renamed).toBe(`${apexBotSoulNameLine('新名')}${soul.slice(apexBotSoulNameLine('旧名').length)}`)
     expect(renamed).toContain('## 分工\n剪辑出片')
+    expect(apexBotNameFromSoul(composeApexBotSoul({ name: '剪辑助手' }))).toBe('剪辑助手')
+  })
+})
+
+/**
+ * The name line has two writers: this TypeScript and hc-1082's Python rename tool. Both test suites
+ * read the same cases, so neither can change the format alone.
+ */
+describe('the SOUL name line, against the cases hc-1082 reads too', () => {
+  interface Cases {
+    name_line_template: string
+    name_lines: { line: string; name: string }[]
+    parse: { name: null | string; soul: string }[]
+    rename: { expected: null | string; next: string; soul: string }[]
+  }
+
+  const cases = JSON.parse(
+    readFileSync(join(__dirname, '..', '..', 'shared', 'apex-bot-soul-cases.json'), 'utf8')
+  ) as Cases
+
+  it('uses the pinned template', () => {
+    expect(APEX_BOT_SOUL_NAME_LINE).toBe(cases.name_line_template)
   })
 
-  it.each([
-    ['a hand-edited first line', 'You are my editor.\nMore.'],
-    ['another name', composeApexBotSoul({ name: '别人' })],
-    ['a name that only starts the same', composeApexBotSoul({ name: '旧名字' })],
-    ['a first line someone extended', `${apexBotSoulNameLine('旧名')} I also speak Cantonese.\nMore.`]
-  ])('leaves %s alone', (_label, soul) => {
-    expect(renameInApexBotSoul(soul, '旧名', '新名')).toBeNull()
+  it.each(cases.name_lines)('renders $name', ({ line, name }) => {
+    expect(apexBotSoulNameLine(name)).toBe(line)
+    expect(composeApexBotSoul({ name }).split('\n')[0]).toBe(line)
+  })
+
+  it.each(cases.parse)('reads $name from %#', ({ name, soul }) => {
+    expect(apexBotNameFromSoul(soul)).toBe(name)
+  })
+
+  it.each(cases.rename)('renames case %# to $next', ({ expected, next, soul }) => {
+    expect(renameInApexBotSoul(soul, next)).toBe(expected)
   })
 })
 
@@ -226,14 +257,64 @@ describe('createBot', () => {
     expect(deleteProfile).toHaveBeenCalledWith('apex-bot-2')
   })
 
-  it('runs the main-process setup steps on the new profile, and survives one failing', async () => {
+  it('writes the same name into ui_meta.apex and the SOUL line', async () => {
+    answer = method => (method === 'profiles.configure' ? { applied: { ui_meta: true } } : { profiles: [] })
+
+    await createBot({ ...LOOK, name: ' 小红书 \n文案 ' }, { count: 1, max: 5 })
+
+    const created = calls.find(call => call.method === 'profiles.create')!
+    const look = (configureCalls()[0].params.ui_meta as { apex: { name: string } }).apex
+
+    expect(look.name).toBe('小红书 文案')
+    expect(apexBotNameFromSoul(created.params.soul as string)).toBe(look.name)
+  })
+
+  it('sets up config before skills (hc-1081 sees the profile only after hc-1080)', async () => {
+    answer = method => (method === 'profiles.configure' ? { applied: { ui_meta: true } } : { profiles: [] })
+    const order: string[] = []
+    let finishHeal: () => void = () => undefined
+
+    const heal = vi.fn(
+      (profile: string) =>
+        new Promise<void>(resolve => {
+          order.push(`heal ${profile}`)
+
+          finishHeal = () => {
+            order.push('heal done')
+            resolve()
+          }
+        })
+    )
+
+    const skills = vi.fn(async (profile: string) => {
+      order.push(`skills ${profile}`)
+
+      return { filled: true, ok: true }
+    })
+
+    Object.assign(window.hermesDesktop ?? (window.hermesDesktop = {} as never), {
+      healApexProfileConfig: heal,
+      syncApexProfileSkills: skills
+    })
+
+    const created = createBot(LOOK, { count: 1, max: 5 })
+    await vi.waitFor(() => expect(heal).toHaveBeenCalled())
+    await Promise.resolve()
+    expect(skills).not.toHaveBeenCalled()
+    finishHeal()
+
+    await expect(created).resolves.toBe('apex-bot-2')
+    expect(order).toEqual(['heal apex-bot-2', 'heal done', 'skills apex-bot-2'])
+  })
+
+  it('still runs the skills step and opens the assistant when the config step fails', async () => {
     answer = method => (method === 'profiles.configure' ? { applied: { ui_meta: true } } : { profiles: [] })
 
     const heal = vi.fn(async () => {
       throw new Error('no config yet')
     })
 
-    const skills = vi.fn(async () => ({ installed: 3 }))
+    const skills = vi.fn(async () => ({ filled: false, ok: false }))
     Object.assign(window.hermesDesktop ?? (window.hermesDesktop = {} as never), {
       healApexProfileConfig: heal,
       syncApexProfileSkills: skills
@@ -249,7 +330,7 @@ describe('saveBotLook', () => {
   it('renames APEX through ui_meta.apex.name alone and never reads or writes its SOUL', async () => {
     answer = () => ({ applied: { ui_meta: true } })
 
-    await saveBotLook('default', { ...LOOK, name: '小满' }, { previousName: 'APEX', revision: 2 })
+    await saveBotLook('default', { ...LOOK, name: '小满' }, 2)
 
     expect(calls).toEqual([
       {
@@ -264,7 +345,7 @@ describe('saveBotLook', () => {
     const soul = composeApexBotSoul({ name: '旧名', sections: [{ heading: '分工', body: '剪辑出片' }] })
     answer = method => (method === 'profiles.describe' ? { soul } : { applied: { ui_meta: true, soul: true } })
 
-    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, { previousName: '旧名', revision: 4 })
+    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, 4)
 
     expect(methods()).toEqual(['profiles.configure', 'profiles.describe', 'profiles.configure'])
     expect(calls[0].params).toEqual({
@@ -272,25 +353,43 @@ describe('saveBotLook', () => {
       ui_meta: { apex: { ...LOOK, name: '新名' } },
       ui_meta_expected_revisions: { apex: 4 }
     })
-    expect(calls[2].params).toEqual({ name: 'apex-bot-2', soul: renameInApexBotSoul(soul, '旧名', '新名') })
+    expect(calls[2].params).toEqual({ name: 'apex-bot-2', soul: renameInApexBotSoul(soul, '新名') })
+    expect(apexBotNameFromSoul(calls[2].params.soul as string)).toBe('新名')
   })
 
-  it('leaves a hand-written SOUL and an unchanged name alone', async () => {
-    answer = method =>
-      method === 'profiles.describe' ? { soul: 'You are my editor.' } : { applied: { ui_meta: true } }
+  it.each([
+    ['a hand-written SOUL', 'You are my editor.'],
+    ['a line that already holds the name', composeApexBotSoul({ name: '新名' })]
+  ])('writes nothing more over %s', async (_label, soul) => {
+    answer = method => (method === 'profiles.describe' ? { soul } : { applied: { ui_meta: true } })
 
-    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, { previousName: '旧名', revision: 1 })
+    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, 1)
+
     expect(methods()).toEqual(['profiles.configure', 'profiles.describe'])
+  })
 
-    calls = []
-    await saveBotLook('apex-bot-2', LOOK, { previousName: LOOK.name, revision: 2 })
-    expect(methods()).toEqual(['profiles.configure'])
+  it('catches up a line an earlier failed write left behind, on a look-only save', async () => {
+    const soul = composeApexBotSoul({ name: '旧名' })
+    answer = method => (method === 'profiles.describe' ? { soul } : { applied: { ui_meta: true, soul: true } })
+
+    // ui_meta already says 新名 (the last save's SOUL write failed); this save only changes the shape.
+    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名', shape: 'pill' }, 5)
+
+    expect(methods()).toEqual(['profiles.configure', 'profiles.describe', 'profiles.configure'])
+    expect(apexBotNameFromSoul(calls[2].params.soul as string)).toBe('新名')
+  })
+
+  it('keeps the saved look when the SOUL line cannot be written', async () => {
+    answer = method => (method === 'profiles.describe' ? gatewayError(5063, 'busy') : { applied: { ui_meta: true } })
+
+    await expect(saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, 1)).resolves.toBeUndefined()
+    expect(methods()).toEqual(['profiles.configure', 'profiles.describe'])
   })
 
   it('refuses a stale edit instead of overwriting, and then touches nothing else', async () => {
     answer = () => ({ applied: { ui_meta: false, ui_meta_conflicts: { apex: { expected: 1, actual: 2 } } } })
 
-    const failure = saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, { previousName: '旧名', revision: 1 })
+    const failure = saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, 1)
 
     await expect(failure).rejects.toBeInstanceOf(BotOpError)
     await expect(failure).rejects.toMatchObject({ kind: 'conflict' })
@@ -306,8 +405,8 @@ describe('saveBotLook', () => {
           : { applied: { ui_meta: true } }
 
     await createBot(LOOK, { count: 1, max: 5 })
-    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, { previousName: '旧名', revision: 1 })
-    await saveBotLook('default', { name: '小满' }, { previousName: 'APEX', revision: 0 })
+    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, 1)
+    await saveBotLook('default', { name: '小满' }, 0)
 
     for (const call of configureCalls()) {
       expect(Object.keys((call.params.ui_meta as object | undefined) ?? {})).not.toContain('hermes-bots')

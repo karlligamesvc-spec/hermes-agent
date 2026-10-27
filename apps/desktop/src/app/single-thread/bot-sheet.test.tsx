@@ -173,11 +173,7 @@ describe('the edit sheet', () => {
 
     await waitFor(() => expect(props.onSaved).toHaveBeenCalledWith('apex-bot-2'))
     expect(readBotLook).toHaveBeenCalledWith('apex-bot-2')
-    expect(saveBotLook).toHaveBeenCalledWith(
-      'apex-bot-2',
-      { name: '小红书标题', shape: 'drop', color: 'gold' },
-      { previousName: '小红书', revision: 7 }
-    )
+    expect(saveBotLook).toHaveBeenCalledWith('apex-bot-2', { name: '小红书标题', shape: 'drop', color: 'gold' }, 7)
   })
 
   it('cannot save before the stored revision is known', () => {
@@ -225,7 +221,7 @@ describe('the edit sheet', () => {
 
     await waitFor(() => expect(saveBotLook).toHaveBeenCalled())
     expect(vi.mocked(saveBotLook).mock.calls[0][0]).toBe('default')
-    expect(vi.mocked(saveBotLook).mock.calls[0][2]).toEqual({ previousName: 'APEX', revision: 0 })
+    expect(vi.mocked(saveBotLook).mock.calls[0][2]).toBe(0)
   })
 })
 
