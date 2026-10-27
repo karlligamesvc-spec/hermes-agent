@@ -26,6 +26,7 @@ import {
   botSwapLabel,
   canDeleteBot,
   canRestyleBot,
+  followsApexTier,
   MULTI_BOT_HINT_KEY,
   MULTI_BOT_MAX_DEFAULT,
   multiBotMaxFrom,
@@ -343,6 +344,27 @@ describe('the assistant on screen', () => {
 
     expect([canDeleteBot(apex!), canRestyleBot(apex!)]).toEqual([false, false])
     expect([canDeleteBot(writer!), canRestyleBot(writer!)]).toEqual([true, true])
+  })
+
+  it.each([
+    ['made by the new-assistant sheet', { name: 'writer', ui_meta: { apex: { created: 1, origin: 'product' } } }, true],
+    [
+      'only renamed (a rename may create ui_meta.apex)',
+      { name: 'writer', ui_meta: { apex: { name: '小红书文案' } } },
+      false
+    ],
+    ['made in Bot mode', { name: 'writer', ui_meta: { 'hermes-bots': { created: 1 } } }, false],
+    ['with another origin', { name: 'writer', ui_meta: { apex: { origin: 'bots' } } }, false],
+    ['whose ui_meta.apex is not an object', { name: 'writer', ui_meta: { apex: 'product' } }, false],
+    [
+      'that is APEX, even marked',
+      { is_default: true, name: 'default', ui_meta: { apex: { origin: 'product' } } },
+      false
+    ]
+  ] as const)('K3: whether an assistant %s follows APEX’s tier', (_label, row, expected) => {
+    const bot = botRosterFrom([row as BotProfileRow], () => true).find(item => item.profile === row.name)
+
+    expect(followsApexTier(bot!)).toBe(expected)
   })
 })
 

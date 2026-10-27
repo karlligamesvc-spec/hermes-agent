@@ -7,7 +7,9 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { QUICK_ENTRY_ASSISTANT_KEY } from '@/i18n/quick-entry'
 import { $mainThreadsByProfile, MAIN_THREAD_TITLE, resetMainThreadForTest } from '@/store/main-thread'
+import { notificationTitle } from '@/store/notification-title'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $activeSessionId, $gatewayState, $selectedStoredSessionId } from '@/store/session'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
@@ -169,5 +171,33 @@ describe('hc-1077 several assistants in the shell', () => {
     await act(async () => undefined)
 
     expect(ensureGatewayProfile).not.toHaveBeenCalled()
+  })
+})
+
+describe('hc-1077 the quick-entry window learns which assistant a capture reaches', () => {
+  it('the main window records the on-screen assistant’s name, and clears it with the switch off', async () => {
+    setMultiBotFlagForTest(true)
+    mount(gateway())
+
+    await waitFor(() => expect(window.localStorage.getItem(QUICK_ENTRY_ASSISTANT_KEY)).toBe('APEX'))
+
+    act(() => $activeGatewayProfile.set('writer'))
+    await waitFor(() => expect(window.localStorage.getItem(QUICK_ENTRY_ASSISTANT_KEY)).toBe('小红书文案'))
+
+    act(() => setMultiBotFlagForTest(false))
+    await waitFor(() => expect(window.localStorage.getItem(QUICK_ENTRY_ASSISTANT_KEY)).toBeNull())
+  })
+
+  it('installs the notification namer only while several assistants are on', async () => {
+    expect(notificationTitle('需要输入', 'writer-root')).toBe('需要输入')
+
+    setMultiBotFlagForTest(true)
+    mount(gateway())
+    await waitFor(() => expect($mainThreadsByProfile.get().writer?.rootId).toBe('writer-root'))
+
+    expect(notificationTitle('需要输入', 'writer-root')).toBe('小红书文案 · 需要输入')
+
+    act(() => setMultiBotFlagForTest(false))
+    expect(notificationTitle('需要输入', 'writer-root')).toBe('需要输入')
   })
 })

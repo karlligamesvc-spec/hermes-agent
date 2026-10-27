@@ -11,7 +11,9 @@
  *   is another assistant's thread (a notification, the command palette), that
  *   assistant comes on screen, so its thread is never shown as somebody's
  *   「更早的对话」. Once per selection: a switch that does not land is not
- *   retried in a loop.
+ *   retried in a loop;
+ * - tells the quick-entry window which assistant a capture will reach, and
+ *   names the assistant in system notifications (bot-notifications.ts).
  *
  * Off (or in a pop-out window) it does nothing.
  */
@@ -19,9 +21,13 @@
 import { useStore } from '@nanostores/react'
 import { type MutableRefObject, useEffect, useRef } from 'react'
 
+import { rememberQuickEntryAssistant } from '@/i18n/quick-entry'
+import { botNotificationTitle } from '@/store/bot-notifications'
 import { $mainThreadsByProfile, resolveProfileThread } from '@/store/main-thread'
+import { setNotificationTitleNamer } from '@/store/notification-title'
 import { $selectedStoredSessionId } from '@/store/session'
 import {
+  $currentBot,
   $currentBotProfile,
   $multiBotMode,
   loadMultiBotFlag,
@@ -56,6 +62,7 @@ export function useMultiBotShell(
   const current = useStore($currentBotProfile)
   const selected = useStore($selectedStoredSessionId)
   const threads = useStore($mainThreadsByProfile)
+  const currentName = useStore($currentBot)?.name ?? null
   // The assistant asked for is not the one answering yet: nothing may open the old one's thread meanwhile.
   const switching = multiBot && current !== profile
   const followed = useRef<null | string>(null)
@@ -63,6 +70,16 @@ export function useMultiBotShell(
   useEffect(() => {
     void loadMultiBotFlag()
   }, [])
+
+  useEffect(() => {
+    rememberQuickEntryAssistant(multiBot ? currentName : null)
+  }, [currentName, multiBot])
+
+  useEffect(() => {
+    setNotificationTitleNamer(multiBot ? botNotificationTitle : null)
+
+    return () => setNotificationTitleNamer(null)
+  }, [multiBot])
 
   useEffect(() => {
     if (!multiBot || !gatewayOpen) {
