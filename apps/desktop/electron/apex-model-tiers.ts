@@ -13,6 +13,7 @@
  */
 
 import { applyHypihubApexSwitch, HYPIHUB_APEX_ACTIVE_ENV } from './apex-hypihub'
+import { applyMultiBotSwitch, MULTI_BOT_ACTIVE_ENV } from './apex-multi-bot'
 import { MANAGED_PROVIDER_NAME } from './apex-relay-key-anchors'
 import { applySingleThreadSwitch, isSingleThreadActive, SINGLE_THREAD_ACTIVE_ENV } from './apex-single-thread'
 
@@ -158,8 +159,9 @@ export function applyModelTierSwitches(
 }
 
 /** Every launch-time `desktop_features` switch main settles into the env: the
- *  tier switches above, hc-1015 single-thread (apex-single-thread.ts) and
- *  APEX-hosted Hypit generation (apex-hypihub.ts). */
+ *  tier switches above, hc-1015 single-thread (apex-single-thread.ts),
+ *  APEX-hosted Hypit generation (apex-hypihub.ts) and hc-1077 several
+ *  assistants (apex-multi-bot.ts). */
 export function applyDesktopFeatureSwitches(
   env: Record<string, string | undefined>,
   clientConfigPayload: unknown,
@@ -168,8 +170,9 @@ export function applyDesktopFeatureSwitches(
   const set = applyModelTierSwitches(env, clientConfigPayload, log)
   const singleThread = applySingleThreadSwitch(env, clientConfigPayload, log) ? [SINGLE_THREAD_ACTIVE_ENV] : []
   const hosted = applyHypihubApexSwitch(env, clientConfigPayload, log) ? [HYPIHUB_APEX_ACTIVE_ENV] : []
+  const multiBot = applyMultiBotSwitch(env, clientConfigPayload, log) ? [MULTI_BOT_ACTIVE_ENV] : []
 
-  return [...set, ...singleThread, ...hosted]
+  return [...set, ...singleThread, ...hosted, ...multiBot]
 }
 
 function trimTrailingSlash(value: string): string {

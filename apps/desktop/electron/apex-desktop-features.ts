@@ -6,14 +6,16 @@
  * serves the active one, unauthenticated), so it cannot turn a feature on for a
  * few internal installs only. An install switch can: `APEXNODES_SINGLE_THREAD=1`
  * turns hc-1014's single-thread chat on for this install, `=0` keeps it off,
- * and unset leaves the decision to the platform. The payload itself stays as the
+ * and unset leaves the decision to the platform (APEXNODES_MULTI_BOT does the
+ * same for hc-1077's several assistants). The payload itself stays as the
  * platform sent it; the switches ride beside it, so every other reader of
  * `desktop_features` is unaffected.
  */
 
 /** Feature name (as in `desktop_features`) → the environment variable that switches it for one install. */
 export const DESKTOP_FEATURE_ENV: Readonly<Record<string, string>> = {
-  single_thread: 'APEXNODES_SINGLE_THREAD'
+  single_thread: 'APEXNODES_SINGLE_THREAD',
+  multi_bot: 'APEXNODES_MULTI_BOT'
 }
 
 export interface ClientConfigStateLike {
