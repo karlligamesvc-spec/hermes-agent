@@ -291,10 +291,23 @@ export function migrateManagedModelToTierYaml(
 }
 
 /**
+ * hc-1080: the main-process switch under which the named profiles follow the
+ * root's tier. hc-1077 settles the multi_bot switch into this env (the same
+ * name the engine reads); unset — the default, and developer mode — leaves
+ * every profile settling on its own, unchanged.
+ */
+export const TIER_FOLLOW_ENV = 'APEX_MULTI_BOT_ACTIVE'
+
+export function isTierFollowOn(env: Record<string, string | undefined> = {}): boolean {
+  return env?.[TIER_FOLLOW_ENV] === '1'
+}
+
+/**
  * hc-1080: the account's tier as the root config.yaml holds it — the managed
- * main model when it is a tier alias and the tier heal is on (tiers or
- * single-thread mode, with a managed credential). Null otherwise: then each
- * profile settles on its own, by the same rule.
+ * main model when it is a tier alias, tier following is on (isTierFollowOn)
+ * and the tier heal is on (tiers or single-thread mode, with a managed
+ * credential). Null otherwise: then each profile settles on its own, by the
+ * same rule.
  */
 export function accountTierOfRoot(
   rootRaw: string,
@@ -302,7 +315,7 @@ export function accountTierOfRoot(
   relayBaseUrl: string,
   env: Record<string, string | undefined>
 ): null | string {
-  if (!managed.key || (!isModelTiersEnabled(env) && !isSingleThreadActive(env))) {
+  if (!isTierFollowOn(env) || !managed.key || (!isModelTiersEnabled(env) && !isSingleThreadActive(env))) {
     return null
   }
 

@@ -104,7 +104,8 @@ describe('healProfileConfig', () => {
       managedConfig(NEW_KEY).replace('default: apex-flash', 'default: apex-pro')
     )
     const base = deps(root).deps.context()!
-    const { deps: d } = deps(root, { context: () => ({ ...base, env: { APEX_SINGLE_THREAD_ACTIVE: '1' } }) })
+    const env = { APEX_SINGLE_THREAD_ACTIVE: '1', APEX_MULTI_BOT_ACTIVE: '1' }
+    const { deps: d } = deps(root, { context: () => ({ ...base, env }) })
 
     const result = healProfileConfig('apex-bot-2', d)
 
@@ -112,6 +113,25 @@ describe('healProfileConfig', () => {
     assert.ok(result.fixed.includes('model(account:apex-max→pro)'), result.fixed.join(', '))
     assert.match(fs.readFileSync(fileOf(root, 'apex-bot-2'), 'utf8'), /^ {2}default: apex-pro$/m)
     assert.match(fs.readFileSync(path.join(root, 'config.yaml'), 'utf8'), /^ {2}default: apex-pro$/m)
+  })
+
+  test('with several assistants off, a profile keeps the tier it holds', () => {
+    const root = hermesRoot({
+      'apex-bot-2': managedConfig(NEW_KEY).replace('default: apex-flash', 'default: apex-max')
+    })
+
+    fs.writeFileSync(
+      path.join(root, 'config.yaml'),
+      managedConfig(NEW_KEY).replace('default: apex-flash', 'default: apex-pro')
+    )
+    const base = deps(root).deps.context()!
+    const { deps: d } = deps(root, { context: () => ({ ...base, env: { APEX_SINGLE_THREAD_ACTIVE: '1' } }) })
+
+    const result = healProfileConfig('apex-bot-2', d)
+
+    assert.equal(result.ok, true)
+    assert.ok(!result.fixed.some(item => item.startsWith('model(')), result.fixed.join(', '))
+    assert.match(fs.readFileSync(fileOf(root, 'apex-bot-2'), 'utf8'), /^ {2}default: apex-max$/m)
   })
 
   test("'default' is the root", () => {

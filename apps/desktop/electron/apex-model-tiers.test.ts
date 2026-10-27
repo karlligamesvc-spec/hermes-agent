@@ -25,11 +25,13 @@ import {
   isModelTierAlias,
   isModelTierMaxEnabled,
   isModelTiersEnabled,
+  isTierFollowOn,
   migrateManagedModelToTierYaml,
   MODEL_TIER_ALIASES,
   modelTierStatus,
   modelTierSwitchesFromClientConfig,
-  TIER_DEFAULT_MANAGED_MODEL
+  TIER_DEFAULT_MANAGED_MODEL,
+  TIER_FOLLOW_ENV
 } from './apex-model-tiers'
 
 const RELAY = DEFAULT_RELAY_BASE_URL
@@ -212,7 +214,14 @@ describe('the boot migration to Flash', () => {
 })
 
 describe('hc-1080: named profiles follow the root tier', () => {
-  const ST = { APEX_SINGLE_THREAD_ACTIVE: '1' }
+  const ST = { APEX_SINGLE_THREAD_ACTIVE: '1', APEX_MULTI_BOT_ACTIVE: '1' }
+
+  test('following is off unless the multi-bot switch hc-1077 settles is exactly 1', () => {
+    assert.equal(TIER_FOLLOW_ENV, 'APEX_MULTI_BOT_ACTIVE', 'the name hc-1077 sets and the engine (hc-1082) reads')
+    assert.equal(isTierFollowOn({}), false)
+    assert.equal(isTierFollowOn({ APEX_MULTI_BOT_ACTIVE: 'true' }), false)
+    assert.equal(isTierFollowOn({ APEX_MULTI_BOT_ACTIVE: '1' }), true)
+  })
 
   const relayModel = (model: string) =>
     `model:\n  default: ${model}\n  provider: custom\n  base_url: ${RELAY}\n  api_key: sk-test\n`
@@ -223,13 +232,26 @@ describe('hc-1080: named profiles follow the root tier', () => {
       'a tier alias on the relay, tiers on',
       relayModel('apex-max'),
       { key: 'sk-test' },
-      { APEXNODES_MODEL_TIERS: '1' },
+      { APEXNODES_MODEL_TIERS: '1', APEX_MULTI_BOT_ACTIVE: '1' },
       'apex-max'
     ],
     ['an old id (the root heal has not settled it)', relayModel('deepseek-v4-pro-APEX'), { key: 'sk-test' }, ST, null],
     ['the root on BYOK', 'model:\n  default: apex-pro\n  provider: deepseek\n', { key: 'sk-test' }, ST, null],
     ['signed out', relayModel('apex-pro'), {}, ST, null],
-    ['tiers and single-thread both off', relayModel('apex-pro'), { key: 'sk-test' }, {}, null]
+    [
+      'tiers and single-thread both off',
+      relayModel('apex-pro'),
+      { key: 'sk-test' },
+      { APEX_MULTI_BOT_ACTIVE: '1' },
+      null
+    ],
+    [
+      'several assistants off (the default, and developer mode)',
+      relayModel('apex-pro'),
+      { key: 'sk-test' },
+      { APEX_SINGLE_THREAD_ACTIVE: '1' },
+      null
+    ]
   ])('accountTierOfRoot: %s', (_label, raw, managed, env, expected) => {
     assert.equal(accountTierOfRoot(raw, managed, RELAY, env), expected)
   })

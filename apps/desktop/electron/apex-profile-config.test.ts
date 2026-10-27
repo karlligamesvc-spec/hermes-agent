@@ -154,8 +154,8 @@ describe('healProductBlocksYaml', () => {
   })
 })
 
-describe('the named profiles follow the root (account) tier', () => {
-  const ST = { APEXNODES_SINGLE_THREAD: '1', APEX_SINGLE_THREAD_ACTIVE: '1' }
+describe('with several assistants on, the named profiles follow the root (account) tier', () => {
+  const ST = { APEXNODES_SINGLE_THREAD: '1', APEX_SINGLE_THREAD_ACTIVE: '1', APEX_MULTI_BOT_ACTIVE: '1' }
   const allTiers = ['apex-flash', 'apex-pro', 'apex-max']
 
   test('every managed profile takes the tier the root settles on, whatever it held', () => {
@@ -192,7 +192,7 @@ describe('the named profiles follow the root (account) tier', () => {
   })
 
   test('the root is capped by the plan first, and the profiles follow the capped tier', () => {
-    const dir = hermesRoot({ writer: managedConfig('apex-max') }, managedConfig('apex-max', NEW_KEY))
+    const dir = hermesRoot({ writer: managedConfig('apex-flash') }, managedConfig('apex-max', NEW_KEY))
 
     guardProductBlocksInHomes(
       managedProfileHomes(dir, RELAY),
@@ -245,6 +245,38 @@ describe('the named profiles follow the root (account) tier', () => {
 
     assert.match(read(dir, 'writer'), /^ {2}default: deepseek-v4-flash$/m)
     assert.equal(auditManagedRelayKeyAnchors(read(dir, 'writer'), RELAY, NEW_KEY).clean, true)
+  })
+})
+
+// The default, and developer mode (hc-960 lets each bot pick its own tier there): the second pass
+// over the named profiles must be exactly the per-profile heal, with no account tier at all.
+describe('with several assistants off, every profile keeps settling its own tier', () => {
+  const allTiers = ['apex-flash', 'apex-pro', 'apex-max']
+
+  test.each([
+    ['single-thread', { APEXNODES_SINGLE_THREAD: '1', APEX_SINGLE_THREAD_ACTIVE: '1' }],
+    ['tiers', { APEXNODES_MODEL_TIERS: '1' }],
+    ['multi-bot set to anything but 1', { APEX_SINGLE_THREAD_ACTIVE: '1', APEX_MULTI_BOT_ACTIVE: 'true' }]
+  ])('%s: each named file is byte for byte the per-profile heal', (_label, env) => {
+    const profiles = {
+      maxer: managedConfig('apex-max'),
+      flasher: managedConfig('apex-flash'),
+      editor: managedConfig('deepseek-v4-pro-APEX')
+    }
+
+    const dir = hermesRoot(profiles, managedConfig('apex-pro', NEW_KEY))
+    const lines: string[] = []
+    const ctx = context({ env, entitled: allTiers })
+
+    guardProductBlocksInHomes(managedProfileHomes(dir, RELAY), ctx, 'boot', line => lines.push(line))
+
+    for (const [profile, original] of Object.entries(profiles)) {
+      assert.equal(read(dir, profile), healProductBlocksYaml(original, ctx).next, profile)
+    }
+
+    assert.match(read(dir, 'maxer'), /^ {2}default: apex-max$/m)
+    assert.match(read(dir, 'flasher'), /^ {2}default: apex-flash$/m)
+    assert.ok(!lines.some(line => line.includes('model(account:')), lines.join('\n'))
   })
 })
 
