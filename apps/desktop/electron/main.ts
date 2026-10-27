@@ -163,10 +163,10 @@ import {
   shouldApplyManifest
 } from './apex-platform-skills'
 import { buildPlatformToolSpawnEnv, describePlatformToolSpawnEnv } from './apex-platform-tools'
-import { poolKeysOnStaleRelayKey, reapIdlePoolEngine, stampPoolEngine } from './apex-pool-engines'
+import { makeRoomInPool, poolAllBusyError, poolKeysOnStaleRelayKey, reapIdlePoolEngine, stampPoolEngine } from './apex-pool-engines'
 import { guardProductBlocksInHomes, persistRelayKeyInHome } from './apex-profile-config'
 import { registerProfileConfigIpc } from './apex-profile-config-ipc'
-import { managedProfileHomes } from './apex-profile-homes'
+import { isMultiBotActive, managedProfileHomes } from './apex-profile-homes'
 import { fetchRelayModels, RelayTierMemo } from './apex-relay-tiers'
 import {
   checkForRuntimeUpdate,
@@ -11880,7 +11880,7 @@ async function ensureBackend(profile, opts: { passive?: boolean; spawnPriority?:
   // The hard slot is released only after the evicted child exits. Wait for
   // that teardown before entering the spawn queue; otherwise a successful
   // LRU choice still leaves this wake racing the old child for 30 seconds.
-  await evictLruPoolBackends(poolMaxBackends() - 1)
+  await evictLruPoolBackends(poolMaxBackends() - 1, spawnPriority)
 
   const entry = {
     process: null,
@@ -12059,7 +12059,7 @@ async function ensureRegistryBackend(
     }
 
     assertNotPassiveSpawn(passive, localRoute.poolKey)
-    await evictLruPoolBackends(poolMaxBackends() - 1)
+    await evictLruPoolBackends(poolMaxBackends() - 1, spawnPriority)
 
     const localEntry = {
       process: null,
@@ -12785,7 +12785,19 @@ function touchPoolBackend(profile) {
 // across N registered remote connections LRU-evict a REAL local backend that
 // was merely idle past the keepalive window. Descriptors are still reclaimed
 // by the idle reaper.
-async function evictLruPoolBackends(keep) {
+async function evictLruPoolBackends(keep, spawnPriority?: LocalBackendSpawnPriority) {
+  // hc-1080: with several assistants on, a user's open asks every engine (least recently used first)
+  // to retire, and fails with a clear result only when all are working (apex-pool-engines.ts).
+  if (spawnPriority === 'foreground' && isMultiBotActive(process.env)) {
+    const made = await makeRoomInPool({ entries: backendPool.entries(), keep, log: rememberLog, stop: stopPoolBackend,
+      post: entry => (route, body) => fetchJson(`http://127.0.0.1:${entry.port}${route}`, entry.token, { method: 'POST', body, timeoutMs: 5_000 }),
+      stillPooled: (key, entry) => backendPool.get(key) === entry })
+
+    if (!made.room) {throw poolAllBusyError(made, poolMaxBackends())}
+
+    return made.evicted
+  }
+
   return evictPoolEntries(
     backendPool.entries(),
     Math.max(0, keep),
