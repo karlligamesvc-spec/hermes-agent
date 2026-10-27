@@ -154,14 +154,8 @@ import { ManagedCredentialLifetime, managedProvisionCommitToken, ManagedRelayRec
 import { clearAccountPromptMirrors } from './apex-memory-ledger'
 import { applyDesktopFeatureSwitches, modelTierStatus } from './apex-model-tiers'
 import { normalizeStoredPluginsState, syncPlatformPlugins } from './apex-platform-plugins'
-import {
-  applyPlatformSkills,
-  fetchPlatformSkills,
-  isPlatformSkillsEnabled,
-  normalizeStoredManifest,
-  removePlatformSkills,
-  shouldApplyManifest
-} from './apex-platform-skills'
+import { normalizeStoredManifest } from './apex-platform-skills'
+import { registerProfileSkillsSync, syncPlatformSkills } from './apex-platform-skills-sync'
 import { buildPlatformToolSpawnEnv, describePlatformToolSpawnEnv } from './apex-platform-tools'
 import { makeRoomInPool, poolAllBusyError, poolKeysOnStaleRelayKey, reapIdlePoolEngine, stampPoolEngine } from './apex-pool-engines'
 import { guardProductBlocksInHomes, persistRelayKeyInHome } from './apex-profile-config'
@@ -20737,78 +20731,31 @@ function writePlatformSkillsState(next) {
   writeFileAtomic(DESKTOP_PLATFORM_SKILLS_PATH, JSON.stringify(next, null, 2))
 }
 
-// Pull the platform SKILL manifest and (re)install it when the hash changed.
+// Pull the platform SKILL manifest into the root skills/ and copy it into every
+// profile on the managed relay (apex-platform-skills-sync.ts, hc-1081).
 // Non-blocking by contract (callers `void` it), bounded (~12s), and never throws
 // — any error only logs and leaves the installed skills untouched.
 async function refreshPlatformSkillsFromPlatform(reason) {
   try {
-    const skillsRoot = path.join(HERMES_HOME, 'skills')
-
-    // Feature switch OFF → revert to the no-platform-SKILL state (idempotent)
-    // and clear the cache so a later re-enable re-pulls from scratch.
-    if (!isPlatformSkillsEnabled(process.env)) {
-      const { removed } = removePlatformSkills({ log: msg => rememberLog(msg), skillsRoot })
-
-      if (removed || readPlatformSkillsState().manifestHash) {
-        writePlatformSkillsState({ count: 0, installedAt: Date.now(), manifestHash: '' })
-      }
-
-      rememberLog(`[platform-skills] disabled via APEXNODES_PLATFORM_SKILLS; reverted (${reason})`)
-
-      return
-    }
-
-    const token = String(resolveManagedConfig().accessToken || '').trim()
-
-    if (!token) {
-      rememberLog(`[platform-skills] no login JWT on hand; skipping (${reason})`)
-
-      return
-    }
-
-    const stored = readPlatformSkillsState()
-
-    const fetched = await fetchPlatformSkills({
+    const result = await syncPlatformSkills({
+      ...platformSkillsHomes(),
       apiBase: apexApiBase(),
+      env: process.env,
       fetchJson: apexAuthGetJson,
-      knownHash: stored.manifestHash,
       log: msg => rememberLog(msg),
-      timeoutMs: 12_000,
-      token
+      reason,
+      stored: readPlatformSkillsState(),
+      token: () => resolveManagedConfig().accessToken
     })
 
-    if (!fetched) {return} // offline / 401 (cloudLogin shows 「登录已失效」) / garbage → installed set stands
-
-    if (fetched.unchanged) {
-      rememberLog(`[platform-skills] manifest ${fetched.manifestHash.slice(0, 12)} unchanged (${reason})`)
-
-      return
-    }
-
-    if (!shouldApplyManifest(fetched.manifestHash, stored.manifestHash)) {
-      rememberLog(`[platform-skills] manifest matches installed; no re-apply (${reason})`)
-
-      return
-    }
-
-    const result = applyPlatformSkills({ log: msg => rememberLog(msg), skills: fetched.skills, skillsRoot })
-    writePlatformSkillsState({
-      count: result.installed.length,
-      installedAt: Date.now(),
-      manifestHash: fetched.manifestHash
-    })
-    rememberLog(
-      `[platform-skills] installed ${result.installed.length} skill(s) manifest=${fetched.manifestHash.slice(0, 12)} (${reason})`
-    )
-
-    if (result.skippedUnsafe.length) {
-      rememberLog(
-        `[platform-skills] skipped ${result.skippedUnsafe.length} unsafe entr(ies): ${result.skippedUnsafe.slice(0, 5).join(', ')}`
-      )
-    }
+    if (result.newStored) {writePlatformSkillsState(result.newStored)}
   } catch (error: any) {
     rememberLog(`[platform-skills] refresh failed (ignored): ${error && error.message ? error.message : error}`)
   }
+}
+
+function platformSkillsHomes() {
+  return { homes: apexConfigHomes(), skillsRoot: path.join(HERMES_HOME, 'skills') }
 }
 
 function readPlatformPluginsState() {
@@ -23495,6 +23442,8 @@ ipcMain.handle('hermes:managed:signOut', async () => {
 })
 
 ipcMain.handle('hermes:managed:cancelPending', deferManagedRuntimeRecovery)
+// hc-1081: M2 calls this right after it creates an assistant (apex-platform-skills-sync.ts).
+registerProfileSkillsSync(ipcMain, () => ({ ...platformSkillsHomes(), env: process.env, log: msg => rememberLog(msg), manifestHash: readPlatformSkillsState().manifestHash }))
 
 // selfHeal: on-demand relay-key recovery, triggered by the renderer when a chat
 // turn fails with a relay auth error (HTTP 401/403). Runs the SAME gated probe +
