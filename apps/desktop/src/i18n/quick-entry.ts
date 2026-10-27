@@ -189,3 +189,34 @@ export function useQuickEntryLocale(): Locale {
 
   return locale
 }
+
+// ── hc-1077: which assistant the mini window is talking to ──────────────────
+
+/** Written by the primary window while several assistants are on; absent otherwise. */
+export const QUICK_ENTRY_ASSISTANT_KEY = 'apex.desktop.quickEntry.assistant'
+
+/** Primary window only: the name of the assistant a capture will reach (the one on screen), or null with one assistant. */
+export function rememberQuickEntryAssistant(name: null | string): void {
+  if (readKey(QUICK_ENTRY_ASSISTANT_KEY) !== name) {
+    writeKey(QUICK_ENTRY_ASSISTANT_KEY, name)
+  }
+}
+
+/** The mini window's view of it, live across windows like the language. */
+export function useQuickEntryAssistant(): null | string {
+  const [name, setName] = useState<null | string>(() => readKey(QUICK_ENTRY_ASSISTANT_KEY))
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === QUICK_ENTRY_ASSISTANT_KEY) {
+        setName(readKey(QUICK_ENTRY_ASSISTANT_KEY))
+      }
+    }
+
+    window.addEventListener('storage', onStorage)
+
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
+  return name
+}

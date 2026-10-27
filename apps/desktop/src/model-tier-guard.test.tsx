@@ -33,7 +33,7 @@ import { $freeTierStatusForChrome, userFacingModelName, useUserFacingModelName }
 import { $activeGatewayProfile } from '@/store/profile'
 import { setGatewayState, setModelPickerOpen } from '@/store/session'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
-import { setMultiBotFlagForTest } from '@/store/single-thread-bots'
+import { botRosterFrom, resetBotRosterForTest, setMultiBotFlagForTest } from '@/store/single-thread-bots'
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn()
@@ -404,9 +404,25 @@ describe('换更强的再答一次 offers only a tier the account can use', () =
 })
 
 describe('hc-1077 K3: with several assistants on, the tier is the account’s', () => {
+  /** `writer` was made by the new-assistant sheet (hc-1078 writes origin "product"): it follows APEX's tier (hc-1080). */
+  function roster(writer: Record<string, unknown> = { apex: { created: 1, name: '小红书文案', origin: 'product' } }) {
+    resetBotRosterForTest(
+      botRosterFrom(
+        [
+          { is_default: true, name: 'default' },
+          { name: 'writer', ui_meta: writer }
+        ],
+        () => true
+      )
+    )
+  }
+
+  beforeEach(() => roster())
+
   afterEach(() => {
     setMultiBotFlagForTest(false)
     setSingleThreadFlagForTest(false)
+    resetBotRosterForTest()
     $activeGatewayProfile.set('default')
   })
 
@@ -432,6 +448,28 @@ describe('hc-1077 K3: with several assistants on, the tier is the account’s', 
     )
   })
 
+  it('says above the page that the tier is the account’s, only while another assistant is on screen', async () => {
+    setTierMode(true)
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(true)
+    $activeGatewayProfile.set('writer')
+
+    const view = renderWithClients(<ModelSection />)
+
+    await screen.findByRole('radio', { name: /Pro/ })
+    expect(view.container.querySelector('[data-shared-tier-note]')?.textContent).toContain(
+      'All assistants share one model tier, set here for the account (APEX).'
+    )
+    cleanup()
+
+    $activeGatewayProfile.set('default')
+
+    const apex = renderWithClients(<ModelSection />)
+
+    await screen.findByRole('radio', { name: /Pro/ })
+    expect(apex.container.querySelector('[data-shared-tier-note]')).toBeNull()
+  })
+
   it('the model page without tier mode too', async () => {
     setSingleThreadFlagForTest(true)
     setMultiBotFlagForTest(true)
@@ -454,5 +492,23 @@ describe('hc-1077 K3: with several assistants on, the tier is the account’s', 
 
     await screen.findByRole('radio', { name: /Pro/ })
     expect(hermes.getGlobalModelInfo).toHaveBeenCalledWith(undefined)
+  })
+
+  it.each([
+    ['made in Bot mode or developer mode', { 'hermes-bots': { created: 1 } }],
+    ['only renamed (a rename may create ui_meta.apex)', { apex: { name: '小红书文案' } }]
+  ])('an assistant %s keeps its own tier, so the page edits its own, with no note', async (_label, uiMeta) => {
+    roster(uiMeta)
+    setTierMode(true)
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(true)
+    $activeGatewayProfile.set('writer')
+
+    const view = renderWithClients(<ModelSection />)
+
+    await screen.findByRole('radio', { name: /Pro/ })
+    expect(hermes.getGlobalModelInfo).toHaveBeenCalledWith(undefined)
+    expect(hermes.getGlobalModelInfo).not.toHaveBeenCalledWith('default')
+    expect(view.container.querySelector('[data-shared-tier-note]')).toBeNull()
   })
 })

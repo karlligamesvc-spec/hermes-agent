@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-import { singleThreadQuickEntryTarget } from '@/app/single-thread/quick-entry'
+import { holdUntilBotSwitchLands, singleThreadQuickEntryTarget } from '@/app/single-thread/quick-entry'
 import { useI18n } from '@/i18n'
 import { rememberQuickEntryLocale } from '@/i18n/quick-entry'
 import {
@@ -75,7 +75,13 @@ export function useQuickEntryBridge({ startFreshSessionDraft, submitText }: Quic
       return
     }
 
-    setQuickEntrySubmitHandler(({ target: picked, text }) => {
+    setQuickEntrySubmitHandler(function deliver(capture) {
+      // hc-1077: a capture made while another assistant is being switched to waits for that switch.
+      if (holdUntilBotSwitchLands(() => deliver(capture))) {
+        return
+      }
+
+      const { target: picked, text } = capture
       // hc-1014: in single-thread mode every capture goes to the one conversation.
       const target = singleThreadQuickEntryTarget(picked)
 

@@ -29,7 +29,7 @@ import type { ApexAvatarShape, ApexBotColor } from '@/components/apex-avatar-loo
 import { apexBotNameFromSoul, composeApexBotSoul, renameInApexBotSoul } from '../../shared/apex-bot-soul'
 
 import { requestGatewayForProfile } from './gateway'
-import { APEX_BOT_META_KEY, APEX_PROFILE } from './single-thread-bots'
+import { APEX_BOT_META_KEY, APEX_PROFILE, type ApexBotMeta } from './single-thread-bots'
 
 /** The name field's limit, in characters (prototype ⑦: `maxlength="12"`). */
 export const BOT_NAME_MAX = 12
@@ -44,8 +44,9 @@ const CREATE_ATTEMPTS = 3
 /** How long a new assistant waits for the main process to finish setting it up before opening anyway. */
 const SETUP_WAIT_MS = 20_000
 
-/** `ui_meta.apex.origin` of an assistant created in product mode (see the module comment). */
-export const APEX_BOT_ORIGIN = 'product'
+/** `ui_meta.apex.origin` of an assistant created in product mode (see the module comment); typed from
+ *  hc-1077's ApexBotMeta, which its `followsApexTier` reads, so the two cannot drift apart. */
+export const APEX_BOT_ORIGIN: NonNullable<ApexBotMeta['origin']> = 'product'
 
 /** What the sheet edits. APEX's look is fixed (K6): only `name` is written for it. */
 export interface ApexBotLook {

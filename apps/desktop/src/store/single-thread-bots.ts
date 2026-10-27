@@ -37,6 +37,7 @@ import {
   isApexBotColor
 } from '@/components/apex-avatar-look'
 import type { DesktopClientConfigState } from '@/global'
+import { APEX_NAME, withBotName } from '@/lib/assistant-name'
 import { desktopFeatureOn } from '@/lib/desktop-features'
 import { persistBoolean, readJson, storedBoolean, writeJson } from '@/lib/storage'
 
@@ -49,6 +50,8 @@ import {
   requestFreshSession
 } from './profile'
 import { $singleThreadMode } from './single-thread'
+
+export { APEX_NAME, withBotName }
 
 // ── the switch ───────────────────────────────────────────────────────────────
 
@@ -144,9 +147,6 @@ export function setMultiBotFlagForTest(on: boolean): void {
 /** The profile that is APEX. */
 export const APEX_PROFILE = 'default'
 
-/** APEX's name until it is given another (K6: it can be renamed). The same in every locale. */
-export const APEX_NAME = 'APEX'
-
 /** The `ui_meta` key an assistant's name and look live under in its profile.yaml (never Bot Mode's `hermes-bots`). */
 export const APEX_BOT_META_KEY = 'apex'
 
@@ -158,6 +158,8 @@ export const APEX_BOT_META_KEY = 'apex'
 export interface ApexBotMeta {
   /** An id from APEX_BOT_COLORS. Ignored on APEX, whose look is fixed. */
   color?: ApexBotColor
+  /** 'product': made by the new-assistant sheet (hc-1078). hc-1080 lets only those follow APEX's tier. */
+  origin?: 'product'
   /** Creation time, epoch ms: the roster's order after APEX. */
   created?: number
   name?: string
@@ -431,15 +433,6 @@ export const $apexBot = computed([$multiBotMode, $botRoster], (on, roster) =>
   on ? botFor(roster, APEX_PROFILE) : null
 )
 
-/**
- * `text` with the assistant's name where it says APEX: unchanged when `name`
- * is null (one assistant) or APEX's own. Only for copy whose every 「APEX」 is
- * the assistant speaking or being spoken to — never the app's name.
- */
-export function withBotName(text: string, name: null | string | undefined): string {
-  return !name || name === APEX_NAME ? text : text.split(APEX_NAME).join(name)
-}
-
 /** The on-screen assistant's name while several are on screen; null otherwise. */
 export function useBotName(): null | string {
   return useStore($currentBot)?.name ?? null
@@ -464,16 +457,31 @@ export function canRestyleBot(bot: Pick<ApexBot, 'isApex'>): boolean {
 }
 
 /**
+ * K3, the rule hc-1080 applies in the main process: only an assistant made by
+ * the new-assistant sheet (`ui_meta.apex.origin == "product"`, written by
+ * hc-1078) follows APEX's tier. One made in Bot mode or developer mode — or
+ * only renamed, since a rename may create `ui_meta.apex` on any profile —
+ * keeps its own.
+ */
+export function followsApexTier(bot: ApexBot): boolean {
+  const meta = bot.uiMeta[APEX_BOT_META_KEY]
+
+  return !bot.isApex && Boolean(meta) && typeof meta === 'object' && (meta as ApexBotMeta).origin === 'product'
+}
+
+/**
  * K3 (the tier follows the account): the profile the model / tier settings
- * edit. With several assistants on and another one on screen, APEX's — the
- * root, which hc-1080 makes the others follow; otherwise `scopeProfile`
- * unchanged (undefined keeps following the active profile).
+ * edit. With several assistants on and one that follows APEX's tier on
+ * screen, APEX's — the root hc-1080 makes it follow; otherwise `scopeProfile`
+ * unchanged (undefined keeps following the active profile), so an assistant
+ * that keeps its own tier is edited where it reads it.
  */
 export function useAccountModelScope(scopeProfile: string | undefined): string | undefined {
   const multiBot = useMultiBotMode()
   const active = useStore($activeGatewayProfile)
+  const roster = useStore($botRoster)
 
-  return multiBot && normalizeProfileKey(scopeProfile ?? active) !== APEX_PROFILE ? APEX_PROFILE : scopeProfile
+  return multiBot && followsApexTier(botFor(roster, scopeProfile ?? active)) ? APEX_PROFILE : scopeProfile
 }
 
 /** For code outside React (the approval sentence). */

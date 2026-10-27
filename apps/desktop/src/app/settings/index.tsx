@@ -32,7 +32,6 @@ import { notifyError } from '@/store/notifications'
 import { $settingsScopeProfile } from '@/store/settings-scope'
 
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
-import { AccountSurfaceHeader } from '../overlays/account-surface-header'
 import { OverlayIconButton } from '../overlays/overlay-chrome'
 import { OverlayMain, OverlayNav, type OverlayNavGroup, OverlaySplitLayout } from '../overlays/overlay-split-layout'
 import { OverlayView } from '../overlays/overlay-view'
@@ -49,6 +48,7 @@ import { NotificationsSettings } from './notifications-settings'
 import { PersonalizationSettings } from './personalization-settings'
 import { PROVIDER_VIEWS, ProvidersSettings, type ProviderView } from './providers-settings'
 import { SessionsSettings } from './sessions-settings'
+import { SettingsSurfaceHeader } from './settings-multi-bot'
 import type { SettingsPageProps, SettingsView as SettingsViewId } from './types'
 import { vaultOwnerKey, VaultSettings } from './vault-settings'
 
@@ -394,7 +394,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         <OverlayNav footer={navFooter} groups={navGroups} />
 
         <OverlayMain className="px-0 pb-0 pt-0">
-          <AccountSurfaceHeader
+          <SettingsSurfaceHeader
             className="max-[53rem]:pt-3"
             description={t.settings.description}
             title={t.settings.title}

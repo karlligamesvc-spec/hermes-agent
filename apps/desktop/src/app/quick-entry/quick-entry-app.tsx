@@ -1,7 +1,8 @@
 import { applyDocumentLocale } from '@hermes/shared/i18n'
 import { useEffect, useReducer, useRef } from 'react'
 
-import { QUICK_ENTRY_COPY, useQuickEntryLocale } from '@/i18n/quick-entry'
+import { QUICK_ENTRY_COPY, useQuickEntryAssistant, useQuickEntryLocale } from '@/i18n/quick-entry'
+import { withBotName } from '@/lib/assistant-name'
 import { isSubmitEnter } from '@/lib/ime'
 import {
   initialQuickComposerState,
@@ -37,6 +38,8 @@ export function QuickEntryApp() {
   const inputRef = useRef<HTMLInputElement>(null)
   const locale = useQuickEntryLocale()
   const copy = QUICK_ENTRY_COPY[locale].window
+  // hc-1077: with several assistants on, the one a capture reaches (the main window's on-screen one).
+  const assistant = useQuickEntryAssistant()
 
   // The reducer returns { send, state }; this wrapper performs the side effect
   // (hand the payload to the shell, ask to hide) and stores the next state, so
@@ -145,7 +148,7 @@ export function QuickEntryApp() {
                 dispatch({ type: 'dismiss' })
               }
             }}
-            placeholder={state.connected ? copy.placeholder : copy.disconnected}
+            placeholder={state.connected ? withBotName(copy.placeholder, assistant) : copy.disconnected}
             ref={inputRef}
             spellCheck={false}
             style={{
