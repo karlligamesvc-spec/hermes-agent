@@ -2,6 +2,7 @@ import { useAuiState } from '@assistant-ui/react'
 import { useRef } from 'react'
 
 import { useI18n } from '@/i18n'
+import { useSingleThreadMode } from '@/store/single-thread'
 
 import {
   buildTurnProcess,
@@ -187,6 +188,8 @@ function partSignature(part: TurnPart): string {
  */
 export function useTurnView(): null | TurnView {
   const { locale } = useI18n()
+  // hc-1066: single-thread product mode names steps by what they are for.
+  const plain = useSingleThreadMode()
   const cache = useRef<null | TurnCache>(null)
 
   return useAuiState((state: TurnStateSlice) => {
@@ -208,7 +211,10 @@ export function useTurnView(): null | TurnView {
     const durationS = typeof last.metadata?.custom?.durationS === 'number' ? last.metadata.custom.durationS : undefined
     const lastProse = parts.findLastIndex(part => part.type === 'text' || part.type === 'reasoning')
 
-    const callSignature = calls.map(partSignature).concat(String(live), String(lastProse), locale).join('|')
+    const callSignature = calls
+      .map(partSignature)
+      .concat(String(live), String(lastProse), locale, String(plain))
+      .join('|')
 
     const sameCalls =
       cache.current?.calls.length === calls.length &&
@@ -221,7 +227,7 @@ export function useTurnView(): null | TurnView {
     const steps =
       cache.current && cache.current.callSignature === callSignature && sameCalls
         ? cache.current.steps
-        : buildTurnSteps(parts, live)
+        : buildTurnSteps(parts, live, plain)
 
     const signature = parts
       .map(partSignature)

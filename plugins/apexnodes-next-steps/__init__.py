@@ -30,6 +30,7 @@
 
 * ``post_tool_call`` + ``transform_llm_output``(hc-1036):这一轮 generate_video / generate_image
   花钱生成的文件，回复里没给用户看的，列在正文后面、「下一步」之前(见下面 hc-1036 一节)。
+  hc-1066:桌面端开着单线程模式时画成素材卡片，不把本机缓存路径写给用户。
 
 同一份文件逐字节复制在 hermes-agent fork 的 ``plugins/apexnodes-next-steps/``:
 APEX Desktop 的聊天(选题库路径)和本机网关接的 IM(编号)都靠那份。
@@ -287,6 +288,10 @@ def _reset_state() -> None:
 # generate_video / generate_image 成功产出的每个文件，transform_llm_output 时回复里没出现它的
 # 路径、文件名或链接，就列出来：桌面端和终端列本机路径，其余出口列链接(没有链接就单独一行 MEDIA:)。
 # 开关：HONESTY_GUARDS_DISABLE=1(和 apexnodes-honesty-tools 的 hc-1036 钩子共用)。
+#
+# hc-1066:桌面端开着单线程模式(Desktop 主进程启动引擎前写 APEX_SINGLE_THREAD_ACTIVE=1)时，每个文件
+# 单独一段 MEDIA:,桌面渲染层画成能直接播放的素材卡片;用户不再读到 ~/.apexnodes/cache/... 这种内部路径。
+# 云端容器不设这个变量，开关关着的桌面端也照旧列路径。
 
 PAID_MEDIA_TOOLS = {"generate_video": ("视频", "Video"), "generate_image": ("图片", "Image")}
 LOCAL_PATH_PLATFORMS = frozenset({"desktop", "cli"})
@@ -295,6 +300,11 @@ UNSHOWN_CHROME = {
     "zh": "这一轮还生成了下面这些素材(都已计费)，上面没给你看，放在这里：",
     "en": "This turn also made the files below (already billed); they were not shown above:",
 }
+UNSHOWN_CARDS_CHROME = {
+    "zh": "这一轮还生成了下面这些素材(都已计费)，上面没给你看：",
+    "en": "This turn also made the files below (already billed); they were not shown above:",
+}
+SINGLE_THREAD_ENV = "APEX_SINGLE_THREAD_ACTIVE"
 
 _paid_outputs: OrderedDict[str, list[dict]] = OrderedDict()
 
@@ -334,6 +344,11 @@ def _record_paid_outputs(session_id: str, outputs: list[dict]) -> None:
             _paid_outputs.popitem(last=False)
 
 
+def media_cards(platform: str) -> bool:
+    """hc-1066:单线程模式的桌面端把素材画成卡片，不列本机路径。"""
+    return platform == "desktop" and os.getenv(SINGLE_THREAD_ENV, "").strip() == "1"
+
+
 def unshown_media_note(session_id: str, text: str, platform: str) -> str:
     """把本会话记下的产出取走;回复里没提到的列成一段，都提到了(或没有)返回 ""。"""
     with _state_lock:
@@ -342,13 +357,19 @@ def unshown_media_note(session_id: str, text: str, platform: str) -> str:
     if not unshown:
         return ""
     zh = _has_cjk(text) or not text.strip()
+    more = len(unshown) - MAX_LISTED_OUTPUTS
+    if media_cards(platform):
+        cards = [f"MEDIA:{output['path'] or output['url']}" for output in unshown[:MAX_LISTED_OUTPUTS]]
+        tail = [(f"……还有 {more} 个" if zh else f"…and {more} more")] if more > 0 else []
+        _log_event("unshown_media", platform=platform, count=len(unshown), cards=True)
+        # 每张卡片单独一段：桌面端只认独占一行的 MEDIA:。
+        return "\n\n".join([UNSHOWN_CARDS_CHROME["zh" if zh else "en"], *cards, *tail])
     lines = [UNSHOWN_CHROME["zh" if zh else "en"]]
     for output in unshown[:MAX_LISTED_OUTPUTS]:
         label = PAID_MEDIA_TOOLS[output["tool"]][0 if zh else 1]
         where = output["path"] or output["url"] if platform in LOCAL_PATH_PLATFORMS else output["url"]
         # 没有链接的 IM 出口：MEDIA: 单独一行，网关把文件直接发过去。
         lines.append(f"- {label}{'：' if zh else ': '}{where}" if where else f"- {label}\nMEDIA:{output['path']}")
-    more = len(unshown) - MAX_LISTED_OUTPUTS
     if more > 0:
         lines.append(f"- ……还有 {more} 个" if zh else f"- …and {more} more")
     _log_event("unshown_media", platform=platform, count=len(unshown))

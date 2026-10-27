@@ -62,6 +62,7 @@ def plugin(monkeypatch, tmp_path, caplog):
 
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "home"))
     monkeypatch.delenv("NEXT_STEPS_DISABLE", raising=False)
+    monkeypatch.delenv("APEX_SINGLE_THREAD_ACTIVE", raising=False)
     manager = PluginManager()
     monkeypatch.setattr(plugins_mod, "_plugin_manager", manager)
     module = _load_plugin()
@@ -170,6 +171,48 @@ def test_paid_clips_the_reply_never_showed_are_listed_before_the_block(plugin):
     listed = [line for line in final.splitlines() if line.startswith("- 视频：")]
     assert listed == [f"- 视频：/Users/u/.apexnodes/media/ai{n}.mp4" for n in range(1, 5)]
     assert final.index("ai4.mp4") < final.index("<!-- apex:next")
+
+
+# What the single-thread Desktop chat gets for two unshown clips (hc-1066); the renderer
+# test apps/desktop/src/lib/chat-messages/unshown-media-cards.test.ts reads the same text.
+CARDS_NOTE = (
+    "这一轮还生成了下面这些素材(都已计费)，上面没给你看：\n\n"
+    "MEDIA:/Users/u/.apexnodes/cache/media/竖屏口播_cf68f9ae.mp4\n\n"
+    "MEDIA:/Users/u/.apexnodes/cache/media/科技空镜 b-roll_9de0fb22.mp4"
+)
+
+
+def test_single_thread_desktop_gets_media_cards_not_cache_paths(plugin, monkeypatch):
+    """hc-1066: the 2026-10-26 reply ended in two raw ~/.apexnodes/cache/media paths. With the
+    single-thread switch the main process sets before the engine starts, each unshown clip is its
+    own MEDIA: paragraph, which the Desktop renderer draws as a playable card."""
+    from agent.inline_tool_executors import emit_terminal_post_tool_call
+    from agent.turn_finalizer import apply_llm_output_transform
+
+    monkeypatch.setenv("APEX_SINGLE_THREAD_ACTIVE", "1")
+    agent = _agent("desktop", "cards")
+    for name in ("竖屏口播_cf68f9ae.mp4", "科技空镜 b-roll_9de0fb22.mp4"):
+        path = f"/Users/u/.apexnodes/cache/media/{name}"
+        result = json.dumps({"video_url": "", "video_path": path, "media_tag": f"MEDIA:{path}"})
+        emit_terminal_post_tool_call(
+            agent, function_name="generate_video", function_args={"prompt": "p"}, result=result,
+            effective_task_id="task", tool_call_id=name, middleware_trace=[], status="ok", duration_ms=1,
+        )
+    reply = "做完了。\n\nMEDIA:/Users/u/Downloads/成片_43s.mp4\n\n<!-- apex:next\n再剪一版 | 用没用上的素材再剪一版\n-->"
+
+    final, transformed = apply_llm_output_transform(agent, reply, turn_id="t1", platform="desktop")[:2]
+
+    assert transformed is True
+    assert f"\n\n{CARDS_NOTE}\n\n<!-- apex:next" in final
+    assert "- 视频" not in final
+
+
+@pytest.mark.parametrize(("platform", "switch"), (("desktop", "0"), ("desktop", "true"), ("cli", "1"), ("weixin", "1")))
+def test_media_cards_need_the_desktop_chat_and_the_main_process_switch(plugin, monkeypatch, platform, switch):
+    monkeypatch.setenv("APEX_SINGLE_THREAD_ACTIVE", switch)
+
+    assert plugin.media_cards(platform) is False
+    assert plugin.media_cards("desktop") is (switch == "1")
 
 
 def test_desktop_config_example_enables_the_plugin():
