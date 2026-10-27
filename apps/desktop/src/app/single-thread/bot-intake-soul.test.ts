@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { apexBotNameFromSoul, composeApexBotSoul, renameInApexBotSoul } from '../../../shared/apex-bot-soul'
 import { APEX_DESKTOP_DEFAULT_SOUL } from '../../../shared/apex-default-soul'
 
 import {
@@ -14,6 +15,8 @@ import {
 /** SOUL files as Desktop writes them: the identity text and one trailing newline. */
 const SOULS = {
   apex: `${APEX_DESKTOP_DEFAULT_SOUL}\n`,
+  // hc-1078's template for an assistant the user made: what the intake is really written into.
+  template: composeApexBotSoul({ name: '剪辑助手' }),
   named: 'You are 剪辑助手, an AI assistant made in APEX by ApexNodes HK.\n\nKeep replies in Chinese.\n'
 }
 
@@ -150,5 +153,34 @@ describe('hc-1079: 「别的，我直接说」 as one short phrase', () => {
 
     expect(soul.match(/^## /gm)).toEqual(['## '])
     expect(withoutDivision(soul)).toBe(SOULS.named)
+  })
+})
+
+describe('hc-1079 with hc-1078’s template: answer, rename, undo', () => {
+  const ALL = { platform: 'same' as const, role: 'editing' as const, style: 'brief' as const }
+
+  it('the template has no section of its own, so undo has exactly one owner', () => {
+    expect(hasDivision(SOULS.template)).toBe(false)
+    expect(SOULS.template.endsWith('.\n')).toBe(true)
+  })
+
+  it.each(['zh', 'zh-hant', 'en'] as const)(
+    'a rename after the answers keeps the 「分工」, and undo then gives the renamed template byte for byte (%s)',
+    locale => {
+      const answered = withDivision(SOULS.template, divisionSection(ALL, locale))
+      const renamed = renameInApexBotSoul(answered, '短视频剪辑')!
+
+      expect(renamed).toBe(withDivision(composeApexBotSoul({ name: '短视频剪辑' }), divisionSection(ALL, locale)))
+      expect(apexBotNameFromSoul(renamed)).toBe('短视频剪辑')
+      expect(withoutDivision(renamed)).toBe(composeApexBotSoul({ name: '短视频剪辑' }))
+    }
+  )
+
+  it('answers after a rename land the same way', () => {
+    const renamed = renameInApexBotSoul(SOULS.template, '短视频剪辑')!
+    const answered = withDivision(renamed, divisionSection(ALL, 'zh'))
+
+    expect(apexBotNameFromSoul(answered)).toBe('短视频剪辑')
+    expect(withoutDivision(answered)).toBe(composeApexBotSoul({ name: '短视频剪辑' }))
   })
 })
