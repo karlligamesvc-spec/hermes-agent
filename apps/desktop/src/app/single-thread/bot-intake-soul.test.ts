@@ -1,10 +1,16 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
+
+import type { Locale } from '@/i18n/types'
 
 import { apexBotNameFromSoul, composeApexBotSoul, renameInApexBotSoul } from '../../../shared/apex-bot-soul'
 import { APEX_DESKTOP_DEFAULT_SOUL } from '../../../shared/apex-default-soul'
 
 import {
   BOT_ROLE_OTHER_MAX_CHARS,
+  type BotIntakeAnswers,
   cleanRoleOther,
   divisionSection,
   hasDivision,
@@ -182,5 +188,41 @@ describe('hc-1079 with hc-1078’s template: answer, rename, undo', () => {
 
     expect(apexBotNameFromSoul(answered)).toBe('短视频剪辑')
     expect(withoutDivision(answered)).toBe(composeApexBotSoul({ name: '短视频剪辑' }))
+  })
+})
+
+/**
+ * The file has a second writer: hc-1082's Python rename tool (apex_overlay/assistant_name.py) rewrites
+ * its first line. Its tests read these same cases (`division` in apex-bot-soul-cases.json), so the
+ * section Desktop writes and the rename that has to keep it can only change together.
+ */
+describe('hc-1079 × hc-1082: the 「分工」 through a rename, against the cases the Python rename reads too', () => {
+  interface DivisionCase {
+    answers: BotIntakeAnswers
+    division: string
+    expected: string
+    locale: Locale
+    name: string
+    next: string
+    soul: string
+    undone: string
+  }
+
+  const { cases } = (
+    JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'shared', 'apex-bot-soul-cases.json'), 'utf8')) as {
+      division: { cases: DivisionCase[] }
+    }
+  ).division
+
+  it.each(cases)('$name ($locale): the case is what Desktop writes for these answers', c => {
+    expect(divisionSection(c.answers, c.locale)).toBe(c.division)
+    expect(withDivision(composeApexBotSoul({ name: c.name }), c.division)).toBe(c.soul)
+  })
+
+  it.each(cases)('$name → $next: the rename keeps the section, and 撤销 leaves the renamed template', c => {
+    expect(renameInApexBotSoul(c.soul, c.next)).toBe(c.expected)
+    expect(c.expected.endsWith(`\n\n${c.division}`)).toBe(true)
+    expect(withoutDivision(c.expected)).toBe(c.undone)
+    expect(c.undone).toBe(composeApexBotSoul({ name: c.next }))
   })
 })
