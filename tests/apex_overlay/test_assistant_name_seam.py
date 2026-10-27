@@ -312,6 +312,26 @@ def test_a_rename_leaves_the_file_profiles_configure_would(multi_bot):
     )
 
 
+def test_a_rename_keeps_the_product_origin_mark(multi_bot, monkeypatch):
+    """M2 marks assistants it creates with ``origin: "product"`` (M4's tier follows APEX only for those)."""
+    home = _named(multi_bot)
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    _store(home, {"apex": {"name": "小剪", "shape": "square", "color": "teal", "origin": "product"}})
+    assistant_name.handle({"name": "阿剪"})
+    stored = yaml.safe_load((home / "profile.yaml").read_text(encoding="utf-8"))["ui_meta"]["apex"]
+    assert stored == {"name": "阿剪", "shape": "square", "color": "teal", "origin": "product"}
+
+
+def test_a_rename_never_marks_a_profile_as_product(multi_bot, monkeypatch):
+    """A developer-mode bot renamed in chat gets only a name, so it does not start following APEX's tier."""
+    home = _named(multi_bot)
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    _store(home, {"hermes-bots": {"title": "Worker"}})
+    assistant_name.handle({"name": "阿剪"})
+    ui_meta = yaml.safe_load((home / "profile.yaml").read_text(encoding="utf-8"))["ui_meta"]
+    assert ui_meta == {"hermes-bots": {"title": "Worker"}, "apex": {"name": "阿剪"}}
+
+
 def test_the_same_name_again_leaves_the_revision(multi_bot):
     json.loads(assistant_name.handle({"name": "小李"}))
     before = (multi_bot / "profile.yaml").read_bytes()
