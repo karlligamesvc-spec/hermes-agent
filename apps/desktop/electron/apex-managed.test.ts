@@ -134,8 +134,11 @@ test('hc-645 desktop boot wires the web gateway into both seed and upgrade paths
 
   assert.match(mainSource, /const webGatewayBlock = seedWebGatewayBlockYaml\(\)/)
   assert.equal((mainSource.match(/webGatewayBlock \+/g) || []).length, 2, 'managed and BYOK seeds both carry the block')
-  assert.match(mainSource, /const webHeal = ensureWebGatewayYaml\(raw\)/)
-  assert.match(mainSource, /fixed\.push\('web\.search_backend'\)/)
+  // hc-1080: the boot/watch heal moved to apex-profile-config.ts (run per profile home).
+  const healSource = readFileSync(join(import.meta.dirname, 'apex-profile-config.ts'), 'utf8')
+
+  assert.match(healSource, /const webHeal = ensureWebGatewayYaml\(raw\)/)
+  assert.match(healSource, /fixed\.push\('web\.search_backend'\)/)
 })
 
 /**
@@ -924,12 +927,9 @@ test('Desktop follows Hermes parent and child budgets without overwriting explic
   // 500/250 deep-work envelope as Hermes while the add-only writer still
   // preserves any value a user deliberately put on disk.
   const reconciled = ensureProductDefaultsYaml('model:\n  default: x\n').next
-  const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
-
-  const guardBody = main.slice(
-    main.indexOf('function healConfigYamlProductBlocks'),
-    main.indexOf('// Keep the guard live while the app runs')
-  )
+  // hc-1080: the boot/watch heal body lives in apex-profile-config.ts (run per profile home).
+  const heal = readFileSync(join(__dirname, 'apex-profile-config.ts'), 'utf8')
+  const guardBody = heal.slice(heal.indexOf('function healProductBlocks('), heal.indexOf('export function healProductBlocksYaml('))
 
   assert.equal(APEX_PRODUCT_DEFAULTS['agent.max_turns'], 500)
   assert.equal(APEX_PRODUCT_DEFAULTS['delegation.max_iterations'], 250)

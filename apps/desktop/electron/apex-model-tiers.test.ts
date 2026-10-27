@@ -230,13 +230,17 @@ describe('main.ts wiring', () => {
   })
 
   test('runs the tier step in the boot/watch config heal, with the tiers the relay listed for this key', () => {
-    const heal = main.slice(main.indexOf('function healConfigYamlProductBlocks('))
-    const body = heal.slice(0, heal.indexOf('\nfunction '))
+    // hc-1080: the heal runs per profile home from apex-profile-config.ts; main hands it the context.
+    const guard = main.slice(main.indexOf('function guardConfigYamlProductBlocks('))
+    const body = guard.slice(0, guard.indexOf('\n}\n'))
+    const heal = readFileSync(join(__dirname, 'apex-profile-config.ts'), 'utf8')
 
     assert.match(
       body,
-      /^\s+raw = healManagedModelTier\(raw, managed, endpoints\.relayBaseUrl, process\.env, fixed, relayTiers\.of\(managed\.key\)\)/m
+      /^\s+const context = \{ managed, endpoints: resolveApexEndpoints\(process\.env\), env: process\.env, entitled: relayTiers\.of\(managed\.key\) \}$/m
     )
+    assert.match(body, /^\s+guardProductBlocksInHomes\(apexConfigHomes\(managed\), context, reason, rememberLog\)$/m)
+    assert.match(heal, /^\s+return healManagedModelTier\(raw, managed, endpoints\.relayBaseUrl, ctx\.env, fixed, ctx\.entitled\)$/m)
   })
 
   test('hc-1072: every relay listing probe feeds the memo and re-heals when the tiers change', () => {
