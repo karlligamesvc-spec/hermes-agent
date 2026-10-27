@@ -106,7 +106,10 @@ describe('healProfileConfig', () => {
     const base = deps(root).deps.context()!
     const env = { APEX_SINGLE_THREAD_ACTIVE: '1', APEX_MULTI_BOT_ACTIVE: '1' }
     const { deps: d } = deps(root, { context: () => ({ ...base, env }) })
-    fs.writeFileSync(path.join(root, 'profiles', 'apex-bot-2', 'profile.yaml'), 'ui_meta:\n  apex:\n    name: X\n')
+    fs.writeFileSync(
+      path.join(root, 'profiles', 'apex-bot-2', 'profile.yaml'),
+      'ui_meta:\n  apex:\n    name: X\n    origin: product\n'
+    )
 
     const result = healProfileConfig('apex-bot-2', d)
 
@@ -125,9 +128,10 @@ describe('healProfileConfig', () => {
       path.join(root, 'config.yaml'),
       managedConfig(NEW_KEY).replace('default: apex-flash', 'default: apex-pro')
     )
+    // Renamed in chat (hc-1082 writes ui_meta.apex.name), never stamped with the product origin.
     fs.writeFileSync(
       path.join(root, 'profiles', 'dev-bot', 'profile.yaml'),
-      'ui_meta:\n  hermes-bots:\n    rune: spark\n'
+      'ui_meta:\n  hermes-bots:\n    rune: spark\n  apex:\n    name: Y\n'
     )
     const base = deps(root).deps.context()!
     const env = { APEX_SINGLE_THREAD_ACTIVE: '1', APEX_MULTI_BOT_ACTIVE: '1' }

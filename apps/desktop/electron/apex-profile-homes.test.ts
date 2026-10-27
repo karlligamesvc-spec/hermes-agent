@@ -10,7 +10,8 @@ import {
   DEFAULT_PROFILE,
   isProductAssistant,
   listProfileHomes,
-  managedProfileHomes
+  managedProfileHomes,
+  PRODUCT_ASSISTANT_ORIGIN
 } from './apex-profile-homes'
 
 const RELAY = 'https://apex-nodes.com/relay/v1'
@@ -156,22 +157,35 @@ describe('managedProfileHomes', () => {
 })
 
 describe('isProductAssistant', () => {
+  test('the origin hc-1078 stamps is the literal product', () => {
+    assert.equal(PRODUCT_ASSISTANT_ORIGIN, 'product')
+  })
+
   test.each([
     [
       'an assistant the product mode created (safe_dump, escaped name)',
-      'ui_meta:\n  apex:\n    name: "\\u5C0F\\u7EA2\\u4E66"\n    shape: circle\n    color: \'#E5484D\'\n_ui_meta_revisions:\n  apex: 1\n',
+      'ui_meta:\n  apex:\n    name: "\\u5C0F\\u7EA2\\u4E66"\n    shape: circle\n    color: \'#E5484D\'\n    origin: product\n_ui_meta_revisions:\n  apex: 1\n',
+      true
+    ],
+    ['the origin alone', 'ui_meta:\n  apex:\n    origin: product\n', true],
+    [
+      'an apex entry next to an upstream Bot-mode one',
+      'ui_meta:\n  hermes-bots:\n    rune: spark\n  apex:\n    name: X\n    origin: product\n',
       true
     ],
     [
-      'an apex entry next to an upstream Bot-mode one',
-      'ui_meta:\n  hermes-bots:\n    rune: spark\n  apex:\n    name: X\n',
-      true
+      'a name but no origin (a developer-mode bot renamed in chat)',
+      'ui_meta:\n  apex:\n    name: X\n    shape: circle\n',
+      false
     ],
+    ['another origin', 'ui_meta:\n  apex:\n    name: X\n    origin: developer\n', false],
+    ['the origin in another case', 'ui_meta:\n  apex:\n    origin: Product\n', false],
+    ['the origin as a non-string', 'ui_meta:\n  apex:\n    origin: true\n', false],
     ['an upstream Bot-mode profile', 'ui_meta:\n  hermes-bots:\n    rune: spark\n', false],
     ['an empty apex entry', 'ui_meta:\n  apex: {}\n', false],
     ['a null apex entry', 'ui_meta:\n  apex: null\n', false],
-    ['apex as a list', 'ui_meta:\n  apex:\n    - name\n', false],
-    ['apex at the top level, not under ui_meta', 'apex:\n  name: X\n', false],
+    ['apex as a list', 'ui_meta:\n  apex:\n    - origin\n', false],
+    ['the origin at the top level, not under ui_meta', 'apex:\n  origin: product\n', false],
     ['malformed YAML', 'ui_meta: [unclosed\n', false],
     ['an empty file', '', false]
   ])('%s', (_label, text, expected) => {

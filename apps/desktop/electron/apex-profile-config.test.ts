@@ -73,7 +73,7 @@ function hermesRoot(profiles: Record<string, string>, rootConfig = managedConfig
 
 // What the engine's profiles.configure writes for an assistant hc-1078 creates (yaml.safe_dump, block style).
 const PRODUCT_PROFILE_YAML =
-  'ui_meta:\n  apex:\n    name: "\\u5C0F\\u7EA2\\u4E66\\u6587\\u6848"\n    shape: circle\n    color: \'#E5484D\'\n' +
+  'ui_meta:\n  apex:\n    name: "\\u5C0F\\u7EA2\\u4E66\\u6587\\u6848"\n    shape: circle\n    color: \'#E5484D\'\n    origin: product\n' +
   '_ui_meta_revisions:\n  apex: 1\n'
 
 function markProduct(dir: string, ...profiles: string[]) {
@@ -212,7 +212,9 @@ describe('with several assistants on, the named profiles follow the root (accoun
       devbot: managedConfig('apex-max'),
       plain: managedConfig('apex-max'),
       empty: managedConfig('apex-max'),
-      broken: managedConfig('apex-max')
+      broken: managedConfig('apex-max'),
+      renamed: managedConfig('apex-max'),
+      other: managedConfig('apex-max')
     }
 
     const dir = hermesRoot(profiles, managedConfig('apex-pro', NEW_KEY))
@@ -223,13 +225,19 @@ describe('with several assistants on, the named profiles follow the root (accoun
     )
     fs.writeFileSync(path.join(dir, 'profiles', 'empty', 'profile.yaml'), 'ui_meta:\n  apex: {}\n')
     fs.writeFileSync(path.join(dir, 'profiles', 'broken', 'profile.yaml'), 'ui_meta: [unclosed\n')
+    // A developer-mode bot renamed in chat (hc-1082 writes ui_meta.apex.name), and a foreign origin.
+    fs.writeFileSync(path.join(dir, 'profiles', 'renamed', 'profile.yaml'), 'ui_meta:\n  apex:\n    name: X\n')
+    fs.writeFileSync(
+      path.join(dir, 'profiles', 'other', 'profile.yaml'),
+      'ui_meta:\n  apex:\n    name: X\n    origin: developer\n'
+    )
     const ctx = context({ env: ST, entitled: allTiers })
 
     guardProductBlocksInHomes(managedProfileHomes(dir, RELAY), ctx, 'boot', () => undefined)
 
     assert.match(read(dir, 'writer'), /^ {2}default: apex-pro$/m)
 
-    for (const profile of ['devbot', 'plain', 'empty', 'broken'] as const) {
+    for (const profile of ['devbot', 'plain', 'empty', 'broken', 'renamed', 'other'] as const) {
       assert.equal(read(dir, profile), healProductBlocksYaml(profiles[profile], ctx).next, profile)
       assert.match(read(dir, profile), /^ {2}default: apex-max$/m, profile)
     }
