@@ -26,7 +26,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import sqlite3
 import subprocess
 import sys
@@ -255,6 +254,20 @@ def tool_call_counts(db: Path) -> dict[str, dict[str, int]]:
         con.close()
 
 
+def last_message(db: Path, session_id: str) -> dict | None:
+    """主线最新一段的最后一条消息：后台回合跑完、结果送达时应是 assistant 的回答（finish_reason stop）。"""
+    con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True, timeout=5)
+    try:
+        row = con.execute("SELECT role, finish_reason, timestamp, length(content), tool_name FROM messages "
+                          "WHERE session_id = ? ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
+    finally:
+        con.close()
+    if not row:
+        return None
+    role, finish, at, chars, tool = row
+    return {"role": role, "finish_reason": finish, "at": iso(at), "chars": chars, "tool_name": tool}
+
+
 def sessions_summary(home: Path, name: str | None) -> dict | None:
     db = home / "state.db"
     if not db.is_file():
@@ -269,6 +282,7 @@ def sessions_summary(home: Path, name: str | None) -> dict | None:
         "main_thread_segments": len(main_chain),
         "bot_chat": sum(1 for row in rows if row.get("title") == BOT_CHAT_TITLE),
         "main_thread_prompt": prompt_checks(latest.get("system_prompt") if latest else None, name),
+        "main_thread_last_message": last_message(db, latest["id"]) if latest else None,
         "tool_calls": tool_call_counts(db),
     }
 
@@ -817,10 +831,8 @@ def find_ffmpeg(home: Path | None, explicit: str | None) -> str:
             hits = sorted(home.glob(f"versions/*/.runtime/bin/{name}")) + sorted(home.glob(f"tools/{name}"))
             if hits:
                 return str(hits[-1])
-    found = shutil.which("ffmpeg")
-    if not found:
-        raise SystemExit("找不到 ffmpeg：用 --ffmpeg 指定，或 --home 指向已经激活引擎的测试家目录")
-    return found
+    # 不在 PATH 上找：验收要用引擎自带的那份（版本和用户机器上的一样）
+    raise SystemExit("找不到 ffmpeg：--home 指向已经激活引擎的测试家目录，或用 --ffmpeg 指定")
 
 
 def run_ffmpeg(argv: list[str], timeout: float) -> float:

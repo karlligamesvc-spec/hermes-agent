@@ -3,7 +3,7 @@
 # .ps1 in the system code page. The checklist (README.md, same folder) explains each step.
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File fresh-env-win.ps1 prepare -Root C:\apex-qa\hc-1083\run1 -Installer C:\apex-qa\APEX-x.y.z-win-x64.exe
-#   ... scripts -Root <dir> [-MultiBot] [-FastPool]   # writes launch-apex.cmd and watch.cmd
+#   ... scripts -Root <dir> [-MultiBot] [-FastPool] [-QuitConfirm]   # writes launch-apex.cmd and watch.cmd
 #   ... python  -Root <dir>                           # path of the engine's own python.exe
 #   ... stop    -Root <dir>                           # stops every process under the test dir
 #   ... cleanup -Root <dir> [-Delete]                 # uninstalls the copy; -Delete removes the dir
@@ -15,12 +15,15 @@
 #   for prepare / python / stop / cleanup and the read-only snapshot / check.
 # - A new empty -Root for every acceptance run; never prove anything on a reused home (hard rule 11).
 # - -FastPool only for quick exploration; formal numbers use the default pool settings.
+# - The quit confirmation ("work is still running, quit anyway?") is skipped unless -QuitConfirm;
+#   on Windows closing the last window quits the app, so F6 in the checklist needs -QuitConfirm.
 param(
   [Parameter(Mandatory = $true, Position = 0)][ValidateSet('prepare', 'scripts', 'python', 'stop', 'cleanup')][string]$Action,
   [Parameter(Mandatory = $true)][string]$Root,
   [string]$Installer,
   [switch]$MultiBot,
   [switch]$FastPool,
+  [switch]$QuitConfirm,
   [switch]$Delete
 )
 $ErrorActionPreference = 'Stop'
@@ -66,9 +69,9 @@ switch ($Action) {
       'set "HERMES_HOME=%~dp0home\hermes"',
       'set "HERMES_DESKTOP_USER_DATA_DIR=%~dp0home\userdata"',
       'set "HERMES_DESKTOP_CWD=%~dp0home\cwd"',
-      'set HERMES_DESKTOP_IGNORE_EXISTING=1',
-      'set HERMES_DESKTOP_SKIP_QUIT_CONFIRM=1'
+      'set HERMES_DESKTOP_IGNORE_EXISTING=1'
     )
+    if (-not $QuitConfirm) { $lines += 'set HERMES_DESKTOP_SKIP_QUIT_CONFIRM=1' }
     if ($MultiBot) { $lines += 'set APEXNODES_MULTI_BOT=1' }
     if ($FastPool) { $lines += 'set HERMES_DESKTOP_POOL_IDLE_MS=60000', 'set HERMES_DESKTOP_POOL_KEEPALIVE_FRESH_MS=120000' }
     $lines += 'echo %date% %time% launch multi_bot=%APEXNODES_MULTI_BOT% >> "%~dp0launches.log"', 'start "" "%~dp0app\APEX.exe"'
@@ -83,7 +86,7 @@ switch ($Action) {
       'pause'
     )
     Set-Content -Path (Join-Path $Root 'watch.cmd') -Encoding ASCII -Value $watch
-    "Wrote launch-apex.cmd and watch.cmd (multi-bot switch: $([bool]$MultiBot); fast pool: $([bool]$FastPool)). Copy multi_bot_qa.py into $Root."
+    "Wrote launch-apex.cmd and watch.cmd (multi-bot: $([bool]$MultiBot); fast pool: $([bool]$FastPool); quit confirm: $([bool]$QuitConfirm)). Copy multi_bot_qa.py into $Root."
   }
   'python' {
     $py = Get-ChildItem (Join-Path $HermesHome 'versions\*\venv\Scripts\python.exe') -ErrorAction SilentlyContinue |

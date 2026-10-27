@@ -232,10 +232,16 @@ def test_snapshot_counts_requested_and_ran_tool_calls(home: Path) -> None:
         call = {"id": "call-1", "type": "function", "function": {"name": "apex_rename", "arguments": '{"name": "小剪"}'}}
         db.append_message("segment", "assistant", content="", tool_calls=[call])
         db.append_message("segment", "tool", content="已改名为小剪", tool_name="apex_rename", tool_call_id="call-1")
+        mid = qa.take_snapshot(home)["homes"]["apex-bot-2"]["sessions"]["main_thread_last_message"]
+        db.append_message("segment", "assistant", content="好的，以后我叫小剪。", finish_reason="stop")
     finally:
         db.close()
 
     after = qa.take_snapshot(home)
+    # F4–F6: a background turn that finished and was delivered ends on the assistant's answer, not on a tool result
+    assert (mid["role"], mid["tool_name"]) == ("tool", "apex_rename")
+    last = after["homes"]["apex-bot-2"]["sessions"]["main_thread_last_message"]
+    assert (last["role"], last["finish_reason"], last["chars"]) == ("assistant", "stop", len("好的，以后我叫小剪。"))
 
     assert after["homes"]["apex-bot-2"]["sessions"]["tool_calls"] == {"requested": {"apex_rename": 1}, "ran": {"apex_rename": 1}}
     assert after["homes"]["apex-bot-3"]["sessions"]["tool_calls"] == {"requested": {}, "ran": {}}
@@ -295,9 +301,9 @@ def test_log_patterns_match_the_product_text(event: str, sources: list[tuple[str
     present = [(path, literal) for path, literal in sources if (REPO / path).exists()]
     if not present:
         pytest.skip(f"none of {[p for p, _ in sources]} is on this tree yet")
-    assert any(literal in (REPO / path).read_text(encoding="utf-8") for path, literal in present), \
+    assert any(literal in (REPO / path).read_text(encoding="utf-8-sig") for path, literal in present), \
         f"no longer logged anywhere: {sources}"
-    stamp_format = (REPO / "apps/desktop/electron/desktop-log-line.ts").read_text(encoding="utf-8")
+    stamp_format = (REPO / "apps/desktop/electron/desktop-log-line.ts").read_text(encoding="utf-8-sig")
     assert "`[${stamp}] [hermes] ${text}`" in stamp_format
 
     parsed = qa.parse_log_line(f"[2026-10-26T12:00:00.000Z] [hermes] {line}")
