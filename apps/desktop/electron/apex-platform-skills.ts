@@ -33,7 +33,8 @@
  *   ?caps=next-steps (always sent): this build renders the 「下一步」 block, so the
  *     skills keep the section that asks for it; without it the server drops that
  *     section and hashes that variant separately.
- *   401 → expired/absent JWT; treated as "nothing to sync" (installed set stands).
+ *   401 → expired/absent JWT; treated as "nothing to sync" (installed set stands),
+ *     and main's apex-cloud-login.ts asks the user to sign in again (hc-1073).
  *
  * The persisted cache (userData/apex-platform-skills.json) is plain JSON
  * ({ manifestHash, installedAt, count }) — the payload carries NO secrets

@@ -260,6 +260,14 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     team: () => ipcRenderer.invoke('hermes:managed:team'),
     // hc-1061: the plan and its usage for the single-thread account row (apex-plan-usage.ts).
     planUsage: () => ipcRenderer.invoke('hermes:managed:planUsage'),
+    // hc-1073: did the cloud reject the stored login JWT? (apex-cloud-login.ts)
+    cloudLogin: () => ipcRenderer.invoke('hermes:managed:cloudLogin'),
+    onCloudLogin: callback => {
+      const listener = (_event, state) => callback(state)
+      ipcRenderer.on('hermes:managed:cloud-login', listener)
+
+      return () => ipcRenderer.removeListener('hermes:managed:cloud-login', listener)
+    },
     // hc-991 first-use creator intake: read or write the account's three answers
     // (apex-creator-profile.ts); main keeps the local agent's prompt copy in step.
     creatorProfile: request => ipcRenderer.invoke('hermes:managed:creatorProfile', request),

@@ -25,6 +25,9 @@ import { requestManagedReSignIn } from '@/store/onboarding'
 import { ASSISTANT_ROUTE, CRON_ROUTE, DELIVERABLES_ROUTE, HISTORY_ROUTE, PROFILE_STATS_ROUTE, PROJECTS_ROUTE, SETTINGS_ROUTE } from '../../routes'
 import { useSingleThreadNavLabels } from '../../single-thread/nav-labels'
 
+import { CloudLoginNotice } from './cloud-login-notice'
+import { SessionExpiredCard } from './session-expired-card'
+
 // The signed-in display name: prefer an explicit name, else the email's local
 // part, else a generic fallback ("账户"). The avatar shows its first letter.
 function displayName(account: AuthAccount, fallback: string): string {
@@ -146,26 +149,11 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
   // actionable single source of truth for a dead relay session.
   if (status === 'expired') {
     return (
-      <button
-        className={cn(
-          'flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors',
-          'hover:bg-(--ui-control-hover-background)'
-        )}
+      <SessionExpiredCard
+        action={a.sessionExpiredAction}
         onClick={() => requestManagedReSignIn(t.auth.login.sessionExpired)}
-        type="button"
-      >
-        <span
-          aria-hidden
-          className="grid size-7 shrink-0 place-items-center rounded-full text-white"
-          style={{ backgroundColor: 'var(--theme-danger, #d9534f)' }}
-        >
-          <Codicon name="warning" size="0.875rem" />
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col leading-tight">
-          <span className="truncate text-[0.8125rem] font-medium text-foreground">{a.sessionExpiredTitle}</span>
-          <span className="truncate text-[0.6875rem] text-(--ui-text-tertiary)">{a.sessionExpiredAction}</span>
-        </span>
-      </button>
+        title={a.sessionExpiredTitle}
+      />
     )
   }
 
@@ -181,7 +169,7 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
   // one-line change.
   const usageLabel: null | string = null
 
-  return (
+  const row = (
     <DropdownMenu onOpenChange={onMenuOpenChange} open={open}>
       <DropdownMenuTrigger asChild>
         <button
@@ -264,5 +252,13 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+
+  // hc-1073: while the cloud rejects the login JWT, the 「登录已失效」 card sits above the row.
+  return (
+    <>
+      <CloudLoginNotice />
+      {row}
+    </>
   )
 }
