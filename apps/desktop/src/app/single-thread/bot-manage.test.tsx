@@ -32,6 +32,8 @@ import {
 import { resetThreadPresenceForTest } from '@/store/single-thread-presence'
 import { setToolViewMode } from '@/store/tool-view'
 
+import { poolAllBusyMessage } from '../../../shared/apex-pool-busy'
+
 const { ensureGatewayProfile, requestOnApex } = vi.hoisted(() => ({
   ensureGatewayProfile: vi.fn(async (_profile: string) => undefined),
   requestOnApex: vi.fn()
@@ -234,6 +236,27 @@ describe('hc-1078 in the multi-bot sidebar', () => {
     expect(createBot).toHaveBeenCalledWith({ color: 'blue', name: '剪辑助手', shape: 'squircle' }, { count: 3, max: 5 })
     expect($botRoster.get().map(bot => bot.name)).toEqual(['APEX', '小红书文案', '带货脚本', '剪辑助手'])
     expect(requestOnApex).toHaveBeenCalledWith('profiles.list', {})
+  })
+
+  it('a new assistant that cannot open yet says why, the way a row click does, and offers to retry', async () => {
+    vi.mocked(createBot).mockImplementation(async () => {
+      listed = [...ROWS, row('apex-bot-4', { color: 'teal', created: 3, name: '剪辑助手', shape: 'cloud' })]
+
+      return 'apex-bot-4'
+    })
+    ensureGatewayProfile.mockRejectedValue(new Error(poolAllBusyMessage({ busy: ['writer', 'scripts'], limit: 2 })))
+    renderSidebar()
+
+    fireEvent.click(screen.getByRole('button', { name: '新建一个助手' }))
+    fireEvent.change(await screen.findByLabelText('叫它什么'), { target: { value: '剪辑助手' } })
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '建好了' }))
+
+    await waitFor(() =>
+      expect($notifications.get().map(note => note.message)).toEqual([
+        '小红书文案、带货脚本都在做事，等其中一个做完再切过来。'
+      ])
+    )
+    expect($notifications.get()[0]?.action?.label).toBeTruthy()
   })
 
   it('edits the assistant on screen, with every other name taken', async () => {

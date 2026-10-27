@@ -3,7 +3,8 @@
  * rename / restyle and delete an assistant — the sheet behind its 「+」 (`$botCreateRequest`), the
  * 「···」 on the row on screen, and the delete confirmation. After each change the roster is read
  * again (hc-1077 `refreshBotRoster`); a new assistant is opened right away, and deleting the one on
- * screen goes back to APEX.
+ * screen goes back to APEX — both through the rows' own `open`, so a switch that fails says why
+ * the same way a click on a row does (every engine busy, try again).
  *
  * What is open lives in the sidebar's own state, so it goes when the sidebar goes (developer mode,
  * the switch off) instead of reopening on the next mount.
@@ -12,8 +13,6 @@
 import { useStore } from '@nanostores/react'
 import { type ReactNode, useEffect, useState } from 'react'
 
-import { useSingleThreadSidebarCopy } from '@/i18n/single-thread-sidebar'
-import { notifyError } from '@/store/notifications'
 import { requestOnApex } from '@/store/single-thread-bot-ops'
 import {
   $botCreateRequest,
@@ -22,7 +21,7 @@ import {
   $multiBotMax,
   APEX_PROFILE,
   type ApexBot,
-  openBot,
+  botFor,
   refreshBotRoster
 } from '@/store/single-thread-bots'
 
@@ -63,8 +62,8 @@ export interface BotManage {
   remove: (bot: ApexBot) => void
 }
 
-export function useBotManage(): BotManage {
-  const sidebarCopy = useSingleThreadSidebarCopy()
+/** `open` is the rows' switch (hc-1077 sidebar-bots.tsx): it opens an assistant and says why when it cannot. */
+export function useBotManage(open: (bot: ApexBot) => void): BotManage {
   const roster = useStore($botRoster)
   const max = useStore($multiBotMax)
   const [sheet, setSheet] = useState<BotSheetTarget | null>(null)
@@ -78,9 +77,7 @@ export function useBotManage(): BotManage {
 
   async function opened(profile: string) {
     await refreshRoster()
-    const name = $botRoster.get().find(bot => bot.profile === profile)?.name ?? profile
-
-    await openBot(profile).catch((error: unknown) => notifyError(error, sidebarCopy.openBotFailed(name)))
+    open(botFor($botRoster.get(), profile))
   }
 
   function deleted(profile: string) {
@@ -89,7 +86,7 @@ export function useBotManage(): BotManage {
     void refreshRoster()
 
     if (wasOnScreen) {
-      void openBot(APEX_PROFILE).catch(() => undefined)
+      open(botFor($botRoster.get(), APEX_PROFILE))
     }
   }
 

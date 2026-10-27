@@ -144,7 +144,6 @@ export function SingleThreadBotRows({ onOpenCurrent, viewing }: { onOpenCurrent:
   const { t } = useI18n()
   const roster = useStore($botRoster)
   const currentProfile = useStore($currentBotProfile)
-  const manage = useBotManage()
 
   const open = (bot: ApexBot) => {
     if (bot.profile === currentProfile) {
@@ -159,6 +158,8 @@ export function SingleThreadBotRows({ onOpenCurrent, viewing }: { onOpenCurrent:
       sayWhyNotOpened(error, bot, copy, { label: t.common.retry, onClick: () => open(bot) })
     )
   }
+
+  const manage = useBotManage(open)
 
   return (
     <>
