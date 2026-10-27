@@ -25,7 +25,7 @@ import {
   modelDisabledProvidersYaml
 } from './apex-managed'
 import { accountTierOfRoot, healManagedModelTier } from './apex-model-tiers'
-import { type ApexProfileHome, DEFAULT_PROFILE } from './apex-profile-homes'
+import { type ApexProfileHome, DEFAULT_PROFILE, isProductAssistant } from './apex-profile-homes'
 import {
   MANAGED_PROVIDER_NAME,
   managedCustomProviderEntryYaml,
@@ -317,13 +317,24 @@ export function guardProductBlocksInHomes(
     outcomes[root.profile] = guardProductBlocksInHome(root, ctx, reason, log).outcome
   }
 
-  const named = { ...ctx, accountTier: root ? accountTierInRoot(root, ctx) : null }
+  const rootTier = root ? accountTierInRoot(root, ctx) : null
 
   for (const home of homes.filter(candidate => candidate !== root)) {
+    const named = { ...ctx, accountTier: followedTier(home, rootTier) }
+
     outcomes[home.profile] = guardProductBlocksInHome(home, named, reason, log).outcome
   }
 
   return outcomes
+}
+
+/**
+ * The tier a named home takes: the root's, for an assistant the product mode
+ * created (isProductAssistant); null — settle on its own — for any other
+ * profile, so upstream Bot-mode and developer-mode picks stay theirs.
+ */
+export function followedTier(home: ApexProfileHome, rootTier: null | string): null | string {
+  return rootTier && isProductAssistant(home.home) ? rootTier : null
 }
 
 /**

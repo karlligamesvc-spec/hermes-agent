@@ -106,6 +106,10 @@ describe('healProfileConfig', () => {
     const base = deps(root).deps.context()!
     const env = { APEX_SINGLE_THREAD_ACTIVE: '1', APEX_MULTI_BOT_ACTIVE: '1' }
     const { deps: d } = deps(root, { context: () => ({ ...base, env }) })
+    fs.writeFileSync(
+      path.join(root, 'profiles', 'apex-bot-2', 'profile.yaml'),
+      'ui_meta:\n  apex:\n    name: X\n    origin: product\n'
+    )
 
     const result = healProfileConfig('apex-bot-2', d)
 
@@ -113,6 +117,30 @@ describe('healProfileConfig', () => {
     assert.ok(result.fixed.includes('model(account:apex-max→pro)'), result.fixed.join(', '))
     assert.match(fs.readFileSync(fileOf(root, 'apex-bot-2'), 'utf8'), /^ {2}default: apex-pro$/m)
     assert.match(fs.readFileSync(path.join(root, 'config.yaml'), 'utf8'), /^ {2}default: apex-pro$/m)
+  })
+
+  test('with several assistants on, a profile the product mode did not create keeps its tier', () => {
+    const root = hermesRoot({
+      'dev-bot': managedConfig(NEW_KEY).replace('default: apex-flash', 'default: apex-max')
+    })
+
+    fs.writeFileSync(
+      path.join(root, 'config.yaml'),
+      managedConfig(NEW_KEY).replace('default: apex-flash', 'default: apex-pro')
+    )
+    // Renamed in chat (hc-1082 writes ui_meta.apex.name), never stamped with the product origin.
+    fs.writeFileSync(
+      path.join(root, 'profiles', 'dev-bot', 'profile.yaml'),
+      'ui_meta:\n  hermes-bots:\n    rune: spark\n  apex:\n    name: Y\n'
+    )
+    const base = deps(root).deps.context()!
+    const env = { APEX_SINGLE_THREAD_ACTIVE: '1', APEX_MULTI_BOT_ACTIVE: '1' }
+
+    const result = healProfileConfig('dev-bot', deps(root, { context: () => ({ ...base, env }) }).deps)
+
+    assert.equal(result.ok, true)
+    assert.ok(!result.fixed.some(item => item.startsWith('model(')), result.fixed.join(', '))
+    assert.match(fs.readFileSync(fileOf(root, 'dev-bot'), 'utf8'), /^ {2}default: apex-max$/m)
   })
 
   test('with several assistants off, a profile keeps the tier it holds', () => {
