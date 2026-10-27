@@ -88,7 +88,7 @@ test('every product-guard pass fills all profiles, and the boot pass precedes an
   const main = fs.readFileSync(path.join(import.meta.dirname, 'main.ts'), 'utf8')
 
   const guard = main.slice(main.indexOf('function guardConfigYamlProductBlocks(reason) {'),
-    main.indexOf('function healConfigYamlProductBlocks'))
+    main.indexOf('// Keep the guard live while the app runs'))
 
   const boot = main.indexOf("guardConfigYamlProductBlocks('boot')")
   const firstSpawn = main.indexOf('if (!backend.bootstrap) {', boot)

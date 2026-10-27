@@ -135,34 +135,24 @@ import {
   applyClientConfigYamlRespectingPreferences,
   buildManagedModelConfig,
   defaultModelPath,
-  ensurePluginsEnabledYaml,
-  ensureProductDefaultsYaml,
-  ensureSkillsDisabledYaml,
-  ensureWebGatewayYaml,
   googleStartUrl,
   isLoginStateTruthEnabled,
   isManagedEnabled,
-  MANAGED_PROVIDER_NAME,
-  managedCustomProviderEntryYaml,
   managedModelConfigYaml,
-  maskRelayKey,
-  migrateApexBudgetDefaultsYaml,
   MODEL_DISABLED_PROVIDERS,
   modelDisabledProvidersYaml,
   parseProvisionResponse,
-  persistRelayKeyToConfigYaml,
   reconcileManagedRelayKey,
   renewedTokenFromHeaders,
   resolveApexEndpoints,
   SEED_PRODUCT_DEFAULTS_BLOCK,
   seedPluginsBlockYaml,
   seedSkillsBlockYaml,
-  seedWebGatewayBlockYaml,
-  syncManagedRelayConfigYaml
+  seedWebGatewayBlockYaml
 } from './apex-managed'
 import { ManagedCredentialLifetime, managedProvisionCommitToken, ManagedRelayRecoveryCoordinator, provisionManagedRelayForCurrentAccount } from './apex-managed-recovery'
 import { clearAccountPromptMirrors } from './apex-memory-ledger'
-import { applyDesktopFeatureSwitches, healManagedModelTier, modelTierStatus } from './apex-model-tiers'
+import { applyDesktopFeatureSwitches, modelTierStatus } from './apex-model-tiers'
 import { normalizeStoredPluginsState, syncPlatformPlugins } from './apex-platform-plugins'
 import {
   applyPlatformSkills,
@@ -173,6 +163,10 @@ import {
   shouldApplyManifest
 } from './apex-platform-skills'
 import { buildPlatformToolSpawnEnv, describePlatformToolSpawnEnv } from './apex-platform-tools'
+import { makeRoomInPool, poolAllBusyError, poolKeysOnStaleRelayKey, reapIdlePoolEngine, stampPoolEngine } from './apex-pool-engines'
+import { guardProductBlocksInHomes, persistRelayKeyInHome } from './apex-profile-config'
+import { registerProfileConfigIpc } from './apex-profile-config-ipc'
+import { isMultiBotActive, managedProfileHomes } from './apex-profile-homes'
 import { fetchRelayModels, RelayTierMemo } from './apex-relay-tiers'
 import {
   checkForRuntimeUpdate,
@@ -11886,7 +11880,7 @@ async function ensureBackend(profile, opts: { passive?: boolean; spawnPriority?:
   // The hard slot is released only after the evicted child exits. Wait for
   // that teardown before entering the spawn queue; otherwise a successful
   // LRU choice still leaves this wake racing the old child for 30 seconds.
-  await evictLruPoolBackends(poolMaxBackends() - 1)
+  await evictLruPoolBackends(poolMaxBackends() - 1, spawnPriority)
 
   const entry = {
     process: null,
@@ -12065,7 +12059,7 @@ async function ensureRegistryBackend(
     }
 
     assertNotPassiveSpawn(passive, localRoute.poolKey)
-    await evictLruPoolBackends(poolMaxBackends() - 1)
+    await evictLruPoolBackends(poolMaxBackends() - 1, spawnPriority)
 
     const localEntry = {
       process: null,
@@ -12791,7 +12785,19 @@ function touchPoolBackend(profile) {
 // across N registered remote connections LRU-evict a REAL local backend that
 // was merely idle past the keepalive window. Descriptors are still reclaimed
 // by the idle reaper.
-async function evictLruPoolBackends(keep) {
+async function evictLruPoolBackends(keep, spawnPriority?: LocalBackendSpawnPriority) {
+  // hc-1080: with several assistants on, a user's open asks every engine (least recently used first)
+  // to retire, and fails with a clear result only when all are working (apex-pool-engines.ts).
+  if (spawnPriority === 'foreground' && isMultiBotActive(process.env)) {
+    const made = await makeRoomInPool({ entries: backendPool.entries(), keep, log: rememberLog, stop: stopPoolBackend,
+      post: entry => (route, body) => fetchJson(`http://127.0.0.1:${entry.port}${route}`, entry.token, { method: 'POST', body, timeoutMs: 5_000 }),
+      stillPooled: (key, entry) => backendPool.get(key) === entry })
+
+    if (!made.room) {throw poolAllBusyError(made, poolMaxBackends())}
+
+    return made.evicted
+  }
+
   return evictPoolEntries(
     backendPool.entries(),
     Math.max(0, keep),
@@ -12814,8 +12820,10 @@ function startPoolIdleReaper() {
 
     for (const [profile, entry] of [...backendPool.entries()]) {
       if (now - (entry.lastActiveAt || 0) > poolIdleMs()) {
-        rememberLog(`Reaping idle profile backend "${profile}" (idle > ${Math.round(poolIdleMs() / 1000)}s)`)
-        stopPoolBackend(profile)
+        // hc-1080: a live engine is asked first, so a turn running with no window open survives.
+        void reapIdlePoolEngine({ entry, label: profile, idleSeconds: Math.round(poolIdleMs() / 1000), log: rememberLog,
+          post: (route, body) => fetchJson(`http://127.0.0.1:${entry.port}${route}`, entry.token, { method: 'POST', body, timeoutMs: 5_000 }),
+          stillPooled: () => backendPool.get(profile) === entry, stop: () => stopPoolBackend(profile) })
       }
     }
 
@@ -13081,6 +13089,7 @@ async function runPoolBackendStart(profile, entry, opts: { forceLocal?: boolean;
 
   entry.process = child
   entry.token = token
+  stampPoolEngine(entry, profile, resolveManagedConfig().key) // hc-1080
   // Buffer stdout+stderr from the instant of spawn (#93608): an early crash's
   // traceback must survive into the claim error and the before-ready exit
   // message instead of a bare exit code. rememberLog attaches later, after
@@ -19017,35 +19026,33 @@ function syncManagedRelayKeyToConfig(reason = 'sync') {
     return { ok: false, changed: false, reason: 'signed-out', model: 'absent', entries: { matched: 0, updated: 0 } }
   }
 
-  const configPath = path.join(HERMES_HOME, 'config.yaml')
+  // hc-1080: the root decides the result (the primary engine and every caller's
+  // gate read it); each managed profile follows, then pooled engines still on
+  // the old key restart.
+  const [root, ...profiles] = apexConfigHomes(managed)
+  const result = persistRelayKeyInHome(root, managed, reason, rememberLog)
 
-  const result = persistRelayKeyToConfigYaml({
-    read: () => (fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null),
-    // In place, NOT writeFileAtomic: watchConfigYamlProductBlocks holds an
-    // fs.watch on this path, and a rename-over swaps the inode out from under
-    // it. Every other config.yaml writer here writes in place for the same
-    // reason; the read-back verification is what guards a torn write.
-    write: next => fs.writeFileSync(configPath, next, { encoding: 'utf8' }),
-    baseUrl: managed.baseUrl,
-    key: managed.key
-  })
-
-  if (result.ok && result.changed) {
-    // Per-anchor, by path — "custom_providers=0/0" was true on every one of
-    // Kael's boots and read as "nothing to do" rather than "I cannot see the
-    // entry I wrote myself".
-    const detail = (result.anchors || []).map(anchor => `${anchor.path}:${anchor.status}`).join(' ')
-    rememberLog(
-      `[apexnodes] config.yaml relay key refreshed (${reason}) to ${maskRelayKey(managed.key)} — ${detail || 'no anchors'}`
-    )
-  } else if (!result.ok) {
-    rememberLog(
-      `[apexnodes] config.yaml relay key write FAILED (${reason}): ${result.reason} — ` +
-        'chat will keep failing with 401 until this is resolved.'
-    )
-  }
+  profiles.forEach(home => persistRelayKeyInHome(home, managed, reason, rememberLog))
+  void restartPoolEnginesOnStaleRelayKey(reason)
 
   return result
+}
+
+// hc-1080: the homes the APEX config writers keep in step — the root, plus every
+// named profile on the managed relay (apex-profile-homes.ts).
+function apexConfigHomes(managed: { baseUrl?: string } = resolveManagedConfig()) {
+  return managedProfileHomes(HERMES_HOME, managed.baseUrl || resolveApexEndpoints(process.env).relayBaseUrl)
+}
+
+// hc-1080: a pooled engine keeps the key it was spawned with, like the primary
+// (see below). Stop the managed profiles' engines spawned under another key; the
+// renderer's reconnect respawns them on the new one (apex-pool-engines.ts).
+async function restartPoolEnginesOnStaleRelayKey(reason) {
+  const managed = resolveManagedConfig()
+  const stale = poolKeysOnStaleRelayKey(backendPool.entries(), apexConfigHomes(managed).map(home => home.profile), managed.key)
+
+  stale.forEach(key => rememberLog(`[apexnodes] restarting profile backend "${key}" for the refreshed relay key (${reason})`))
+  await Promise.all(stale.map(key => stopPoolBackend(key)))
 }
 
 // Make the RUNNING backend authenticate with the key we just wrote. config.yaml
@@ -19060,6 +19067,8 @@ function syncManagedRelayKeyToConfig(reason = 'sync') {
 // No-op when no backend is live (the boot self-heal usually lands here — the
 // spawn that follows already reads the corrected file).
 async function reloadBackendForRelayKey(reason) {
+  syncManagedRelayKeyToConfig(reason) // hc-1080: managed profiles and pooled engines too
+
   if (!backendConnectionState.getProcess()) {
     return false
   }
@@ -20863,213 +20872,27 @@ async function refreshPlatformPluginsFromPlatform(reason) {
 function guardConfigYamlProductBlocks(reason) {
   keepSessionHistoryInEveryProfile(HERMES_HOME, rememberLog)
 
-  // A pass that finds the file changed under it between read and write yields
-  // rather than clobbering the other writer, and says so — recompute against
-  // the new content and try again. The healers are add-only and idempotent, so
-  // re-running on someone else's fresh file is always safe. Bounded: three
-  // losses in a row means a writer is hammering the file, and the live watcher
-  // will pick the heal back up on its next event.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (healConfigYamlProductBlocks(reason) !== 'stale') {
-      return
-    }
-  }
+  // hc-1080: the root, then every named profile on the managed relay, each with
+  // up to three compare-and-swap passes (apex-profile-config.ts).
+  const context = productBlocksContext()
 
-  rememberLog(`[config-guard] deferred to the watcher after 3 racing passes (${reason})`)
+  if (context) {guardProductBlocksInHomes(apexConfigHomes(context.managed), context, reason, rememberLog)}
 }
 
-function healConfigYamlProductBlocks(reason) {
-  // A Native restart must not let the YAML watcher bypass an unresolved
-  // server-side model write. The recovery path fences it before healing.
-  if (modelMutationMetadata.pending().length > 0) {return 'pending-model-writes'}
+// The heal context every home shares. Null while a Native model write is
+// unresolved: a restart must not let the YAML watcher bypass it, and the
+// recovery path fences it before healing.
+function productBlocksContext() {
+  if (modelMutationMetadata.pending().length > 0) {return null}
 
-  try {
-    const configPath = path.join(HERMES_HOME, 'config.yaml')
+  const managed = resolveManagedConfig()
 
-    if (!fs.existsSync(configPath)) {
-      return 'absent'
-    }
-
-    let raw = fs.readFileSync(configPath, 'utf8')
-    // What we based this pass on. The runtime saves config.yaml atomically
-    // (utils.atomic_yaml_write — temp file + rename), so we can never READ a
-    // half-written file; the live risk is the reverse, that it lands a whole
-    // new version between this read and our write and our plain writeFileSync
-    // silently reverts it.
-    const readBack = raw
-    const fixed = []
-
-    const managed = resolveManagedConfig()
-    const endpoints = resolveApexEndpoints(process.env)
-
-    // hc-705: upgrade/setting-save guard for the Windows 0.17.16 stale shape.
-    // Managed relay discovery is a platform invariant; endpoints on other URLs
-    // remain untouched because the helper requires the exact managed URL and
-    // current credential. This pass is live, so a settings full-record save
-    // cannot re-persist the collapsed one-model catalog for the rest of the run.
-    if (managed.key && managed.baseUrl) {
-      const relayHeal = syncManagedRelayConfigYaml(raw, managed.baseUrl, managed.key)
-
-      if (relayHeal.changed) {
-        raw = relayHeal.next
-
-        const keyAnchors = relayHeal.key.anchors
-          .filter(anchor => anchor.status !== 'in-sync')
-          .map(anchor => anchor.path)
-
-        const catalogAnchors = relayHeal.catalog.anchors
-          .filter(anchor => anchor.status !== 'in-sync')
-          .map(anchor => anchor.path)
-
-        if (keyAnchors.length) {
-          fixed.push(`managed-key(${keyAnchors.join(' ')})`)
-        }
-
-        if (catalogAnchors.length) {
-          fixed.push(`managed-discovery(${catalogAnchors.join(' ')})`)
-        }
-      }
-    }
-
-    // hc-602: rendered by the SAME producer the first-run seed uses. This healer
-    // used to hand-roll a column-0 list lead while the seed emitted a two-space
-    // one — both valid YAML, and the relay-key patcher understood only one of
-    // them, which is how Kael's custom_providers entry sat on a dead key for a
-    // week while every log line said the sync had succeeded.
-    const relayEntryLines = managedCustomProviderEntryYaml({
-      name: MANAGED_PROVIDER_NAME,
-      base_url: managed.baseUrl,
-      api_key: managed.key,
-      model: endpoints.modelDisplay
-    })
-
-    if (managed.key && managed.baseUrl && !/^custom_providers:/m.test(raw)) {
-      raw = raw.replace(/\n*$/, '\n') + 'custom_providers:\n' + relayEntryLines
-      fixed.push('custom_providers')
-    } else if (
-      managed.key &&
-      managed.baseUrl &&
-      // Header present but NO list entry under it (a wiper once left the bare
-      // header behind — the earlier existence check sailed right past it).
-      /^custom_providers:[ \t]*\n(?![ \t]|- )/m.test(raw)
-    ) {
-      raw = raw.replace(/^custom_providers:[ \t]*\n/m, 'custom_providers:\n' + relayEntryLines)
-      fixed.push('custom_providers(empty-header)')
-    }
-
-    // A /moa toggle has been observed persisting itself as the GLOBAL default
-    // (model.provider: moa + base_url: moa://local) — every new chat then
-    // opens on MoA (slow + expensive), violating selective routing, and the
-    // relay URL is clobbered. MoA is per-session only on managed installs:
-    // heal the model block back to the relay default.
-    if (managed.key && managed.baseUrl && /^model:[\s\S]*?^\s{2}provider:\s*moa\s*$/m.test(raw)) {
-      raw = raw
-        .replace(/^(\s{2}provider:\s*)moa\s*$/m, `$1custom`)
-        .replace(/^(\s{2}base_url:\s*)moa:\/\/local\s*$/m, `$1${managed.baseUrl}`)
-        .replace(/^(\s{2}default:\s*)\S.*$/m, `$1${endpoints.modelDisplay}`)
-      fixed.push('model(moa-global)')
-    }
-
-    raw = healManagedModelTier(raw, managed, endpoints.relayBaseUrl, process.env, fixed, relayTiers.of(managed.key)) // hc-960, hc-1072
-
-    // Skills: union the managed disabled names back in — add-only, so a user's
-    // enable-toggles (names they removed) survive. This is BOTH the "block was
-    // wiped entirely" heal AND the hc-406 UPGRADE path: an install seeded under
-    // v0.17 keeps its old 49-name skills.disabled after a bump to v0.18, so the
-    // newly-graded-OFF bundled skills (huggingface-hub / maps / plan) would ship
-    // ACTIVE without this reconcile. seedSkillsBlockYaml is the append when the
-    // block is wholly absent (ensureSkillsDisabledYaml delegates to it).
-    const skillsHeal = ensureSkillsDisabledYaml(raw)
-
-    if (skillsHeal.changed) {
-      raw = skillsHeal.next
-      fixed.push(`skills.disabled(+${skillsHeal.added.length})`)
-    }
-
-    // hc-837: APEX previously pinned lower 90/50 budgets than Hermes. Migrate
-    // only those exact legacy defaults once per config; custom values remain
-    // untouched and the version marker prevents the watcher from fighting a
-    // user who deliberately chooses 90/50 after the upgrade.
-    const budgetDefaultsMigration = migrateApexBudgetDefaultsYaml(raw)
-
-    if (budgetDefaultsMigration.changed) {
-      raw = budgetDefaultsMigration.next
-      fixed.push(
-        budgetDefaultsMigration.migrated.length
-          ? `budget-defaults(${budgetDefaultsMigration.migrated.join(' ')})`
-          : 'budget-defaults(version)'
-      )
-    }
-
-    // APEX product defaults as scalar keys (display.language,
-    // display.show_reasoning, agent.image_input_mode, timezone). Same add-only
-    // contract as the list healers: a key the file already carries is the
-    // user's answer and is never rewritten — this only fills keys the file
-    // does not mention, where the runtime's merged default would otherwise
-    // decide (config.yaml has no display.language → /api/config still answers
-    // `en`, and the shell's China-first fallback never fires). This is also the
-    // catch-up path for every install seedDefaultModelConfig never ran on: it
-    // fires only on the bootstrap-needed branch and bails when config.yaml
-    // already exists.
-    const defaultsHeal = ensureProductDefaultsYaml(raw)
-
-    if (defaultsHeal.changed) {
-      raw = defaultsHeal.next
-      fixed.push(`product-defaults(${defaultsHeal.added.join(' ')})`)
-    }
-
-    const webHeal = ensureWebGatewayYaml(raw)
-
-    if (webHeal.changed) {
-      raw = webHeal.next
-      fixed.push('web.search_backend')
-    }
-
-    // hc-392 China profile: losing model.disabled_providers silently re-enables
-    // the Copilot provider probe — GitHub is near-unreachable from the
-    // mainland, so its probe saturates the gateway RPC pool (slow model list,
-    // spinning @-completions). Re-pin it whenever the model block loses it.
-    if (/^model:/m.test(raw) && !/^\s{2}disabled_providers:/m.test(raw)) {
-      raw = raw.replace(/^(model:\n)/m, `$1${modelDisabledProvidersYaml()}`)
-      fixed.push('model.disabled_providers')
-    }
-
-    // Standalone plugins are opt-in: a config.yaml without (or with an
-    // emptied) plugins.enabled list silently disables apex-overlay + the
-    // apexnodes-* tool plugins on the next backend start. Union the managed
-    // names back in — add-only, so user-added plugin entries survive. This
-    // boot-time pass is also the UPGRADE path for installs seeded before the
-    // plugins block existed.
-    const pluginsHeal = ensurePluginsEnabledYaml(raw)
-
-    if (pluginsHeal.changed) {
-      raw = pluginsHeal.next
-      fixed.push(`plugins.enabled(+${pluginsHeal.added.length})`)
-    }
-
-    if (!fixed.length) {
-      return 'clean'
-    }
-
-    // Compare-and-swap against what we read: a file that changed under us makes
-    // `raw` stale, so drop this pass rather than overwrite whatever just
-    // landed. The caller recomputes on the new content.
-    if (fs.readFileSync(configPath, 'utf8') !== readBack) {
-      rememberLog(`[config-guard] config.yaml changed mid-pass; recomputing ${fixed.join(', ')} (${reason})`)
-
-      return 'stale'
-    }
-
-    fs.writeFileSync(configPath, raw, { encoding: 'utf8' })
-    rememberLog(`[config-guard] restored missing block(s): ${fixed.join(', ')} (${reason})`)
-
-    return 'healed'
-  } catch (err: any) {
-    rememberLog(`[config-guard] skipped: ${err && err.message ? err.message : err}`)
-
-    return 'error'
-  }
+  return { managed, endpoints: resolveApexEndpoints(process.env), env: process.env, entitled: relayTiers.of(managed.key) }
 }
+
+// hc-1080 / hc-1078: heal one just-created profile now instead of at the next guard pass.
+registerProfileConfigIpc(ipcMain, { root: HERMES_HOME, homes: managed => apexConfigHomes(managed), context: productBlocksContext,
+  afterHeal: reason => restartPoolEnginesOnStaleRelayKey(reason), log: rememberLog })
 
 // Keep the guard live while the app runs: any writer (dashboard save, the
 // runtime itself) that drops a product block gets healed within seconds. The
