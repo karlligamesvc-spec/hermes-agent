@@ -14,8 +14,11 @@
  *   `color` as a palette id, and `created` in epoch ms, which orders the sidebar), written with the
  *   per-key revision check (`ui_meta_expected_revisions`), so an edit made from a stale sheet is
  *   refused instead of silently overwriting a newer one. An edit keeps every stored field it does
- *   not set (`created`, or anything a later build adds). `ui_meta['hermes-bots']` is never touched:
- *   once a profile carries it, the engine treats it as a Bot Mode profile.
+ *   not set (`created`, `origin`, or anything a later build adds). `ui_meta['hermes-bots']` is never
+ *   touched: once a profile carries it, the engine treats it as a Bot Mode profile.
+ * - `origin: 'product'` marks an assistant made here, and only creating one writes it: hc-1080 lets
+ *   only those follow APEX's tier (K3). A developer-mode or Bot Mode profile can gain `ui_meta.apex`
+ *   later (hc-1082's rename tool writes a name), so the key's presence alone says nothing.
  * - A new assistant is always cloned from default (`clone_from: 'default'`): only that copy carries
  *   the plugin enable list with apex-overlay and the generation tools.
  * - APEX keeps its look (K6) and cannot be deleted; renaming it writes only `ui_meta.apex.name`.
@@ -40,6 +43,9 @@ const CREATE_ATTEMPTS = 3
 
 /** How long a new assistant waits for the main process to finish setting it up before opening anyway. */
 const SETUP_WAIT_MS = 20_000
+
+/** `ui_meta.apex.origin` of an assistant created in product mode (see the module comment). */
+export const APEX_BOT_ORIGIN = 'product'
 
 /** What the sheet edits. APEX's look is fixed (K6): only `name` is written for it. */
 export interface ApexBotLook {
@@ -287,7 +293,7 @@ export async function createBot(look: ApexBotLook, { count, max }: { count: numb
 
   try {
     // A brand-new profile.yaml has no ui_meta revisions: 0 is the only right answer.
-    await writeMeta(profile, { ...metaToWrite(profile, look, {}), created: Date.now() }, 0)
+    await writeMeta(profile, { ...metaToWrite(profile, look, {}), created: Date.now(), origin: APEX_BOT_ORIGIN }, 0)
   } catch (error) {
     // Without its name the assistant would show up as `apex-bot-N`: take the half-made one back.
     await deleteProfileDir(profile).catch(() => undefined)

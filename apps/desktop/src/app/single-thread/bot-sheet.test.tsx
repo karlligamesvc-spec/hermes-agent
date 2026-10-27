@@ -180,7 +180,7 @@ describe('the edit sheet', () => {
   })
 
   it('reads the stored look, then saves over it against that revision', async () => {
-    const stored = { name: '小红书', shape: 'drop', color: 'gold', created: 1_761_541_200_000 }
+    const stored = { name: '小红书', shape: 'drop', color: 'gold', created: 1_761_541_200_000, origin: 'product' }
     vi.mocked(readBotMeta).mockResolvedValue({ meta: stored, revision: 7 })
     vi.mocked(saveBotLook).mockResolvedValue(undefined)
     const props = sheet(BOT_EDIT, { taken: ['APEX'] })

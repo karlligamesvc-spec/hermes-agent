@@ -215,7 +215,7 @@ describe('createBot', () => {
     })
     expect(calls[2].params).toEqual({
       name: 'apex-bot-4',
-      ui_meta: { apex: { ...LOOK, created: Date.parse('2026-10-27T05:00:00Z') } },
+      ui_meta: { apex: { ...LOOK, created: Date.parse('2026-10-27T05:00:00Z'), origin: 'product' } },
       ui_meta_expected_revisions: { apex: 0 }
     })
   })
@@ -277,12 +277,14 @@ describe('createBot', () => {
     const order: string[] = []
     let finishHeal: () => void = () => undefined
     let engineCallsBeforeHeal: string[] = []
+    let metaBeforeHeal: unknown = null
 
     const heal = vi.fn(
       (profile: string) =>
         new Promise<void>(resolve => {
           // hc-1080 lets only a profile whose profile.yaml has ui_meta.apex follow APEX's tier (K3).
           engineCallsBeforeHeal = methods()
+          metaBeforeHeal = configureCalls().at(-1)?.params.ui_meta
           order.push(`heal ${profile}`)
 
           finishHeal = () => {
@@ -312,6 +314,8 @@ describe('createBot', () => {
     await expect(created).resolves.toBe('apex-bot-2')
     expect(order).toEqual(['heal apex-bot-2', 'heal done', 'skills apex-bot-2'])
     expect(engineCallsBeforeHeal).toEqual(['profiles.list', 'profiles.create', 'profiles.configure'])
+    // hc-1080 follows APEX's tier only for ui_meta.apex.origin === 'product': it must be on disk by then.
+    expect(metaBeforeHeal).toMatchObject({ apex: { origin: 'product' } })
   })
 
   it('still runs the skills step and opens the assistant when the config step fails', async () => {
@@ -450,17 +454,44 @@ describe('readBotMeta', () => {
 })
 
 describe('an edit keeps what it does not set', () => {
-  const STORED = { name: '旧名', shape: 'drop', color: 'gold', created: 1_761_541_200_000, later: { kept: true } }
+  const STORED = {
+    name: '旧名',
+    shape: 'drop',
+    color: 'gold',
+    created: 1_761_541_200_000,
+    origin: 'product',
+    later: { kept: true }
+  }
 
   beforeEach(() => {
     answer = method =>
       method === 'profiles.describe' ? { soul: 'You are my editor.' } : { applied: { ui_meta: true } }
   })
 
-  it('keeps created (the sidebar order) and fields a later build adds', async () => {
+  it('keeps created (the sidebar order), origin and fields a later build adds', async () => {
     await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, { revision: 6, stored: STORED })
 
     expect(configureCalls()[0].params.ui_meta).toEqual({ apex: { ...STORED, ...LOOK, name: '新名' } })
+  })
+
+  it.each([
+    ['a rename', { name: '新名', shape: 'drop', color: 'gold' }],
+    ['a new look', { name: '旧名', shape: 'pill', color: 'teal' }]
+  ] as const)('keeps origin through %s', async (_label, look) => {
+    await saveBotLook('apex-bot-2', look, { revision: 6, stored: STORED })
+
+    expect(configureCalls()[0].params.ui_meta).toMatchObject({ apex: { origin: 'product' } })
+  })
+
+  it('never gives origin to a profile that was not created here (developer mode, Bot Mode)', async () => {
+    const { origin: _made, created: _when, ...stored } = STORED
+
+    await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, { revision: 6, stored })
+    await saveBotLook('default', { name: '小满' }, { revision: 2, stored: { name: 'APEX' } })
+
+    for (const call of configureCalls().filter(c => c.params.ui_meta)) {
+      expect(Object.keys((call.params.ui_meta as { apex: object }).apex)).not.toContain('origin')
+    }
   })
 
   it('writes only the name over APEX’s stored meta, whatever look the sheet carried', async () => {
