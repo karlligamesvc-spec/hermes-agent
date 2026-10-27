@@ -58,9 +58,9 @@ _TOOL_SEAMS = (
     (
         "vision_answer",
         "apex-overlay: hc-1065 vision answer seam did not fully apply "
-        "(see prior error). APEX Flash may send images to the auxiliary "
-        "model again, which can return its private reasoning or a cut-off "
-        "answer as if it were complete.",
+        "(see prior error). vision_analyze asks the auxiliary model to "
+        "describe everything again, and may return its private reasoning "
+        "or a cut-off answer as if it were complete.",
     ),
 )
 

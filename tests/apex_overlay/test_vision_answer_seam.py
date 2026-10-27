@@ -5,9 +5,9 @@ auxiliary model with a "fully describe and explain everything" prompt. Five hit 
 output limit (relay.log ``completion=4096``): four returned the model's private reasoning as the
 answer, one stopped mid-sentence and was passed on as complete. These tests pin the overlay:
 
-  1. Upstream shape the seam relies on (probe tuple, patchable extractor, handler source).
-  2. The native gate: ``apex-flash`` on the platform relay sees images; nothing else changes, and
-     a config override still wins. Checked at every consumer of the gate.
+  1. Upstream shape the seam relies on (patchable extractor, handler source).
+  2. Routing stays upstream's: the relay's models keep the auxiliary path (sending Flash images
+     natively waits for a paid check), and a route upstream already sends natively still does.
   3. The auxiliary prompt asks a direct question in the configured language.
   4. Only the visible answer comes back; a cut-off answer says so; a cut-off with no answer fails.
   5. Wiring: register() applies the seam, and apply() armed before the imports patches them.
@@ -58,12 +58,10 @@ def _no_catalog_network(monkeypatch):
 
 @pytest.fixture
 def installed(monkeypatch):
-    """Both patches for one test; monkeypatch puts the probe tuple, the extractor and the handler back."""
+    """Both patches for one test; monkeypatch puts the extractor and the handler back."""
     entry = registry.get_entry("vision_analyze")
-    monkeypatch.setattr(image_routing, "_VISION_PROBES", image_routing._VISION_PROBES)
     monkeypatch.setattr(vision_tools, "extract_content_or_reasoning", vision_tools.extract_content_or_reasoning)
     monkeypatch.setattr(entry, "handler", entry.handler)
-    assert seam._install_probe(image_routing) is True
     assert seam._install_vision(vision_tools) is True
     return entry
 
@@ -83,9 +81,6 @@ def _main_route(monkeypatch, cfg: dict) -> None:
 # ---------------------------------------------------------------------------
 
 def test_upstream_targets_keep_their_shape():
-    probes = image_routing._VISION_PROBES
-    assert isinstance(probes, tuple) and all(isinstance(label, str) and callable(fn) for label, fn in probes)
-    assert list(inspect.signature(image_routing._resolve_inference_base_url).parameters) == ["cfg", "provider"]
     assert list(inspect.signature(vision_tools.vision_analyze_tool).parameters) == [
         "image_url", "user_prompt", "model", "task_id", "region"]
     assert list(inspect.signature(vision_tools._configured_aux_model).parameters) == ["sections", "env_vars"]
@@ -110,43 +105,22 @@ def test_language_table_is_still_where_the_seam_reads_it():
 
 
 # ---------------------------------------------------------------------------
-# 2. The native gate
+# 2. Routing stays upstream's
 # ---------------------------------------------------------------------------
 
-NATIVE_CASES = [
-    ("apex-flash", RELAY, {}, True),
-    ("APEX-Flash", RELAY, {}, True),
-    ("apex-flash", "https://api.apex-nodes.com/relay/v1", {}, True),
-    ("apex-pro", RELAY, {}, False),
-    ("apex-max", RELAY, {}, False),
-    ("apex-flash", "https://example.com/relay/v1", {}, False),
-    ("apex-flash", "http://apex-nodes.com/relay/v1", {}, False),
-    ("apex-flash", RELAY, {"agent": {"image_input_mode": "text"}}, False),
-    ("apex-flash", RELAY, {"model_supports_vision": False}, False),
-]
+@pytest.mark.parametrize("model", ["apex-flash", "apex-pro", "apex-max"])
+def test_relay_models_still_take_the_auxiliary_path(installed, model):
+    """No route change in hc-1065: Flash goes native only after deepseek-flash is measured taking an
+    image inside a tool result (Kael's merge plan, 2026-10-26)."""
+    assert vision_tools._native_tool_result_images("custom", model, _cfg(model)) is False
+    assert image_routing.decide_image_input_mode("custom", model, _cfg(model)) == "text"
 
 
-def _case_cfg(model, base_url, extra):
-    cfg = _cfg(model, base_url, **{k: v for k, v in extra.items() if k != "model_supports_vision"})
-    if "model_supports_vision" in extra:
-        cfg["model"]["supports_vision"] = extra["model_supports_vision"]
-    return cfg
-
-
-@pytest.mark.parametrize("model,base_url,extra,expected", NATIVE_CASES)
-def test_native_gate_for_tool_results_and_attachments(installed, model, base_url, extra, expected):
-    cfg = _case_cfg(model, base_url, extra)
-    assert vision_tools._native_tool_result_images("custom", model, cfg) is expected
-    assert (image_routing.decide_image_input_mode("custom", model, cfg) == "native") is expected
-
-
-def test_without_the_seam_apex_flash_goes_to_the_auxiliary_model():
-    """The control: upstream alone reads apex-flash as text-only (the 10-26 trace)."""
-    assert vision_tools._native_tool_result_images("custom", "apex-flash", _cfg()) is False
-
-
-def test_vision_analyze_attaches_the_image_for_apex_flash(installed, monkeypatch):
-    _main_route(monkeypatch, _cfg())
+def test_a_native_route_still_reaches_upstream(installed, monkeypatch):
+    """A route upstream already sends natively (here the config override) keeps upstream's handler."""
+    cfg = _cfg()
+    cfg["model"]["supports_vision"] = True
+    _main_route(monkeypatch, cfg)
 
     async def no_aux_call(**_kwargs):
         raise AssertionError("native path must not call the auxiliary model")
@@ -155,24 +129,6 @@ def test_vision_analyze_attaches_the_image_for_apex_flash(installed, monkeypatch
     result = asyncio.run(installed.handler({"image_url": IMAGE, "question": "画面里有字幕吗"}))
     assert isinstance(result, dict) and result["_multimodal"] is True
     assert [part["type"] for part in result["content"]] == ["text", "image_url"]
-
-
-def test_agent_loop_keeps_the_image_in_the_tool_message(installed, monkeypatch):
-    """The second consumer of the gate: a text-only verdict would turn the envelope into a summary."""
-    from agent.vision_message_prep import VisionMessagePrepMixin
-    import hermes_cli.config
-
-    class Loop(VisionMessagePrepMixin):
-        provider = "custom"
-
-        def __init__(self, model):
-            self.model = model
-
-    monkeypatch.setattr(hermes_cli.config, "load_config", lambda *a, **k: _cfg())
-    envelope = vision_tools._build_native_vision_tool_result(IMAGE, "q", IMAGE, len(_TINY_PNG))
-    content = Loop("apex-flash")._tool_result_content_for_active_model("vision_analyze", envelope)
-    assert isinstance(content, list) and content[1]["type"] == "image_url"
-    assert isinstance(Loop("apex-pro")._tool_result_content_for_active_model("vision_analyze", envelope), str)
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +158,7 @@ def _capture_aux_prompt(installed, monkeypatch, cfg, question="字幕在哪一�
     ({}, "Write the answer in the language of the question."),
 ])
 def test_auxiliary_prompt_is_a_direct_question(installed, monkeypatch, language_cfg, expected):
-    seen = _capture_aux_prompt(installed, monkeypatch, _cfg("apex-pro", **language_cfg))
+    seen = _capture_aux_prompt(installed, monkeypatch, _cfg(**language_cfg))
     assert "Fully describe" not in seen["prompt"] and "everything about" not in seen["prompt"]
     assert seen["prompt"].startswith("Answer the question below about this image.")
     assert expected in seen["prompt"]
@@ -211,10 +167,10 @@ def test_auxiliary_prompt_is_a_direct_question(installed, monkeypatch, language_
 
 
 def test_auxiliary_prompt_keeps_the_configured_vision_model(installed, monkeypatch):
-    seen = _capture_aux_prompt(installed, monkeypatch, _cfg("apex-pro"))
+    seen = _capture_aux_prompt(installed, monkeypatch, _cfg())
     assert seen["model"] is None
     monkeypatch.setattr(vision_tools, "_cfg_auxiliary", lambda section, *keys, default=None: "vision-x")
-    seen = _capture_aux_prompt(installed, monkeypatch, _cfg("apex-pro"))
+    seen = _capture_aux_prompt(installed, monkeypatch, _cfg())
     assert seen["model"] == "vision-x"
 
 
@@ -300,19 +256,17 @@ def test_apply_before_the_imports_patches_them_when_they_load():
     script = (
         "import sys\n"
         "from apex_overlay import vision_answer\n"
-        "assert 'tools.vision_tools' not in sys.modules and 'agent.image_routing' not in sys.modules\n"
+        "assert 'tools.vision_tools' not in sys.modules\n"
         "assert vision_answer.apply() is True\n"
-        "assert 'tools.vision_tools' not in sys.modules and 'agent.image_routing' not in sys.modules\n"
+        "assert 'tools.vision_tools' not in sys.modules\n"
         "import tools.vision_tools as vt\n"
-        "from agent import image_routing\n"
         "from tools.registry import registry\n"
-        "assert image_routing._VISION_PROBES[0][1] is vision_answer.relay_vision_probe\n"
         "assert vt.extract_content_or_reasoning is vision_answer.visible_answer\n"
         "def wrapped_once():\n"
         "    handler = registry.get_entry('vision_analyze').handler\n"
         "    return getattr(handler, '_apex_vision_answer', False) and handler.__wrapped__ is vt._handle_vision_analyze\n"
         "assert wrapped_once()\n"
-        "assert vision_answer.apply() is True and len(image_routing._VISION_PROBES) == 4 and wrapped_once()\n"
+        "assert vision_answer.apply() is True and wrapped_once()\n"
         "print('ok')\n"
     )
     done = subprocess.run([sys.executable, "-c", script], cwd=REPO, capture_output=True, text=True, timeout=120, check=False)

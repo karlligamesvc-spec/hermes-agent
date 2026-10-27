@@ -1,26 +1,19 @@
 """hc-1065: ``vision_analyze`` answers the question it was asked, without leaking reasoning.
 
 A 37-minute editing run on APEX Desktop (2026-10-26, model ``apex-flash``) called ``vision_analyze``
-17 times. Every call took the auxiliary path, because the engine could not tell that the platform
-relay's Flash tier sees images. That path asks a second model to "fully describe and explain
-everything about this image, then answer" the question. On the relay that model is deepseek-flash
-with thinking on, and five of the calls spent the whole 4,096-token output budget (relay.log
-``completion=4096``). Four came back with no answer at all, and upstream's
+17 times. Every call took the auxiliary path, which asks a second model to "fully describe and
+explain everything about this image, then answer" the question. On the relay that model is
+deepseek-flash with thinking on, and five of the calls spent the whole 4,096-token output budget
+(relay.log ``completion=4096``). Four came back with no answer at all, and upstream's
 ``extract_content_or_reasoning`` then returned the private reasoning ("We need answer Chinese…") as
 if it were the answer. The fifth stopped mid-sentence and was passed on as complete. The other
 twelve were long descriptions that ignored "answer only two points, briefly".
 
-Three seams, each with a test in ``tests/apex_overlay/test_vision_answer_seam.py``:
+Two seams, each with a test in ``tests/apex_overlay/test_vision_answer_seam.py``. Which route an
+image takes (native or auxiliary) is still upstream's decision; nothing here changes it. Sending
+``apex-flash`` images natively waits for a paid check that deepseek-flash accepts an image inside a
+tool result (never measured; see the hc-1065 hand-over note).
 
-* **Native for the relay's Flash tier.** ``agent.image_routing._VISION_PROBES`` gains a first probe:
-  the model ``apex-flash`` behind the platform relay (``managed_model_catalog.is_platform_relay``)
-  can see. The relay sends every request that carries an image to its catalog ``vision_model``,
-  which is Flash's own upstream (deepseek-flash), so the main model gets the pixels itself through
-  the multimodal tool result, and user attachments are attached natively too. Pro and Max are left
-  out on purpose: once an image sits in history every later request carries it, and the relay would
-  answer the rest of that session on the vision model instead of the tier the user picked. A config
-  ``supports_vision`` or ``agent.image_input_mode`` still wins, because the config override runs
-  before any probe.
 * **A direct question on the auxiliary path.** The registered ``vision_analyze`` handler keeps
   upstream's native branch and replaces only the "fully describe" prompt with one that asks for a
   short, direct answer in the configured response language.
@@ -44,13 +37,8 @@ from apex_overlay import post_import
 logger = logging.getLogger(__name__)
 
 _MARK = "_apex_vision_answer"
-_TARGET_ROUTING_MODULE = "agent.image_routing"
 _TARGET_VISION_MODULE = "tools.vision_tools"
 _TOOL_NAME = "vision_analyze"
-
-# The relay tier whose upstream is the relay's vision model (apex-nodes `vision_model`, migration 161).
-RELAY_VISION_MODELS = frozenset({"apex-flash"})
-PROBE_LABEL = "apex relay vision tier"
 
 # finish_reason values meaning the output limit stopped the answer (OpenAI, Anthropic, Responses).
 _CUT_OFF_REASONS = frozenset({"length", "max_tokens", "max_output_tokens"})
@@ -76,33 +64,6 @@ _NO_QUESTION = "Say briefly what this image shows."
 class VisionAnswerCutOff(RuntimeError):
     """The vision call stopped on its output limit before writing any answer."""
 
-
-# ---------------------------------------------------------------------------
-# Native: the relay's Flash tier sees images
-# ---------------------------------------------------------------------------
-
-def relay_vision_probe(provider: str, model: str, cfg: Optional[dict[str, Any]]) -> Optional[bool]:
-    """``True`` for ``apex-flash`` on the platform relay; ``None`` (no opinion) for everything else."""
-    if str(model or "").strip().lower() not in RELAY_VISION_MODELS:
-        return None
-    from agent.image_routing import _resolve_inference_base_url
-    from apex_overlay.managed_model_catalog import is_platform_relay
-
-    return True if is_platform_relay(_resolve_inference_base_url(cfg, provider)) else None
-
-
-def _install_probe(image_routing) -> bool:
-    probes = image_routing._VISION_PROBES
-    if any(getattr(probe, _MARK, False) for _label, probe in probes):
-        return True
-    setattr(relay_vision_probe, _MARK, True)
-    image_routing._VISION_PROBES = ((PROBE_LABEL, relay_vision_probe), *probes)
-    return True
-
-
-# ---------------------------------------------------------------------------
-# Auxiliary path: a direct question, and only the visible answer
-# ---------------------------------------------------------------------------
 
 def _response_language(cfg: Optional[dict[str, Any]]) -> str:
     """The language name ``agent.response_language`` resolves to, or ``""`` when it follows the user."""
@@ -199,8 +160,6 @@ def _install_vision(vision_tools) -> bool:
 
 
 def apply() -> bool:
-    """Arm all three seams. Idempotent, fail-safe, and imports neither target (hc-989): each patch
-    runs as soon as its module has been imported, or now when it already has been."""
-    routing_ok = post_import.when_imported(_TARGET_ROUTING_MODULE, _install_probe)
-    vision_ok = post_import.when_imported(_TARGET_VISION_MODULE, _install_vision)
-    return routing_ok and vision_ok
+    """Arm both seams. Idempotent, fail-safe, and never imports ``tools.vision_tools`` (hc-989): the
+    patch runs as soon as that module has been imported, or now when it already has been."""
+    return post_import.when_imported(_TARGET_VISION_MODULE, _install_vision)
