@@ -37,6 +37,7 @@ import {
   isApexBotColor
 } from '@/components/apex-avatar-look'
 import type { DesktopClientConfigState } from '@/global'
+import { APEX_NAME, withBotName } from '@/lib/assistant-name'
 import { desktopFeatureOn } from '@/lib/desktop-features'
 import { persistBoolean, readJson, storedBoolean, writeJson } from '@/lib/storage'
 
@@ -49,6 +50,8 @@ import {
   requestFreshSession
 } from './profile'
 import { $singleThreadMode } from './single-thread'
+
+export { APEX_NAME, withBotName }
 
 // ── the switch ───────────────────────────────────────────────────────────────
 
@@ -144,9 +147,6 @@ export function setMultiBotFlagForTest(on: boolean): void {
 /** The profile that is APEX. */
 export const APEX_PROFILE = 'default'
 
-/** APEX's name until it is given another (K6: it can be renamed). The same in every locale. */
-export const APEX_NAME = 'APEX'
-
 /** The `ui_meta` key an assistant's name and look live under in its profile.yaml (never Bot Mode's `hermes-bots`). */
 export const APEX_BOT_META_KEY = 'apex'
 
@@ -158,6 +158,8 @@ export const APEX_BOT_META_KEY = 'apex'
 export interface ApexBotMeta {
   /** An id from APEX_BOT_COLORS. Ignored on APEX, whose look is fixed. */
   color?: ApexBotColor
+  /** 'product': made by the new-assistant sheet (hc-1078). hc-1080 lets only those follow APEX's tier. */
+  origin?: 'product'
   /** Creation time, epoch ms: the roster's order after APEX. */
   created?: number
   name?: string
@@ -430,15 +432,6 @@ export const $currentBot = computed([$multiBotMode, $botRoster, $currentBotProfi
 export const $apexBot = computed([$multiBotMode, $botRoster], (on, roster) =>
   on ? botFor(roster, APEX_PROFILE) : null
 )
-
-/**
- * `text` with the assistant's name where it says APEX: unchanged when `name`
- * is null (one assistant) or APEX's own. Only for copy whose every 「APEX」 is
- * the assistant speaking or being spoken to — never the app's name.
- */
-export function withBotName(text: string, name: null | string | undefined): string {
-  return !name || name === APEX_NAME ? text : text.split(APEX_NAME).join(name)
-}
 
 /** The on-screen assistant's name while several are on screen; null otherwise. */
 export function useBotName(): null | string {

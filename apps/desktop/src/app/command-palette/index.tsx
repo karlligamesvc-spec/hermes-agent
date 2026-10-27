@@ -22,7 +22,6 @@ import { getHermesConfigRecord, listAllProfileSessions } from '@/hermes'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useI18n } from '@/i18n'
 import { useModelTierCopy } from '@/i18n/model-tier'
-import { sessionTitle } from '@/lib/chat-runtime'
 import {
   Activity,
   AppWindow,
@@ -99,6 +98,7 @@ import { configFieldLabel, type SettingsSearchEntry } from "../settings/settings
 import { settingsSearchTargetQuery } from "../settings/settings-search"
 import { useSettingsSearchCatalog } from "../settings/use-settings-search"
 import { withoutNewConversationItems } from '../single-thread/another-conversation'
+import { paletteSessionTitle } from '../single-thread/bot-names'
 
 import { usePaletteContributions } from './contrib'
 import { HighlightWatcher } from './highlight-watcher'
@@ -384,7 +384,7 @@ const toSessionEntry = (session: SessionRow): SessionEntry => ({
   git_branch: session.git_branch ?? null,
   id: session.id,
   preview: session.preview ?? undefined,
-  title: sessionTitle(session)
+  title: paletteSessionTitle(session)
 })
 
 type NonConfigSettingsLabel =

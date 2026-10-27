@@ -432,6 +432,28 @@ describe('hc-1077 K3: with several assistants on, the tier is the account’s', 
     )
   })
 
+  it('says above the page that the tier is the account’s, only while another assistant is on screen', async () => {
+    setTierMode(true)
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(true)
+    $activeGatewayProfile.set('writer')
+
+    const view = renderWithClients(<ModelSection />)
+
+    await screen.findByRole('radio', { name: /Pro/ })
+    expect(view.container.querySelector('[data-shared-tier-note]')?.textContent).toContain(
+      'All assistants share one model tier, set here for the account (APEX).'
+    )
+    cleanup()
+
+    $activeGatewayProfile.set('default')
+
+    const apex = renderWithClients(<ModelSection />)
+
+    await screen.findByRole('radio', { name: /Pro/ })
+    expect(apex.container.querySelector('[data-shared-tier-note]')).toBeNull()
+  })
+
   it('the model page without tier mode too', async () => {
     setSingleThreadFlagForTest(true)
     setMultiBotFlagForTest(true)
