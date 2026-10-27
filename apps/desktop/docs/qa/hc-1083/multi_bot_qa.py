@@ -10,7 +10,7 @@
 
 子命令（详见同目录 README.md）：
   snapshot  家目录快照：每个助手（profile）的 key 指纹、插件表、平台技能、SOUL、主线会话
-  check     对快照跑核对项 C1–C7，有 FAIL 时退出码 1
+  check     对快照跑核对项 C1–C9，有 FAIL 时退出码 1
   diff      比两份快照（改名、删除、重新登录前后）
   watch     盯 desktop.log 和引擎进程：冷启动、内存、池里的挤掉/回收/排队
   mark      往 watch 的记录里打一个时间点（比如「点了剪辑助手」）
@@ -58,6 +58,10 @@ DATE_LINE = "Conversation started:"
 BOT_PROTOCOL_HEADING = "## Messaging other agents"
 PLATFORM_SKILLS = ("skills", "apexnodes")
 SHARED_MIRRORS = "apex"
+# hc-1078 新建助手时在 ui_meta.apex 写 origin: product；改名、换样子不写也不删（fork shared/apex-product-assistant.ts）
+PRODUCT_ORIGIN = "product"
+# hc-1079 首启三问的记录：profile.yaml 的 ui_meta['apex-intake']（status: asking / noted / undone）
+INTAKE_META_KEY = "apex-intake"
 # 只读这几个环境变量的值；别的（含平台凭据）一律不读
 ENV_FLAGS = ("APEXNODES_MULTI_BOT", "APEX_MULTI_BOT_ACTIVE", "APEXNODES_SINGLE_THREAD", "APEX_SINGLE_THREAD_ACTIVE")
 SECRETISH_ENV = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD)", re.IGNORECASE)
@@ -129,6 +133,9 @@ def config_summary(home: Path) -> dict | None:
         "key_anchors": key_anchors(config),
         "plugins_enabled": sorted(str(p) for p in (plugins.get("enabled") or [])),
         "skills_disabled": sorted(str(s) for s in (skills.get("disabled") or [])),
+        # 每个顶层段一个指纹：设置页改了哪个助手的哪一段，diff 一眼看出来（值不落盘）
+        "sections": {str(k): fingerprint(json.dumps(v, sort_keys=True, ensure_ascii=False, default=str))
+                     for k, v in config.items()},
     }
 
 
@@ -181,7 +188,15 @@ def profile_meta(home: Path) -> dict:
     data = load_yaml(home / "profile.yaml") or {}
     ui_meta = data.get("ui_meta") if isinstance(data.get("ui_meta"), dict) else {}
     apex = ui_meta.get("apex") if isinstance(ui_meta.get("apex"), dict) else None
-    return {"display_name": data.get("display_name"), "ui_meta_apex": apex, "has_hermes_bots": "hermes-bots" in ui_meta}
+    intake = ui_meta.get(INTAKE_META_KEY) if isinstance(ui_meta.get(INTAKE_META_KEY), dict) else None
+    return {
+        "display_name": data.get("display_name"),
+        "ui_meta_apex": apex,
+        # 产品模式新建的助手只认 origin（改名工具会给任何 profile 写 ui_meta.apex）
+        "product": bool(apex) and apex.get("origin") == PRODUCT_ORIGIN,
+        "intake_status": (intake or {}).get("status"),
+        "has_hermes_bots": "hermes-bots" in ui_meta,
+    }
 
 
 def _session_rows(db: Path) -> list[dict]:
@@ -437,8 +452,8 @@ def check_keys(snap: dict, _args) -> tuple[str, str]:
     managed = _managed(snap)
     lag = [f"{n}:{a['path']}={a['fp']}" for n, h in managed.items()
            for a in h["config"]["key_anchors"] if a["base_url"] == relay and a["fp"] != root_fp]
-    # 产品模式建的助手（带 ui_meta.apex）必须走托管中转
-    off_relay = [n for n, h in snap["homes"].items() if h["meta"]["ui_meta_apex"] and n not in managed]
+    # 产品模式建的助手（ui_meta.apex.origin == product）必须走托管中转
+    off_relay = [n for n, h in snap["homes"].items() if h["meta"]["product"] and n not in managed]
     if lag or off_relay:
         return "FAIL", f"中转 key 和根（{root_fp}）不一致：{', '.join(lag) or '无'}；没走托管中转的助手：{off_relay or '无'}"
     return "PASS", f"{len(managed)} 个家目录的中转 key 都是 {root_fp}"
@@ -469,12 +484,12 @@ def check_plugins(snap: dict, _args) -> tuple[str, str]:
 
 def check_titles(snap: dict, _args) -> tuple[str, str]:
     bad = [f"{n} 有 {h['sessions']['bot_chat']} 条「{BOT_CHAT_TITLE}」" for n, h in snap["homes"].items()
-           if (n == "default" or h["meta"]["ui_meta_apex"]) and h.get("sessions") and h["sessions"]["bot_chat"]]
+           if (n == "default" or h["meta"]["product"]) and h.get("sessions") and h["sessions"]["bot_chat"]]
     return ("FAIL", "；".join(bad)) if bad else ("PASS", f"没有「{BOT_CHAT_TITLE}」会话")
 
 
 def check_ui_meta(snap: dict, _args) -> tuple[str, str]:
-    bad = [n for n, h in snap["homes"].items() if h["meta"]["ui_meta_apex"] and h["meta"]["has_hermes_bots"]]
+    bad = [n for n, h in snap["homes"].items() if h["meta"]["product"] and h["meta"]["has_hermes_bots"]]
     if bad:
         return "FAIL", f"产品模式建的助手带了 ui_meta.hermes-bots：{bad}"
     return "PASS", "产品模式的助手没碰 hermes-bots 键"
@@ -517,6 +532,17 @@ def check_soul_name(snap: dict, _args) -> tuple[str, str]:
     return ("PASS", f"{seen} 个助手的 SOUL 第一行和名字一致") if seen else ("WARN", "没有模板形状的 SOUL 第一行可比")
 
 
+def check_origin(snap: dict, _args) -> tuple[str, str]:
+    """侧栏里的助手（有 SOUL.md）都该带 origin: product，否则 M4 不给它同步配置、档位页也不跟 APEX（K3）。"""
+    bots = _bots(snap)
+    upstream = sorted(n for n, h in bots.items() if not h["meta"]["product"] and h["meta"]["has_hermes_bots"])
+    bad = sorted(n for n, h in bots.items() if not h["meta"]["product"] and not h["meta"]["has_hermes_bots"])
+    note = f"；上游 Bot 模式的不算：{upstream}" if upstream else ""
+    if bad:
+        return "FAIL", f"没有 ui_meta.apex.origin: {PRODUCT_ORIGIN} 的助手：{bad}{note}"
+    return "PASS", f"{len(bots) - len(upstream)} 个助手都带 origin: {PRODUCT_ORIGIN}{note}"
+
+
 def check_count(snap: dict, args) -> tuple[str, str]:
     bots = sorted(_bots(snap))
     if len(bots) > args.max_bots:
@@ -533,6 +559,7 @@ CHECKS = (
     ("C6", "系统提示", check_prompts),
     ("C7", "助手个数", check_count),
     ("C8", "SOUL 第一行的名字", check_soul_name),
+    ("C9", "新建助手的产品标记", check_origin),
 )
 
 
@@ -580,7 +607,10 @@ LOG_EVENTS = (
                              r"\((?P<busy>\d+)/(?P<max>\d+) busy, (?P<queued>\d+) queued\)")),
     ("slot_timeout", re.compile(r'Local backend start for "(?P<profile>[^"]+)" timed out while waiting for a free slot')),
     ("evict", re.compile(r'Evicting idle profile backend "(?P<profile>[^"]+)"')),
-    ("reap", re.compile(r'Reaping idle profile backend "(?P<profile>[^"]+)"')),
+    # hc-1080（fork #500）：多助手开时用户点开助手，先请最久没用、手上没回合的引擎退下
+    ("evict_room", re.compile(r'Evicting profile backend "(?P<profile>[^"]+)" to make room for another assistant '
+                              r"\((?P<reason>[^)]*)\)")),
+    ("reap", re.compile(r'Reaping idle profile backend "(?P<profile>[^"]+)" \(idle > \d+s\)(?:: (?P<reason>.+))?')),
     # hc-1080（fork #500）：回收前先问引擎，有回合在跑就留着
     ("reap_kept", re.compile(r'Keeping idle profile backend "(?P<profile>[^"]+)" another \d+s: '
                              r"the engine did not retire \((?P<reason>[^)]*)\)")),
@@ -591,7 +621,7 @@ LOG_EVENTS = (
     ("relay_key", re.compile(r"\[apexnodes\] (?:profile (?P<profile>\S+) )?config\.yaml relay key (?P<what>refreshed|write FAILED)")),
     ("http_401", re.compile(r"\b401\b")),
 )
-POOL_EVENTS = ("slot_wait", "slot_timeout", "evict", "reap", "reap_kept", "start_failed", "exit")
+POOL_EVENTS = ("slot_wait", "slot_timeout", "evict", "evict_room", "reap", "reap_kept", "start_failed", "exit")
 
 
 def parse_log_line(line: str) -> dict | None:

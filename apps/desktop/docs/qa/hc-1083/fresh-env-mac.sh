@@ -2,7 +2,7 @@
 # hc-1083：在本机起一份隔离的 APEX 打包产物（全新空环境），给多助手验收用。
 #
 #   fresh-env-mac.sh prepare <DMG 或 .app> <测试目录>   # 拷出 App，建空的家目录
-#   fresh-env-mac.sh launch  <测试目录> [--multi-bot] [--fast-pool] [--quit-confirm]
+#   fresh-env-mac.sh launch  <测试目录> [--single-thread] [--multi-bot] [--fast-pool] [--quit-confirm]
 #   fresh-env-mac.sh python  <测试目录>                  # 引擎自带 python（跑 multi_bot_qa.py 用）
 #   fresh-env-mac.sh stop    <测试目录> [--force]        # SIGTERM 主进程，列出残留进程
 #   fresh-env-mac.sh cleanup <测试目录> [--delete]       # 从 LaunchServices 注销，--delete 才删目录
@@ -11,6 +11,8 @@
 # - 每次验收用一个新的空目录，不拿以前跑过的家目录自证；
 # - 直接起 App 里的二进制，不用 open（open 会按 bundle id 找到 /Applications 里那个）；
 # - HERMES_HOME / userData / 工作目录都在测试目录里，--use-mock-keychain 不碰正式版的钥匙串条目；
+# - --multi-bot 同时开单线（APEXNODES_MULTI_BOT=1 + APEXNODES_SINGLE_THREAD=1）：multi_bot 只在单线也开时才算开；
+#   --single-thread 只开单线（第 A 组两边都用它，和线上客户端配置 single_thread: true 对齐，又不用等首启拉配置）；
 # - --fast-pool 把池的闲置回收压到 60 秒、保鲜窗口压到 120 秒，只用来快速摸行为，正式数字必须用默认值；
 # - 默认跳过「还有任务在跑，确定退出？」，方便 stop；要验退出提示时加 --quit-confirm。
 set -euo pipefail
@@ -53,12 +55,13 @@ prepare() {
 }
 
 launch() {
-  local dir multi="" fast="" confirm=""
+  local dir single="" multi="" fast="" confirm=""
   dir=$(abs "$1"); shift
   [ -f "$dir/.hc-1083-test-dir" ] || { echo "不是 prepare 建的测试目录：$dir"; exit 1; }
   for flag in "$@"; do
     case "$flag" in
-      --multi-bot) multi=1;;
+      --single-thread) single=1;;
+      --multi-bot) multi=1; single=1;;
       --fast-pool) fast=1;;
       --quit-confirm) confirm=1;;
       *) usage;;
@@ -69,14 +72,19 @@ launch() {
   fi
   local extra=()
   [ -z "$confirm" ] && extra+=(HERMES_DESKTOP_SKIP_QUIT_CONFIRM=1)
+  [ -n "$single" ] && extra+=(APEXNODES_SINGLE_THREAD=1)
   [ -n "$multi" ] && extra+=(APEXNODES_MULTI_BOT=1)
   [ -n "$fast" ] && extra+=(HERMES_DESKTOP_POOL_IDLE_MS=60000 HERMES_DESKTOP_POOL_KEEPALIVE_FRESH_MS=120000)
   env HERMES_HOME="$dir/home/hermes" HERMES_DESKTOP_USER_DATA_DIR="$dir/home/userdata" HERMES_DESKTOP_CWD="$dir/home/cwd" \
       HERMES_DESKTOP_IGNORE_EXISTING=1 ${extra[@]+"${extra[@]}"} \
       "$dir/APEX.app/Contents/MacOS/APEX" --use-mock-keychain >>"$dir/app.log" 2>&1 &
   echo $! > "$dir/app.pid"
-  echo "$(date -u +%FT%TZ) launch pid $! multi_bot=${multi:-0} fast_pool=${fast:-0}" >> "$dir/launches.log"
-  echo "已启动 pid $!（多助手开关：${multi:-关}；池参数：${fast:+压缩}${fast:-默认}）"
+  echo "$(date -u +%FT%TZ) launch pid $! single_thread=${single:-unset} multi_bot=${multi:-unset} fast_pool=${fast:-0}" >> "$dir/launches.log"
+  local st="平台定" mb="平台定" pool="默认"
+  [ -n "$single" ] && st="开"
+  [ -n "$multi" ] && mb="开"
+  [ -n "$fast" ] && pool="压缩"
+  echo "已启动 pid $(cat "$dir/app.pid")（单线：$st；多助手：$mb；池参数：$pool）"
   local t0 line=""
   t0=$(date +%s)
   for _ in $(seq 1 72); do

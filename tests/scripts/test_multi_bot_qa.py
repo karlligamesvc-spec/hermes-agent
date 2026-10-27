@@ -61,7 +61,9 @@ def _write_home(home: Path, name: str | None, prompt: str) -> None:
     (skill / "scripts").mkdir()
     (skill / "scripts" / "cut.py").write_text("print('cut')\n", encoding="utf-8")
     if name:
-        meta = {"ui_meta": {"apex": {"name": name, "shape": "square", "color": "teal"}}}
+        # What hc-1078 writes on create (origin: product) and hc-1079 after the three questions.
+        meta = {"ui_meta": {"apex": {"name": name, "shape": "squircle", "color": "teal", "origin": "product"},
+                            "apex-intake": {"v": 1, "status": "noted", "answers": {"role": "editing"}}}}
         _dump(home / "profile.yaml", meta)
     _add_main_thread(home, prompt)
 
@@ -112,7 +114,7 @@ def _edit_yaml(path: Path, mutate) -> None:
 def test_healthy_home_passes_every_check(home: Path) -> None:
     results = _results(home)
 
-    assert {cid: status for cid, (status, _) in results.items()} == {f"C{i}": "PASS" for i in range(1, 9)}
+    assert {cid: status for cid, (status, _) in results.items()} == {f"C{i}": "PASS" for i in range(1, 10)}
     assert "3 个主线" in results["C6"][1]  # prompts are read from the system_prompts table, not sessions.system_prompt
     assert "['apex-bot-2', 'apex-bot-3']" in results["C7"][1]
 
@@ -163,6 +165,14 @@ def _replace_prompt(home: Path, prompt: str) -> None:
     _add_main_thread(home / "profiles/apex-bot-2", prompt)
 
 
+def _origin_missing(home: Path) -> None:
+    _edit_yaml(home / "profiles/apex-bot-2/profile.yaml", lambda d: d["ui_meta"]["apex"].pop("origin"))
+
+
+def _origin_other(home: Path) -> None:
+    _edit_yaml(home / "profiles/apex-bot-3/profile.yaml", lambda d: d["ui_meta"]["apex"].update(origin="Product"))
+
+
 def _soul_name_stale(home: Path) -> None:
     _edit_yaml(home / "profiles/apex-bot-2/profile.yaml", lambda d: d["ui_meta"]["apex"].update(name="小剪"))
 
@@ -186,6 +196,8 @@ FAULTS = [
     ("wrong-name", lambda h: _replace_prompt(h, _prompt("APEX")), "C6"),
     ("too-many-bots", _too_many_bots, "C7"),
     ("soul-name-stale", _soul_name_stale, "C8"),
+    ("origin-missing", _origin_missing, "C9"),
+    ("origin-not-exactly-product", _origin_other, "C9"),
 ]
 
 
@@ -197,6 +209,49 @@ def test_each_fault_fails_its_check(home: Path, fault: str, inject, check: str) 
     status, detail = _results(home)[check]
 
     assert status == "FAIL", f"{fault}: {check} stayed {status} ({detail})"
+
+
+def _upstream_bot(home: Path, renamed: bool) -> None:
+    """A Bot-mode profile from developer mode; hc-1082's rename tool may give it a ui_meta.apex name, never an origin."""
+    bot = home / "profiles" / "upstream-bot"
+    _write_home(bot, "上游助手", _prompt("上游助手"))
+    meta = {"ui_meta": {"hermes-bots": {"title": "Bot"}}}
+    if renamed:
+        meta["ui_meta"]["apex"] = {"name": "上游助手"}
+    _dump(bot / "profile.yaml", meta)
+    _dump(bot / "config.yaml", _config(key="sk-byok", base_url="https://api.example.com/v1"))
+
+
+@pytest.mark.parametrize("renamed", [False, True], ids=["plain", "renamed-by-tool"])
+def test_upstream_bot_profiles_are_not_held_to_product_rules(home: Path, renamed: bool) -> None:
+    """Only origin: product marks a product assistant (fork shared/apex-product-assistant.ts), not ui_meta.apex."""
+    _upstream_bot(home, renamed)
+
+    results = _results(home, max_bots=4)
+
+    assert {cid: status for cid, (status, _) in results.items()} == {f"C{i}": "PASS" for i in range(1, 10)}
+    assert "上游 Bot 模式的不算：['upstream-bot']" in results["C9"][1]
+
+
+def test_diff_of_an_undo_shows_the_intake_status(home: Path) -> None:
+    """C3 in the checklist: undoing the three questions flips ui_meta['apex-intake'].status, nothing else in profile.yaml."""
+    before = qa.take_snapshot(home)
+    _edit_yaml(home / "profiles/apex-bot-2/profile.yaml", lambda d: d["ui_meta"]["apex-intake"].update(status="undone"))
+
+    assert qa.diff_snapshots(before, qa.take_snapshot(home)) == ["~ homes.apex-bot-2.meta.intake_status: 'noted' -> 'undone'"]
+
+
+def test_diff_of_a_settings_change_names_the_section_and_the_bot(home: Path) -> None:
+    """Settings while several assistants are on edit the assistant on screen (Kael, option A): the diff must say which."""
+    before = qa.take_snapshot(home)
+    _edit_yaml(home / "profiles/apex-bot-2/config.yaml", lambda d: d.update(tts={"provider": "edge", "voice": "zh-CN-XiaoxiaoNeural"}))
+    _edit_yaml(home / "profiles/apex-bot-3/config.yaml", lambda d: d["skills"].update(disabled=[]))  # rewritten, same value
+    after = qa.take_snapshot(home)
+
+    lines = qa.diff_snapshots(before, after)
+
+    assert [line.split(" = ")[0] for line in lines] == ["+ homes.apex-bot-2.config.sections.tts"]
+    assert "zh-CN-XiaoxiaoNeural" not in json.dumps(after, ensure_ascii=False)
 
 
 def test_snapshot_never_contains_secret_values(home: Path) -> None:
@@ -274,9 +329,14 @@ LOG_CONTRACT = [
      'Local backend start for "apex-bot-5" timed out while waiting for a free slot.'),
     ("evict", [(_MAIN, 'Evicting idle profile backend "${profile}" (LRU cap')],
      'Evicting idle profile backend "apex-bot-2" (LRU cap 3)'),
+    ("evict_room", [(_POOL, 'Evicting profile backend "${key}" to make room for another assistant (${verdict.reason})')],
+     'Evicting profile backend "apex-bot-2" to make room for another assistant (committed)'),
     ("reap", [(_MAIN, 'Reaping idle profile backend "${profile}" (idle >'),
               (_POOL, 'const reaping = `Reaping idle profile backend "${label}" (idle >')],
      'Reaping idle profile backend "apex-bot-2" (idle > 600s): committed'),
+    ("reap", [(_MAIN, 'Reaping idle profile backend "${profile}" (idle >'),
+              (_POOL, 'const reaping = `Reaping idle profile backend "${label}" (idle >')],
+     'Reaping idle profile backend "apex-bot-2" (idle > 600s)'),
     ("reap_kept", [(_POOL, 'Keeping idle profile backend "${label}" another ${deps.idleSeconds}s: '
                            "the engine did not retire (${verdict.reason})")],
      'Keeping idle profile backend "apex-bot-2" another 600s: the engine did not retire (turn-running)'),
@@ -311,6 +371,8 @@ def test_log_patterns_match_the_product_text(event: str, sources: list[tuple[str
     assert parsed is not None and parsed["event"] == event
     if "profile apex-bot-2 config.yaml" in line:
         assert parsed["profile"] == "apex-bot-2"
+    if event in ("evict_room", "reap") and "committed" in line:
+        assert parsed["profile"] == "apex-bot-2" and parsed["reason"] == "committed"
 
 
 def _ev(t: float, kind: str, **fields) -> dict:
@@ -337,6 +399,7 @@ def test_report_times_cold_starts_and_slot_waits() -> None:
         _ev(314.0, "log", event="evict", profile="apex-bot-3", text="Evicting idle profile backend"),
         _ev(314.5, "proc_gone", pid=12, proc_kind="engine", profile="apex-bot-3"),
         _ev(314.8, "log", event="reap_kept", profile="apex-bot-2", reason="turn-running", text="Keeping idle profile backend"),
+        _ev(314.9, "log", event="evict_room", profile="apex-bot-4", reason="committed", text="Evicting profile backend"),
         _ev(315.0, "log", event="pool_start", profile="apex-bot-5", text="Starting …"),
         _ev(315.1, "proc_new", pid=14, proc_kind="engine", profile="apex-bot-5"),
         _ev(321.9, "listen", pid=14, ports=[50004], profile="apex-bot-5"),
@@ -353,7 +416,7 @@ def test_report_times_cold_starts_and_slot_waits() -> None:
     assert (rows["apex-bot-2"]["mark"], rows["apex-bot-2"]["mark_to_ready"]) == ("点了剪辑助手", 9.0)
     assert (rows["apex-bot-5"]["slot_wait"], rows["apex-bot-5"]["cold_start"]) == (15.0, 22.0)
     assert report["memory"] == [{"profile": "apex-bot-2", "pid": 11, "rss_settled_mb": 300, "uss_settled_mb": 200, "tree_peak_mb": 500}]
-    assert [e["event"] for e in report["pool_events"]] == ["slot_wait", "evict", "reap_kept"]
+    assert [e["event"] for e in report["pool_events"]] == ["slot_wait", "evict", "reap_kept", "evict_room"]
     assert report["engine_exits"] == [{"iso": qa.iso(314.5), "profile": "apex-bot-3", "pid": 12}]
     assert (report["peak_all_rss_mb"], report["peak_engines"]) == (1100, 1)
     assert "| apex-bot-5 | 14 | 15.0 | 22.0 | READY |" in qa.render_report(report)
