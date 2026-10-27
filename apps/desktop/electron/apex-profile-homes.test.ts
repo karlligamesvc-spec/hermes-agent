@@ -5,6 +5,8 @@ import path from 'node:path'
 
 import { afterEach, describe, test } from 'vitest'
 
+import { APEX_UI_META_KEY, isProductAssistantMeta } from '../shared/apex-product-assistant'
+
 import {
   configUsesManagedRelay,
   DEFAULT_PROFILE,
@@ -199,5 +201,53 @@ describe('isProductAssistant', () => {
 
   test('no profile.yaml at all is not a product assistant', () => {
     assert.equal(isProductAssistant(path.join(root({}), 'profiles', 'nowhere')), false)
+  })
+})
+
+// shared/apex-product-assistant.ts: the one rule the main process (above) and the renderer's tier page use.
+describe('isProductAssistantMeta', () => {
+  test('keys the profiles.list ui_meta exactly as profile.yaml does', () => {
+    assert.equal(APEX_UI_META_KEY, 'apex')
+  })
+
+  test.each([
+    ['stamped by the product mode', { apex: { name: 'X', shape: 'circle', origin: 'product' } }, true],
+    ['next to an upstream Bot-mode entry', { 'hermes-bots': { rune: 'spark' }, apex: { origin: 'product' } }, true],
+    ['renamed only', { apex: { name: 'X' } }, false],
+    ['another origin', { apex: { origin: 'developer' } }, false],
+    ['another case', { apex: { origin: 'Product' } }, false],
+    ['the origin outside apex', { origin: 'product' }, false],
+    ['apex as a string', { apex: 'product' }, false],
+    ['apex as a list', { apex: ['product'] }, false],
+    ['an empty mapping', {}, false],
+    ['a list', [{ apex: { origin: 'product' } }], false],
+    ['null', null, false],
+    ['undefined', undefined, false]
+  ])('%s', (_label, uiMeta, expected) => {
+    assert.equal(isProductAssistantMeta(uiMeta), expected)
+  })
+
+  // Hard rule 12: the rule lives in shared/ only. A second copy in the main process or the
+  // renderer (hc-1077 had one before #500) drifts; import isProductAssistantMeta instead.
+  test('no other Desktop source re-implements the origin rule', () => {
+    const desktop = path.join(import.meta.dirname, '..')
+
+    const sources = [
+      ...fs.readdirSync(path.join(desktop, 'electron')).map(name => path.join('electron', name)),
+      ...fs.readdirSync(path.join(desktop, 'src'), { recursive: true }).map(name => path.join('src', String(name)))
+    ].filter(file => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file))
+
+    // Code only: a comment that quotes the rule is no second implementation.
+    const code = (file: string) =>
+      fs
+        .readFileSync(path.join(desktop, file), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/(^|\s)\/\/.*$/gm, '$1')
+
+    const copies = sources.filter(file =>
+      /origin['"\]]*\s*={2,3}\s*(['"]product['"]|PRODUCT_ASSISTANT_ORIGIN)/.test(code(file))
+    )
+
+    assert.deepEqual(copies, [])
   })
 })
