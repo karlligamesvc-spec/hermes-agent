@@ -9,7 +9,7 @@
 | `README.md` | 本清单 |
 | `paid-calls.md` | 验收要花钱的调用和预估；Kael 在 hc-1083 会话里亲口批了才跑 |
 | `rollout-request-draft.md` | 验收后给 Kael 的「发一版客户端配置给所有人打开 multi_bot」申请草稿（只起草，不写库） |
-| `multi_bot_qa.py` | 只读的测量和核对工具：快照、核对 C1–C7、冷启动、内存、池事件 |
+| `multi_bot_qa.py` | 只读的测量和核对工具：快照、核对 C1–C8、冷启动、内存、池事件 |
 | `fresh-env-mac.sh` | Mac 上起一份隔离的打包产物（全新空环境） |
 | `fresh-env-win.ps1` | Windows 上同样的事 |
 
@@ -36,7 +36,7 @@
 ```bash
 Q=apps/desktop/docs/qa/hc-1083
 $Q/fresh-env-mac.sh prepare ~/Downloads/APEX-x.y.z-mac-arm64.dmg ~/apex-qa/hc1083-mac-1
-$Q/fresh-env-mac.sh launch ~/apex-qa/hc1083-mac-1 --multi-bot     # 等到「bundled-engine activated」
+$Q/fresh-env-mac.sh launch ~/apex-qa/hc1083-mac-1 --multi-bot     # 等到「bundled-engine activated」；验退出提示加 --quit-confirm
 PY=$($Q/fresh-env-mac.sh python ~/apex-qa/hc1083-mac-1)          # 引擎自带 python（带 psutil、ruamel.yaml）
 $Q/fresh-env-mac.sh stop ~/apex-qa/hc1083-mac-1                   # SIGTERM，应报「测试目录下 0 个进程」
 $Q/fresh-env-mac.sh cleanup ~/apex-qa/hc1083-mac-1 --delete       # 从 LaunchServices 注销再删
@@ -68,8 +68,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File fresh-env-win.ps1 cleanup -R
 | `$PY -I multi_bot_qa.py watch --home <家目录> --out runs/watch-<场景>.jsonl --uss` | 一直开着：盯 desktop.log 和本测试目录的进程，记冷启动、内存、池事件。Ctrl-C 停 |
 | `$PY -I multi_bot_qa.py mark --out runs/watch-<场景>.jsonl "点剪辑助手"` | 点之前打一个时间点，报告里出「标记→就绪」 |
 | `$PY -I multi_bot_qa.py report runs/watch-<场景>.jsonl` | 出冷启动、内存、池事件三张表（Markdown，直接贴进 QA 记录） |
-| `$PY -I multi_bot_qa.py snapshot --home <家目录> --live --out runs/snap-<步骤>.json` | 快照：每个助手的 key 指纹、插件表、平台技能、SOUL、主线会话、在跑引擎的开关环境变量 |
-| `$PY -I multi_bot_qa.py check --home <家目录>` | 跑 C1–C7，有 FAIL 退出码 1 |
+| `$PY -I multi_bot_qa.py snapshot --home <家目录> --live --out runs/snap-<步骤>.json` | 快照：每个助手的 key 指纹、插件表、平台技能、SOUL（含第一行）、主线会话和它最后一条消息、模型要调的和真跑了的工具（按名字计数）、在跑引擎的开关环境变量 |
+| `$PY -I multi_bot_qa.py check --home <家目录>` | 跑 C1–C8，有 FAIL 退出码 1 |
 | `$PY -I multi_bot_qa.py diff runs/snap-a.json runs/snap-b.json` | 两份快照差在哪（改名、删除、重新登录前后） |
 | `$PY -I multi_bot_qa.py tokens --home <家目录> --since <开始时间>` | 各助手会话库里的 token 合计，按标价折美元（算实际花费） |
 | `$PY -I multi_bot_qa.py fixture --home <家目录> --out <文件>.mp4 --minutes 20 --calibrate slow` | 用自带 ffmpeg 生成后台剪片用的测试视频，并估这台机器转码要多久 |
@@ -85,8 +85,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File fresh-env-win.ps1 cleanup -R
 | C5 | 产品模式建的助手的 profile.yaml 不带 `ui_meta.hermes-bots` | 引擎会把它当上游 Bot 模式管理的 profile |
 | C6 | 每个「APEX 主线」最新一段的系统提示：有「Conversation started:」日期行、没有「## Messaging other agents」、有这个助手的名字 | 日期丢了、混进互发协议、或新助手还说自己叫 APEX（M6） |
 | C7 | 助手（有 SOUL.md 的 profile）不超过 4 个 | 上限没守住（K2） |
+| C8 | 新助手 SOUL.md 第一行是模板形状（`You are <名字>, an AI assistant from ApexNodes HK, …`）时，里面的名字等于 `ui_meta.apex.name` | 改名没带到 SOUL（hc-1082 的 `apex_rename` 或 hc-1078 的改名入口漏了一处） |
 
-这些核对是自己读文件判断的，没有复用产品的写入逻辑（硬规则 12「验证器不要复用被验证者的逻辑」）。工具本身的反向验证见 `tests/scripts/test_multi_bot_qa.py` 和 PR 描述：18 处注入全部变红。
+这些核对是自己读文件判断的，没有复用产品的写入逻辑（硬规则 12「验证器不要复用被验证者的逻辑」）。工具本身的反向验证见 `tests/scripts/test_multi_bot_qa.py` 和 PR 描述：24 处注入全部变红。
 
 ## 3. 验收步骤
 
@@ -117,7 +118,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File fresh-env-win.ps1 cleanup -R
 | C4 | 依次再建 3 个（名字含中文、一个带 emoji、一个很长的名字） | 侧栏顺序：APEX 第一，其余按创建先后；名字过长有省略；每个都能进对话 | — |
 | C5 | 再点「+」 | 说清楚已到上限（APEX + 4），不让建第 5 个；`check` 的 C7 PASS | — |
 | C6 | 选中 APEX 行的「···」 | 没有「删除」、没有「换样子」，有「改名」；APEX 仍是紫色圆 | — |
-| C7 | `check` | C1–C7 全 PASS（C6 要求每个助手都聊过一句，见 D2） | — |
+| C7 | `check` | C1–C8 全 PASS（C6 要求每个助手都聊过一句，见 D2） | — |
 
 注意：**C1 到 C4 连着建 4 个，正好会撞上第 E 组预判的「排队 30 秒」**（建好直接进对话 = 立刻起它的引擎）。照实记下发生了什么，不要为了让它过而放慢节奏。
 
@@ -150,16 +151,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File fresh-env-win.ps1 cleanup -R
 | F1 | 在「剪辑助手」里：「把 qa-3min.mp4 剪成 3 段，每段加一句标题字幕」。开始后立刻切到 APEX，聊一句，等 2 分钟切回 | 侧栏剪辑助手的副标题显示进度；切回时结果在、文件能播放 | F |
 | F2 | 在「剪辑助手」里：「用 ffmpeg 把 qa-20min.mp4 转成 1080p H.264（preset slow，crf 18），转完告诉我文件大小」。开始后切到 APEX，**不碰剪辑助手 12 分钟以上**，期间可以点开别的助手 | 剪辑助手的引擎没被回收也没被挤掉（`report` 池事件里没有它的 evict / reap，引擎进程没退出）；任务做完，输出文件时长和原片一致；切回能看到完整回复 | F |
 | F3 | F2 进行中把助手 2、3、4 都点开（池满） | 正在跑任务的剪辑助手不能被挤掉；记被挤掉的是谁、第 4 个是否排队 | — |
-| F4 | 再开一个 F2 那样的长任务，开始后关掉窗口（Mac 上 ⌘W，App 不退出；Windows 上最小化到托盘或关窗，看 App 怎么处理），12 分钟后再打开 | 没有渲染端 ping 时，回收器先问引擎有没有回合在跑（hc-1080 #500 的退役栅栏），有就不回收：`report` 里没有剪辑助手的 reap，任务做完 | F |
+| F4（Mac） | 在剪辑助手里再开一个 F2 那样的长任务（跑 12 分钟以上），开始后 ⌘W 关掉窗口（Mac 上 App 不退出），`watch` 开着，12 分钟后点 Dock 图标重开 | ① `report` 池事件里约 10 分钟时有剪辑助手的「Keeping idle profile backend … did not retire」，没有它的 reap，它的引擎进程没退出；② 任务跑完：输出文件时长和原片一致；③ 结果送达：重开后对话里有最后的回答，`snapshot` 里剪辑助手的 `main_thread_last_message` 是 assistant、`finish_reason` 为 stop，不是停在工具结果上 | F |
+| F5（Mac、Windows 都做） | 同样的长任务，开始后让电脑睡眠 15 分钟再唤醒（渲染端和主进程的定时器都停了，醒来时活跃时间已过 10 分钟）。要有人在机器前：Mac 是本机，睡眠时 Claude 的会话也停；Windows 经 ToDesk 也会断开 | 同 F4 的 ①②③；醒来后第一次回收检查问到「有回合在跑」就留着 | F |
+| F6（Windows） | Windows 上关最后一个窗口就是退出 App。用 `-QuitConfirm` 起，长任务进行中关窗口 | 弹出「还有任务在跑」的确认；选不退出则任务照跑；选退出则引擎都停掉（`stop` 报 0 个残留），再打开后这条对话如实显示中断，不假装做完 | F |
 
-代码依据：渲染端对「有在跑或在等你决定的回合」的助手保留后台连接，每 60 秒 ping 一次，所以窗口开着时它应该不会被闲置回收、也不在可挤掉的名单里（见第 4 节）。窗口关着或渲染端重载时 ping 会停，hc-1080（M4，fork #500）给闲置回收补了「先问引擎有没有回合在跑」；F4 在打包产物上验这一条。
+代码依据：渲染端对「有在跑或在等你决定的回合」的助手保留后台连接，每 60 秒 ping 一次，所以窗口开着时它应该不会被闲置回收、也不在可挤掉的名单里（见第 4 节）。窗口关着、电脑睡眠或渲染端重载时 ping 会停，hc-1080（M4，fork #500）给闲置回收补了「先问引擎有没有回合在跑」（引擎自带的退役栅栏 `/api/health/retirement`）；F4、F5 在打包产物上验这一条，Mac 和 Windows 都要有结果。没有这条修复时，回收 SIGTERM 掉引擎，那一轮收不到 message.complete（hc-1080 实测）。
 
 ### G. 改名和换样子（K6、M6）
 
 | # | 怎么做 | 通过标准 | 付费 |
 |---|---|---|---|
 | G1 | `snapshot` → 剪辑助手「···」→ 改名「小剪」→ `snapshot` → `diff` | 侧栏、头部胶囊、「给 小剪 发消息」、「小剪 记下了」都跟着变；`diff` 只动 `homes.<剪辑助手目录>.meta`（profile.yaml 的 `ui_meta.apex`），目录名不变，共用镜像 `shared` 不变 | — |
-| G2 | 在选题助手里说「以后叫你小题」，然后 `snapshot` | 侧栏变成「小题」；`ui_meta.apex.name` 变了；共用底账镜像不变（名字不进底账）；再问「你叫什么」答「小题」 | F |
+| G2 | 先 `snapshot`。在一个新助手（如选题助手）里说一句「以后你叫小题」，回复后再 `snapshot`、`diff`；同一个新助手里接着问「你叫什么？」 | 四处都对：① 模型真调了 `apex_rename`（快照里这个助手的 `tool_calls.requested.apex_rename` 和 `ran.apex_rename` 各 +1，`apex_memory` 没有增加）；② 侧栏、头部胶囊跟着变成「小题」，`ui_meta.apex.name` = 小题；③ SOUL.md 第一行变成 `You are 小题, …`（`check` 的 C8 PASS）；④ 共用记忆底账没有多一条称呼记录（`diff` 里 `shared` 不变；「它记得什么」里没有）。下一轮回复自称「小题」 | F |
+| G2b | 在另一个新助手里换个说法：「你改叫小剪吧」 | 同 G2 的四处。两种说法都要调到 `apex_rename`；哪种没调到，把原话和回复截图记下来交 M6 | F |
 | G3 | 去 APEX 和别的助手问「你叫什么」 | APEX 还叫 APEX，别的助手名字不串 | F |
 | G4 | 给 APEX 改名「小橙」（界面） | 能改；仍是紫色圆、第一行；重启后保持 | — |
 | G5 | 给别的助手换形状和颜色 | 立即生效、重启后保持；颜色在深色侧栏上也看得清 | — |
