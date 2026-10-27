@@ -61,6 +61,8 @@ SCHEMA = {
         "required": ["action"],
     },
 }
+# hc-1082: with several assistants on, every one of them reads and writes this one ledger.
+NOT_FOR_ASSISTANTS = "助手自己的名字和分工不记进底账(改名用 apex_rename);用户想让助手怎么称呼他，照常记。"
 
 # What the agent is told when the cloud refuses (detail.code from the ledger API).
 REFUSALS = {
@@ -137,6 +139,15 @@ def render_section(_session_info: Mapping[str, Any] | None = None) -> str:
     return text
 
 
+def schema() -> dict:
+    """The tool's schema; with several assistants on, its description also keeps their names out."""
+    from apex_overlay import assistant_name
+
+    if not assistant_name.switch_on():
+        return SCHEMA
+    return {**SCHEMA, "description": SCHEMA["description"] + NOT_FOR_ASSISTANTS}
+
+
 def _gateway():
     from plugins import apexnodes_gateway
 
@@ -196,15 +207,16 @@ def apply(ctx: Any) -> bool:
         return False
     from tools.registry import no_cache_check_fn
 
+    tool_schema = schema()
     try:
         register_section(SECTION_ID, render_section, max_chars=MAX_CHARS)
         register_tool(
             name=TOOL_NAME,
             toolset=TOOLSET,
-            schema=SCHEMA,
+            schema=tool_schema,
             handler=handle,
             check_fn=no_cache_check_fn(ledger_on),
-            description=SCHEMA["description"],
+            description=tool_schema["description"],
             emoji="🧠",
         )
     except ValueError as exc:

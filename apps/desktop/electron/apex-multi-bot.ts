@@ -10,21 +10,20 @@
  * It only counts while single-thread mode is on for the same launch: several
  * assistants are a single-thread product shape, never a developer-mode one.
  *
- * Main settles the result into APEX_MULTI_BOT_ACTIVE=1 before any engine
- * spawns; the primary and every pool backend spread process.env into their
- * spawn env, so each profile's engine sees the same value. The engine reads it
+ * Main settles the result into APEX_MULTI_BOT_ACTIVE=1 (the name hc-1080
+ * owns in apex-profile-homes.ts) before any engine spawns; the primary and
+ * every pool backend spread process.env into their spawn env, so each
+ * profile's engine sees the same value. The engine reads it
  * for the assistant's own name and the rename tool (hc-1082). Off, the variable
  * is removed. The renderer applies the same rule plus its developer mode
  * (src/store/single-thread-bots.ts). Electron-free.
  */
 
 import { desktopFeatureOnForLaunch } from './apex-desktop-features'
+import { MULTI_BOT_ACTIVE_ENV } from './apex-profile-homes'
 import { singleThreadOnForLaunch } from './apex-single-thread'
 
 export const MULTI_BOT_FEATURE = 'multi_bot'
-
-/** Written by main for the engine; never an input. */
-export const MULTI_BOT_ACTIVE_ENV = 'APEX_MULTI_BOT_ACTIVE'
 
 /** This launch's switch: multi_bot on (install switch first, else the platform's literal `true`) AND single-thread on. */
 export function multiBotOnForLaunch(env: Record<string, string | undefined>, clientConfigPayload: unknown): boolean {

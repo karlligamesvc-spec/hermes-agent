@@ -96,6 +96,13 @@ _CONTEXT_SEAMS = (
         "on, answers may name tools, skills and models again.",
     ),
     (
+        "assistant_name",
+        "apex-overlay: hc-1082 assistant name seam did not register (see "
+        "prior warning). With several assistants on, 「以后叫你小李」 has no "
+        "tool to rename this assistant on screen, and a session renamed from "
+        "the sidebar keeps the name its prompt was built with.",
+    ),
+    (
         "proactive_prompt",
         "apex-overlay: hc-1071 proactive prompt section did not register "
         "(see prior warning). With desktop_features.single_thread on, APEX "
