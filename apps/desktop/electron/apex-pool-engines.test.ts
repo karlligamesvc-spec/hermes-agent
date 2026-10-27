@@ -2,9 +2,13 @@ import assert from 'node:assert/strict'
 
 import { describe, test } from 'vitest'
 
+import { parsePoolAllBusy, POOL_ALL_BUSY_CODE } from '../shared/apex-pool-busy'
+
 import {
   askPoolEngineToRetire,
+  makeRoomInPool,
   MAX_RETIRE_PROBE_FAILURES,
+  poolAllBusyError,
   type PoolEngineEntry,
   poolKeysOnStaleRelayKey,
   reapIdlePoolEngine,
@@ -297,5 +301,199 @@ describe('reapIdlePoolEngine', () => {
 
     assert.equal(await r.run(), 'skipped')
     assert.deepEqual(r.calls, [])
+  })
+})
+
+// hc-1080, several assistants on: a user opens one more assistant than the pool holds.
+describe('makeRoomInPool', () => {
+  const IDLE = { prepare: { json: { ok: true, idle: true, token: 'p' } }, commit: { json: { ok: true } } }
+  const BUSY = { prepare: { json: { ok: false, idle: false } } }
+
+  function pool(specs: Array<[string, number, Record<string, Reply> | 'starting']>) {
+    const entries = new Map<string, PoolEngineEntry>()
+    const fakes = new Map<PoolEngineEntry, ReturnType<typeof engine>>()
+
+    for (const [profile, lastActiveAt, replies] of specs) {
+      const entry = spawned(profile, NEW_KEY)
+      entry.lastActiveAt = lastActiveAt
+
+      if (replies === 'starting') {
+        entry.port = null
+        entry.token = null
+      }
+
+      entries.set(profile, entry)
+      fakes.set(entry, engine(replies === 'starting' ? {} : replies))
+    }
+
+    const stopped: string[] = []
+    const lines: string[] = []
+
+    const run = (keep: number) =>
+      makeRoomInPool({
+        entries: entries.entries(),
+        keep,
+        post: entry => fakes.get(entry)!.post,
+        stillPooled: (key, entry) => entries.get(key) === entry,
+        stop: async key => {
+          stopped.push(key)
+          entries.delete(key)
+        },
+        log: line => lines.push(line)
+      })
+
+    const asked = () => [...fakes.entries()].filter(([, fake]) => fake.calls.length).map(([entry]) => entry.apexProfile)
+
+    return { asked, entries, lines, run, stopped }
+  }
+
+  test('a pool with room asks nobody', async () => {
+    const p = pool([
+      ['writer', 1, IDLE],
+      ['editor', 2, IDLE]
+    ])
+
+    assert.deepEqual(await p.run(2), { room: true, evicted: [], busy: [] })
+    assert.deepEqual(p.asked(), [])
+  })
+
+  test('the least recently used idle engine goes, even one pinged seconds ago', async () => {
+    const p = pool([
+      ['editor', 200, IDLE],
+      ['writer', 100, IDLE],
+      ['maxer', 300, IDLE]
+    ])
+
+    assert.deepEqual(await p.run(2), { room: true, evicted: ['writer'], busy: [] })
+    assert.deepEqual(p.stopped, ['writer'])
+    assert.deepEqual(p.asked(), ['writer'], 'stops asking once there is room')
+    assert.match(p.lines[0], /^Evicting profile backend "writer" to make room for another assistant \(committed\)$/)
+  })
+
+  test('an engine mid-turn is skipped for the next least recently used one', async () => {
+    const p = pool([
+      ['writer', 100, BUSY],
+      ['editor', 200, IDLE],
+      ['maxer', 300, IDLE]
+    ])
+
+    assert.deepEqual(await p.run(2), { room: true, evicted: ['editor'], busy: ['writer'] })
+    assert.ok(p.entries.has('writer'), 'the turn keeps running')
+  })
+
+  test('every engine working: no room, nothing stopped, and the busy ones by name', async () => {
+    const p = pool([
+      ['writer', 100, BUSY],
+      ['editor', 200, 'starting'],
+      ['maxer', 300, BUSY]
+    ])
+
+    assert.deepEqual(await p.run(2), { room: false, evicted: [], busy: ['writer', 'editor', 'maxer'] })
+    assert.deepEqual(p.stopped, [])
+    assert.deepEqual(p.asked(), ['writer', 'maxer'], 'an engine still starting is never asked')
+  })
+
+  test('several over the limit (the limit was lowered): as many as needed go', async () => {
+    const p = pool([
+      ['writer', 100, IDLE],
+      ['editor', 200, BUSY],
+      ['maxer', 300, IDLE],
+      ['fourth', 400, IDLE]
+    ])
+
+    assert.deepEqual(await p.run(1), { room: true, evicted: ['writer', 'maxer', 'fourth'], busy: ['editor'] })
+  })
+
+  test('an engine without the fence goes as before; one that cannot answer stays', async () => {
+    const p = pool([
+      ['writer', 100, { prepare: { error: { statusCode: 503 } } }],
+      ['editor', 200, { prepare: { error: { statusCode: 404 } } }]
+    ])
+
+    assert.deepEqual(await p.run(1), { room: true, evicted: ['editor'], busy: ['writer'] })
+  })
+
+  test('remote descriptors hold no engine and are never counted or asked', async () => {
+    const p = pool([['writer', 100, IDLE]])
+    p.entries.set('remote', { process: null, lastActiveAt: 0 })
+
+    assert.deepEqual(await p.run(1), { room: true, evicted: [], busy: [] })
+  })
+
+  test('an engine the renderer opens during the probe keeps its permit cancelled and stays', async () => {
+    const p = pool([
+      ['writer', 100, { ...IDLE, cancel: { json: { ok: true } } }],
+      ['editor', 200, BUSY]
+    ])
+
+    const writer = p.entries.get('writer')!
+    const original = writer.lastActiveAt
+
+    const result = await makeRoomInPool({
+      entries: p.entries.entries(),
+      keep: 1,
+      post: entry => async (route, body) => {
+        if (entry === writer && body.action === 'prepare') {
+          writer.lastActiveAt = (original || 0) + 1
+        }
+
+        return entry === writer ? (body.action === 'prepare' ? IDLE.prepare.json : { ok: true }) : BUSY.prepare.json
+      },
+      stillPooled: (key, entry) => p.entries.get(key) === entry,
+      stop: async key => {
+        p.stopped.push(key)
+      },
+      log: () => undefined
+    })
+
+    assert.deepEqual(result, { room: false, evicted: [], busy: ['writer', 'editor'] })
+    assert.deepEqual(p.stopped, [])
+  })
+
+  test('an engine stopped elsewhere during the probe frees its slot without a second stop', async () => {
+    const p = pool([
+      ['writer', 100, BUSY],
+      ['editor', 200, IDLE]
+    ])
+
+    const result = await makeRoomInPool({
+      entries: p.entries.entries(),
+      keep: 1,
+      post: entry => async () => {
+        p.entries.delete(entry.apexProfile!)
+
+        return { ok: false, idle: false }
+      },
+      stillPooled: (key, entry) => p.entries.get(key) === entry,
+      stop: async key => {
+        p.stopped.push(key)
+      },
+      log: () => undefined
+    })
+
+    assert.deepEqual(result, { room: true, evicted: [], busy: [] })
+    assert.deepEqual(p.stopped, [])
+  })
+})
+
+describe('the all-busy result the renderer reads (shared/apex-pool-busy.ts)', () => {
+  test('travels in the error message, through Electron IPC wrapping, back to the same object', () => {
+    const error = poolAllBusyError({ room: false, evicted: [], busy: ['writer', 'editor', 'maxer'] }, 3)
+    const wrapped = new Error(`Error invoking remote method 'hermes:connection': Error: ${error.message}`)
+
+    // The literal is the contract quoted to hc-1077 and in desktop.log; keep it stable.
+    assert.equal(POOL_ALL_BUSY_CODE, 'APEX_POOL_ALL_BUSY')
+    assert.equal(error.message, 'APEX_POOL_ALL_BUSY {"busy":["writer","editor","maxer"],"limit":3}')
+    assert.deepEqual(parsePoolAllBusy(error), { busy: ['writer', 'editor', 'maxer'], limit: 3 })
+    assert.deepEqual(parsePoolAllBusy(wrapped), { busy: ['writer', 'editor', 'maxer'], limit: 3 })
+    assert.deepEqual(parsePoolAllBusy(wrapped.message), { busy: ['writer', 'editor', 'maxer'], limit: 3 })
+  })
+
+  test.each([
+    ['another failure', new Error('Local backend start for "x" timed out while waiting for a free slot.')],
+    ['a broken payload', new Error(`${POOL_ALL_BUSY_CODE} {not json}`)],
+    ['not an error', 42]
+  ])('is null for %s', (_label, value) => {
+    assert.equal(parsePoolAllBusy(value), null)
   })
 })

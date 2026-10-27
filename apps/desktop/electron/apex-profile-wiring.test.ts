@@ -180,6 +180,28 @@ describe('pooled engines', () => {
     )
   })
 
+  // hc-1080: with several assistants on, a user's open makes room by retiring idle engines and fails
+  // with the shared all-busy result; switch off, background dials and limit changes keep upstream eviction.
+  test('opening one more assistant than the pool holds retires an idle engine, only with several assistants on', () => {
+    const evict = body('async function evictLruPoolBackends(')
+    const gate = evict.indexOf("if (spawnPriority === 'foreground' && isMultiBotActive(process.env)) {")
+
+    assert.ok(gate > 0, 'gated on a user open and the several-assistants switch')
+    assert.match(evict, /const made = await makeRoomInPool\(\{ entries: backendPool\.entries\(\), keep,/)
+    assert.match(evict, /stillPooled: \(key, entry\) => backendPool\.get\(key\) === entry \}\)/)
+    assert.match(evict, /if \(!made\.room\) \{throw poolAllBusyError\(made, poolMaxBackends\(\)\)\}/)
+    assert.ok(evict.indexOf('return evictPoolEntries(') > gate, 'the upstream path stays for everything else')
+
+    // The two local spawn paths pass the dial's priority; the remote-registry one and a limit change do not.
+    assert.equal(code.match(/await evictLruPoolBackends\(poolMaxBackends\(\) - 1, spawnPriority\)/g)?.length, 2)
+    assert.equal(code.match(/await evictLruPoolBackends\(poolMaxBackends\(\) - 1\)\n/g)?.length, 1)
+    assert.match(code, /void evictLruPoolBackends\(poolMaxBackends\(\)\)/)
+    assert.match(
+      body('async function ensureBackend('),
+      /await evictLruPoolBackends\(poolMaxBackends\(\) - 1, spawnPriority\)/
+    )
+  })
+
   test('the idle reaper asks the engine before it stops it', () => {
     const reaper = body('function startPoolIdleReaper(')
 

@@ -27,6 +27,8 @@
  *    window.
  */
 
+import { poolAllBusyMessage } from '../shared/apex-pool-busy'
+
 import { maskRelayKey } from './apex-relay-key-anchors'
 
 /** The pool-entry fields this module reads and writes. */
@@ -208,4 +210,96 @@ export async function reapIdlePoolEngine(deps: IdleReapDeps): Promise<'kept' | '
   )
 
   return 'kept'
+}
+
+export interface MakeRoomResult {
+  /** True once at most `keep` local engines remain. */
+  room: boolean
+  /** Pool keys retired and stopped, least recently used first. */
+  evicted: string[]
+  /** Profiles that would not retire (mid-turn, starting, undecidable), least recently used first. */
+  busy: string[]
+}
+
+export interface MakeRoomDeps {
+  entries: Iterable<[string, PoolEngineEntry]>
+  /** How many local engines may stay (the pool limit minus the one about to start). */
+  keep: number
+  /** The retirement endpoint of one entry's engine. */
+  post: (entry: PoolEngineEntry) => PoolEnginePost
+  /** False once the entry left the pool or was replaced under the same key. */
+  stillPooled: (key: string, entry: PoolEngineEntry) => boolean
+  stop: (key: string) => Promise<void>
+  log: (line: string) => void
+}
+
+/**
+ * hc-1080, several assistants on: make room for one more local engine when a
+ * user opens an assistant. Upstream eviction only takes engines nobody pinged
+ * for 4 minutes, so a fourth assistant opened within that window waited 30 s
+ * for a slot and failed. Here every local engine is a candidate, least recently
+ * used first, and each is asked to retire (askPoolEngineToRetire): an idle one
+ * goes (its assistant cold-starts next time), one with a turn in flight, still
+ * starting, or that cannot say, stays. `room: false` means all of them are working.
+ */
+export async function makeRoomInPool(deps: MakeRoomDeps): Promise<MakeRoomResult> {
+  const local = [...deps.entries]
+    .filter(([, entry]) => Boolean(entry.process))
+    .sort((a, b) => (a[1].lastActiveAt || 0) - (b[1].lastActiveAt || 0))
+
+  const evicted: string[] = []
+  const busy: string[] = []
+  let excess = local.length - Math.max(0, deps.keep)
+
+  for (const [key, entry] of local) {
+    if (excess <= 0) {
+      break
+    }
+
+    const name = entry.apexProfile ?? key
+
+    if (!entry.port || !entry.token || entry.apexRetiring) {
+      busy.push(name)
+
+      continue
+    }
+
+    entry.apexRetiring = true
+    const touchedAt = entry.lastActiveAt
+    let verdict: RetirementVerdict
+
+    try {
+      verdict = await askPoolEngineToRetire(
+        deps.post(entry),
+        () => deps.stillPooled(key, entry) && entry.lastActiveAt === touchedAt
+      )
+    } finally {
+      entry.apexRetiring = false
+    }
+
+    // Gone meanwhile (stopped or reaped elsewhere): its slot is free either way.
+    if (!deps.stillPooled(key, entry)) {
+      excess -= 1
+
+      continue
+    }
+
+    if (!verdict.retire) {
+      busy.push(name)
+
+      continue
+    }
+
+    deps.log(`Evicting profile backend "${key}" to make room for another assistant (${verdict.reason})`)
+    await deps.stop(key)
+    evicted.push(key)
+    excess -= 1
+  }
+
+  return { room: excess <= 0, evicted, busy }
+}
+
+/** The error an open fails with when makeRoomInPool found every engine working (shared/apex-pool-busy.ts). */
+export function poolAllBusyError(result: MakeRoomResult, limit: number): Error {
+  return new Error(poolAllBusyMessage({ busy: result.busy, limit }))
 }

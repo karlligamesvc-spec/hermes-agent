@@ -13,6 +13,7 @@
  */
 
 import { applyHypihubApexSwitch, HYPIHUB_APEX_ACTIVE_ENV } from './apex-hypihub'
+import { isMultiBotActive, MULTI_BOT_ACTIVE_ENV } from './apex-profile-homes'
 import { MANAGED_PROVIDER_NAME } from './apex-relay-key-anchors'
 import { applySingleThreadSwitch, isSingleThreadActive, SINGLE_THREAD_ACTIVE_ENV } from './apex-single-thread'
 
@@ -292,14 +293,14 @@ export function migrateManagedModelToTierYaml(
 
 /**
  * hc-1080: the main-process switch under which the named profiles follow the
- * root's tier. hc-1077 settles the multi_bot switch into this env (the same
- * name the engine reads); unset — the default, and developer mode — leaves
+ * root's tier: the several-assistants switch (apex-profile-homes.ts
+ * MULTI_BOT_ACTIVE_ENV). Unset — the default, and developer mode — leaves
  * every profile settling on its own, unchanged.
  */
-export const TIER_FOLLOW_ENV = 'APEX_MULTI_BOT_ACTIVE'
+export const TIER_FOLLOW_ENV = MULTI_BOT_ACTIVE_ENV
 
 export function isTierFollowOn(env: Record<string, string | undefined> = {}): boolean {
-  return env?.[TIER_FOLLOW_ENV] === '1'
+  return isMultiBotActive(env)
 }
 
 /**

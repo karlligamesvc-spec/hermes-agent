@@ -26,6 +26,19 @@ import { locateManagedKeyAnchors } from './apex-relay-key-anchors'
 /** The name Hermes gives the root home's profile. */
 export const DEFAULT_PROFILE = 'default'
 
+/**
+ * The main-process switch for several assistants: hc-1077 settles the
+ * `multi_bot` client switch into it, and the engine (hc-1082) reads the same
+ * name. Unset — the default, and developer mode — keeps upstream behaviour for
+ * what hangs off it here: tier following (apex-model-tiers.ts) and making room
+ * in the engine pool (apex-pool-engines.ts).
+ */
+export const MULTI_BOT_ACTIVE_ENV = 'APEX_MULTI_BOT_ACTIVE'
+
+export function isMultiBotActive(env: Record<string, string | undefined> = {}): boolean {
+  return env?.[MULTI_BOT_ACTIVE_ENV] === '1'
+}
+
 export interface ApexProfileHome {
   /** `default` for the root, else the directory name under `profiles/`. */
   profile: string
