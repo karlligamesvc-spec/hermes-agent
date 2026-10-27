@@ -190,4 +190,32 @@ describe('hc-1079: reading, saving and undoing a new assistant’s answers', () 
 
     resetBotRosterForTest()
   })
+
+  it('writes only its own ui_meta key: the name, look and origin under `apex` stay as the new-assistant sheet left them', async () => {
+    const apex = { color: 'teal', created: 1, name: '剪辑助手', origin: 'product', shape: 'cloud' }
+    const engine = fakeProfileEngine({ bot: { soul: TEMPLATE, uiMeta: { apex } } })
+    resetBotRosterForTest(
+      botRosterFrom([{ name: 'bot', ui_meta: { apex }, ui_meta_revisions: { apex: 2 } }], () => true)
+    )
+
+    await saveBotIntakeAnswers(engine.request, 'bot', { platform: 'same', role: 'editing', style: 'brief' }, 'zh')
+    await undoBotIntake(engine.request, 'bot')
+
+    const metaWrites = engine.calls.filter(call => call.method === 'profiles.configure' && 'ui_meta' in call.params)
+
+    expect(metaWrites).toHaveLength(2)
+    expect(metaWrites.map(call => Object.keys(call.params))).toEqual([
+      ['name', 'ui_meta'],
+      ['name', 'ui_meta']
+    ])
+    expect(metaWrites.map(call => Object.keys(call.params.ui_meta as object))).toEqual([
+      [BOT_INTAKE_META_KEY],
+      [BOT_INTAKE_META_KEY]
+    ])
+    expect(engine.profiles.get('bot')!.uiMeta.apex).toEqual(apex)
+    expect(botFor($botRoster.get(), 'bot').uiMeta.apex).toEqual(apex)
+    expect(botFor($botRoster.get(), 'bot').revision).toBe(2)
+
+    resetBotRosterForTest()
+  })
 })
