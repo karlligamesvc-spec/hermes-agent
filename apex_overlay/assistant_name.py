@@ -216,17 +216,21 @@ def rename_in_soul(soul: str, name: str) -> Optional[str]:
 
 
 def sync_soul(home: Path, name: str) -> bool:
-    """Re-render SOUL.md's first line from the stored name while it keeps Desktop's shape; True when rewritten."""
+    """Re-render SOUL.md's first line from the stored name while it keeps Desktop's shape; True when rewritten.
+
+    The same rule as Desktop's writer: only a line of that shape naming someone else is rewritten, and
+    APEX's own SOUL (the default profile's identity) never is; APEX's name lives in ui_meta alone.
+    """
     from utils import atomic_write_bytes
 
     path = home / "SOUL.md"
-    if not path.is_file():
+    if is_main(home) or not path.is_file():
         return False
     soul = path.read_bytes().decode("utf-8")
-    renamed = rename_in_soul(soul, name)
-    if renamed is None or renamed == soul:
+    current = soul_name(soul)
+    if current is None or current == name:
         return False
-    atomic_write_bytes(path, renamed.encode("utf-8"))
+    atomic_write_bytes(path, rename_in_soul(soul, name).encode("utf-8"))
     return True
 
 

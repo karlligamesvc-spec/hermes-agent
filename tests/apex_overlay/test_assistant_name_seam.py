@@ -292,6 +292,26 @@ def test_a_rename_reaches_the_roster_and_keeps_desktops_look(multi_bot, monkeypa
     assert _roster_row("cut")["ui_meta"]["apex"]["name"] == "阿剪"
 
 
+def test_a_rename_leaves_the_file_profiles_configure_would(multi_bot):
+    """One rename, two writers: this tool and Desktop's ``profiles.configure`` end on the same document."""
+    start = {
+        "description": "剪片",
+        "ui_meta": {"hermes-bots": {"title": "Cut"}, "apex": {"name": "小剪", "shape": "square", "color": "teal"}},
+        "_ui_meta_revisions": {"hermes-bots": 4, "apex": 3},
+    }
+    tool_home, desktop_home = _named(multi_bot, "cut"), _named(multi_bot, "twin")
+    for home in (tool_home, desktop_home):
+        (home / "profile.yaml").write_text(yaml.safe_dump(start), encoding="utf-8")
+
+    assistant_name.write_name(tool_home, "阿剪")
+    saved = _configure("twin", {"apex": {**start["ui_meta"]["apex"], "name": "阿剪"}}, {"apex": 3})
+
+    assert saved["ui_meta_revisions"] == {"apex": 4}
+    assert yaml.safe_load((tool_home / "profile.yaml").read_text(encoding="utf-8")) == yaml.safe_load(
+        (desktop_home / "profile.yaml").read_text(encoding="utf-8")
+    )
+
+
 def test_the_same_name_again_leaves_the_revision(multi_bot):
     json.loads(assistant_name.handle({"name": "小李"}))
     before = (multi_bot / "profile.yaml").read_bytes()
@@ -377,6 +397,23 @@ def test_a_rename_carries_into_a_template_soul_only(multi_bot, monkeypatch, soul
     (home / "SOUL.md").write_bytes(soul.encode("utf-8"))
     assert json.loads(assistant_name.handle({"name": "阿剪"}))["ok"] is True
     assert (home / "SOUL.md").read_bytes().decode("utf-8") == (renamed if renamed is not None else soul)
+
+
+def test_apexs_own_soul_is_never_rewritten(multi_bot):
+    soul = assistant_name.SOUL_NAME_LINE.format(name="APEX") + TEMPLATE_BODY
+    (multi_bot / "SOUL.md").write_text(soul, encoding="utf-8")
+    assert json.loads(assistant_name.handle({"name": "小李"}))["name"] == "小李"
+    assert assistant_name.stored_name(multi_bot) == "小李"
+    assert (multi_bot / "SOUL.md").read_text(encoding="utf-8") == soul
+
+
+def test_a_soul_line_already_naming_it_is_left_as_written(multi_bot, monkeypatch):
+    home = _named(multi_bot)
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    soul = (assistant_name.SOUL_NAME_LINE.format(name="阿剪") + TEMPLATE_BODY).replace("\n", "\r\n").encode("utf-8")
+    (home / "SOUL.md").write_bytes(soul)
+    assistant_name.handle({"name": "阿剪"})
+    assert (home / "SOUL.md").read_bytes() == soul
 
 
 def test_the_same_name_still_heals_a_stale_soul_line(multi_bot, monkeypatch):
