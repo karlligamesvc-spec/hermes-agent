@@ -6,6 +6,7 @@ import type { FC } from 'react'
 import { useThreadSessionStatus } from '@/components/assistant-ui/thread/status'
 import { Tip } from '@/components/ui/tooltip'
 import { useSingleThreadComposerCopy } from '@/i18n/single-thread-composer'
+import { useBotName, withBotName } from '@/store/single-thread-bots'
 import { $threadStop } from '@/store/single-thread-stop'
 
 /**
@@ -18,6 +19,7 @@ import { $threadStop } from '@/store/single-thread-stop'
  */
 export const SingleThreadStopButton: FC = () => {
   const copy = useSingleThreadComposerCopy()
+  const stopLabel = withBotName(copy.stopLabel, useBotName())
   const stop = useStore($threadStop)
   const { busy } = useThreadSessionStatus()
 
@@ -26,9 +28,9 @@ export const SingleThreadStopButton: FC = () => {
   }
 
   return (
-    <Tip label={copy.stopLabel}>
+    <Tip label={stopLabel}>
       <button
-        aria-label={copy.stopLabel}
+        aria-label={stopLabel}
         className="ml-1 inline-flex h-6 shrink-0 items-center gap-1 rounded-full border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-2 text-[length:var(--conversation-caption-font-size)] text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) hover:text-foreground"
         data-single-thread-stop=""
         onClick={stop}

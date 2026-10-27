@@ -33,6 +33,7 @@ import { isSubmitEnter } from '@/lib/ime'
 import { cn } from '@/lib/utils'
 import { $authState } from '@/store/auth'
 import { $creatorProfile, creatorProfileFor, loadCreatorProfile, saveCreatorProfile } from '@/store/creator-profile'
+import { useBotName, withBotName } from '@/store/single-thread-bots'
 
 import {
   CREATOR_CONTENT_TYPES,
@@ -142,7 +143,11 @@ function pickFor(
  */
 export function FirstOpen() {
   const copy = useSingleThreadFirstOpenCopy()
-  const { assistantName, greeting } = useSingleThreadChatCopy()
+  const chatCopy = useSingleThreadChatCopy()
+  // hc-1077: the assistant on screen greets and notes in its own name.
+  const botName = useBotName()
+  const assistantName = botName ?? chatCopy.assistantName
+  const greeting = withBotName(chatCopy.greeting, botName)
   const intake = CREATOR_INTAKE_COPY[useI18n().locale]
   const { accountId, status } = useStore($authState)
   const state = useStore($creatorProfile)

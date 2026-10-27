@@ -12,6 +12,10 @@
  * - the account row: the name over 「快速 · 本月用了 18%」 (hc-1062).
  * hc-1070: there is no 「沉浸式分析」 here or in the account menu, and its
  * route turns back to the conversation (analysis-route-gate.tsx).
+ *
+ * hc-1077 (several assistants, `desktop_features.multi_bot`): one row per
+ * assistant, APEX first (sidebar-bots.tsx), and a round 「+」 beside search.
+ * Off, the sidebar is the one above, byte for byte.
  */
 
 import { useStore } from '@nanostores/react'
@@ -21,7 +25,6 @@ import { useNavigate } from 'react-router'
 import { ApexAvatar } from '@/components/apex-avatar'
 import { Codicon } from '@/components/ui/codicon'
 import { Sidebar, SidebarContent } from '@/components/ui/sidebar'
-import { useSingleThreadCopy } from '@/i18n/single-thread'
 import { useSingleThreadChatCopy } from '@/i18n/single-thread-chat'
 import { useSingleThreadSidebarCopy } from '@/i18n/single-thread-sidebar'
 import { cn } from '@/lib/utils'
@@ -30,24 +33,18 @@ import { openCommandPalette } from '@/store/command-palette'
 import { $panesFlipped } from '@/store/layout'
 import { $mainThread, isMainThreadStoredId } from '@/store/main-thread'
 import { $selectedStoredSessionId, $sessions } from '@/store/session'
-import {
-  $threadLatestReply,
-  $threadPresence,
-  $threadUnread,
-  markThreadReplySeen,
-  type ThreadPresence
-} from '@/store/single-thread-presence'
+import { useMultiBotMode } from '@/store/single-thread-bots'
+import { $threadLatestReply, $threadPresence, $threadUnread, markThreadReplySeen } from '@/store/single-thread-presence'
 
 import { DesktopUpdatePill } from '../chat/sidebar/desktop-update-pill'
 import { type AppView, NEW_CHAT_ROUTE, sessionRoute } from '../routes'
 import type { SidebarNavItem } from '../types'
 
 import { SingleThreadAccountRow } from './sidebar-account'
+import { NewBotButton, SingleThreadBotRows } from './sidebar-bots'
 import { SINGLE_THREAD_ROW_CLASS } from './sidebar-row'
+import { BUSY_LINE_CLASS, useStatusLine } from './sidebar-status'
 import { SingleThreadWechatRow } from './sidebar-wechat'
-
-/** Working, waiting and in a call read in the avatar's purple, like the prototype's busy line. */
-const BUSY_LINE_CLASS = 'text-[#4127A8] dark:text-[#B9A8FF]'
 
 function contractItem(id: 'projects' | 'scheduled-runs', icon: string): SidebarNavItem {
   const item = BUSINESS_SIDEBAR_NAV_CONTRACT.find(candidate => candidate.id === id)
@@ -63,26 +60,6 @@ function contractItem(id: 'projects' | 'scheduled-runs', icon: string): SidebarN
 const ACCOUNT_MENU_ITEMS = {
   projects: contractItem('projects', 'folder'),
   'scheduled-runs': contractItem('scheduled-runs', 'calendar')
-}
-
-/** The assistant row's status line for each state; null shows the name alone. */
-function useStatusLine(presence: ThreadPresence): null | string {
-  const copy = useSingleThreadSidebarCopy()
-  const waiting = useSingleThreadCopy().waitingForYou
-
-  switch (presence.kind) {
-    case 'call':
-      return copy.inCall
-
-    case 'waiting':
-      return waiting
-
-    case 'working':
-      return presence.text || copy.working
-
-    default:
-      return presence.text
-  }
 }
 
 /** The conversation is the page on screen: the thread, or the empty thread on `/` before it exists. */
@@ -147,6 +124,7 @@ export function SingleThreadSidebar({
   const navigate = useNavigate()
   const thread = useStore($mainThread)
   const panesFlipped = useStore($panesFlipped)
+  const multiBot = useMultiBotMode()
   const viewing = useViewingThread(currentView)
   const latestReply = useStore($threadLatestReply)
 
@@ -159,6 +137,18 @@ export function SingleThreadSidebar({
 
   const openThread = () =>
     navigate(thread.status === 'found' && thread.tipId ? sessionRoute(thread.tipId) : NEW_CHAT_ROUTE)
+
+  const search = (
+    <button
+      aria-label={copy.search}
+      className="grid size-8 place-items-center rounded-full border border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) text-(--ui-text-secondary) transition-colors [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background)"
+      data-single-thread-search=""
+      onClick={openCommandPalette}
+      type="button"
+    >
+      <Codicon name="search" size="1rem" />
+    </button>
+  )
 
   return (
     <Sidebar
@@ -177,17 +167,20 @@ export function SingleThreadSidebar({
           data-apex-sidebar-brand=""
         >
           <span className="pb-1.5 text-[0.8125rem] font-bold tracking-[0.18em] text-(--ui-text-secondary)">APEX</span>
-          <button
-            aria-label={copy.search}
-            className="grid size-8 place-items-center rounded-full border border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) text-(--ui-text-secondary) transition-colors [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background)"
-            data-single-thread-search=""
-            onClick={openCommandPalette}
-            type="button"
-          >
-            <Codicon name="search" size="1rem" />
-          </button>
+          {multiBot ? (
+            <div className="flex items-center gap-1.5">
+              <NewBotButton />
+              {search}
+            </div>
+          ) : (
+            search
+          )}
         </div>
-        <AssistantRow active={viewing} onOpen={openThread} />
+        {multiBot ? (
+          <SingleThreadBotRows onOpenCurrent={openThread} viewing={viewing} />
+        ) : (
+          <AssistantRow active={viewing} onOpen={openThread} />
+        )}
         <div className="min-h-0 flex-1" />
         <DesktopUpdatePill />
         <SingleThreadWechatRow />

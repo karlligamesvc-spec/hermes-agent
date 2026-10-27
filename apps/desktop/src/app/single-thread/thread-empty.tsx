@@ -10,18 +10,22 @@ import { useStore } from '@nanostores/react'
 import { useLocation } from 'react-router'
 
 import { $mainThread } from '@/store/main-thread'
+import { $currentBotProfile, useMultiBotMode } from '@/store/single-thread-bots'
 
 import { NEW_CHAT_ROUTE } from '../routes'
 
 import { FirstOpen } from './first-open'
 
 export function SingleThreadEmptyState() {
-  const { status } = useStore($mainThread)
+  const { profile, status } = useStore($mainThread)
   const { pathname } = useLocation()
+  // hc-1077: while another assistant is being switched to, the thread on hand is the previous one's.
+  const current = useStore($currentBotProfile)
+  const otherBot = useMultiBotMode() && profile !== current
   // On `/` only an absent thread is really empty; a found one is about to open.
   const settled = pathname === NEW_CHAT_ROUTE ? status === 'absent' : status === 'found'
 
-  if (!settled) {
+  if (!settled || otherBot) {
     return null
   }
 

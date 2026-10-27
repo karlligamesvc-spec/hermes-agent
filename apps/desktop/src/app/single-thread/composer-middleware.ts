@@ -12,7 +12,8 @@
  * - On the empty thread (no thread yet): the message goes out and the session
  *   it creates is claimed as the thread (titled {@link MAIN_THREAD_TITLE}).
  * - Anywhere else (an earlier conversation; the thread still being looked up,
- *   or the lookup failed): nothing is sent and the text stays in the composer.
+ *   or the lookup failed; hc-1077: another assistant asked for and not yet
+ *   answering): nothing is sent and the text stays in the composer.
  *   Fail closed: a send that cannot be placed in the thread must not mint a
  *   second one.
  */
@@ -31,8 +32,10 @@ import {
   resolveMainThread
 } from '@/store/main-thread'
 import { dismissNotification, notify } from '@/store/notifications'
+import { normalizeProfileKey } from '@/store/profile'
 import { $activeSessionId, $busy, $messages, $selectedStoredSessionId, $sessions } from '@/store/session'
 import { isSingleThreadMode } from '@/store/single-thread'
+import { $currentBotProfile, isMultiBotMode } from '@/store/single-thread-bots'
 
 import {
   isRestartRequest,
@@ -128,6 +131,12 @@ export async function singleThreadSend(
   }
 
   const copy = singleThreadChatCopyNow()
+
+  // hc-1077: the thread on hand is the previous assistant's until the switch lands.
+  if (isMultiBotMode() && $currentBotProfile.get() !== normalizeProfileKey(profile())) {
+    return refuse(copy.threadOpening)
+  }
+
   const thread = $mainThread.get()
   const storedId = $selectedStoredSessionId.get()
   const gateway = request()

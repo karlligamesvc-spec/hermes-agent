@@ -10,6 +10,7 @@ import { type MemoryNote, memoryNotesFromParts } from '@/lib/memory-ledger'
 import { $authState } from '@/store/auth'
 import { $memoryLedger, memoryLedgerOn, removeMemory, syncMemoryLedger } from '@/store/memory-ledger'
 import { useSingleThreadMode } from '@/store/single-thread'
+import { useBotName } from '@/store/single-thread-bots'
 
 /** Entries already announced to the main process, so a re-render does not re-read the ledger. */
 const refreshedFor = new Set<string>()
@@ -93,7 +94,8 @@ export const MemoryNotedLine: FC = () => {
 const NotedRow: FC<{ accountId: null | string | undefined; note: MemoryNote }> = ({ accountId, note }) => {
   const { locale } = useI18n()
   const copy = MEMORY_LEDGER_COPY[locale].noted
-  const name = SINGLE_THREAD_CHAT_COPY[locale].assistantName
+  // hc-1077: the assistant on screen remembered it (the ledger itself is one for all, K1).
+  const name = useBotName() ?? SINGLE_THREAD_CHAT_COPY[locale].assistantName
   const [state, setState] = useState<'failed' | 'noted' | 'undoing' | 'undone'>('noted')
 
   const undo = async () => {

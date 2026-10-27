@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setRuntimeI18nLocale } from '@/i18n'
 import { clearAllPrompts } from '@/store/prompts'
 import { $singleThreadFlag } from '@/store/single-thread'
+import { botRosterFrom, resetBotRosterForTest, setMultiBotFlagForTest } from '@/store/single-thread-bots'
 import { setToolViewMode } from '@/store/tool-view'
 
 import { handleServerRequest, type ServerRequestContext } from './server-requests'
@@ -22,14 +23,14 @@ vi.mock('@/store/native-notifications', () => ({
 const CODE = 'ass = open("build/subs.ass").read()\nprint(len(ass))'
 const DESCRIPTION = 'execute_code script execution. The script can spawn subprocesses or mutate files.'
 
-function approve() {
+function approve(profile = 'default') {
   handleServerRequest(
     {
       fail: vi.fn(),
       id: 'srq-approval',
       method: 'approval',
       params: { command: CODE, description: DESCRIPTION, session_id: 'session-a' },
-      profile: 'default',
+      profile,
       respond: vi.fn()
     },
     // markNeedsInput touches the session store through these; nothing here reads them back.
@@ -50,6 +51,8 @@ afterEach(() => {
   setRuntimeI18nLocale('en')
   setToolViewMode('product')
   $singleThreadFlag.set(false)
+  setMultiBotFlagForTest(false)
+  resetBotRosterForTest()
   clearAllPrompts()
 })
 
@@ -68,5 +71,18 @@ describe('the approval notification', () => {
     setToolViewMode(view)
 
     expect(approve()).toBe(CODE)
+  })
+})
+
+describe('hc-1077 with several assistants on', () => {
+  it('names the assistant whose engine asked, even one working in the background', () => {
+    $singleThreadFlag.set(true)
+    setMultiBotFlagForTest(true)
+    resetBotRosterForTest(
+      botRosterFrom([{ name: 'writer', ui_meta: { apex: { created: 1, name: '小红书文案' } } }], () => true)
+    )
+
+    expect(approve('writer')).toMatch(/^小红书文案 想在你的电脑上运行一段程序，用来做字幕。/)
+    expect(approve('default')).toMatch(/^APEX 想在你的电脑上运行一段程序/)
   })
 })
