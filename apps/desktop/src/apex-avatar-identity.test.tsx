@@ -46,6 +46,7 @@ const read = (...parts: string[]) => readFileSync(join(SRC, ...parts), 'utf8')
 /** The only files allowed to draw the avatar: each renders only in single-thread product mode
  *  (hc-1077 added the several-assistants rows, mounted only by sidebar.tsx in that mode). */
 const AVATAR_SURFACES = [
+  'app/single-thread/bot-sheet.tsx',
   'app/single-thread/sidebar-bots.tsx',
   'app/single-thread/sidebar.tsx',
   'app/single-thread/thread-header.tsx',

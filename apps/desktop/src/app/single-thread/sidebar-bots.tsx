@@ -12,7 +12,8 @@
  * A click on another assistant switches to it (store/single-thread-bots.ts
  * `openBot`) and the shell opens its 「APEX 主线」; a click on the one on
  * screen goes back to its conversation, as APEX's row did. Renaming, a new
- * look and deleting are hc-1078's (the 「+」 asks for its sheet).
+ * look and deleting are hc-1078's (bot-manage.tsx): the 「+」 asks for its
+ * sheet, and the row on screen carries its 「···」.
  */
 
 import { useStore } from '@nanostores/react'
@@ -20,12 +21,14 @@ import { useStore } from '@nanostores/react'
 import { ApexAvatar } from '@/components/apex-avatar'
 import { Codicon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
+import { useSingleThreadBotsCopy } from '@/i18n/single-thread-bots'
 import { type SingleThreadSidebarCopy, useSingleThreadSidebarCopy } from '@/i18n/single-thread-sidebar'
 import { cn } from '@/lib/utils'
 import { notify } from '@/store/notifications'
 import {
   $botRoster,
   $currentBotProfile,
+  $multiBotMax,
   type ApexBot,
   botFor,
   openBot,
@@ -34,21 +37,28 @@ import {
 
 import { parsePoolAllBusy } from '../../../shared/apex-pool-busy'
 
+import { CurrentBotRowFrame, useBotManage } from './bot-manage'
 import { useBotRowStatus } from './bot-status'
 import { SINGLE_THREAD_ROW_CLASS } from './sidebar-row'
 import { BUSY_LINE_CLASS } from './sidebar-status'
 
 const ACTIVE_ROW_CLASS = 'bg-(--ui-row-active-background) shadow-xs hover:bg-(--ui-row-active-background)'
 
-/** The round 「+」 beside search: asks for the new-assistant sheet. */
+/**
+ * The round 「+」 beside search: asks for the new-assistant sheet. At the limit it still opens it
+ * (the sheet says to delete one first, hc-1078), and its label already says so.
+ */
 export function NewBotButton() {
   const copy = useSingleThreadSidebarCopy()
+  const botsCopy = useSingleThreadBotsCopy()
+  const max = useStore($multiBotMax)
+  const full = useStore($botRoster).length >= max
 
   return (
     <button
-      aria-label={copy.newBot}
+      aria-label={full ? botsCopy.newBotFull(max) : copy.newBot}
       className="grid size-8 place-items-center rounded-full border border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) text-(--ui-text-secondary) transition-colors [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background)"
-      data-single-thread-new-bot=""
+      data-single-thread-new-bot={full ? 'full' : ''}
       onClick={requestBotCreate}
       type="button"
     >
@@ -149,17 +159,28 @@ export function SingleThreadBotRows({ onOpenCurrent, viewing }: { onOpenCurrent:
     )
   }
 
+  const manage = useBotManage(open)
+
   return (
     <>
-      {roster.map(bot => (
-        <BotRow
-          bot={bot}
-          current={bot.profile === currentProfile}
-          key={bot.profile}
-          onOpen={() => open(bot)}
-          viewing={viewing}
-        />
-      ))}
+      {roster.map(bot => {
+        const current = bot.profile === currentProfile
+        const row = <BotRow bot={bot} current={current} key={bot.profile} onOpen={() => open(bot)} viewing={viewing} />
+
+        return current ? (
+          <CurrentBotRowFrame
+            bot={bot}
+            key={bot.profile}
+            onDelete={() => manage.remove(bot)}
+            onEdit={() => manage.edit(bot)}
+          >
+            {row}
+          </CurrentBotRowFrame>
+        ) : (
+          row
+        )
+      })}
+      {manage.layer}
     </>
   )
 }
