@@ -85,6 +85,7 @@
 | 今日点子(`first-open-ideas.tsx`) | 只在 APEX(K7) |
 | IM 绑定、本机消息网关(主进程按 `active-profile.json`,`readActiveDesktopProfile()`;启动、重载、重新绑定时对齐) | `openBot` 只走 `ensureGatewayProfile`(内部 `ensureGatewayForProfile`),不调 `selectProfile` / `switchProfile` / `profile.remember` / `profile.set`,所以 `active-profile.json` 不变，微信一直接 APEX(K7)。守卫：`single-thread-bots.test.ts` 钉住源码里没有这些调用;反向注入 R12(加一句 remember)、R47(换成 selectProfile)都变红。见后续 3 |
 | 设置 › 模型 / 档位(按 `$settingsScopeProfile`,默认跟当前 profile) | 多助手开、不在 APEX 时改成 APEX 那一份(K3,见上) |
+| 开发者模式、上游 Bot 模式建的助手的档位 | 主进程读不到开发者模式，`APEX_MULTI_BOT_ACTIVE` 只看单线和 multi_bot;hc-1080 按 profile 来源区分：带 `ui_meta.apex` 的(产品模式建的)才跟 APEX 的档位，没有的保留自己的档位，hc-960 按 bot 选档位对它们不变。池满挤空闲引擎在多助手开着时照常生效 |
 | 设置里别的页(工作区、安全、语音、工具和密钥等) | 仍跟当前 profile;第一期不做每个助手自己的设置(方案第 4 节),见后续 7 |
 | 记忆底账 | 一份共用(K1),不用改 |
 | 引擎环境变量 | 主引擎和池引擎都展开 `process.env`,测试钉住 |
@@ -177,5 +178,4 @@
 5. **M2 新建时写 `ui_meta.apex.created`**:名册按它排;不写就按目录名排，删了再建复用小号时顺序会乱。
 6. **池引擎**:挤掉谁、全忙时报什么由 hc-1080(fork #500)做;本票只负责说人话和重试。冷启动秒数归 M7 实测。
 7. **设置里除模型 / 档位外的页**:多助手时仍改当前助手自己的 profile(语音、工具等)。第一期没有每个助手自己的设置，要不要整页都固定到 APEX,需要定。
-8. **开发者模式里 `APEX_MULTI_BOT_ACTIVE` 也是 1**:主进程启动时读不到渲染端的开发者模式(只在 localStorage),和 `APEX_SINGLE_THREAD_ACTIVE` 一样。所以多助手开着时，开发者模式里档位也跟 APEX 走(hc-1080),hc-960 按 bot 选档位只在多助手关着时原样。要让开发者模式例外，得由渲染端通知主进程，运行时再改。
 9. **合并顺序**:fork #500(hc-1080,A 波)先合。之后本分支合并 main,`MULTI_BOT_ACTIVE_ENV` 改成从 `apex-profile-homes.ts` 导入(两边同名同值);`apex-model-tiers.ts` 的 `applyDesktopFeatureSwitches` 可能有一处小冲突。
