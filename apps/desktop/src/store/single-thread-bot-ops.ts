@@ -201,7 +201,10 @@ async function writeLook(profile: string, look: ApexBotLook, revision: number): 
  * answers `{ ok: false, filled: false }`). Typed here: global.d.ts is past its size cap.
  */
 interface ProfileSetupBridge {
-  healApexProfileConfig?: (profile: string) => Promise<unknown>
+  /** hc-1080: `reason` is unknown-profile / not-managed / no-config / pending-model-writes / stale; its guard retries later. */
+  healApexProfileConfig?: (
+    profile: string
+  ) => Promise<{ fixed: string[]; ok: boolean; profile: string; reason?: string }>
   syncApexProfileSkills?: (profile: string) => Promise<{ filled: boolean; ok: boolean }>
 }
 
