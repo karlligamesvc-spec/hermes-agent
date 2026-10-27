@@ -176,21 +176,6 @@ function trimTrailingSlash(value: string): string {
   return String(value || '').replace(/\/+$/, '')
 }
 
-// hc-1072: the tier a pre-tier managed id stands for — the tier whose model it
-// named. Only Pro ever ran a model the old ids name: deepseek-v4-pro (the
-// 06-27..10-08 seed `deepseek-v4-pro-APEX`, an old shelf pick, and Pro's
-// upstream today) and mimo-v2.6-pro (Pro's first upstream, hc-959). No raw id
-// stands for Max: Max is Pro's model asked to think harder, which only its
-// alias says. Every other old id — the Flash seeds, the rest of the old shelf —
-// stands for Flash, the tier the relay already answers them on.
-const LEGACY_PRO_MODELS: ReadonlySet<string> = new Set(['deepseek-v4-pro', 'mimo-v2.6-pro'])
-
-function legacyTierAlias(model: string): string {
-  const bare = model.toLowerCase().replace(/-apex$/, '')
-
-  return LEGACY_PRO_MODELS.has(bare) ? 'apex-pro' : TIER_DEFAULT_MANAGED_MODEL
-}
-
 /** The strongest tier at or below `alias` that the account's plan grants
  *  (`entitled`: the relay's listing, apex-relay-tiers.ts), Flash when none is.
  *  An unknown listing (null, or one naming no tier) keeps `alias`. */
@@ -213,16 +198,18 @@ function cappedTierAlias(alias: string, entitled: null | readonly string[]): str
  * the old APEX shelf) moves to the Flash alias, so the tier the UI shows is the
  * tier the relay routes; a tier alias stays as it is.
  *
- * Single-thread mode (hc-1072, Kael 2026-10-26): the user's tier stays. Only an
- * old id moves — to the tier it stands for, not always Flash — and a tier the
- * plan does not grant (per `entitled`) drops to the strongest one it does.
+ * Single-thread mode (hc-1072): a tier the user picked stays, unless the plan
+ * does not grant it (per `entitled`) — then it drops to the strongest one the
+ * plan does. A pre-tier id was never a tier pick, Pro-sounding or not (the
+ * 06-27..10-08 seed `deepseek-v4-pro-APEX` was the install default): it moves
+ * to Flash, as in tier mode.
  */
 export function settledManagedModel(current: string, singleThread: boolean, entitled: null | readonly string[] = null) {
-  if (!singleThread) {
-    return isModelTierAlias(current) ? current : TIER_DEFAULT_MANAGED_MODEL
+  if (!isModelTierAlias(current)) {
+    return TIER_DEFAULT_MANAGED_MODEL
   }
 
-  return cappedTierAlias(isModelTierAlias(current) ? current.toLowerCase() : legacyTierAlias(current), entitled)
+  return singleThread ? cappedTierAlias(current.toLowerCase(), entitled) : current
 }
 
 /**

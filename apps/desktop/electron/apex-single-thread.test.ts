@@ -190,29 +190,32 @@ describe('the managed tier in single-thread mode (hc-1072: kept, not pinned to F
     assert.deepEqual(fixed, [])
   })
 
+  // An old id was never a tier pick, even one naming Pro's model, so it goes to
+  // Flash on every plan — here one that grants all three tiers.
   test.each([
-    ['the Flash -APEX seed', 'deepseek-flash-APEX', 'apex-flash'],
-    ['the hc-906 Flash seed', 'deepseek-v4-flash-APEX', 'apex-flash'],
-    ['the 06-27 Pro seed', 'deepseek-v4-pro-APEX', 'apex-pro'],
-    ['an old shelf Pro pick', 'deepseek-v4-pro', 'apex-pro'],
-    ['Pro’s first upstream', 'mimo-v2.6-pro', 'apex-pro'],
-    ['an old shelf pick no tier ran', 'kimi-k2.7-code', 'apex-flash'],
-    ['a quoted old id', '"deepseek-v4-pro-APEX"', 'apex-pro']
-  ])('moves %s to the tier it stands for', (_label, model, to) => {
+    ['the Flash -APEX seed', 'deepseek-flash-APEX'],
+    ['the hc-906 Flash seed', 'deepseek-v4-flash-APEX'],
+    ['the 06-27 seed naming Pro’s model', 'deepseek-v4-pro-APEX'],
+    ['an old shelf pick naming Pro’s model', 'deepseek-v4-pro'],
+    ['Pro’s first upstream', 'mimo-v2.6-pro'],
+    ['the same with the suffix', 'mimo-v2.6-pro-APEX'],
+    ['an old shelf pick no tier ran', 'kimi-k2.7-code'],
+    ['a quoted old id', '"deepseek-v4-pro-APEX"']
+  ])('moves %s to Flash', (_label, model) => {
     const raw = block('custom:apex-nodes.com', model)
     const { fixed, next } = heal(raw, ALL)
 
-    assert.match(next, new RegExp(`^ {2}default: ${to}$`, 'm'))
-    assert.deepEqual(fixed, [`model(single-thread:${model.replace(/"/g, '')}→${to.replace('apex-', '')})`])
+    assert.match(next, /^ {2}default: apex-flash$/m)
+    assert.deepEqual(fixed, [`model(single-thread:${model.replace(/"/g, '')}→flash)`])
     assert.equal(next.replace(/^ {2}default: .*$/m, ''), raw.replace(/^ {2}default: .*$/m, ''))
     assert.equal(heal(next, ALL).next, next, 'a second pass changes nothing')
+    assert.equal(heal(raw, null).next, next, 'with or without the listing')
   })
 
   test.each([
     ['Max on a plan up to Pro', 'apex-max', FAST, 'apex-pro'],
     ['Max on the free plan', 'apex-max', FREE, 'apex-flash'],
     ['Pro on the free plan', 'apex-pro', FREE, 'apex-flash'],
-    ['an old Pro id on the free plan', 'deepseek-v4-pro-APEX', FREE, 'apex-flash'],
     ['Pro on a listing without Flash or Pro', 'apex-pro', ['apex-max'], 'apex-flash']
   ])('drops %s to the strongest tier the plan grants', (_label, model, entitled, to) => {
     const raw = block('custom', model)
