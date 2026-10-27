@@ -23,6 +23,8 @@ import path from 'node:path'
 
 import yaml from 'js-yaml'
 
+import { isProductAssistantMeta, PRODUCT_ASSISTANT_ORIGIN } from '../shared/apex-product-assistant'
+
 import { locateManagedKeyAnchors } from './apex-relay-key-anchors'
 
 /** The name Hermes gives the root home's profile. */
@@ -119,31 +121,24 @@ export function managedProfileHomes(
   ]
 }
 
-/**
- * The origin hc-1078 stamps on an assistant it creates: `ui_meta.apex.origin`
- * in profile.yaml, written once with the name and look. Renames and look
- * changes (hc-1078's menu, hc-1082's rename tool) never write it and never drop
- * it, so renaming a developer-mode bot does not turn it into one.
- */
-export const PRODUCT_ASSISTANT_ORIGIN = 'product'
+export { PRODUCT_ASSISTANT_ORIGIN }
 
 /**
- * True when this named profile is an assistant the product mode created
- * (`ui_meta.apex.origin` is exactly PRODUCT_ASSISTANT_ORIGIN). A profile made
- * by upstream Bot mode or in developer mode — even one that later got a
- * `ui_meta.apex.name` from a rename — keeps its own choices, a tier picked on
- * the hc-960 card among them. Missing, unreadable or malformed profile.yaml: false.
+ * True when this named profile is an assistant the product mode created: its
+ * profile.yaml `ui_meta` passes the shared rule (shared/apex-product-assistant.ts,
+ * the same one the renderer's tier page uses). A profile made by upstream Bot
+ * mode or in developer mode — even one that later got a `ui_meta.apex.name` from
+ * a rename — keeps its own choices, a tier picked on the hc-960 card among them.
+ * Missing, unreadable or malformed profile.yaml: false.
  */
 export function isProductAssistant(
   home: string,
   read: (file: string) => string = file => fs.readFileSync(file, 'utf8')
 ): boolean {
   try {
-    const meta = yaml.load(read(path.join(home, 'profile.yaml'))) as {
-      ui_meta?: { apex?: { origin?: unknown } }
-    } | null
+    const meta = yaml.load(read(path.join(home, 'profile.yaml'))) as { ui_meta?: unknown } | null
 
-    return meta?.ui_meta?.apex?.origin === PRODUCT_ASSISTANT_ORIGIN
+    return isProductAssistantMeta(meta?.ui_meta)
   } catch {
     return false
   }
