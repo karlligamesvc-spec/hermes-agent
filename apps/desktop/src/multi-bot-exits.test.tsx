@@ -4,6 +4,9 @@
  * capture made mid-switch), the command palette's rows, and the settings page's
  * title. With one assistant each stays exactly as it was.
  */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -258,5 +261,20 @@ describe('hc-1077 the settings page says whose settings they are', () => {
     $settingsScopeOverride.set(override)
 
     expect(title()).toBe(expected)
+  })
+})
+
+describe('hc-1077 the seams stay wired', () => {
+  const source = (...parts: string[]) => readFileSync(join(__dirname, ...parts), 'utf8')
+
+  it('the command palette names its session rows through paletteSessionTitle', () => {
+    expect(source('app', 'command-palette', 'index.tsx')).toContain('  title: paletteSessionTitle(session)\n')
+  })
+
+  it('the settings page draws its title through SettingsSurfaceHeader', () => {
+    const settings = source('app', 'settings', 'index.tsx')
+
+    expect(settings).toContain('<SettingsSurfaceHeader')
+    expect(settings).not.toContain('<AccountSurfaceHeader')
   })
 })
