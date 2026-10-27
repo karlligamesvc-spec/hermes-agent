@@ -45,6 +45,8 @@ _SEAM_MODULES = (
     "memory_ledger",
     # hc-1015 how APEX talks in single-thread mode.
     "single_thread_prompt",
+    # hc-1082 each assistant's own name and the apex_rename tool (several assistants on).
+    "assistant_name",
     # hc-1071 ask first, next-step buttons and an offer after a finished piece (single-thread mode).
     "proactive_prompt",
     # hc-1036 evidence levels and delivery honesty in every Desktop session.

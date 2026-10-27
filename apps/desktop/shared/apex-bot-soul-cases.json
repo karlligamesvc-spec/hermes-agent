@@ -1,0 +1,105 @@
+{
+  "_about": "hc-1078 / hc-1082: the first line of a multi-bot assistant's SOUL.md and how a rename rewrites it. Read by apps/desktop/src/store/single-thread-bot-ops.test.ts (TypeScript writer, shared/apex-bot-soul.ts) and by the hc-1082 Python rename tool's tests. Change it only together with both writers. Line endings are unified to \\n before matching; a rename returns the unified text. null = not this shape (a hand-written line): leave the SOUL alone.",
+  "name_line_template": "You are {name}, an AI assistant from ApexNodes HK, working alongside APEX for the same person.",
+  "name_lines": [
+    {
+      "name": "小红书文案",
+      "line": "You are 小红书文案, an AI assistant from ApexNodes HK, working alongside APEX for the same person."
+    },
+    {
+      "name": "Captions 2",
+      "line": "You are Captions 2, an AI assistant from ApexNodes HK, working alongside APEX for the same person."
+    },
+    {
+      "name": "$& 名",
+      "line": "You are $& 名, an AI assistant from ApexNodes HK, working alongside APEX for the same person."
+    },
+    {
+      "name": "A",
+      "line": "You are A, an AI assistant from ApexNodes HK, working alongside APEX for the same person."
+    }
+  ],
+  "parse": [
+    {
+      "soul": "You are 剪辑助手, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\n\nYou are helpful.\n",
+      "name": "剪辑助手"
+    },
+    {
+      "soul": "You are 剪辑助手, an AI assistant from ApexNodes HK, working alongside APEX for the same person.",
+      "name": "剪辑助手"
+    },
+    {
+      "soul": "You are 剪辑助手, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\r\nBody.\r\n",
+      "name": "剪辑助手"
+    },
+    {
+      "soul": "You are Captions 2, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\n",
+      "name": "Captions 2"
+    },
+    {
+      "soul": "You are my editor.\nMore.\n",
+      "name": null
+    },
+    {
+      "soul": "You are 旧名, an AI assistant from ApexNodes HK, working alongside APEX for the same person. I also speak Cantonese.\nMore.\n",
+      "name": null
+    },
+    {
+      "soul": "You are , an AI assistant from ApexNodes HK, working alongside APEX for the same person.\n",
+      "name": null
+    },
+    {
+      "soul": "You are    , an AI assistant from ApexNodes HK, working alongside APEX for the same person.\n",
+      "name": null
+    },
+    {
+      "soul": "\nYou are 剪辑助手, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\n",
+      "name": null
+    },
+    {
+      "soul": "# Notes\nYou are 剪辑助手, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\n",
+      "name": null
+    },
+    {
+      "soul": "You are APEX, an intelligent AI assistant from ApexNodes HK. You are helpful, knowledgeable, and direct.\n",
+      "name": null
+    }
+  ],
+  "rename": [
+    {
+      "soul": "You are 旧名, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\n\nBody.\n\n## 分工\n剪辑出片\n",
+      "next": "新名",
+      "expected": "You are 新名, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\n\nBody.\n\n## 分工\n剪辑出片\n"
+    },
+    {
+      "soul": "You are 旧名, an AI assistant from ApexNodes HK, working alongside APEX for the same person.",
+      "next": "新名",
+      "expected": "You are 新名, an AI assistant from ApexNodes HK, working alongside APEX for the same person."
+    },
+    {
+      "soul": "You are 旧名, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\r\nBody.\r\n",
+      "next": "新名",
+      "expected": "You are 新名, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\nBody.\n"
+    },
+    {
+      "soul": "You are 新名, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\nBody.\n",
+      "next": "新名",
+      "expected": "You are 新名, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\nBody.\n"
+    },
+    {
+      "soul": "You are 旧名, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\nBody.\n",
+      "next": "$& 名",
+      "expected": "You are $& 名, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\nBody.\n"
+    },
+    {
+      "soul": "You are my editor.\nMore.\n",
+      "next": "新名",
+      "expected": null
+    },
+    {
+      "soul": "You are 旧名, an AI assistant from ApexNodes HK, working alongside APEX for the same person. extended\nMore.\n",
+      "next": "新名",
+      "expected": null
+    }
+  ]
+}
