@@ -272,14 +272,17 @@ describe('createBot', () => {
     expect(apexBotNameFromSoul(created.params.soul as string)).toBe(look.name)
   })
 
-  it('sets up config before skills (hc-1081 sees the profile only after hc-1080)', async () => {
+  it('sets up config after ui_meta.apex and before skills (hc-1080 / hc-1081)', async () => {
     answer = method => (method === 'profiles.configure' ? { applied: { ui_meta: true } } : { profiles: [] })
     const order: string[] = []
     let finishHeal: () => void = () => undefined
+    let engineCallsBeforeHeal: string[] = []
 
     const heal = vi.fn(
       (profile: string) =>
         new Promise<void>(resolve => {
+          // hc-1080 lets only a profile whose profile.yaml has ui_meta.apex follow APEX's tier (K3).
+          engineCallsBeforeHeal = methods()
           order.push(`heal ${profile}`)
 
           finishHeal = () => {
@@ -308,6 +311,7 @@ describe('createBot', () => {
 
     await expect(created).resolves.toBe('apex-bot-2')
     expect(order).toEqual(['heal apex-bot-2', 'heal done', 'skills apex-bot-2'])
+    expect(engineCallsBeforeHeal).toEqual(['profiles.list', 'profiles.create', 'profiles.configure'])
   })
 
   it('still runs the skills step and opens the assistant when the config step fails', async () => {
