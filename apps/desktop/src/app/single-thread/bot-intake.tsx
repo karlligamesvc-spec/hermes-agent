@@ -47,6 +47,7 @@ import {
   useBotIntakeCopy
 } from './bot-intake-copy'
 import { BOT_ROLE_OTHER_MAX_CHARS, type BotIntakeAnswers, cleanRoleOther } from './bot-intake-soul'
+import { botRoleWork } from './bot-intake-status'
 import { AnsweredCard, CARD_CLASS, FIRST_OPEN_PLATFORMS, OPTION_CLASS } from './first-open'
 import { FIRST_OPEN_BUBBLE_CLASS } from './first-open-ideas'
 
@@ -86,11 +87,6 @@ function optionsFor(step: BotIntakeStep, { accountPlatforms, copy, platformLabel
       ({ id, platforms }) => ({ id, label: platformLabel(platforms), patch: { platform: [...platforms] } })
     )
   ]
-}
-
-/** The role as a sentence uses it: 「剪辑出片」, or what was typed. */
-function roleWork(answers: BotIntakeAnswers, copy: BotIntakeCopy): string {
-  return answers.role === 'other' ? (answers.roleOther ?? '') : answers.role ? copy.roleWork[answers.role] : ''
 }
 
 /** What an answered card shows: the letter of the option it matches (none for a typed role) and its words. */
@@ -261,7 +257,7 @@ function IntakeTurns({
     )
   }
 
-  const work = roleWork(answers, copy)
+  const work = botRoleWork(answers, copy)
 
   return (
     <>

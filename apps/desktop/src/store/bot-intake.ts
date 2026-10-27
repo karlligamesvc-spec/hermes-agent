@@ -32,6 +32,8 @@ import {
 import type { DesktopCreatorPlatform } from '@/global'
 import type { Locale } from '@/i18n/types'
 
+import { $botRoster } from './single-thread-bots'
+
 export const BOT_INTAKE_META_KEY = 'apex-intake'
 
 export type BotIntakeStatus = 'asking' | 'noted' | 'undone'
@@ -178,6 +180,15 @@ async function writeRecord(request: BotIntakeRequest, profile: string, record: B
   if ($botIntake.get().profile === profile) {
     $botIntake.set({ profile, record, status: 'ready' })
   }
+
+  // The sidebar row reads the record from the roster, which is re-read only every few seconds.
+  $botRoster.set(
+    $botRoster
+      .get()
+      .map(bot =>
+        bot.profile === profile ? { ...bot, uiMeta: { ...bot.uiMeta, [BOT_INTAKE_META_KEY]: record } } : bot
+      )
+  )
 
   return true
 }

@@ -68,6 +68,8 @@ export interface BotIntakeCopy {
   undoFailed: string
   closing: (work: string) => string
   closingUndone: string
+  /** The sidebar row's line under the name until its first conversation (prototype ⑧). */
+  sidebar: { asking: string; noted: (work: string) => string; undone: string }
   soul: BotIntakeSoulCopy
 }
 
@@ -107,6 +109,7 @@ const en: BotIntakeCopy = {
   closing: work =>
     `All set. Bring ${work} straight to me, and everything else to APEX. We share what we know about you, so you never have to introduce yourself again.`,
   closingUndone: 'OK, nothing settled for now. Tell me any time what you want me to handle.',
+  sidebar: { asking: '3 quick questions first', noted: work => `Handles ${work}`, undone: 'No role set, just tell it' },
   soul: {
     heading: '## What you handle',
     intro:
@@ -145,6 +148,7 @@ const zh: BotIntakeCopy = {
   closing: work =>
     `好了。以后${work}的活直接找我，别的事还是找 APEX。我们记得的「关于你」是同一份，你不用再介绍一遍自己。`,
   closingUndone: '好，先不定分工。想让我管什么，随时跟我说。',
+  sidebar: { asking: '先问 3 个小问题', noted: work => `分工定了：${work}`, undone: '分工没记，随时再说' },
   soul: {
     heading: '## 分工',
     intro: '用户第一次打开你时定的（用户这次说的不一样时以这次为准）：',
@@ -182,6 +186,7 @@ const zhHant: BotIntakeCopy = {
   closing: work =>
     `好了。以後${work}的活直接找我，別的事還是找 APEX。我們記得的「關於你」是同一份，你不用再介紹一遍自己。`,
   closingUndone: '好，先不定分工。想讓我管什麼，隨時跟我說。',
+  sidebar: { asking: '先問 3 個小問題', noted: work => `分工定了：${work}`, undone: '分工沒記，隨時再說' },
   soul: {
     heading: '## 分工',
     intro: '用戶第一次打開你時定的（用戶這次說的不一樣時以這次為準）：',

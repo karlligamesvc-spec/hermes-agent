@@ -12,12 +12,18 @@
  *   `profiles.list`, or just its name.
  * - The dot: a reply after the last one the user had that conversation open
  *   for. Being on screen marks the newest one seen.
+ * - hc-1079: an assistant the user made that has said nothing yet (no
+ *   conversation at all) shows where its first-open questions stand — once
+ *   its row has been read from the engine (`revision` > 0): rows painted from
+ *   this install's cache have no conversations listed yet, and one that has
+ *   them must not flash 「先问 3 个小问题」.
  */
 
 import { useStore } from '@nanostores/react'
 import { useEffect } from 'react'
 
 import { useI18n } from '@/i18n'
+import { BOT_INTAKE_META_KEY } from '@/store/bot-intake'
 import { $mainThread, $mainThreadsByProfile, type MainThreadState } from '@/store/main-thread'
 import { $sessionStates } from '@/store/session-states'
 import { $botLastSessions, type ApexBot } from '@/store/single-thread-bots'
@@ -35,6 +41,8 @@ import {
 import { $threadActivity, $threadInCall } from '@/store/thread-signals'
 
 import { backgroundActivity } from './bot-activity'
+import { useBotIntakeCopy } from './bot-intake-copy'
+import { botIntakeStatusLine } from './bot-intake-status'
 import { useStatusLine } from './sidebar-status'
 
 export interface BotRowStatus {
@@ -90,6 +98,9 @@ export function useBotRowStatus(
   )
 
   const line = useStatusLine(presence)
+  const intakeCopy = useBotIntakeCopy()
+  // Working, waiting and in a call always have a line, so only a quiet row is left.
+  const fresh = !bot.isApex && bot.revision > 0 && !line && !lastSessions[bot.profile]
   const seen = useStore($botSeenReplyIds)[bot.profile]
 
   useEffect(() => {
@@ -98,5 +109,9 @@ export function useBotRowStatus(
     }
   }, [bot.profile, onScreen, reply?.id])
 
-  return { kind: presence.kind, line, unread: botUnread(reply, seen) && !onScreen }
+  return {
+    kind: presence.kind,
+    line: fresh ? botIntakeStatusLine(bot.uiMeta[BOT_INTAKE_META_KEY], intakeCopy) : line,
+    unread: botUnread(reply, seen) && !onScreen
+  }
 }

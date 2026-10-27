@@ -12,6 +12,7 @@ import {
   saveBotIntakeAnswers,
   undoBotIntake
 } from './bot-intake'
+import { $botRoster, botFor, botRosterFrom, resetBotRosterForTest } from './single-thread-bots'
 
 const TEMPLATE = 'You are 剪辑助手, an AI assistant made in APEX by ApexNodes HK.\n'
 
@@ -167,5 +168,26 @@ describe('hc-1079: reading, saving and undoing a new assistant’s answers', () 
 
     expect(await undoBotIntake(engine.request, 'bot')).toBe(true)
     expect(bot.soul).toBe(`Renamed.\n${TEMPLATE}`)
+  })
+
+  it('updates the sidebar row’s record at once, without waiting for the next roster read', async () => {
+    const engine = fakeProfileEngine({ bot: { soul: TEMPLATE }, other: { soul: TEMPLATE } })
+    const meta = (name: string) => ({ name, ui_meta: { apex: { created: 1, name } }, ui_meta_revisions: { apex: 1 } })
+    resetBotRosterForTest(botRosterFrom([meta('bot'), meta('other')], () => true))
+    const intakeOf = (profile: string) => botFor($botRoster.get(), profile).uiMeta[BOT_INTAKE_META_KEY]
+
+    engine.failNext('ui_meta')
+    await saveBotIntakeAnswers(engine.request, 'bot', { role: 'editing' }, 'zh')
+    expect(intakeOf('bot')).toBeUndefined()
+
+    await saveBotIntakeAnswers(engine.request, 'bot', { role: 'editing' }, 'zh')
+    expect(intakeOf('bot')).toEqual({ answers: { role: 'editing' }, status: 'asking', v: 1 })
+    expect(botFor($botRoster.get(), 'bot').revision).toBe(1)
+
+    await undoBotIntake(engine.request, 'bot')
+    expect(intakeOf('bot')).toEqual({ answers: {}, status: 'undone', v: 1 })
+    expect(intakeOf('other')).toBeUndefined()
+
+    resetBotRosterForTest()
   })
 })
