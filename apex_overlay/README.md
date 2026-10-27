@@ -102,6 +102,7 @@ disarm into a **loud CI failure**, the prerequisite for trusting monkey-patch.
 | `region` | Provide the shared region-policy helpers used by the China-specific seams. |
 | `post_import` | Patch a module once it has finished importing, without importing it; every `gateway.*` seam goes through it so plugin discovery never waits on a gateway import (hc-989). |
 | `relay_stream_liveness` | A platform-relay chat stream whose bytes stop arriving is retried after max(45 s, 6 relay heartbeats) instead of the 600 s reasoning stale floor; relay sockets carry TCP keepalive; each logical call carries `X-APEX-Call-Id` so the relay can replay a finished stream to its retry unbilled (hc-1032). |
+| `vision_answer` | When `vision_analyze` uses the auxiliary model, it asks a short, direct question in the response language, and only the visible answer comes back: never the model's reasoning, and a cut-off answer says so. Routing (native or auxiliary) stays upstream's (hc-1065). |
 | `packaged_engine` | An engine installed by APEX Desktop never builds a frontend, and `hermes --tui` runs its shipped TUI on the bundled Node (hc-954). Hooked in place from `source_build.py` and `main_tui_launch.py`: plugin discovery runs too late on those paths. |
 
 `plugins/apex-overlay/__init__.py` is the authoritative registration order.

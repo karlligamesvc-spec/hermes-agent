@@ -332,12 +332,15 @@ def test_register_imports_no_gateway_module_and_seams_land_before_the_startup_lo
     from apex_overlay import post_import
     assert set(post_import.pending_modules()) == {
         "gateway.run", "gateway.display_config", "gateway.platforms.base", "gateway.platform_registry",
+        # hc-1065 vision_answer: armed the same way, not imported from discovery either.
+        "tools.vision_tools",
     }, post_import.pending_modules()
 
     from gateway.run import GatewayRunner          # what run_gateway() does
     missing = [name for name, ok in seam_marks().items() if not ok]
     assert missing == [], f"not installed when import gateway.run returned: {missing}"
-    assert post_import.pending_modules() == ()
+    # gateway.run does not load tools.vision_tools; that patch waits for the tool registry's import.
+    assert set(post_import.pending_modules()) <= {"tools.vision_tools"}
 
     # The real start-up loop (GatewayRunner._start_prefilter_platforms) on a bare runner: Feishu must
     # be scheduled in the background instead of being created on the start-up stack.

@@ -53,6 +53,8 @@ _SEAM_MODULES = (
     "relay_stream_liveness",
     # hc-1034 one simple command per read-only check; stop and explain after a refusal.
     "approval_rules_prompt",
+    # hc-1065 native vision for the relay's Flash tier; direct, reasoning-free answers.
+    "vision_answer",
 )
 
 
