@@ -13,7 +13,8 @@ import { describe, test } from 'vitest'
 
 import { clientConfigForRenderer, desktopFeatureInstallSwitches } from './apex-desktop-features'
 import { applyDesktopFeatureSwitches } from './apex-model-tiers'
-import { applyMultiBotSwitch, MULTI_BOT_ACTIVE_ENV, multiBotOnForLaunch } from './apex-multi-bot'
+import { applyMultiBotSwitch, multiBotOnForLaunch } from './apex-multi-bot'
+import { MULTI_BOT_ACTIVE_ENV } from './apex-profile-homes'
 import { SINGLE_THREAD_ACTIVE_ENV } from './apex-single-thread'
 
 const INSTALL = 'APEXNODES_MULTI_BOT'

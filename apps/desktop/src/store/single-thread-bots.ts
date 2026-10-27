@@ -42,6 +42,12 @@ import { desktopFeatureOn } from '@/lib/desktop-features'
 import { persistBoolean, readJson, storedBoolean, writeJson } from '@/lib/storage'
 
 import {
+  APEX_UI_META_KEY,
+  isProductAssistantMeta,
+  type PRODUCT_ASSISTANT_ORIGIN
+} from '../../shared/apex-product-assistant'
+
+import {
   $activeGatewayProfile,
   $gatewaySwapTarget,
   ensureGatewayProfile,
@@ -148,7 +154,7 @@ export function setMultiBotFlagForTest(on: boolean): void {
 export const APEX_PROFILE = 'default'
 
 /** The `ui_meta` key an assistant's name and look live under in its profile.yaml (never Bot Mode's `hermes-bots`). */
-export const APEX_BOT_META_KEY = 'apex'
+export const APEX_BOT_META_KEY = APEX_UI_META_KEY
 
 /**
  * What `ui_meta.apex` holds. Written through `profiles.configure` with
@@ -159,7 +165,7 @@ export interface ApexBotMeta {
   /** An id from APEX_BOT_COLORS. Ignored on APEX, whose look is fixed. */
   color?: ApexBotColor
   /** 'product': made by the new-assistant sheet (hc-1078). hc-1080 lets only those follow APEX's tier. */
-  origin?: 'product'
+  origin?: typeof PRODUCT_ASSISTANT_ORIGIN
   /** Creation time, epoch ms: the roster's order after APEX. */
   created?: number
   name?: string
@@ -457,16 +463,14 @@ export function canRestyleBot(bot: Pick<ApexBot, 'isApex'>): boolean {
 }
 
 /**
- * K3, the rule hc-1080 applies in the main process: only an assistant made by
- * the new-assistant sheet (`ui_meta.apex.origin == "product"`, written by
- * hc-1078) follows APEX's tier. One made in Bot mode or developer mode — or
- * only renamed, since a rename may create `ui_meta.apex` on any profile —
- * keeps its own.
+ * K3, the rule hc-1080 applies in the main process (shared/apex-product-assistant.ts):
+ * only an assistant made by the new-assistant sheet (`ui_meta.apex.origin ==
+ * "product"`, written by hc-1078) follows APEX's tier. One made in Bot mode or
+ * developer mode — or only renamed, since a rename may create `ui_meta.apex`
+ * on any profile — keeps its own.
  */
 export function followsApexTier(bot: ApexBot): boolean {
-  const meta = bot.uiMeta[APEX_BOT_META_KEY]
-
-  return !bot.isApex && Boolean(meta) && typeof meta === 'object' && (meta as ApexBotMeta).origin === 'product'
+  return !bot.isApex && isProductAssistantMeta(bot.uiMeta)
 }
 
 /**

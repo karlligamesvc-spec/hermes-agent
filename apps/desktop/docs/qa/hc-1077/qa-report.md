@@ -10,7 +10,7 @@
 
 | 项 | 文件 | 说明 |
 |---|---|---|
-| 开关(主进程) | `electron/apex-desktop-features.ts`、新 `electron/apex-multi-bot.ts`、`electron/apex-model-tiers.ts` | 开关表加 `multi_bot: 'APEXNODES_MULTI_BOT'`(只读不写，照 hc-1014);同一次启动单线也开才算开;`app.whenReady` 之前写 `APEX_MULTI_BOT_ACTIVE=1`,关时删掉。主引擎和池里的引擎都展开 `process.env` 启动(测试钉住两处) |
+| 开关(主进程) | `electron/apex-desktop-features.ts`、新 `electron/apex-multi-bot.ts`、`electron/apex-model-tiers.ts` | 开关表加 `multi_bot: 'APEXNODES_MULTI_BOT'`(只读不写，照 hc-1014);同一次启动单线也开才算开;`app.whenReady` 之前写 `APEX_MULTI_BOT_ACTIVE=1`,关时删掉;变量名用 hc-1080 `apex-profile-homes.ts` 的 `MULTI_BOT_ACTIVE_ENV`,本票不另外定义。主引擎和池里的引擎都展开 `process.env` 启动(测试钉住两处) |
 | 开关(渲染层)、上限 | 新 `src/store/single-thread-bots.ts` | `$multiBotMode` = 单线产品模式 && 开关;上限读 `desktop_features.multi_bot_max`,整数且 ≥1,否则 5(K2) |
 | 名册 | 同上 | `profiles.list` 里有 SOUL.md(用 `profiles.describe` 查，确认有就记住，没有的一分钟后再问)、没被 Bot 模式隐藏(`ui_meta['hermes-bots'].hidden`)的 profile;APEX 固定第一行，其余按 `ui_meta.apex.created`(没有就看 Bot 模式的 `created`,都没有按目录名)。名字和样子读 `ui_meta.apex` 的 `name` / `shape` / `color`(颜色存 id),未知值退回默认样子(圆角方 + 蓝)。APEX 只认名字，样子固定紫色圆。名册缓存到本机，下次启动先画 |
 | 侧栏 | `src/app/single-thread/sidebar.tsx`、新 `sidebar-bots.tsx`、新 `sidebar-status.ts`、新 `bot-activity.ts` | 每行：形象 + 名字 + 状态副标题 + 未读点；顶部「+」在搜索左边(发 `$botCreateRequest`,M2 接)。当前助手读活动行和通话;后台助手从它自己的会话状态折出活动行同一句话(「正在识别语音…」),等你决定照旧;从没在本窗口打开过的，用 `profiles.list` 的最后一句，前提是那条最新会话就是它的主线。未读按 profile 记 |
@@ -20,9 +20,9 @@
 | 只在 APEX | `sidebar-wechat.tsx`、`first-open-ideas.tsx` | 「在微信里找」按 APEX 现在的名字(APEX 能改名),不跟当前助手;今日点子只在 APEX 的空对话(K7) |
 | 形象 | `src/components/apex-avatar.tsx`、新 `apex-avatar-look.ts` | 加 `shape`、`color` 两个参数，默认值不变(APEX 仍画 `<circle>`)。取值表导出：6 种形状 `circle / squircle / pill / hexagon / cloud / drop`,6 种颜色 `blue #2563D9 / teal #0B8A7B / green #2E8A40 / orange #C9631A / rose #C93A6E / gold #9A6B00`,不含 APEX 紫;和白眼对比 5.43 / 4.25 / 4.35 / 3.97 / 4.87 / 4.69(都 ≥3:1);深色模式颜色不变，所以深色侧栏上一样 |
 | 行状态 | 新 `src/app/single-thread/bot-status.ts` | 每行的副标题、忙不忙、未读点都在 `useBotRowStatus` 里决定;名册每行带 profile 的整份 `ui_meta`(`uiMeta`),hc-1079 的三问状态接在这里 |
-| 档位跟账户走(K3) | `src/app/settings/model-tier-settings.tsx`、新 `settings-multi-bot.tsx`、`store/single-thread-bots.ts` `useAccountModelScope` / `followsApexTier` | 单线产品模式里能选档位 / 模型的只有 设置 › 模型(tier 模式叫 档位)。多助手开、屏幕上的助手是产品模式新建的(`ui_meta.apex.origin == "product"`,hc-1078 新建时写)时，这一页读写 APEX(default,根)那一份，上面加一句「档位所有助手共用，这里改的是账户的(跟 APEX 一样)。别的设置是这个助手自己的。」;这些助手靠 hc-1080 的「跟 APEX 的档位走」跟上，hc-1080 用的是同一条规则。没有这个标记的(上游 Bot 模式、开发者模式建的，或只被 hc-1082 的改名工具写过 `ui_meta.apex` 的)hc-1080 不让它跟 APEX,所以这一页照旧改它自己的档位，不加那句话。输入框的模型和推理档位、模型选择器和快捷键、`/model`、`/moa`、生成行的模型选择、错误卡的「切换提供方」在 APEX 账号的单线产品模式里本来就不显示(`$modelChoiceHidden`,hc-1015),查过不用改 |
+| 档位跟账户走(K3) | `src/app/settings/model-tier-settings.tsx`、新 `settings-multi-bot.tsx`、`store/single-thread-bots.ts` `useAccountModelScope` / `followsApexTier` | 单线产品模式里能选档位 / 模型的只有 设置 › 模型(tier 模式叫 档位)。多助手开、屏幕上的助手是产品模式新建的(`ui_meta.apex.origin == "product"`,hc-1078 新建时写)时，这一页读写 APEX(default,根)那一份，上面加一句「档位所有助手共用，这里改的是账户的(跟 APEX 一样)。别的设置是这个助手自己的。」;这些助手靠 hc-1080 的「跟 APEX 的档位走」跟上。两边是同一份代码：`followsApexTier` = `!bot.isApex && isProductAssistantMeta(bot.uiMeta)`,判定从 #500 的 `shared/apex-product-assistant.ts` 导入，本票不留自己的一份(#500 的守卫不许 shared/ 以外再写 `origin === 'product'`)。没有这个标记的(上游 Bot 模式、开发者模式建的，或只被 hc-1082 的改名工具写过 `ui_meta.apex` 的)hc-1080 不让它跟 APEX,所以这一页照旧改它自己的档位，不加那句话。输入框的模型和推理档位、模型选择器和快捷键、`/model`、`/moa`、生成行的模型选择、错误卡的「切换提供方」在 APEX 账号的单线产品模式里本来就不显示(`$modelChoiceHidden`,hc-1015),查过不用改 |
 | 名字出现在对话外面 | 新 `src/store/notification-title.ts`、新 `src/store/bot-notifications.ts`、`native-notifications.ts`;`src/i18n/quick-entry.ts`、`quick-entry-app.tsx`、`app/single-thread/quick-entry.ts`、`use-quick-entry-bridge.ts`;`bot-names.ts` `paletteSessionTitle`、`command-palette/index.tsx`;新 `settings/settings-multi-bot.tsx`、`settings/index.tsx`;新 `src/i18n/multi-bot.ts`、新 `src/lib/assistant-name.ts` | 系统通知标题写「小红书文案 · 回复就绪」,名字按那条对话所属的助手(会话的 profile),不按屏幕上的。快速输入小窗写「问 小红书文案 点什么…」:主窗口把当前助手的名字写进本机存储，小窗读它并跟着 `storage` 事件实时换。切换途中按下的快速输入先等切换落地(最多 30 秒)再进新助手的主线。命令面板里各助手的「APEX 主线」显示成「和 小红书文案 的对话」。设置页标题写「小红书文案 的设置」,写入位置不变。多助手关时这几处一字不变 |
-| 打不开时说人话 | `sidebar-bots.tsx`、新 `shared/apex-pool-busy.ts` | 只说「暂时打不开「X」，稍后再试。」并带「重试」，引擎报错原文只进 console。池里的引擎全在做事时(hc-1080 的 `APEX_POOL_ALL_BUSY`),说「小红书文案、APEX 都在做事，等其中一个做完再切过来。」。`shared/apex-pool-busy.ts` 和 fork #500 的同名文件逐字节相同。冷启动时对话区的「正在唤醒 …」浮层写助手名字 |
+| 打不开时说人话 | `sidebar-bots.tsx`、`shared/apex-pool-busy.ts`(#500 的文件) | 只说「暂时打不开「X」，稍后再试。」并带「重试」，引擎报错原文只进 console。池里的引擎全在做事时(hc-1080 的 `APEX_POOL_ALL_BUSY`),说「小红书文案、APEX 都在做事，等其中一个做完再切过来。」。`parsePoolAllBusy` 从 #500 的 `shared/apex-pool-busy.ts` 导入(已随 main 合进来)。冷启动时对话区的「正在唤醒 …」浮层写助手名字 |
 
 ## 截图
 
@@ -106,17 +106,18 @@
 
 - 新：`electron/apex-multi-bot.test.ts`、`src/store/single-thread-bots.test.ts`、`src/components/apex-avatar.test.tsx`(含按 WCAG 算的对比度)、`src/app/single-thread/bot-activity.test.ts`、`sidebar-bots.test.tsx`、`use-multi-bot-shell.test.tsx`(含快速输入的名字和通知命名器的装卸)、`src/multi-bot-names.test.tsx`、`src/multi-bot-identity.test.tsx`、`src/multi-bot-exits.test.tsx`(快速输入小窗和切换途中的捕获、命令面板、设置标题)。
 - 加了用例：`main-thread.test.ts`(按 profile)、`composer-middleware.test.ts`(切换中不发)、`first-open.test.tsx`(点子只在 APEX、记下了用当前名字)、`approval-notification.test.ts`(按发请求的 profile 起名)、`native-notifications.test.ts`(通知标题按会话所属的助手)、`model-tier-guard.test.tsx`(K3:产品模式新建的助手上档位页读写 default 并加说明;Bot 模式、开发者模式建的和只改过名的照旧改自己的)。
-- 整个 Desktop 测试(`CI=true npx vitest run`,`b29acccf16`):1306 个文件、14384 条通过，0 失败;`npm run check:lint`(typecheck、typecheck:e2e、eslint)0 错误，本票改动的 62 个文件 0 警告;`scripts/check --only health` 0 blocking。
+- 合并 main(`42eb62d8`,含 #500、#502、#503)之后，在 `ace4cc3055` 上:electron 测试(`CI=true npx vitest run --project electron`)283 个文件(另 3 个跳过)、4094 条通过;ui 测试(`--project ui`)1029 个文件、10456 条通过;0 失败。身份层 golden(12 个文件、203 条)用 `TZ=UTC` 再跑一次也全过，golden 文件没有变化。`npm run check:lint`(typecheck、typecheck:e2e、eslint)0 错误，本票改动的 61 个文件 0 警告;`scripts/check --only health` 0 blocking。
 - 负载下的超时，和本票无关:`electron/packaged-runtime.test.ts` 有一次在整套并行跑时 5 秒超时，单独重跑在本分支和干净 main 上各两次都通过;`src/components/assistant-ui/live-thread-module.test.ts` 有一次 15 秒动态 import 超时，单独跑 9 条全过，整套重跑也全过。
 
 ## 反向验证(硬规则 14)
 
-68 个注入，每个先断言锚点只命中一次、改动确实落地，跑完按 sha256 还原。脚本和输出在协调会话笔记 `hc-1077-inject.py`、`hc-1077-inject-output*.txt` / `*.json`。
+71 个注入，每个先断言锚点只命中一次、改动确实落地，跑完按 sha256 还原。脚本和输出在协调会话笔记 `hc-1077-inject.py`、`hc-1077-inject-output*.txt` / `*.json`。
 
 - 第一轮 46 个(基线 221 条，还原后 221 条通过)。
 - 第二、三轮是改动和新增的(基线 256 条，还原后 256 条通过)。
 - 第四轮是对话外面的出口 R53–R66,另外 R9 跟着 `withBotName` 搬到 `src/lib/assistant-name.ts` 重跑(基线 331 条，还原后 331 条通过)。
 - 第五轮是 K3 改成按 `origin`:R51 重跑，加 R67、R68(基线 339 条，还原后 339 条通过)。
+- 第六轮在合并 main(含 #500)之后把 71 个全部重跑(文件清单加了 #500 的 `apex-profile-homes.test.ts` 和 `apex-model-tiers.test.ts`,基线 415 条，还原后 415 条通过)。R67 的锚点跟着 `followsApexTier` 改成调 shared 的判定;新加 R69(渲染端又写回自己那份判定，答案一样，只有 #500 的守卫抓得到)、R70(shared 的判定不看 `origin`,渲染端的 K3 测试也跟着红，证明档位页真的走 shared)、R71(多助手开关写一个自己起的变量名)。合并提交 `c7dcf6b075` 上(改之前)#500 的守卫是红的，点名 `single-thread-bots.ts`。
 
 R62(命令面板不走 `paletteSessionTitle`)只由源码接缝断言守：命令面板整页在测试里渲染太重。`paletteSessionTitle` 本身的行为由表驱动测试守(R63)。
 
@@ -176,7 +177,7 @@ R62(命令面板不走 `paletteSessionTitle`)只由源码接缝断言守：命�
 | R48 | all-busy shown as a plain failure | RED 1 | sidebar-bots.test.tsx |
 | R49 | the engine’s error text in the notice | RED 1 | sidebar-bots.test.tsx |
 | R50 | no retry on a failed open | RED 2 | sidebar-bots.test.tsx |
-| R51 | K3: tier settings edit the assistant on screen(第五轮重跑) | RED 3 | model-tier-guard.test.tsx |
+| R51 | K3: tier settings edit the assistant on screen(第六轮重跑) | RED 3 | model-tier-guard.test.tsx |
 | R52 | the roster drops the profile’s ui_meta | RED 1 | single-thread-bots.test.ts |
 | R53 | the shell never installs the notification namer | RED 1 | use-multi-bot-shell.test.tsx |
 | R54 | the dispatcher ignores the namer | RED 2 | native-notifications.test.ts |
@@ -192,8 +193,11 @@ R62(命令面板不走 `paletteSessionTitle`)只由源码接缝断言守：命�
 | R64 | the settings title stays 设置 | RED 3 | multi-bot-exits.test.tsx |
 | R65 | the settings page names the active assistant, not the one its pages edit | RED 1 | multi-bot-exits.test.tsx |
 | R66 | no note over the tier page | RED 1 | model-tier-guard.test.tsx |
-| R67 | K3: any ui_meta.apex follows APEX’s tier (a rename makes one) | RED 3 | model-tier-guard.test.tsx, single-thread-bots.test.ts |
+| R67 | K3: any ui_meta.apex follows APEX’s tier (a rename makes one) | RED 4 | model-tier-guard.test.tsx, single-thread-bots.test.ts |
 | R68 | K3: every other assistant follows APEX’s tier, whatever made it | RED 2 | model-tier-guard.test.tsx |
+| R69 | the renderer keeps its own copy of the origin rule (same answers) | RED 1 | apex-profile-homes.test.ts(#500 的守卫) |
+| R70 | the shared rule drops the origin check: the tier page follows it | RED 11 | apex-profile-homes.test.ts, model-tier-guard.test.tsx, single-thread-bots.test.ts |
+| R71 | the multi-bot switch writes a name of its own | RED 3 | apex-multi-bot.test.ts |
 
 ## 已知边界
 
@@ -207,4 +211,4 @@ R62(命令面板不走 `paletteSessionTitle`)只由源码接缝断言守：命�
 
 - **hc-1078(M2)新建时写 `ui_meta.apex.created` 和 `origin: "product"`**:名册按 `created` 排(不写就按目录名排，删了再建复用小号时顺序会乱);档位跟不跟 APEX 看 `origin`。
 - **池引擎**:挤掉谁、全忙时报什么由 hc-1080(fork #500)做;本票只负责说人话和重试。冷启动秒数归 M7 实测。
-- **合并顺序**:fork #500(hc-1080,A 波)先合。之后本分支合并 main,`MULTI_BOT_ACTIVE_ENV` 改成从 `apex-profile-homes.ts` 导入(两边同名同值);`apex-model-tiers.ts` 的 `applyDesktopFeatureSwitches` 可能有一处小冲突。
+- **合并顺序**:fork #500(hc-1080,A 波)已合进 main(`42eb62d8`),本分支已合并 main(merge 提交 `c7dcf6b075`,唯一冲突是 `apex-model-tiers.ts` 的 import)。之后 `MULTI_BOT_ACTIVE_ENV` 从 `apex-profile-homes.ts` 导入，`followsApexTier` 调 shared 的 `isProductAssistantMeta`,本票不再有自己的那份(`ace4cc3055`)。

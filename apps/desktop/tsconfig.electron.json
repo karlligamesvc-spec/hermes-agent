@@ -25,6 +25,8 @@
     "shared/analysis-chat-link.ts",
     "shared/apex-default-soul.ts",
     "shared/apex-bot-soul.ts",
+    "shared/apex-pool-busy.ts",
+    "shared/apex-product-assistant.ts",
     "../shared/src/data-url-read-max.ts",
     "../shared/src/translucency.ts"
   ],

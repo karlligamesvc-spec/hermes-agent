@@ -18,6 +18,7 @@ import {
   renameInApexBotSoul
 } from '../../shared/apex-bot-soul'
 import { APEX_DESKTOP_DEFAULT_SOUL } from '../../shared/apex-default-soul'
+import { isProductAssistantMeta } from '../../shared/apex-product-assistant'
 
 import { requestGatewayForProfile } from './gateway'
 import {
@@ -314,8 +315,8 @@ describe('createBot', () => {
     await expect(created).resolves.toBe('apex-bot-2')
     expect(order).toEqual(['heal apex-bot-2', 'heal done', 'skills apex-bot-2'])
     expect(engineCallsBeforeHeal).toEqual(['profiles.list', 'profiles.create', 'profiles.configure'])
-    // hc-1080 follows APEX's tier only for ui_meta.apex.origin === 'product': it must be on disk by then.
-    expect(metaBeforeHeal).toMatchObject({ apex: { origin: 'product' } })
+    // hc-1080 follows APEX's tier only for an assistant its shared rule marks: it must be on disk by then.
+    expect(isProductAssistantMeta(metaBeforeHeal)).toBe(true)
   })
 
   it('still runs the skills step and opens the assistant when the config step fails', async () => {

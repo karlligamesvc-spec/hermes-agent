@@ -18,7 +18,8 @@
  *   touched: once a profile carries it, the engine treats it as a Bot Mode profile.
  * - `origin: 'product'` marks an assistant made here, and only creating one writes it: hc-1080 lets
  *   only those follow APEX's tier (K3). A developer-mode or Bot Mode profile can gain `ui_meta.apex`
- *   later (hc-1082's rename tool writes a name), so the key's presence alone says nothing.
+ *   later (hc-1082's rename tool writes a name), so the key's presence alone says nothing. The value
+ *   and the rule that reads it live in shared/apex-product-assistant.ts.
  * - A new assistant is always cloned from default (`clone_from: 'default'`): only that copy carries
  *   the plugin enable list with apex-overlay and the generation tools.
  * - APEX keeps its look (K6) and cannot be deleted; renaming it writes only `ui_meta.apex.name`.
@@ -27,9 +28,10 @@
 import type { ApexAvatarShape, ApexBotColor } from '@/components/apex-avatar-look'
 
 import { apexBotNameFromSoul, composeApexBotSoul, renameInApexBotSoul } from '../../shared/apex-bot-soul'
+import { PRODUCT_ASSISTANT_ORIGIN } from '../../shared/apex-product-assistant'
 
 import { requestGatewayForProfile } from './gateway'
-import { APEX_BOT_META_KEY, APEX_PROFILE, type ApexBotMeta } from './single-thread-bots'
+import { APEX_BOT_META_KEY, APEX_PROFILE } from './single-thread-bots'
 
 /** The name field's limit, in characters (prototype ⑦: `maxlength="12"`). */
 export const BOT_NAME_MAX = 12
@@ -43,10 +45,6 @@ const CREATE_ATTEMPTS = 3
 
 /** How long a new assistant waits for the main process to finish setting it up before opening anyway. */
 const SETUP_WAIT_MS = 20_000
-
-/** `ui_meta.apex.origin` of an assistant created in product mode (see the module comment); typed from
- *  hc-1077's ApexBotMeta, which its `followsApexTier` reads, so the two cannot drift apart. */
-export const APEX_BOT_ORIGIN: NonNullable<ApexBotMeta['origin']> = 'product'
 
 /** What the sheet edits. APEX's look is fixed (K6): only `name` is written for it. */
 export interface ApexBotLook {
@@ -294,7 +292,7 @@ export async function createBot(look: ApexBotLook, { count, max }: { count: numb
 
   try {
     // A brand-new profile.yaml has no ui_meta revisions: 0 is the only right answer.
-    await writeMeta(profile, { ...metaToWrite(profile, look, {}), created: Date.now(), origin: APEX_BOT_ORIGIN }, 0)
+    await writeMeta(profile, { ...metaToWrite(profile, look, {}), created: Date.now(), origin: PRODUCT_ASSISTANT_ORIGIN }, 0)
   } catch (error) {
     // Without its name the assistant would show up as `apex-bot-N`: take the half-made one back.
     await deleteProfileDir(profile).catch(() => undefined)
