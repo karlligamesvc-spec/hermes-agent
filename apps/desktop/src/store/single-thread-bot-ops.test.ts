@@ -46,6 +46,9 @@ let answer: (method: string, params: Record<string, unknown>) => unknown
 
 const LOOK = { name: '小红书文案', shape: 'hexagon', color: 'orange' }
 
+/** hc-1079's 「分工」 as it appends it to the SOUL on disk. */
+const HC1079_DUTIES = '\n## 分工\n\n你主要帮我做这些：\n- 剪辑出片\n'
+
 beforeEach(() => {
   calls = []
   answer = () => ({})
@@ -96,18 +99,22 @@ describe('the new assistant SOUL', () => {
     expect(APEX_BOT_SOUL_BODY.startsWith('You are helpful')).toBe(true)
   })
 
-  it('appends extra sections after the identity (the hc-1079 seam)', () => {
-    const soul = composeApexBotSoul({ name: 'X', sections: [{ heading: ' 分工 ', body: '写标题和文案\n' }] })
+  it('leaves the 「分工」 section to hc-1079: no heading of its own, exactly one newline at the end', () => {
+    for (const name of ['剪辑助手', 'Captions 2']) {
+      const soul = composeApexBotSoul({ name })
 
-    expect(soul.endsWith('## 分工\n写标题和文案\n')).toBe(true)
+      expect(soul.endsWith('\n')).toBe(true)
+      expect(soul.endsWith('\n\n')).toBe(false)
+      expect(soul).not.toMatch(/^## /m)
+    }
   })
 
   it('renames by rewriting the first line only', () => {
-    const soul = composeApexBotSoul({ name: '旧名', sections: [{ heading: '分工', body: '剪辑出片' }] })
+    const soul = composeApexBotSoul({ name: '旧名' }) + HC1079_DUTIES
     const renamed = renameInApexBotSoul(soul, '新名')
 
     expect(renamed).toBe(`${apexBotSoulNameLine('新名')}${soul.slice(apexBotSoulNameLine('旧名').length)}`)
-    expect(renamed).toContain('## 分工\n剪辑出片')
+    expect(renamed).toBe(composeApexBotSoul({ name: '新名' }) + HC1079_DUTIES)
     expect(apexBotNameFromSoul(composeApexBotSoul({ name: '剪辑助手' }))).toBe('剪辑助手')
   })
 })
@@ -342,7 +349,7 @@ describe('saveBotLook', () => {
   })
 
   it('writes a named assistant’s look against the revision the sheet read, then moves its SOUL name line', async () => {
-    const soul = composeApexBotSoul({ name: '旧名', sections: [{ heading: '分工', body: '剪辑出片' }] })
+    const soul = composeApexBotSoul({ name: '旧名' }) + HC1079_DUTIES
     answer = method => (method === 'profiles.describe' ? { soul } : { applied: { ui_meta: true, soul: true } })
 
     await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, 4)
@@ -408,8 +415,10 @@ describe('saveBotLook', () => {
     await saveBotLook('apex-bot-2', { ...LOOK, name: '新名' }, 1)
     await saveBotLook('default', { name: '小满' }, 0)
 
-    for (const call of configureCalls()) {
-      expect(Object.keys((call.params.ui_meta as object | undefined) ?? {})).not.toContain('hermes-bots')
+    // Only `apex`: ui_meta merges key by key, so hermes-bots (Bot Mode) and hc-1079's apex-intake stay untouched.
+    for (const call of configureCalls().filter(c => c.params.ui_meta)) {
+      expect(Object.keys(call.params.ui_meta as object)).toEqual(['apex'])
+      expect(Object.keys(call.params.ui_meta_expected_revisions as object)).toEqual(['apex'])
     }
 
     expect(configureCalls().filter(call => call.params.ui_meta)).toHaveLength(3)

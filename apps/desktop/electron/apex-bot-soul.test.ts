@@ -24,7 +24,7 @@ afterEach(() => {
 
 describe('a new assistant SOUL at boot', () => {
   test('is not an upstream seed and is not taken for the APEX default', () => {
-    const soul = composeApexBotSoul({ name: '剪辑助手', sections: [{ heading: '分工', body: '剪辑出片' }] })
+    const soul = `${composeApexBotSoul({ name: '剪辑助手' })}\n## 分工\n\n你主要帮我做这些：\n- 剪辑出片\n`
 
     assert.equal(upstreamSeededSoul(soul), null)
     assert.notEqual(normalizedSoul(soul).split('\n')[0], 'You are APEX, an intelligent AI assistant from ApexNodes HK.')

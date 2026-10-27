@@ -11,15 +11,11 @@
  * suites read. After every name write, the writer re-renders the line from `ui_meta.apex.name`
  * whenever the line still has this shape, whatever name it holds; a hand-edited line is left alone.
  *
- * Extension point: `sections` are appended after the identity, one `## heading` block each. hc-1079
- * (the first-open questions) adds the assistant's 「分工」 there.
+ * hc-1079 (the first-open questions) owns the assistant's 「分工」: it appends that section to the SOUL
+ * on disk and removes it again on undo. So this template writes no `## ` heading and ends in exactly one
+ * `\n` (undo restores it byte for byte), and a rename touches the first line only.
  */
 import { APEX_DESKTOP_DEFAULT_SOUL } from './apex-default-soul'
-
-export interface ApexBotSoulSection {
-  heading: string
-  body: string
-}
 
 /** The first line of a new assistant's SOUL; `{name}` is its name. Pinned in apex-bot-soul-cases.json. */
 export const APEX_BOT_SOUL_NAME_LINE =
@@ -44,20 +40,8 @@ export function apexBotSoulNameLine(name: string): string {
   return LINE_HEAD + name + LINE_TAIL
 }
 
-export function composeApexBotSoul({
-  name,
-  sections = []
-}: {
-  name: string
-  sections?: readonly ApexBotSoulSection[]
-}): string {
-  const blocks = [apexBotSoulNameLine(name), APEX_BOT_SOUL_BODY, SHARED_MEMORY_LINE]
-
-  for (const section of sections) {
-    blocks.push(`## ${section.heading.trim()}\n${section.body.trim()}`)
-  }
-
-  return `${blocks.join('\n\n')}\n`
+export function composeApexBotSoul({ name }: { name: string }): string {
+  return `${[apexBotSoulNameLine(name), APEX_BOT_SOUL_BODY, SHARED_MEMORY_LINE].join('\n\n')}\n`
 }
 
 function unifiedLines(soul: string): string {
