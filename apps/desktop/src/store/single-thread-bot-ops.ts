@@ -32,6 +32,7 @@ import { PRODUCT_ASSISTANT_ORIGIN } from '../../shared/apex-product-assistant'
 
 import { requestGatewayForProfile } from './gateway'
 import { APEX_BOT_META_KEY, APEX_PROFILE } from './single-thread-bots'
+import { cancelHandoffsForProfile } from './single-thread-handoff'
 
 /** The name field's limit, in characters (prototype ⑦: `maxlength="12"`). */
 export const BOT_NAME_MAX = 12
@@ -292,7 +293,11 @@ export async function createBot(look: ApexBotLook, { count, max }: { count: numb
 
   try {
     // A brand-new profile.yaml has no ui_meta revisions: 0 is the only right answer.
-    await writeMeta(profile, { ...metaToWrite(profile, look, {}), created: Date.now(), origin: PRODUCT_ASSISTANT_ORIGIN }, 0)
+    await writeMeta(
+      profile,
+      { ...metaToWrite(profile, look, {}), created: Date.now(), origin: PRODUCT_ASSISTANT_ORIGIN },
+      0
+    )
   } catch (error) {
     // Without its name the assistant would show up as `apex-bot-N`: take the half-made one back.
     await deleteProfileDir(profile).catch(() => undefined)
@@ -360,5 +365,7 @@ export async function deleteBot(profile: string): Promise<void> {
     throw new BotOpError('apex', 'APEX cannot be deleted')
   }
 
+  // K9 (hc-1086): every relay still queued or running to or from it ends with it. None with relay off.
+  await cancelHandoffsForProfile(profile)
   await deleteProfileDir(profile)
 }
