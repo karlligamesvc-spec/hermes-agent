@@ -15,7 +15,8 @@
  * - tells the quick-entry window which assistant a capture will reach, and
  *   names the assistant in system notifications (bot-notifications.ts);
  * - runs the relay (接力) dispatcher while relay is on (hc-1086, handoff-runner.ts),
- *   and notes each relay that comes back in the memory ledger (hc-1090).
+ *   notes each relay that comes back in the memory ledger (hc-1090), and turns
+ *   a send naming another assistant into the confirm card (hc-1087).
  *
  * Off (or in a pop-out window) it does nothing.
  */
@@ -41,6 +42,7 @@ import { profileOfThreadStoredId } from '@/store/single-thread-presence'
 
 import type { RequestGateway } from './composer-middleware'
 import { useHandoffRunner } from './handoff-runner'
+import { useHandoffScreens } from './handoff/use-handoff-screens'
 
 export const ROSTER_REFRESH_MS = 20_000
 
@@ -75,6 +77,8 @@ export function useMultiBotShell(
   useHandoffLedger(multiBot)
   // hc-1086: the relay dispatcher, while relay is on (it reads its switch only once several assistants are).
   useHandoffRunner(multiBot, gatewayOpen)
+  // hc-1087: the relay screens (a send naming another assistant becomes the confirm card).
+  useHandoffScreens(multiBot)
 
   useEffect(() => {
     void loadMultiBotFlag()

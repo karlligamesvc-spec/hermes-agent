@@ -1,7 +1,7 @@
 import { resolveGatewayWsUrl } from '@hermes/shared'
 
 import { getApiRequestConnection, getApiRequestProfile, speakText } from '@/hermes'
-import { createNextStepsSpeechFilter } from '@/lib/next-steps'
+import { createReplyMarkersSpeechFilter } from '@/lib/reply-markers'
 import {
   cutSentences,
   directTtsConfig,
@@ -519,7 +519,7 @@ function openSpeechStream(wsUrl: string, options: VoicePlaybackOptions): SpeechS
  * Streamed speech hears it delta by delta, so hold it back until it closes and drop it.
  */
 function withoutNextStepBlocks(session: SpeechStreamSession): SpeechStreamSession {
-  const filter = createNextStepsSpeechFilter()
+  const filter = createReplyMarkersSpeechFilter()
 
   return {
     append: text => {
