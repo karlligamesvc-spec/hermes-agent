@@ -17,7 +17,12 @@ import { type ThreadMessage } from '@assistant-ui/react'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { stubThreadEnvironment, stubThreadViewportSize, ThreadRuntime } from '@/components/assistant-ui/test-utils'
+import {
+  createdAt,
+  stubThreadEnvironment,
+  stubThreadViewportSize,
+  ThreadRuntime
+} from '@/components/assistant-ui/test-utils'
 import { Thread } from '@/components/assistant-ui/thread'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
 import type { DesktopMemoryLedger } from '@/lib/memory-ledger'
@@ -149,6 +154,18 @@ function resultTurn(): ThreadMessage[] {
   ]
 }
 
+/** A reply's copy / read-aloud / answer-again row: the reply root's child that holds the action bar. */
+function actionRowOf(reply: Element): Element {
+  return reply.querySelector('[data-slot="aui_msg-actions"]')!.parentElement!.parentElement!
+}
+
+/** Where the reply's grid puts an element: its order, then its grid-column. */
+function place(element: Element): string {
+  const style = getComputedStyle(element)
+
+  return `${style.order} ${style.getPropertyValue('grid-column')}`.trim()
+}
+
 /** Top-level selectors of the stylesheet as jsdom parsed it (a comma inside :is() stays). */
 function selectors(): string[] {
   return [...sheet.sheet!.cssRules].flatMap(rule => {
@@ -256,28 +273,65 @@ describe('hc-1059 bubbles hold the words, and only the words', () => {
       ).toEqual([])
     }
 
-    // hc-1101: the words' box opens up and the reply's column orders what it holds: the
-    // words, the copy / read-aloud / answer-again row right under them, 用时 · 看过程 and its
-    // steps, the next steps, 「记下了」. The words keep their text indent.
+    // hc-1101 (Kael chose B): the reply is a two-column grid. The words span it; 用时 · 看过程
+    // takes the first column and the copy / read-aloud / answer-again row the second, on one
+    // row; the steps, the next steps and 「记下了」 span it below, in that order. The words
+    // keep their text indent.
     const content = [...container.querySelectorAll('[data-slot="aui_assistant-message-content"]')].at(-1)!
     const reply = content.closest('[data-slot="aui_assistant-message-root"]')!
-    const actionRow = reply.querySelector('[data-slot="aui_msg-actions"]')!.parentElement!.parentElement!
-    const order = (element: Element) => Number(getComputedStyle(element).order)
+    const process = content.querySelector(':scope > [data-single-thread-process]')!
+    const steps = [...process.children].find(
+      child => child.querySelector('[data-process-steps]') || child.matches('[data-process-steps]')
+    )!
 
-    expect(getComputedStyle(content).display).toBe('contents')
-    expect(actionRow.parentElement).toBe(reply)
-    expect(
-      [
-        content.querySelector(':scope > .aui-md')!,
-        actionRow,
-        content.querySelector(':scope > [data-single-thread-process]')!,
-        content.querySelector(':scope > [data-next-steps]')!,
-        reply.querySelector(':scope > [data-memory-noted]')!
-      ].map(order)
-    ).toEqual([0, 1, 2, 3, 4])
+    expect(getComputedStyle(reply).display).toBe('grid')
+    expect([getComputedStyle(content).display, getComputedStyle(process).display]).toEqual(['contents', 'contents'])
+    expect(actionRowOf(reply).parentElement).toBe(reply)
+    expect({
+      words: place(content.querySelector(':scope > .aui-md')!),
+      status: place(process.querySelector(':scope > [data-process-status]')!),
+      actions: place(actionRowOf(reply)),
+      steps: place(steps),
+      next: place(content.querySelector(':scope > [data-next-steps]')!),
+      memory: place(reply.querySelector(':scope > [data-memory-noted]')!)
+    }).toEqual({
+      words: '0 1 / -1',
+      status: '1 1',
+      actions: '1 2',
+      steps: '2 1 / -1',
+      next: '3 1 / -1',
+      memory: '4 1 / -1'
+    })
     expect(getComputedStyle(content.querySelector(':scope > .aui-md')!).marginInlineStart).toBe(
       'var(--message-text-indent)'
     )
+  })
+
+  it('a reply with no 用时 · 看过程 line keeps its action row at the bottom, the full width', async () => {
+    const { container } = renderZh([
+      {
+        attachments: [],
+        content: [{ type: 'text', text: '你好' }],
+        createdAt,
+        id: 'hi',
+        metadata: { custom: {} },
+        role: 'user'
+      } as ThreadMessage,
+      {
+        content: [{ type: 'text', text: '你好，我在。' }],
+        createdAt,
+        id: 'hi-back',
+        metadata: { custom: {}, steps: [], unstable_annotations: [], unstable_data: [], unstable_state: null },
+        role: 'assistant',
+        status: { reason: 'stop', type: 'complete' }
+      } as unknown as ThreadMessage
+    ])
+    const reply = await found(container, '[data-slot="aui_assistant-message-root"]')
+
+    await waitFor(() => expect(reply.querySelector('[data-slot="aui_msg-actions"]')).not.toBeNull())
+
+    expect(reply.querySelector('[data-process-status]')).toBeNull()
+    expect(place(actionRowOf(reply))).toBe('5 1 / -1')
   })
 
   it('the failure card and the activity line are outside the bubbles too', async () => {

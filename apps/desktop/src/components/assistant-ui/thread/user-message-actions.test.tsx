@@ -33,6 +33,7 @@ import { $activeSessionId, $gatewayState, $selectedStoredSessionId } from '@/sto
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
 import { setToolViewMode } from '@/store/tool-view'
 import {
+  assistant,
   bubble,
   EditableRuntime,
   type Mode,
@@ -40,6 +41,7 @@ import {
   renderThread,
   settle,
   transcript,
+  user,
   userRoots
 } from '@/test/user-message-kit'
 
@@ -293,14 +295,23 @@ describe('when a message was sent, on top of its menu', () => {
 })
 
 describe('「仍在发送中」 under a send the gateway has not taken', () => {
-  function sentNow(heldFor: number) {
-    const now = Date.now()
+  /** Two asks, `sentAfterHold` ms after (or, negative, before) a hold taken `heldFor` ms ago; the latest one running. */
+  function asks(key: string, heldFor: number, sentAfterHold: number) {
+    const heldAt = Date.now() - heldFor
 
-    // The hold is taken first, the bubble right after it (submit.ts).
-    acquireSubmitInFlight('stored-1', now - heldFor)
+    acquireSubmitInFlight(key, heldAt)
 
-    return transcript({ running: true, sentAt: new Date(now - heldFor + 20) })
+    return [
+      user('u-first', '先看这条', {}, new Date(heldAt + sentAfterHold - 10)),
+      assistant('a-first'),
+      user('u-last', '标题用第 1 个', {}, new Date(heldAt + sentAfterHold)),
+      assistant('a-last', true)
+    ]
   }
+
+  // The hold is taken first, the bubble right after it (submit.ts). Both asks are
+  // newer than the hold, so only "the latest one" keeps the note off the first.
+  const sentNow = (heldFor: number) => asks('stored-1', heldFor, 20)
 
   it.each(['developer', 'off'] as const)('%s mode: never', async name => {
     mode(name)
@@ -326,10 +337,7 @@ describe('「仍在发送中」 under a send the gateway has not taken', () => {
 
   it('single-thread mode: a hold taken after the latest message was sent is not about it', async () => {
     mode('single-thread')
-    const now = Date.now()
-
-    acquireSubmitInFlight('stored-1', now - STILL_SENDING_AFTER_MS - 1_000)
-    await renderThread(transcript({ sentAt: new Date(now - STILL_SENDING_AFTER_MS - 60_000) }))
+    await renderThread(asks('stored-1', STILL_SENDING_AFTER_MS + 1_000, -60_000))
 
     expect(window.document.querySelector('[data-still-sending]')).toBeNull()
   })
@@ -338,10 +346,7 @@ describe('「仍在发送中」 under a send the gateway has not taken', () => {
     mode('single-thread')
     $selectedStoredSessionId.set(null)
     $activeSessionId.set(null)
-    const now = Date.now()
-
-    acquireSubmitInFlight('__pending_new__', now - STILL_SENDING_AFTER_MS - 500)
-    await renderThread(transcript({ running: true, sentAt: new Date(now - STILL_SENDING_AFTER_MS - 480) }))
+    await renderThread(asks('__pending_new__', STILL_SENDING_AFTER_MS + 500, 20))
 
     expect(window.document.querySelector('[data-still-sending]')?.textContent).toBe('仍在发送中')
   })

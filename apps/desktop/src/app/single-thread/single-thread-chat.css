@@ -129,25 +129,34 @@
 /* APEX's words: a grey bubble on the left (text parts only). What follows the words —
    用时 · 看过程, its steps, then the next-step buttons — stacks under it 10px apart. */
 
-/* hc-1101: the words' box opens up (display: contents), so the reply's own column orders
-   what it holds: the words, the copy / read-aloud / answer-again row right under them (as
-   Muse does), then 用时 · 看过程 and its steps, the next steps, 「记下了」. The DOM is
+/* hc-1101: the reply is a two-column grid, so the copy / read-aloud / answer-again row can
+   sit at the right end of the 「用时 · 看过程」 line instead of taking a row of its own.
+   The words' box and the process area open up (display: contents) and the grid orders what
+   they hold: the words; 用时 · 看过程 with the row beside it; the steps, a failure card; the
+   next steps; 「记下了」. Everything but those two spans both columns. The DOM is
    unchanged. */
 [data-single-thread-chat] [data-slot='aui_assistant-message-root'] {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: start;
   row-gap: 10px;
 }
 
-[data-single-thread-chat] [data-slot='aui_assistant-message-content'] {
+[data-single-thread-chat] [data-slot='aui_assistant-message-content'],
+[data-single-thread-chat] [data-single-thread-process] {
   display: contents;
 }
 
 [data-single-thread-chat] [data-slot='aui_assistant-message-root'] > *,
-[data-single-thread-chat] [data-slot='aui_assistant-message-content'] > * {
+[data-single-thread-chat] [data-slot='aui_assistant-message-content'] > *,
+[data-single-thread-chat] [data-single-thread-process] > * {
+  grid-column: 1 / -1;
   order: 2;
 }
 
-/* The box's text indent (styles.css) moves onto what it holds. */
-[data-single-thread-chat] [data-slot='aui_assistant-message-content'] > * {
+/* The boxes' text indent (styles.css) moves onto what they hold. */
+[data-single-thread-chat] [data-slot='aui_assistant-message-content'] > *,
+[data-single-thread-chat] [data-single-thread-process] > * {
   max-width: calc(100% - var(--message-text-indent));
   margin-inline-start: var(--message-text-indent);
 }
@@ -234,12 +243,27 @@
   color: var(--st-me-text);
 }
 
-/* The copy / read-aloud / answer-again row sits right under the words, on the left. */
+/* The copy / read-aloud / answer-again row: at the right end of the 「用时 · 看过程」 line,
+   without making that line taller (Kael: 「B 放在用时那行右边」). A reply with no such line
+   keeps it at the bottom, as before. */
 
 [data-single-thread-chat] [data-slot='aui_assistant-message-root'] > div:has(> div > [data-slot='aui_msg-actions']) {
-  order: 1;
+  order: 5;
   align-items: flex-start;
-  margin-block: -5px;
+  /* Flush under what precedes it, as it was. */
+  margin-top: -10px;
+}
+
+[data-single-thread-chat] [data-process-status] {
+  grid-column: 1;
+  order: 1;
+}
+
+[data-single-thread-chat] :has([data-process-status]) > div:has(> div > [data-slot='aui_msg-actions']) {
+  grid-column: 2;
+  order: 1;
+  align-self: center;
+  margin-block: -6px;
 }
 
 /* 「记下了」 sat flush under the words' box; the column's gap does not open above it. */
