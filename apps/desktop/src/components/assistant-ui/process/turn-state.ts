@@ -125,7 +125,7 @@ export function turnAnchor(messages: readonly MessageLike[], bounds: TurnBounds)
   return anchor
 }
 
-function turnParts(messages: readonly MessageLike[], bounds: TurnBounds): TurnPart[] {
+export function turnParts(messages: readonly MessageLike[], bounds: TurnBounds): TurnPart[] {
   const parts: TurnPart[] = []
 
   for (let m = bounds.start; m <= bounds.end; m += 1) {

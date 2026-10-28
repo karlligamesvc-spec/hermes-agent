@@ -103,6 +103,7 @@ import {
 } from './apex-daemon'
 import { ensureApexDesktopSouls } from './apex-default-soul'
 import { clientConfigForRenderer } from './apex-desktop-features'
+import { endEngineChildren, snapshotEngineChildren } from './apex-engine-children'
 import {
   buildFeishuBackendEnv,
   feishuCredentialsUrl,
@@ -176,6 +177,7 @@ import {
 } from './apex-runtime-select'
 import { loadScenarioCatalog } from './apex-scenario-catalog'
 import { loginShellPathProbeArgs, parseLoginShellPath, resolveAugmentedPath } from './apex-shell-path'
+import { registerTurnLedger, turnLedgerStoreIn } from './apex-turn-ledger'
 import { createDesktopVersionMirror } from './apex-version-state'
 import {
   cancelWorkflowDomainRun,
@@ -212,6 +214,7 @@ import {
 } from './api-transport'
 import { resolveAppIcon } from './app-icon'
 import {
+  forceKillProcessTree,
   stopBackendChild as stopBackendChildImpl,
   stopBackendTreesForUpdate,
   waitForBackendExit as waitForBackendExitImpl
@@ -3882,31 +3885,6 @@ function killHermesOwnedVenvDaemons(updateRoot) {
       rememberLog(`[updates] stopping Hermes-owned venv daemon (hindsight) PID ${pid} before hand-off`)
       forceKillProcessTree(pid)
     }
-  }
-}
-
-// Force-kill the entire process TREE rooted at each PID. Node's child.kill()
-// only signals the direct child, so on Windows a backend `hermes.exe` that
-// spawned its own grandchildren (a `hermes` REPL, a pty terminal session, the
-// gateway) would survive and keep the venv shim locked. taskkill /T /F reaps
-// the whole tree synchronously. Windows-only: this is called solely from the
-// Windows shim-unlock path, and the backend is NOT spawned detached (so it's
-// not a process-group leader — a POSIX negative-pgid kill would be meaningless
-// here anyway). POSIX teardown stays with the existing before-quit SIGTERM.
-function forceKillProcessTree(pid) {
-  if (!IS_WINDOWS) {
-    return
-  }
-
-  if (!Number.isInteger(pid) || pid <= 0) {
-    return
-  }
-
-  try {
-    execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], hiddenWindowsChildOptions({ stdio: 'ignore' }))
-  } catch {
-    // Already gone, or no permission — best effort; the unlock wait below is
-    // the real gate.
   }
 }
 
@@ -13222,6 +13200,7 @@ async function stopAllPoolBackends() {
 }
 
 const backendShutdown = createBackendShutdownCoordinator(async () => {
+  const engineChildren = snapshotEngineChildren(localBackendLifecycle.ownedChildren()) // hc-1100: while they are still theirs
   const localShutdown = localBackendLifecycle.shutdown()
   const primary = backendConnectionState.invalidate()
 
@@ -13234,6 +13213,7 @@ const backendShutdown = createBackendShutdownCoordinator(async () => {
   }
 
   await waitForTeardown([localShutdown, waitForBackendExit(primary), pooledStops, stopMessagingGateway()], 7_000) // hc-1031: the IM gateway is no lifecycle child; unstopped it outlived every quit
+  await endEngineChildren(engineChildren, rememberLog) // hc-1100: a background command's own group outlived every quit
 })
 
 const quitTeardown = createQuitTeardownCoordinator(() => app.quit())
@@ -17452,6 +17432,8 @@ ipcMain.on('hermes:active-work', (event, payload) => {
   activeWorkByWebContents.set(id, normalizeActiveWork(payload))
   updateStreamThrottleFromActiveWork()
 })
+// hc-1100: which conversations a quit cuts off mid-turn (apex-turn-ledger.ts)
+registerTurnLedger(ipcMain, turnLedgerStoreIn(() => app.getPath('userData')), localBackendLifecycle.signal)
 
 ipcMain.on('hermes:titlebar-theme', (_event, payload) => {
   if (!payload || !isHexColor(payload.background) || !isHexColor(payload.foreground)) {
