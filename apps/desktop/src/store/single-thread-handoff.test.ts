@@ -32,7 +32,6 @@ import {
   startHandoff,
   type StartHandoffInput,
   stopHandoff,
-  takeHandoffReturnsFor,
   updateHandoff
 } from './single-thread-handoff'
 import { setToolViewMode } from './tool-view'
@@ -147,7 +146,7 @@ describe('starting a relay (R4 「交给 X」, R2 @)', () => {
       ask: '把这个选题写成小红书文案',
       baton: 1,
       carry: { files: [], links: [], text: '选题：秋天第一杯奶茶', truncated: false },
-      from: FROM_APEX,
+      from: { ...FROM_APEX, name: 'APEX' },
       status: 'queued',
       to: 'writer'
     })
@@ -168,10 +167,25 @@ describe('starting a relay (R4 「交给 X」, R2 @)', () => {
     })
   })
 
+  it('carries the result without its next-step buttons or an earlier 交回摘要 (R3 request)', () => {
+    const text = '\r\n正文\r\n<!-- apex:next\n出整条 | 出整条成片\n-->\n<!-- apex:handback\n上一棒\n-->\n'
+
+    expect(carryFrom({ text })).toEqual({ files: [], links: [], text: '正文', truncated: false })
+  })
+
+  it('names the sender as the roster does when it started (【name 交来的活】)', () => {
+    expect(started({ from: { messageId: null, profile: 'editor', storedSessionId: null } }).from.name).toBe('剪辑')
+    expect(
+      started({ from: { messageId: null, name: ' 小剪 ', profile: 'titles', storedSessionId: null }, to: 'editor' })
+        .from.name
+    ).toBe('小剪')
+  })
+
   it.each([
     ['to the sender itself', { to: 'default' }, 'self'],
     ['to someone not on the roster', { to: 'ghost' }, 'unknown_receiver'],
-    ['with nothing to do', { ask: ' ', previous: null }, 'empty']
+    ['with nothing to do', { ask: ' ', previous: null }, 'empty'],
+    ['with a result but no ask (the hand-over always says 要你做)', { ask: '' }, 'empty']
   ] as const)('refuses one %s', (_label, patch, reason) => {
     expect(startHandoff(input(patch))).toEqual({ ok: false, reason })
   })
@@ -316,21 +330,11 @@ describe('what came back (R5, R2, R3)', () => {
 
     updateHandoff(a.id, { status: 'running' })
     returned(a.id)
-    updateHandoff(a.id, { deliveredToSender: true })
+    updateHandoff(a.id, { ask: 'edited after it came back' })
     updateHandoff(b.id, { failure: { kind: 'turn_error', message: 'x' }, status: 'failed' })
 
     expect(returnedSeen).toEqual([a.id])
     expect(settledSeen).toEqual([`${a.id}:returned`, `${b.id}:failed`])
-  })
-
-  it('hands the sender each result exactly once (R3: the next message carries it once)', () => {
-    const a = started()
-
-    returned(a.id)
-
-    expect(takeHandoffReturnsFor('default').map(record => record.id)).toEqual([a.id])
-    expect(takeHandoffReturnsFor('default')).toEqual([])
-    expect(takeHandoffReturnsFor('writer')).toEqual([])
   })
 })
 

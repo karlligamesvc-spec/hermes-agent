@@ -36,10 +36,11 @@ import { atom, computed } from 'nanostores'
 
 import type { DesktopClientConfigState } from '@/global'
 import { desktopFeatureOn } from '@/lib/desktop-features'
+import { HANDOFF_RESULT_MAX_CHARS, handoffCarryText } from '@/lib/handoff-text'
 import { persistBoolean, readJson, storedBoolean, writeJson } from '@/lib/storage'
 
 import { normalizeProfileKey } from './profile'
-import { $botRoster, $multiBotFlag, $multiBotMode } from './single-thread-bots'
+import { $botRoster, $multiBotFlag, $multiBotMode, botFor } from './single-thread-bots'
 
 // ── the switch ───────────────────────────────────────────────────────────────
 
@@ -115,8 +116,8 @@ export const HANDOFF_MAX_BATONS = 3
 /** Relays running at once (running or waiting on the user): with the assistant on screen, the primary engine + 2 pool engines. */
 export const HANDOFF_MAX_RUNNING = 2
 
-/** How much of the previous result is carried (L4); files and links ride beside it in full. */
-export const HANDOFF_CARRY_MAX_CHARS = 2_000
+/** How much of the previous result is carried (L4, R3's `result_max_chars`); files and links ride beside it. */
+export const HANDOFF_CARRY_MAX_CHARS = HANDOFF_RESULT_MAX_CHARS
 
 // ── records ──────────────────────────────────────────────────────────────────
 
@@ -151,11 +152,16 @@ export type HandoffCancelReason = 'receiver_deleted' | 'sender_deleted'
 /** Where the work came from: the sender's thread and the message whose result is carried (「来源」). */
 export interface HandoffSource {
   profile: string
+  /** The sender's name when the relay started (the hand-over says 【name 交来的活】); filled from the roster. */
+  name?: string
   storedSessionId: null | string
   messageId: null | string
 }
 
-/** The previous result as carried (L4): its first {@link HANDOFF_CARRY_MAX_CHARS} characters, files and links. */
+/**
+ * The previous result as carried (L4): apex:next and apex:handback blocks taken out, cleaned, its
+ * first {@link HANDOFF_CARRY_MAX_CHARS} code points (`truncated` past that), every file and link.
+ */
 export interface HandoffCarry {
   text: string
   truncated: boolean
@@ -219,8 +225,6 @@ export interface HandoffRecord {
   result: null | HandoffResult
   failure: null | { kind: HandoffFailureKind; message: string }
   cancelReason: null | HandoffCancelReason
-  /** The sender's engine has been given the result (R3 takes it once, {@link takeHandoffReturnsFor}). */
-  deliveredToSender: boolean
 }
 
 const ACTIVE: ReadonlySet<HandoffStatus> = new Set(['queued', 'running', 'waiting'])
@@ -374,21 +378,6 @@ function announce(before: HandoffRecord, after: HandoffRecord): void {
   fire(settledListeners, after)
 }
 
-/**
- * The results `profile` sent out for that have come back and that its engine
- * has not been given yet, marked given: each one is handed over exactly once
- * (R3: the sender's next message carries the return summary once).
- */
-export function takeHandoffReturnsFor(profile: string): HandoffRecord[] {
-  const due = handoffsFrom(profile).filter(record => record.status === 'returned' && !record.deliveredToSender)
-
-  for (const record of due) {
-    updateHandoff(record.id, { deliveredToSender: true })
-  }
-
-  return due.map(record => handoffById(record.id) ?? record)
-}
-
 // ── starting ─────────────────────────────────────────────────────────────────
 
 /** The previous result as handed in by the caller (the message under 「交给 X」, or a chain's last baton). */
@@ -411,7 +400,7 @@ export interface StartHandoffInput {
 }
 
 export type StartHandoffRefusal =
-  | 'empty' // no ask and nothing to carry
+  | 'empty' // no ask (the hand-over always says 要你做)
   | 'nested' // the sender is itself working on a relay (接手的不能再往外交)
   | 'off' // the switch is off
   | 'self' // handed to the sender itself
@@ -425,17 +414,9 @@ function unique(values: readonly string[] | undefined): string[] {
   return [...new Set((values ?? []).map(value => String(value).trim()).filter(Boolean))]
 }
 
-/** L4: the first {@link HANDOFF_CARRY_MAX_CHARS} characters of the previous result, with every file and link. */
+/** L4 (R3 `request`): the previous result as it goes along, with every file and link. */
 export function carryFrom(previous: HandoffPrevious | null | undefined): HandoffCarry {
-  const text = String(previous?.text ?? '').trim()
-  const chars = [...text]
-
-  return {
-    files: unique(previous?.files),
-    links: unique(previous?.links),
-    text: chars.slice(0, HANDOFF_CARRY_MAX_CHARS).join(''),
-    truncated: chars.length > HANDOFF_CARRY_MAX_CHARS
-  }
+  return { ...handoffCarryText(previous?.text), files: unique(previous?.files), links: unique(previous?.links) }
 }
 
 function newHandoffId(now: number): string {
@@ -462,7 +443,7 @@ function refusalFor(input: StartHandoffInput, records: readonly HandoffRecord[])
     return 'nested'
   }
 
-  if (!input.ask.trim() && !input.previous?.text?.trim() && !input.continues) {
+  if (!input.ask.trim()) {
     return 'empty'
   }
 
@@ -505,11 +486,11 @@ export function startHandoff(input: StartHandoffInput): StartHandoffResult {
     carry: carryFrom(previous),
     chainId: before?.chainId ?? id,
     createdAt: now,
-    deliveredToSender: false,
     failure: null,
     finishedAt: null,
     from: {
       messageId: input.from.messageId ?? null,
+      name: input.from.name?.trim() || botFor($botRoster.get(), input.from.profile).name,
       profile: normalizeProfileKey(input.from.profile),
       storedSessionId: input.from.storedSessionId ?? null
     },
