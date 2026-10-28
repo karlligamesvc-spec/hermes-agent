@@ -23,7 +23,7 @@ import { triggerHaptic } from '@/lib/haptics'
 import { withoutHandoffHeader } from '@/lib/reply-markers'
 import { cn } from '@/lib/utils'
 import { $gateway } from '@/store/gateway'
-import { notifyThreadEditOpen } from '@/store/thread-scroll'
+import { notifyThreadEditClose, notifyThreadEditOpen } from '@/store/thread-scroll'
 import { isWatchWindow } from '@/store/windows'
 
 /** True when the user has a live text highlight (drag-select / triple-click). */
@@ -31,6 +31,43 @@ export function hasTextSelection(): boolean {
   const selection = window.getSelection()
 
   return Boolean(selection && !selection.isCollapsed && selection.toString().length > 0)
+}
+
+/**
+ * A press on your click-to-edit bubble (switch off, developer mode): the thread
+ * holds its scroll from the press on, before the editor opens (list.tsx).
+ *
+ * hc-1105: the bubble's words select now, so the press settles when the button
+ * goes up. One that ended as a selection opens no editor and lets the hold go.
+ * One that only cleared an earlier selection still opens it, so it holds then.
+ * A right-click is the copy menu or the reaction picker, never the editor.
+ */
+export function holdForBubblePress(event: { button: number }): void {
+  if (event.button !== 0) {
+    return
+  }
+
+  if (!hasTextSelection()) {
+    notifyThreadEditOpen()
+  }
+
+  const settle = (end: Event) => {
+    window.removeEventListener('pointerup', settle, true)
+    window.removeEventListener('pointercancel', settle, true)
+
+    if (end.type !== 'pointerup') {
+      return
+    }
+
+    if (hasTextSelection()) {
+      notifyThreadEditClose()
+    } else {
+      notifyThreadEditOpen()
+    }
+  }
+
+  window.addEventListener('pointerup', settle, true)
+  window.addEventListener('pointercancel', settle, true)
 }
 
 export function StickyHumanMessageContainer({
@@ -530,13 +567,7 @@ export const UserMessage: FC<{
 
                         triggerHaptic('selection')
                       }}
-                      onPointerDown={() => {
-                        if (hasTextSelection()) {
-                          return
-                        }
-
-                        notifyThreadEditOpen()
-                      }}
+                      onPointerDown={holdForBubblePress}
                       type="button"
                     >
                       {bubbleContent}

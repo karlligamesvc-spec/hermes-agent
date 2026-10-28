@@ -7,8 +7,9 @@
  * - the bubble's text can be selected.
  *
  * Switch off and developer mode are pinned byte for byte in
- * src/user-message-identity.test.tsx; here they only show that none of this
- * reaches them.
+ * src/user-message-identity.test.tsx; here they show what reaches them. Since
+ * hc-1105 that is the selectable words and the right-click 「复制」, without the
+ * time; the rail stays as it was (user-message-select.test.tsx has the rest).
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -27,6 +28,7 @@ import {
   bubble,
   bubbleText,
   mode,
+  ownMessageSelectRule,
   railLabels,
   renderThread,
   SENT_AS_SHOWN,
@@ -130,29 +132,40 @@ describe('a plain right-click on your bubble', () => {
     await waitFor(() => expect(writeClipboard).toHaveBeenCalledWith(SENT_AS_SHOWN))
   })
 
-  it.each(['developer', 'off'] as const)('opens nothing in %s mode, as before', async name => {
-    mode(name)
-    await renderThread()
+  it.each(['developer', 'off'] as const)(
+    'opens 复制 for the whole message in %s mode, with no time on top (hc-1105)',
+    async name => {
+      mode(name)
+      await renderThread()
 
-    fireEvent.contextMenu(bubbleText(userRoots()[1]))
-    await settle()
+      fireEvent.contextMenu(bubbleText(userRoots()[1]))
 
-    expect($contextMenu.get()).toBeNull()
-  })
+      const menu = await screen.findByRole('menu')
 
-  it('keeps the reaction picker when reactions are on', async () => {
-    mode('single-thread')
-    $reactionsEnabled.set(true)
-    await renderThread()
+      expect(menu.textContent).toBe('复制')
+      fireEvent.click(within(menu).getByRole('menuitem', { name: '复制' }))
 
-    fireEvent.contextMenu(bubbleText(userRoots()[1]))
-    await settle()
+      await waitFor(() => expect(writeClipboard).toHaveBeenCalledWith(SENT_AS_SHOWN))
+    }
+  )
 
-    expect($contextMenu.get()).toBeNull()
-  })
+  it.each(['single-thread', 'developer', 'off'] as const)(
+    'keeps the reaction picker when reactions are on (%s mode)',
+    async name => {
+      mode(name)
+      $reactionsEnabled.set(true)
+      await renderThread()
+
+      fireEvent.contextMenu(bubbleText(userRoots()[1]))
+      await settle()
+
+      expect($contextMenu.get()).toBeNull()
+    }
+  )
 
   it.each([
     ['single-thread', '今天 09:00'],
+    ['developer', null],
     ['off', null]
   ] as const)(
     '%s mode: with part of it selected, 复制 copies the selection (time on top: %s)',
@@ -183,11 +196,12 @@ describe('a plain right-click on your bubble', () => {
 
 describe('selecting what you sent', () => {
   // styles.css makes every button unselectable app-wide; jsdom loads no app
-  // stylesheet, so that rule stands in, with the real single-thread sheet over it.
+  // stylesheet, so that rule stands in, with hc-1105's rule from styles.css and
+  // the real single-thread sheet over it.
   function injectStyles() {
     const sheet = readFileSync(join(__dirname, '../../../app/single-thread/single-thread-chat.css'), 'utf8')
 
-    for (const css of ['button, [role="button"] { user-select: none; }', sheet]) {
+    for (const css of ['button, [role="button"] { user-select: none; }', ownMessageSelectRule(), sheet]) {
       const style = window.document.createElement('style')
 
       style.dataset.testCss = ''
@@ -196,20 +210,19 @@ describe('selecting what you sent', () => {
     }
   }
 
-  it.each([
-    ['single-thread', 'text'],
-    ['developer', 'none'],
-    ['off', 'none']
-  ] as const)('%s mode: the bubble text is user-select %s', async (name, expected) => {
-    mode(name)
-    injectStyles()
-    await renderThread()
+  it.each(['single-thread', 'developer', 'off'] as const)(
+    '%s mode: the bubble and its words are user-select text',
+    async name => {
+      mode(name)
+      injectStyles()
+      await renderThread()
 
-    expect(getComputedStyle(bubble(userRoots()[1])).userSelect).toBe(expected)
-    // jsdom does not resolve a child's "auto" against its button the way Chrome does
-    // (none); what matters is that only single-thread mode declares text on it.
-    expect(getComputedStyle(bubbleText(userRoots()[1])).userSelect).toBe(name === 'single-thread' ? 'text' : 'auto')
-  })
+      expect(getComputedStyle(bubble(userRoots()[1])).userSelect).toBe('text')
+      // jsdom does not resolve a child's "auto" against its button the way Chrome does,
+      // so the words carry text themselves (hc-1101's sheet, hc-1105's rule).
+      expect(getComputedStyle(bubbleText(userRoots()[1])).userSelect).toBe('text')
+    }
+  )
 
   it('single-thread mode: the rail moves beside the bubble; the bubble itself stays put', async () => {
     mode('single-thread')
