@@ -261,6 +261,26 @@ describe('the layout editor’s ⌘K rows', () => {
   })
 })
 
+describe('productPaletteGroups keeps hc-1014’s rule', () => {
+  it('product mode still drops the rows that start a second conversation', () => {
+    setMode('product')
+
+    const groups = [
+      {
+        heading: 'Go to',
+        items: [
+          { action: 'session.new', id: 'new' },
+          { action: 'nav.settings', id: 'settings' }
+        ]
+      }
+    ]
+
+    expect(productPaletteGroups(groups)).toEqual([
+      { heading: 'Go to', items: [{ action: 'nav.settings', id: 'settings' }] }
+    ])
+  })
+})
+
 const FOLDED_LABELS = ['Swap sidebar sides', 'Toggle file browser', 'Toggle HUD mode']
 
 function renderShortcutLists(): string {
