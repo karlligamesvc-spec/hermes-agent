@@ -28,10 +28,10 @@ import { useMemo, useState } from 'react'
 
 import { requestComposerSubmit } from '@/app/chat/composer/focus'
 import { useSessionView } from '@/app/chat/session-view'
-import { handoffReplyAttachments } from '@/app/single-thread/handoff-text'
 import { FailureActions } from '@/components/assistant-ui/process/process-block'
 import { useTurnView } from '@/components/assistant-ui/process/turn-state'
 import { useNextStepsCopy } from '@/i18n/next-steps'
+import { replyAttachments } from '@/lib/handoff-text'
 import { isHandoff, type NextStepOption, type NextStepsBlock, parseNextSteps } from '@/lib/next-steps'
 import { $gatewayState } from '@/store/session'
 import { cleanBotName } from '@/store/single-thread-bot-ops'
@@ -144,7 +144,7 @@ function NextStepRow({ block, visible }: { block: NextStepsBlock; visible: strin
       {
         ask: option.message,
         from: { messageId, profile: currentProfile, storedSessionId: storedId ?? null },
-        previous: { text: visible, ...handoffReplyAttachments(visible) },
+        previous: { text: visible, ...replyAttachments(visible) },
         to: bot.profile
       },
       {
