@@ -1,3 +1,5 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
 /**
  * hc-1086 with hc-1093: the relay dispatcher against this window's real gateway
  * registry and pool (store/gateway.ts, session-request-router), with only the
@@ -6,8 +8,7 @@
  * engine (hc-1093) — and into a full pool it does not dial at all: it waits in
  * the relay queue until a slot frees.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
+import { $authState } from '@/store/auth'
 import { resetMainThreadForTest } from '@/store/main-thread'
 import { $poolLimits, POOL_LIMITS_DEFAULTS } from '@/store/pool-limits'
 import { $activeGatewayProfile } from '@/store/profile'
@@ -23,6 +24,8 @@ import {
 import { setToolViewMode } from '@/store/tool-view'
 
 import { createHandoffRunner, type HandoffRunner, liveHandoffDeps } from './handoff-runner'
+
+const SIGNED_OUT_AUTH = $authState.get()
 
 const { engine } = vi.hoisted(() => {
   /** What each profile's engine is asked, over whichever socket reaches it. */
@@ -113,6 +116,7 @@ beforeEach(async () => {
   setToolViewMode('product')
   setMultiBotFlagForTest(true)
   setMultiBotHandoffFlagForTest(true)
+  $authState.set({ ...$authState.get(), accountId: 'acct-1', status: 'signed-in' })
   resetBotRosterForTest(ROSTER)
   // One pool slot, already taken by 剪辑's engine.
   $poolLimits.set({ ...POOL_LIMITS_DEFAULTS, maxBackends: 1 })
@@ -121,6 +125,7 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+  $authState.set(SIGNED_OUT_AUTH)
   runner?.dispose()
   runner = null
   setHandoffDispatcher(null)

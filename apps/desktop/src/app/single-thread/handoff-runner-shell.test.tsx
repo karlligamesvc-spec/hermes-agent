@@ -1,13 +1,14 @@
+import { act, cleanup, render } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
 /**
  * hc-1086: the multi-bot shell runs the relay (接力) dispatcher only while relay
  * is on and the gateway is open, against this window's own routing
  * (session-request-router, faked here), and a reopened window picks up a relay
  * the last one left in its turn.
  */
-import { act, cleanup, render } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
+import { $authState } from '@/store/auth'
 import { MAIN_THREAD_TITLE, resetMainThreadForTest } from '@/store/main-thread'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $gatewayState } from '@/store/session'
@@ -24,6 +25,8 @@ import { setToolViewMode } from '@/store/tool-view'
 
 import type { RequestGateway } from './composer-middleware'
 import { useSingleThreadShell } from './use-single-thread-shell'
+
+const SIGNED_OUT_AUTH = $authState.get()
 
 const { routed } = vi.hoisted(() => ({
   routed: vi.fn(async (_profile: unknown, _ambient: unknown, method: string, params: Record<string, unknown> = {}) => {
@@ -53,7 +56,17 @@ vi.mock('@/store/profile', async importActual => ({
   ensureGatewayProfile: vi.fn(async () => undefined)
 }))
 
-const shellRequest = (async () => ({ profiles: [], sessions: [] })) as unknown as RequestGateway
+// The shell's own roster read lists the same two assistants the tests start with.
+const shellRequest = (async (method: string) =>
+  method === 'profiles.describe'
+    ? { soul: '你是小红书文案。' }
+    : {
+        profiles: [
+          { is_default: true, name: 'default' },
+          { name: 'writer', ui_meta: { apex: { created: 1, name: '小红书文案' } } }
+        ],
+        sessions: []
+      }) as unknown as RequestGateway
 
 function Shell() {
   useSingleThreadShell(shellRequest)
@@ -90,12 +103,14 @@ beforeEach(() => {
   setToolViewMode('product')
   setMultiBotFlagForTest(true)
   setMultiBotHandoffFlagForTest(true)
+  $authState.set({ ...$authState.get(), accountId: 'acct-1', status: 'signed-in' })
   resetBotRosterForTest(ROSTER)
   $activeGatewayProfile.set('default')
   $gatewayState.set('open')
 })
 
 afterEach(() => {
+  $authState.set(SIGNED_OUT_AUTH)
   cleanup()
   resetHandoffsForTest()
   resetMainThreadForTest()
@@ -161,5 +176,31 @@ describe('the shell runs the relay dispatcher', () => {
 
     await vi.waitFor(() => expect(routedMethods()).toContain('writer session.resume'))
     expect(routedMethods()).not.toContain('writer prompt.submit')
+  })
+
+  it('another account signs in: the last account’s relays leave the list, the new account’s run', async () => {
+    mount()
+    const theirs = relay()
+
+    await vi.waitFor(() => expect(routedMethods()).toContain('writer prompt.submit'))
+    await act(async () => $authState.set({ ...$authState.get(), accountId: 'acct-2', status: 'signed-in' }))
+    await vi.waitFor(() => expect(theirs.ok && handoffById(theirs.handoff.id)).toBeNull())
+
+    routed.mockClear()
+    const mine = relay()
+
+    expect(mine.ok && mine.handoff.owner).toBe('acct-2')
+    await vi.waitFor(() => expect(routedMethods()).toContain('writer prompt.submit'))
+  })
+
+  it('the account changes while the gateway is closed: the last account’s relays still leave the list', async () => {
+    $gatewayState.set('idle')
+    mount()
+    const theirs = relay()
+
+    await act(async () => $authState.set({ ...$authState.get(), accountId: null, status: 'signed-out' }))
+
+    await vi.waitFor(() => expect(theirs.ok && handoffById(theirs.handoff.id)).toBeNull())
+    expect(routed).not.toHaveBeenCalled()
   })
 })

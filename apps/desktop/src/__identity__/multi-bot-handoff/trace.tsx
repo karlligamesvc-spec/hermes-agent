@@ -45,6 +45,16 @@ function Shell({ request }: { request: RequestGateway }) {
   return null
 }
 
+/**
+ * Whose `setItem` every write reaches: jsdom's Storage prototype, or — on Node 26, where
+ * vitest.setup.ts installs a plain in-memory object as `localStorage` — that object itself.
+ */
+function storageOwner(): Pick<Storage, 'setItem'> {
+  const storage = window.localStorage
+
+  return typeof Storage !== 'undefined' && storage instanceof Storage ? Storage.prototype : storage
+}
+
 export interface ShellTrace {
   /** Every engine request, in order: method and params. */
   requests: [string, unknown][]
@@ -56,9 +66,10 @@ export interface ShellTrace {
 export async function traceShell(ticks: number): Promise<ShellTrace> {
   const requests: [string, unknown][] = []
   const storage: string[] = []
-  const setItem = Storage.prototype.setItem
+  const owner = storageOwner()
+  const setItem = owner.setItem
 
-  const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+  const spy = vi.spyOn(owner, 'setItem').mockImplementation(function (this: Storage, key: string, value: string) {
     if (!storage.includes(key)) {
       storage.push(key)
     }
