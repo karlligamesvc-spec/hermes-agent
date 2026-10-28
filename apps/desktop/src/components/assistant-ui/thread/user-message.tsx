@@ -7,6 +7,7 @@ import { ReactionBadge, ReactionPicker } from '@/components/assistant-ui/thread/
 import { MessageTimelineTimestamp } from '@/components/assistant-ui/thread/timeline-timestamp'
 import { type RestoreMessageTarget } from '@/components/assistant-ui/thread/types'
 import { useMessageReactions } from '@/components/assistant-ui/thread/use-message-reactions'
+import { UserMessageRail, useUserBubbleCopyMenu } from '@/components/assistant-ui/thread/user-message-rail'
 import { UserMessageText } from '@/components/assistant-ui/thread/user-message-text'
 import { Codicon } from '@/components/ui/codicon'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
@@ -311,6 +312,7 @@ export const UserMessage: FC<{
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const { enabled: reactionsEnabled, react, reactions: shownReactions } = useMessageReactions(messageId, 'user')
+  const copyMenu = useUserBubbleCopyMenu(messageText)
 
   const pickEmoji = useCallback(
     (emoji: null | string) => {
@@ -464,8 +466,9 @@ export const UserMessage: FC<{
                   // Right-click is the desktop stand-in for iOS touch-and-hold —
                   // but only when there's nothing selected. A live highlight
                   // keeps the native Copy menu (and ⌘C) instead of the picker.
+                  // Without the picker, single-thread mode offers 「复制」 (hc-1101).
                   readOnly || !reactionsEnabled
-                    ? undefined
+                    ? copyMenu
                     : event => {
                         if (hasTextSelection()) {
                           return
@@ -529,47 +532,45 @@ export const UserMessage: FC<{
                     </button>
                   </ActionBarPrimitive.Edit>
                 )}
-                {(showStop || showRestore) && (
-                  <div className="pointer-events-none absolute right-2 bottom-2 z-10 flex items-center justify-center opacity-0 transition-opacity group-hover/user-message:opacity-100 group-focus-within/user-message:opacity-100">
-                    {showStop ? (
-                      <button
-                        aria-label={copy.stop}
-                        className={cn('pointer-events-auto size-5', USER_ACTION_ICON_BUTTON_CLASS)}
-                        onClick={event => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          void onCancel?.()
-                        }}
-                        title={copy.stop}
-                        type="button"
-                      >
-                        {StopGlyph}
-                      </button>
-                    ) : (
-                      <button
-                        aria-label={copy.restoreCheckpoint}
-                        className={cn('pointer-events-auto size-6', USER_ACTION_ICON_BUTTON_CLASS)}
-                        onClick={event => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          triggerHaptic('selection')
-                          onRequestRestoreConfirm?.(messageId, {
-                            text: messageText,
-                            userOrdinal: runtimeUserOrdinal
-                          })
-                        }}
-                        onPointerDown={event => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                        }}
-                        title={copy.restoreFromHere}
-                        type="button"
-                      >
-                        <Codicon name="discard" size="0.875rem" />
-                      </button>
-                    )}
-                  </div>
-                )}
+                <UserMessageRail copyText={messageText}>
+                  {showStop ? (
+                    <button
+                      aria-label={copy.stop}
+                      className={cn('pointer-events-auto size-5', USER_ACTION_ICON_BUTTON_CLASS)}
+                      onClick={event => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        void onCancel?.()
+                      }}
+                      title={copy.stop}
+                      type="button"
+                    >
+                      {StopGlyph}
+                    </button>
+                  ) : showRestore ? (
+                    <button
+                      aria-label={copy.restoreCheckpoint}
+                      className={cn('pointer-events-auto size-6', USER_ACTION_ICON_BUTTON_CLASS)}
+                      onClick={event => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        triggerHaptic('selection')
+                        onRequestRestoreConfirm?.(messageId, {
+                          text: messageText,
+                          userOrdinal: runtimeUserOrdinal
+                        })
+                      }}
+                      onPointerDown={event => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                      }}
+                      title={copy.restoreFromHere}
+                      type="button"
+                    >
+                      <Codicon name="discard" size="0.875rem" />
+                    </button>
+                  ) : null}
+                </UserMessageRail>
               </div>
             </ReactionPicker>
             {/* Below the bubble, same register as the assistant action row:

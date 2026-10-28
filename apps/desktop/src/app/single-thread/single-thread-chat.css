@@ -87,16 +87,31 @@
   color: inherit;
 }
 
+/* hc-1101: what you sent can be selected and copied. The bubble is a button (a click
+   opens the editor) and every button is unselectable app-wide (styles.css); a drag
+   that ends in a selection keeps the editor shut (user-message.tsx). */
+[data-single-thread-chat] button.composer-human-message,
+[data-single-thread-chat] button.composer-human-message * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+[data-single-thread-chat] button.composer-human-message ::selection {
+  background-color: rgb(255 255 255 / 0.36);
+  color: var(--st-me-text);
+}
+
 /* Pictures and files you sent line up under your bubble, on the right. */
 [data-single-thread-chat] [data-slot='aui_user-message-root'] + div:not([data-slot]) {
   justify-content: flex-end;
   margin-block: 0;
 }
 
-/* The hover restore / stop icon moves beside the bubble, on its left. */
+/* The hover rail (复制, then restore / stop) moves beside the bubble, on its left. */
 [data-single-thread-chat] [data-slot='aui_user-message-root'] [data-slot='popover-anchor'] > div {
   right: calc(100% + 4px);
   bottom: 6px;
+  gap: 2px;
 }
 
 /* APEX's words: a grey bubble on the left (text parts only). What follows the words —
