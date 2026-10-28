@@ -3,7 +3,7 @@
 # .ps1 in the system code page. The checklist (README.md, same folder) explains each step.
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File fresh-env-win.ps1 prepare -Root C:\apex-qa\hc-1083\run1 -Installer C:\apex-qa\APEX-x.y.z-win-x64.exe
-#   ... scripts -Root <dir> [-SingleThread] [-MultiBot] [-FastPool] [-QuitConfirm]   # writes launch-apex.cmd and watch.cmd
+#   ... scripts -Root <dir> [-SingleThread] [-MultiBot | -MultiBotOff] [-FastPool] [-QuitConfirm]   # writes launch-apex.cmd and watch.cmd
 #   ... python  -Root <dir>                           # path of the engine's own python.exe
 #   ... stop    -Root <dir>                           # stops every process under the test dir
 #   ... cleanup -Root <dir> [-Delete]                 # uninstalls the copy; -Delete removes the dir
@@ -15,8 +15,11 @@
 #   for prepare / python / stop / cleanup and the read-only snapshot / check.
 # - A new empty -Root for every acceptance run; never prove anything on a reused home (hard rule 11).
 # - -MultiBot also sets APEXNODES_SINGLE_THREAD=1: multi_bot only counts while single-thread is on.
-#   -SingleThread alone is for group A (same as the platform's single_thread: true, without waiting
-#   for the first launch to fetch the client config).
+#   -MultiBotOff sets APEXNODES_SINGLE_THREAD=1 and APEXNODES_MULTI_BOT=0: since client config v5 the
+#   platform turns multi_bot on, so group A forces it off. -SingleThread alone leaves it to the platform.
+# - Only install the latest release: an older copy downloads the new one and installs it when idle, and
+#   the restart drops the variables set here, so the app runs on the machine's real home (hit on a Mac
+#   with 0.17.65 on 2026-10-28).
 # - -FastPool only for quick exploration; formal numbers use the default pool settings.
 # - The quit confirmation ("work is still running, quit anyway?") is skipped unless -QuitConfirm;
 #   on Windows closing the last window quits the app, so F6 in the checklist needs -QuitConfirm.
@@ -26,6 +29,7 @@ param(
   [string]$Installer,
   [switch]$SingleThread,
   [switch]$MultiBot,
+  [switch]$MultiBotOff,
   [switch]$FastPool,
   [switch]$QuitConfirm,
   [switch]$Delete
@@ -60,7 +64,18 @@ switch ($Action) {
     if ($proc.ExitCode -ne 0) { throw "Installer exit code $($proc.ExitCode)" }
     $exe = Join-Path $App 'APEX.exe'
     if (-not (Test-Path $exe)) { throw "Installer did not produce $exe" }
-    "App version: $((Get-Item $exe).VersionInfo.ProductVersion)"
+    $version = (Get-Item $exe).VersionInfo.ProductVersion
+    "App version: $version"
+    # Only the latest release: an older copy updates itself when idle and the restart loses the test env.
+    $feed = ((Get-Content (Join-Path $App 'resources\app-update.yml')) -match '^url:' | Select-Object -First 1) -replace '^url:\s*', ''
+    $latest = $null
+    try { $latest = (((Invoke-WebRequest -UseBasicParsing -TimeoutSec 15 "$feed/win-x64/latest.yml").Content -split "`n") -match '^version:' | Select-Object -First 1) -replace '^version:\s*', '' } catch { }
+    if (-not $latest -or $latest.Trim() -ne $version.Trim()) {
+      $uninstaller = Get-ChildItem $App -Filter 'Uninstall*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+      if ($uninstaller) { Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S', '/currentuser' -Wait }
+      throw "Refused: installer is $version, latest on the feed is '$latest'. An older copy updates itself and loses isolation."
+    }
+    "Latest on the feed is also $latest"
     $other = Get-Process APEX -ErrorAction SilentlyContinue | Where-Object { $_.Path -and -not $_.Path.StartsWith($App) }
     if ($other) { 'Note: another APEX is running on this machine; quit it before the run so nobody clicks the wrong window.' }
     "Ready: $Root"
@@ -76,8 +91,10 @@ switch ($Action) {
       'set HERMES_DESKTOP_IGNORE_EXISTING=1'
     )
     if (-not $QuitConfirm) { $lines += 'set HERMES_DESKTOP_SKIP_QUIT_CONFIRM=1' }
-    if ($SingleThread -or $MultiBot) { $lines += 'set APEXNODES_SINGLE_THREAD=1' }
+    if ($MultiBot -and $MultiBotOff) { throw 'Pick one of -MultiBot and -MultiBotOff' }
+    if ($SingleThread -or $MultiBot -or $MultiBotOff) { $lines += 'set APEXNODES_SINGLE_THREAD=1' }
     if ($MultiBot) { $lines += 'set APEXNODES_MULTI_BOT=1' }
+    if ($MultiBotOff) { $lines += 'set APEXNODES_MULTI_BOT=0' }
     if ($FastPool) { $lines += 'set HERMES_DESKTOP_POOL_IDLE_MS=60000', 'set HERMES_DESKTOP_POOL_KEEPALIVE_FRESH_MS=120000' }
     $lines += 'echo %date% %time% launch single_thread=%APEXNODES_SINGLE_THREAD% multi_bot=%APEXNODES_MULTI_BOT% >> "%~dp0launches.log"', 'start "" "%~dp0app\APEX.exe"'
     Set-Content -Path (Join-Path $Root 'launch-apex.cmd') -Encoding ASCII -Value $lines
@@ -91,7 +108,7 @@ switch ($Action) {
       'pause'
     )
     Set-Content -Path (Join-Path $Root 'watch.cmd') -Encoding ASCII -Value $watch
-    "Wrote launch-apex.cmd and watch.cmd (single-thread: $([bool]($SingleThread -or $MultiBot)); multi-bot: $([bool]$MultiBot); fast pool: $([bool]$FastPool); quit confirm: $([bool]$QuitConfirm)). Copy multi_bot_qa.py into $Root."
+    "Wrote launch-apex.cmd and watch.cmd (single-thread: $([bool]($SingleThread -or $MultiBot -or $MultiBotOff)); multi-bot: $(if ($MultiBot) { 'on' } elseif ($MultiBotOff) { 'off' } else { 'platform' }); fast pool: $([bool]$FastPool); quit confirm: $([bool]$QuitConfirm)). Copy multi_bot_qa.py into $Root."
   }
   'python' {
     $py = Get-ChildItem (Join-Path $HermesHome 'versions\*\venv\Scripts\python.exe') -ErrorAction SilentlyContinue |

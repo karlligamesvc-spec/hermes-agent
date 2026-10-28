@@ -57,6 +57,11 @@ BOT_CHAT_TITLE = "Bot Chat"
 DATE_LINE = "Conversation started:"
 BOT_PROTOCOL_HEADING = "## Messaging other agents"
 PLATFORM_SKILLS = ("skills", "apexnodes")
+# hc-1081 在每个助手的平台技能目录里放的同步戳（内容是 manifest 哈希），不是技能文件
+PROFILE_SKILLS_STAMP = ".apex-manifest"
+# 新助手 SOUL.md 第一行的模板（hc-1078 写、hc-1082 改名时跟着改），也会原样进系统提示；手写过的第一行不算
+SOUL_NAME_LINE = re.compile(r"^You are (?P<name>.+?), an AI assistant from ApexNodes HK, working alongside APEX for the same person\.$",
+                            re.MULTILINE)
 SHARED_MIRRORS = "apex"
 # hc-1078 新建助手时在 ui_meta.apex 写 origin: product；改名、换样子不写也不删（fork shared/apex-product-assistant.ts）
 PRODUCT_ORIGIN = "product"
@@ -163,14 +168,16 @@ def platform_skills(home: Path) -> dict:
     root = home.joinpath(*PLATFORM_SKILLS)
     files: dict[str, str] = {}
     versions: dict[str, str | None] = {}
+    stamp_file = root / PROFILE_SKILLS_STAMP
+    stamp = stamp_file.read_text(encoding="utf-8-sig").strip()[:12] if stamp_file.is_file() else None
     if not root.is_dir():
-        return {"files": files, "versions": versions}
-    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+        return {"files": files, "versions": versions, "stamp": stamp}
+    for path in sorted(p for p in root.rglob("*") if p.is_file() and p != stamp_file):
         rel = path.relative_to(root).as_posix()
         files[rel] = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
         if path.name == "SKILL.md":
             versions[path.parent.relative_to(root).as_posix()] = skill_version(path)
-    return {"files": files, "versions": versions}
+    return {"files": files, "versions": versions, "stamp": stamp}
 
 
 def soul_summary(home: Path) -> dict | None:
@@ -231,10 +238,13 @@ def _chain_root(row: dict, by_id: dict[str, dict]) -> dict:
 def prompt_checks(prompt: str | None, name: str | None) -> dict | None:
     if not prompt:
         return None
+    baked = SOUL_NAME_LINE.search(prompt)
     return {
         "has_date_line": DATE_LINE in prompt,
         "has_bot_protocol": BOT_PROTOCOL_HEADING in prompt,
         "mentions_name": (name in prompt) if name else None,
+        # 会话开始时 SOUL 第一行里的名字：改名之后，这一段会话的系统提示还是旧名字
+        "prompt_name": baked.group("name") if baked else None,
         "sha": fingerprint(prompt),
     }
 
@@ -347,7 +357,7 @@ def _proc_home(proc, cache: dict[int, str | None]) -> str | None:
         return cache[proc.pid]
     try:
         value = proc.environ().get("HERMES_HOME")
-    except (psutil.Error, OSError):
+    except (psutil.Error, OSError, SystemError):  # macOS 上进程正在退出时 psutil 会抛 SystemError
         value = None
     cache[proc.pid] = _norm(value) if value else None
     return cache[proc.pid]
@@ -369,12 +379,17 @@ def our_processes(home: Path, cache: dict[int, str | None]) -> dict[int, dict]:
     """HERMES_HOME 等于测试家目录的进程：App 本身、引擎、网关和它们的子进程。"""
     want = _norm(str(home))
     found: dict[int, dict] = {}
-    for proc in psutil.process_iter(["pid", "ppid", "name", "cmdline", "create_time"]):
+    # 不让 process_iter 预取属性：预取在迭代器里抛的 SystemError（进程正在退出）接不住，watch 会整个崩掉
+    for proc in psutil.process_iter():
         if _proc_home(proc, cache) != want:
             continue
-        proc_kind, profile = classify(proc.info.get("cmdline") or [])
-        found[proc.pid] = {"pid": proc.pid, "ppid": proc.info.get("ppid"), "name": proc.info.get("name"),
-                           "proc_kind": proc_kind, "profile": profile, "create_time": proc.info.get("create_time")}
+        try:
+            info = proc.as_dict(attrs=["ppid", "name", "cmdline", "create_time"])
+        except (psutil.Error, OSError, SystemError):
+            continue
+        proc_kind, profile = classify(info.get("cmdline") or [])
+        found[proc.pid] = {"pid": proc.pid, "ppid": info.get("ppid"), "name": info.get("name"),
+                           "proc_kind": proc_kind, "profile": profile, "create_time": info.get("create_time")}
     return found
 
 
@@ -382,13 +397,13 @@ def memory_of(pid: int, uss: bool) -> dict | None:
     try:
         proc = psutil.Process(pid)
         rss = proc.memory_info().rss
-    except (psutil.Error, OSError):
+    except (psutil.Error, OSError, SystemError):
         return None
     if not uss:
         return {"rss": rss, "uss": None}
     try:
         return {"rss": rss, "uss": getattr(proc.memory_full_info(), "uss", None)}
-    except (psutil.Error, OSError):
+    except (psutil.Error, OSError, SystemError):
         return {"rss": rss, "uss": None}
 
 
@@ -405,7 +420,7 @@ def descendants(pid: int, procs: dict[int, dict]) -> list[int]:
 def listening_ports(pid: int) -> list[int]:
     try:
         conns = psutil.Process(pid).net_connections(kind="tcp")
-    except (psutil.Error, OSError):
+    except (psutil.Error, OSError, SystemError):
         return []
     return sorted({c.laddr.port for c in conns if c.status == psutil.CONN_LISTEN})
 
@@ -419,7 +434,7 @@ def live_engines(home: Path) -> list[dict]:
             continue
         try:
             env = psutil.Process(pid).environ()
-        except (psutil.Error, OSError):
+        except (psutil.Error, OSError, SystemError):
             env = {}
         out.append({"pid": pid, "proc_kind": info["proc_kind"], "profile": info["profile"],
                     "flags": {k: env.get(k) for k in ENV_FLAGS}, "memory": memory_of(pid, False)})
@@ -496,7 +511,7 @@ def check_ui_meta(snap: dict, _args) -> tuple[str, str]:
 
 
 def check_prompts(snap: dict, _args) -> tuple[str, str]:
-    bad, seen = [], 0
+    bad, stale, seen = [], [], 0
     for name, home in snap["homes"].items():
         prompt = (home.get("sessions") or {}).get("main_thread_prompt")
         if not prompt:
@@ -506,15 +521,18 @@ def check_prompts(snap: dict, _args) -> tuple[str, str]:
             bad.append(f"{name} 没有日期行")
         if prompt["has_bot_protocol"]:
             bad.append(f"{name} 带了互发协议")
-        if prompt["mentions_name"] is False:
+        if prompt["mentions_name"] is not False:
+            continue
+        # 新助手的提示里连模板名字都没有：还在用 APEX 的身份（M6 没生效）
+        if name != "default" and not prompt.get("prompt_name"):
             bad.append(f"{name} 的系统提示里没有它的名字")
+        else:  # 会话开始后改过名，这一段提示还是旧名字；以下一轮回复为准（清单 G2、G3）
+            stale.append(f"{name}（会话开始时叫「{prompt.get('prompt_name') or 'APEX'}」）")
     if bad:
         return "FAIL", "；".join(bad)
+    if stale:
+        return "WARN", f"这些主线的系统提示是改名前建的，以下一轮回复为准：{'、'.join(stale)}"
     return ("PASS", f"{seen} 个主线的系统提示：有日期行、没有互发协议、名字对") if seen else ("WARN", "还没有主线会话")
-
-
-# 新助手 SOUL.md 第一行的模板（hc-1078 写、hc-1082 改名时跟着改）；手写过的第一行不算
-SOUL_NAME_LINE = re.compile(r"^You are (?P<name>.+?), an AI assistant from ApexNodes HK, working alongside APEX for the same person\.$")
 
 
 def check_soul_name(snap: dict, _args) -> tuple[str, str]:

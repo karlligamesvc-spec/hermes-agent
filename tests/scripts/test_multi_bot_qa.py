@@ -61,6 +61,8 @@ def _write_home(home: Path, name: str | None, prompt: str) -> None:
     (skill / "scripts").mkdir()
     (skill / "scripts" / "cut.py").write_text("print('cut')\n", encoding="utf-8")
     if name:
+        # hc-1081 stamps each assistant's copy with the manifest hash; the root has no stamp
+        (home / "skills" / "apexnodes" / qa.PROFILE_SKILLS_STAMP).write_text("176858b8d69bd5fb\n", encoding="utf-8")
         # What hc-1078 writes on create (origin: product) and hc-1079 after the three questions.
         meta = {"ui_meta": {"apex": {"name": name, "shape": "squircle", "color": "teal", "origin": "product"},
                             "apex-intake": {"v": 1, "status": "noted", "answers": {"role": "editing"}}}}
@@ -252,6 +254,54 @@ def test_diff_of_a_settings_change_names_the_section_and_the_bot(home: Path) -> 
 
     assert [line.split(" = ")[0] for line in lines] == ["+ homes.apex-bot-2.config.sections.tts"]
     assert "zh-CN-XiaoxiaoNeural" not in json.dumps(after, ensure_ascii=False)
+
+
+def test_skills_stamp_is_recorded_not_compared(home: Path) -> None:
+    """The real 0.17.66 run: every assistant has .apex-manifest and the root has none; C2 must still pass."""
+    snap = qa.take_snapshot(home)
+
+    assert snap["homes"]["apex-bot-2"]["platform_skills"]["stamp"] == "176858b8d69b"
+    assert snap["homes"]["default"]["platform_skills"]["stamp"] is None
+    assert qa.PROFILE_SKILLS_STAMP not in snap["homes"]["apex-bot-2"]["platform_skills"]["files"]
+
+
+def _prompt_with_template(name: str) -> str:
+    return f"{SOUL_LINE.format(name=name)}\n\n{DATE}\nModel: apex-flash"
+
+
+@pytest.mark.parametrize("who", ["apex-bot-2", "default"])
+def test_rename_after_the_session_started_is_a_warning(home: Path, who: str) -> None:
+    """G2/G4 on the real run: the thread's prompt keeps the old name until a new segment; the reply is the proof."""
+    if who == "default":
+        _dump(home / "profile.yaml", {"ui_meta": {"apex": {"name": "小橙"}}})
+    else:
+        _replace_prompt(home, _prompt_with_template("剪辑助手"))
+        _edit_yaml(home / "profiles/apex-bot-2/profile.yaml", lambda d: d["ui_meta"]["apex"].update(name="小剪"))
+        (home / "profiles/apex-bot-2/SOUL.md").write_text(SOUL_LINE.format(name="小剪") + "\n", encoding="utf-8")
+
+    status, detail = _results(home)["C6"]
+
+    assert status == "WARN", detail
+    assert ("剪辑助手" if who != "default" else "APEX") in detail
+
+
+def test_watcher_survives_a_process_that_fails_mid_exit(home: Path, monkeypatch) -> None:
+    """psutil raises SystemError from cmdline() while a process exits (seen at L2 on the real run)."""
+    if qa.psutil is None:
+        pytest.skip("needs psutil")
+
+    class Exiting:
+        pid = 424242
+
+        def environ(self):
+            return {"HERMES_HOME": str(home)}
+
+        def as_dict(self, attrs=None):
+            raise SystemError("<built-in function proc_cmdline> returned a result with an exception set")
+
+    monkeypatch.setattr(qa.psutil, "process_iter", lambda *a, **k: iter([Exiting()]))
+
+    assert qa.our_processes(home, {}) == {}
 
 
 def test_snapshot_never_contains_secret_values(home: Path) -> None:
