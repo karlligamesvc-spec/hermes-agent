@@ -1,9 +1,3 @@
-/**
- * hc-1078 (multi-bot M2): what the create / edit / delete operations send to the engine. Every
- * request goes to the default profile's engine; only `ui_meta.apex` is ever written (never
- * `hermes-bots`, which would make the engine treat the profile as a Bot Mode one); APEX keeps its
- * look and cannot be deleted.
- */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -20,6 +14,13 @@ import {
 import { APEX_DESKTOP_DEFAULT_SOUL } from '../../shared/apex-default-soul'
 import { isProductAssistantMeta } from '../../shared/apex-product-assistant'
 
+/**
+ * hc-1078 (multi-bot M2): what the create / edit / delete operations send to the engine. Every
+ * request goes to the default profile's engine; only `ui_meta.apex` is ever written (never
+ * `hermes-bots`, which would make the engine treat the profile as a Bot Mode one); APEX keeps its
+ * look and cannot be deleted.
+ */
+import { $authState } from './auth'
 import { requestGatewayForProfile } from './gateway'
 import { setSingleThreadFlagForTest } from './single-thread'
 import {
@@ -37,6 +38,8 @@ import {
 import { botRosterFrom, resetBotRosterForTest, setMultiBotFlagForTest } from './single-thread-bots'
 import { handoffById, resetHandoffsForTest, setMultiBotHandoffFlagForTest, startHandoff } from './single-thread-handoff'
 import { setToolViewMode } from './tool-view'
+
+const SIGNED_OUT_AUTH = $authState.get()
 
 const deleteProfile = vi.fn(async (_profile: string) => undefined)
 
@@ -523,6 +526,7 @@ describe('deleteBot', () => {
     setToolViewMode('product')
     setMultiBotFlagForTest(true)
     setMultiBotHandoffFlagForTest(true)
+    $authState.set({ ...$authState.get(), accountId: 'acct-1', status: 'signed-in' })
     resetBotRosterForTest(botRosterFrom([{ is_default: true, name: 'default' }, { name: 'apex-bot-2' }], () => true))
 
     try {
@@ -547,6 +551,7 @@ describe('deleteBot', () => {
     } finally {
       resetHandoffsForTest()
       setMultiBotHandoffFlagForTest(false)
+      $authState.set(SIGNED_OUT_AUTH)
       setMultiBotFlagForTest(false)
       setSingleThreadFlagForTest(false)
       resetBotRosterForTest()
