@@ -119,13 +119,16 @@ export function composeHandoffRequest(input: HandoffRequestInput): string {
   return handoffRequestText({ ...input, carry: handoffCarryText(input.result) })
 }
 
-const HEADER_RE = /^<!--\s*apex:handoff(?![A-Za-z0-9_])([^\n\r]*?)-->/
+// Desktop's text opens with it; the engine also finds it after the gateway's own per-turn notes (a reaction,
+// the HUD, interrupted speech), which come first with a blank line between. Only the first one counts.
+const HEADER_RE = /(?:^|\n[ \t]*\n)\s*<!--\s*apex:handoff(?![A-Za-z0-9_])([^\n]*?)-->/
+const ATTR_RE = /^([a-z]+)=(\S+)$/
 const HANDOFF_ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 const PROFILE_ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
 
-/** The hand-over a message is, from the header on its first line; null for any other message. */
+/** The hand-over a message is, from its header (`request_header`); null for any other message. */
 export function parseHandoffHeader(text: null | string | undefined): { from: string; id: string } | null {
-  const match = HEADER_RE.exec(String(text ?? '').replace(/^\s+/, ''))
+  const match = HEADER_RE.exec(String(text ?? ''))
 
   if (!match) {
     return null
@@ -134,14 +137,13 @@ export function parseHandoffHeader(text: null | string | undefined): { from: str
   const fields = new Map<string, string>()
 
   for (const token of match[1].split(/\s+/).filter(Boolean)) {
-    const eq = token.indexOf('=')
-    const key = token.slice(0, eq)
+    const attr = ATTR_RE.exec(token)
 
-    if (eq <= 0 || fields.has(key)) {
+    if (!attr || fields.has(attr[1])) {
       return null
     }
 
-    fields.set(key, token.slice(eq + 1))
+    fields.set(attr[1], attr[2])
   }
 
   const id = fields.get('id') ?? ''
@@ -166,7 +168,8 @@ export interface ParsedHandback {
 const HANDBACK_RE = /<!--\s*apex:handback(?![A-Za-z0-9_])([\s\S]*?)-->/g
 const HANDBACK_MARKER = 'apex:handback'
 const EMPTY_FENCE_RE = /^[ \t]*(`{3,}|~{3,})[^\n`]*\n(?:[ \t]*\n)*[ \t]*\1[ \t]*(?:\n|$)/gm
-const ITEM_RE = /^(?:[-*•]\s*)?(文件|链接|Files?|Links?)\s*[：:]\s*(.*)$/
+const LIST_MARKER_RE = /^[-*•]\s*/
+const ITEM_RE = /^(文件|链接|files?|links?)\s*[：:]\s*(.*)$/i
 const MARKDOWN_LINK_RE = /^\[[^\]]*\]\(([^)\s]+)\)$/
 
 const WRAPPERS: readonly (readonly [string, string])[] = [
@@ -207,27 +210,28 @@ function handbackBody(body: string): HandbackBlock | null {
   const files: string[] = []
   const links: string[] = []
 
-  for (const raw of body.split('\n')) {
+  for (const raw of body.replace(/\r\n?/g, '\n').split('\n')) {
     const line = raw.trim()
 
     if (!line) {
       continue
     }
 
-    const item = ITEM_RE.exec(line)
+    const item = ITEM_RE.exec(line.replace(LIST_MARKER_RE, ''))
 
     if (!item) {
       summary.push(line)
     } else {
-      addItem(item[1] === '文件' || item[1].startsWith('File') ? files : links, unwrapItem(item[2]))
+      addItem(['文件', 'file', 'files'].includes(item[1].toLowerCase()) ? files : links, unwrapItem(item[2]))
     }
   }
 
   const chars = codePoints(summary.join('\n'))
 
+  // Cut, trailing whitespace dropped, then the ellipsis (the engine's `_cap`).
   const text =
     chars.length > HANDBACK_SUMMARY_MAX_CHARS
-      ? `${chars.slice(0, HANDBACK_SUMMARY_MAX_CHARS).join('')}…`
+      ? `${chars.slice(0, HANDBACK_SUMMARY_MAX_CHARS).join('').trimEnd()}…`
       : chars.join('')
 
   return text || files.length || links.length ? { files, links, summary: text } : null
