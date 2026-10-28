@@ -19,6 +19,11 @@
 #   会跑到本机真实的 ~/.apexnodes 上（2026-10-28 用 0.17.65 踩过）；
 # - --fast-pool 把池的闲置回收压到 60 秒、保鲜窗口压到 120 秒，只用来快速摸行为，正式数字必须用默认值；
 # - 默认跳过「还有任务在跑，确定退出？」，方便 stop；要验退出提示时加 --quit-confirm。
+# - 壳的自更新关不掉：没有环境变量；改 bundle 里的 app-update.yml 会破坏签名封印，macOS 不让起
+#   （已启动过的副本连改都不让改）；--proxy-pac-url、--host-resolver-rules 挡不住 electron-updater。
+#   自更新装完由 ShipIt 重启时不带测试目录的环境变量，会跑到本机真实家目录上（2026-10-28 踩过）。
+#   所以：只跑线上最新版（prepare、launch 都核对 feed），launch 同时起看门狗，副本日志一出现
+#   「[shell-update] Found version / update available」就结束副本，抢在下载完、空闲安装之前。
 set -euo pipefail
 
 usage() { sed -n '2,9p' "$0"; exit 2; }
@@ -28,6 +33,14 @@ LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.
 
 abs() { (cd "$1" && pwd -P); }
 REAL_LOG="$HOME/.apexnodes/logs/desktop.log"
+UPDATER_CACHE="$HOME/Library/Caches/hermes-updater"
+
+# 线上 feed 的最新版本（读这份副本 app-update.yml 里的 url）
+feed_latest() { local feed; feed=$(sed -n 's/^url: *//p' "$1/APEX.app/Contents/Resources/app-update.yml")
+  curl -fsS --max-time 15 "$feed/mac-arm64/latest-mac.yml" 2>/dev/null | sed -n 's/^version: *//p' | head -1; }
+
+# 共用更新缓存的清单（名字、大小、修改时间）：副本不能往里放东西，真机就是从这里拿到副本下载的包的
+updater_cache_list() { if [ -d "$UPDATER_CACHE" ]; then (cd "$UPDATER_CACHE" && find . -type f -exec stat -f '%N %z %m' {} + | sort); else echo "absent"; fi; }
 
 # 真实家目录日志的「大小 修改时间」，launch 时记下，isolation 时比
 real_log_mark() { if [ -f "$REAL_LOG" ]; then stat -f '%z %m' "$REAL_LOG"; else echo "absent"; fi; }
@@ -62,14 +75,13 @@ prepare() {
   esac
   mkdir -p "$dir/home/hermes" "$dir/home/userdata" "$dir/home/cwd" "$dir/runs"
   echo "hc-1083 test dir created $(date -u +%FT%TZ) from $src" > "$dir/.hc-1083-test-dir"
-  local version feed latest
+  local version latest
   version=$(defaults read "$dir/APEX.app/Contents/Info.plist" CFBundleShortVersionString)
   echo "App 版本：$version"
   # 只用线上最新版：旧版副本会自己下载新版、空闲时装上，ShipIt 重启时不带测试目录的环境变量（2026-10-28 踩过）
-  feed=$(sed -n 's/^url: *//p' "$dir/APEX.app/Contents/Resources/app-update.yml")
-  latest=$(curl -fsS --max-time 15 "$feed/mac-arm64/latest-mac.yml" 2>/dev/null | sed -n 's/^version: *//p' | head -1)
+  latest=$(feed_latest "$dir")
   if [ -z "$latest" ]; then
-    echo "读不到线上最新版本（$feed），不确定会不会自更新，停下"; rm -rf "$dir/APEX.app"; exit 1
+    echo "读不到线上最新版本，不确定会不会自更新，停下"; rm -rf "$dir/APEX.app"; exit 1
   elif [ "$latest" != "$version" ]; then
     echo "拒绝：安装包是 $version，线上最新是 $latest。旧版副本会自更新并跑到真实家目录上"; rm -rf "$dir/APEX.app"; exit 1
   fi
@@ -101,6 +113,13 @@ launch() {
   if [ -f "$dir/app.pid" ] && kill -0 "$(cat "$dir/app.pid")" 2>/dev/null; then
     echo "已经在跑（pid $(cat "$dir/app.pid")）"; exit 1
   fi
+  local version latest
+  version=$(defaults read "$dir/APEX.app/Contents/Info.plist" CFBundleShortVersionString)
+  latest=$(feed_latest "$dir")
+  if [ "$latest" != "$version" ]; then
+    echo "拒绝：副本是 $version，线上最新是「${latest:-读不到}」。旧版副本会自更新并跑到真实家目录上"; exit 1
+  fi
+  updater_cache_list > "$dir/updater-cache.before"
   local extra=()
   [ -z "$confirm" ] && extra+=(HERMES_DESKTOP_SKIP_QUIT_CONFIRM=1)
   [ -n "$single" ] && extra+=(APEXNODES_SINGLE_THREAD=1)
@@ -111,7 +130,15 @@ launch() {
       "$dir/APEX.app/Contents/MacOS/APEX" --use-mock-keychain >>"$dir/app.log" 2>&1 &
   echo $! > "$dir/app.pid"
   real_log_mark > "$dir/real-home-log.mark"
-  echo "$(date -u +%FT%TZ) launch pid $! single_thread=${single:-unset} multi_bot=${multi:-unset} fast_pool=${fast:-0}" >> "$dir/launches.log"
+  # 看门狗：副本发现新版就结束它，抢在下载完、空闲安装（ShipIt 不带环境变量重启）之前
+  # 只看这次启动之后写的行：旧日志里可能有以前的「Found version」
+  local app_pid=$! log="$dir/home/hermes/logs/desktop.log" from
+  from=$(( $( [ -f "$log" ] && wc -l < "$log" || echo 0) + 1 ))
+  nohup bash -c "while kill -0 $app_pid 2>/dev/null; do
+      if tail -n +$from '$log' 2>/dev/null | grep -qE '\[shell-update\] (Found version|update available|Downloading update)'; then
+        kill -TERM $app_pid; echo \"\$(date -u +%FT%TZ) 发现新版，结束副本 pid $app_pid\" >> '$dir/watchdog.log'; break
+      fi; sleep 1; done" >/dev/null 2>&1 &
+  echo "$(date -u +%FT%TZ) launch pid $app_pid single_thread=${single:-unset} multi_bot=${multi:-unset} fast_pool=${fast:-0}" >> "$dir/launches.log"
   local st="平台定" mb="平台定" pool="默认"
   [ -n "$single" ] && st="开"
   [ "$multi" = 1 ] && mb="开"
@@ -141,10 +168,17 @@ isolation() {
   if [ -f "$dir/real-home-log.mark" ] && [ "$(real_log_mark)" != "$(cat "$dir/real-home-log.mark")" ]; then
     echo "FAIL 真实 $REAL_LOG 在本次启动后变了：$(cat "$dir/real-home-log.mark") -> $(real_log_mark)"; bad=1
   fi
+  if [ -f "$dir/updater-cache.before" ] && [ "$(updater_cache_list)" != "$(cat "$dir/updater-cache.before")" ]; then
+    echo "FAIL 共用更新缓存 $UPDATER_CACHE 在本次启动后变了："
+    diff "$dir/updater-cache.before" <(updater_cache_list) | sed 's/^/  /'; bad=1
+  fi
+  if [ -s "$dir/watchdog.log" ]; then
+    echo "FAIL 看门狗触发过（发现新版，副本已被结束）："; sed 's/^/  /' "$dir/watchdog.log"; bad=1
+  fi
   if pgrep -f "/Applications/APEX.app/Contents/MacOS/APEX" >/dev/null; then
     echo "注意：/Applications/APEX.app 在跑，computer use 分不清两个窗口"
   fi
-  [ "$bad" = 0 ] && echo "PASS 隔离还在：副本进程都用测试目录，真实家目录的日志没动"
+  [ "$bad" = 0 ] && echo "PASS 隔离还在：副本进程都用测试目录，真实家目录的日志和共用更新缓存没动，看门狗没触发"
   return "$bad"
 }
 

@@ -30,7 +30,14 @@
   - 规定只跑线上最新版，两个脚本的 `prepare` 加了版本闸；
   - `fresh-env-mac.sh isolation` 每次启动后核对隔离；
   - 第 A 组改用 0.17.66 加 `APEXNODES_MULTI_BOT=0`；
-  - 「关掉测试副本的自更新」的办法在等协调会话审。
+  - 「关掉测试副本的自更新」：协调会话批的第一个办法（改副本的 app-update.yml，把 url 指向 127.0.0.1:9）在这台 Mac 上行不通，见下。
+- 关自更新试过的办法（2026-10-28 12:4x–12:53Z）：
+  - 改 `app-update.yml`：已经启动过的副本，macOS 的「App 管理」保护不让改（沙箱外也是 Operation not permitted）。没启动过的新副本能改，但签名封印失效，启动后卡在 `_dyld_start` 不动，macOS 首启检查不放行。那份副本已挪到测试目录的 `APEX-blocked-stuck.app`，不再用，测完删。
+  - 启动参数 `--proxy-pac-url`（file:// PAC，只把 COS feed 指向死代理）、`--host-resolver-rules`（feed 域名 `~NOTFOUND`）：都挡不住，照样读到「Update for version 0.17.66 is not available」。
+  - 现在的办法（等协调会话确认）：
+    - 只跑线上最新版，`prepare`、`launch` 都读 feed 核对；
+    - `launch` 同时起看门狗，日志一出现「[shell-update] Found version / update available」就结束副本，只看这次启动之后写的行；
+    - `isolation` 核对引擎 HERMES_HOME、真实 desktop.log、共用更新缓存 `~/Library/Caches/hermes-updater`、看门狗记录。
 - 另：副本登录前日志有 `provision-key unavailable (MANAGED_DEVICE_LIMIT_REACHED)`，每个全新副本都算一台新设备。已请协调会话查账号设备数。
 
 后面的 A 组到 N 组都在一个 0.17.66 测试家目录里跑：先用 A 组的 `--multi-bot-off`，再按 B 组切到开，后面一直用它，这样少一次人工登录。这个家目录是空目录起的，没有预置状态。
@@ -85,7 +92,9 @@
 | L2 | 部分 | App 和引擎都退了，但引擎起的 ffmpeg 变孤儿继续跑（问题 7）；`stop` 已改成按工作目录也能找到 |
 | L3、N1、N3 | 没做 | |
 | N2 | **不通过** | 问题 4 |
-| P1–P3 | 没做 | 10-28 新加 |
+| P1 | 通过 | 全新目录、不设任何 install env：首启时没有缓存的配置，主进程三个开关都没设，引擎没有 `APEX_SINGLE_THREAD_ACTIVE` / `APEX_MULTI_BOT_ACTIVE`；同一次启动 12:50:44Z 存下 v6（`client-config stored platform config v6 (boot)`） |
+| P2 | 部分 | 首启的界面（登录页后面）也是上游样子（「开始 ⌘N」「沉浸式分析」「网关 检查中」），不是单线也不是多助手，和引擎一致，没看到不一致。登录后不重启会不会翻：要登录，占一个设备名额，没做 |
+| P3 | 通过 | 第二次启动：`APEX_SINGLE_THREAD_ACTIVE=1`、`APEX_HYPIHUB_ACTIVE=1`、`APEX_MULTI_BOT_ACTIVE=1`，引擎带 `APEX_MULTI_BOT_ACTIVE=1` |
 
 ## 3. 冷启动和内存（Mac，`report` 原样）
 
@@ -149,8 +158,9 @@
 
 ## 8. 还没做的
 
-- I 组（重新登录 key 轮换），H 组（删除），P 组（不设 install env 的平台路径），C8、C9，L3、N1，F1、F5，J1 的服务端版本对照。
-- 前提：先批关测试副本自更新的办法。
+- I 组（重新登录 key 轮换），H 组（删除），C8、C9，L3、N1，F1、F5，P2 登录后那一段，J1 的服务端版本对照。
+- 前提：协调会话确认看门狗的办法。
+- 设备名额：每个全新副本登录都占这个账号一个名额（上限 8，到上限新设备被拒 409，不会挤掉别的设备的 key；判断在 `desktop_provisioning.py`）。测完要在副本里退出登录还回名额：a65 副本（06:34 登录）还占着，要起来退出登录；a66 点过「重新登录」，停在登录页。
 - 0.17.67 上复验：E1（「设置 › 高级」把池上限调成 2）、N2（⌘K 不该再有会话和标签栏入口）。
 - Windows（高配 win-5090 和低配）整套。
 
