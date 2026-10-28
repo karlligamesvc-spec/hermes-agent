@@ -12,6 +12,8 @@ import { $desktopUpdateProgress, applyDesktopUpdates } from '@/store/desktop-upd
 import { $runtimeUpdateCheck, checkRuntimeUpdate } from '@/store/runtime-update'
 import { $shellUpdate, initShellUpdateSubscription } from '@/store/shell-update'
 
+import { EngineHoldersNote, shellUpdateHolders } from './engine-holders-note'
+
 const INITIAL_CHECK_DELAY_MS = 30_000
 const RECHECK_INTERVAL_MS = 12 * 60 * 60 * 1000
 const REMOUNT_CHECK_FLOOR_MS = 30 * 60 * 1000
@@ -47,6 +49,19 @@ async function runSilentRuntimeCheck(): Promise<void> {
 /** hc-1030: while a requested install waits for idle, say what it waits for. */
 function DesktopUpdateDeferredNote({ shell }: { shell: DesktopShellUpdateState | null }) {
   const copy = useDesktopUpdateCopy()
+  // hc-1094: engine holders the gate named are said by kind, and APEX's own leftovers can be ended.
+  const holders = shellUpdateHolders(shell)
+
+  if (holders) {
+    return (
+      <EngineHoldersNote
+        className="p5-update-pill-deferred"
+        holders={holders}
+        onEnded={() => applyDesktopUpdates()}
+        then="install"
+      />
+    )
+  }
 
   if (!shell?.deferred) {
     return null

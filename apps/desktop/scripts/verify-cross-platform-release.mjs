@@ -1,17 +1,15 @@
 import assert from 'node:assert/strict'
 import { pathToFileURL } from 'node:url'
 
-// The feeds a paired release advances: one per platform desktop-macos.yml and
-// desktop-windows.yml build. desktop/mac-x64/ is not read: Intel is no longer
-// built and that feed stays at 0.17.63, so it would fail every later release.
+// The feeds a release advances: one per platform desktop-release.yml builds,
+// which is Mac arm64 only. Two frozen feeds are not read, because nothing
+// builds them and they would fail every later release: desktop/win-x64/
+// (Windows, paused after 0.17.66) and desktop/mac-x64/ (Intel, stopped after
+// 0.17.63).
 const DEFAULT_FEEDS = [
   {
     platform: 'mac-arm64',
     url: 'https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-arm64/latest-mac.yml'
-  },
-  {
-    platform: 'win-x64',
-    url: 'https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/win-x64/latest.yml'
   }
 ]
 
@@ -73,7 +71,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   for (const result of results) {
     console.log(`${result.platform}: ${result.version} ${result.path} (${result.contentLength} bytes)`)
   }
-  console.log(`cross-platform production feeds are synchronized at ${expectedVersion}`)
+  console.log(`production updater feeds (${results.map(result => result.platform).join(', ')}) are at ${expectedVersion}`)
 }
 
 export { DEFAULT_FEEDS, parseFeed, verifyCrossPlatformRelease, verifyWithRetry }
