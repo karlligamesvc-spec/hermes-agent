@@ -211,7 +211,7 @@ def test_relay_off_builds_what_main_built(tmp_path, monkeypatch, state, handoff_
     assert snapshot == json.loads(GOLDEN.read_text(encoding="utf-8"))[f"{state}/{profile}"]
 
 
-def test_relay_on_adds_only_its_section_and_two_hooks(tmp_path, monkeypatch):
+def test_relay_on_adds_only_its_section_and_its_hooks(tmp_path, monkeypatch):
     monkeypatch.setenv(handoff.SWITCH_ENV, "1")
     monkeypatch.setenv(assistant_name.SWITCH_ENV, "1")
     monkeypatch.setenv(single_thread_prompt.SWITCH_ENV, "1")
@@ -225,6 +225,8 @@ def test_relay_on_adds_only_its_section_and_two_hooks(tmp_path, monkeypatch):
     assert after["hooks"] == {
         "post_llm_call": ["apex_overlay.handoff.on_post_llm_call"],
         "pre_llm_call": [*before["hooks"]["pre_llm_call"], "apex_overlay.handoff.on_pre_llm_call"],
+        # hc-1091: outside Desktop chat the reply loses the Desktop-only blocks (test_handoff_plan_exits.py).
+        "transform_llm_output": ["apex_overlay.handoff.on_transform_llm_output"],
     }
     assert (after["apex_tools"], after["apex_tool_schemas"]) == (before["apex_tools"], before["apex_tool_schemas"])
     section = "## Plugin Context: apex.handoff\n"
