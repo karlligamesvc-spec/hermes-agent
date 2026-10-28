@@ -1,0 +1,14 @@
+{
+  "requests": [
+    [
+      "session.list",
+      {
+        "include_hidden": true,
+        "limit": 200,
+        "profile": "default",
+        "title": "APEX 主线"
+      }
+    ]
+  ],
+  "storage": []
+}

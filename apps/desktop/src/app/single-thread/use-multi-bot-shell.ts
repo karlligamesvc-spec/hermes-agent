@@ -13,7 +13,8 @@
  *   「更早的对话」. Once per selection: a switch that does not land is not
  *   retried in a loop;
  * - tells the quick-entry window which assistant a capture will reach, and
- *   names the assistant in system notifications (bot-notifications.ts).
+ *   names the assistant in system notifications (bot-notifications.ts);
+ * - runs the relay (接力) dispatcher while relay is on (hc-1086, handoff-runner.ts).
  *
  * Off (or in a pop-out window) it does nothing.
  */
@@ -37,6 +38,7 @@ import {
 import { profileOfThreadStoredId } from '@/store/single-thread-presence'
 
 import type { RequestGateway } from './composer-middleware'
+import { useHandoffRunner } from './handoff-runner'
 
 export const ROSTER_REFRESH_MS = 20_000
 
@@ -66,6 +68,9 @@ export function useMultiBotShell(
   // The assistant asked for is not the one answering yet: nothing may open the old one's thread meanwhile.
   const switching = multiBot && current !== profile
   const followed = useRef<null | string>(null)
+
+  // hc-1086: the relay dispatcher, while relay is on (it reads its switch only once several assistants are).
+  useHandoffRunner(multiBot, gatewayOpen)
 
   useEffect(() => {
     void loadMultiBotFlag()
