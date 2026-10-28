@@ -65,3 +65,48 @@ describe('desktop update copy (hc-1030)', () => {
     }
   })
 })
+
+describe('engine holder copy (hc-1094)', () => {
+  const KINDS = ['apex_running', 'leftover_engine', 'leftover_gateway', 'terminal_hermes'] as const
+
+  it.each(['zh', 'zh-hant'] as const)('%s says every holder line in Chinese', locale => {
+    const copy = DESKTOP_UPDATE_COPY[locale].holders
+
+    const lines = [
+      ...KINDS.map(kind => copy.names[kind]),
+      copy.names.other(null),
+      copy.names.other('Code Helper'),
+      copy.waiting('x', false),
+      copy.waiting('x', true),
+      copy.endable(false),
+      copy.endable(true),
+      copy.terminal,
+      copy.endAction.install,
+      copy.endAction.switch,
+      copy.confirmTitle,
+      copy.confirmBody('x', 'install'),
+      copy.confirmBody('x', 'switch'),
+      copy.gatewayNote,
+      copy.ending,
+      copy.endFailed
+    ]
+
+    expect(lines.filter(line => !/[一-鿿]/.test(line))).toEqual([])
+    expect(new Set(KINDS.map(kind => copy.names[kind])).size).toBe(KINDS.length)
+  })
+
+  it.each(['en', 'zh', 'zh-hant'] as const)('%s names each kind apart and joins a list', locale => {
+    const copy = DESKTOP_UPDATE_COPY[locale].holders
+
+    expect(new Set([...KINDS.map(kind => copy.names[kind]), copy.names.other(null)]).size).toBe(KINDS.length + 1)
+    expect(copy.join(['a'])).toBe('a')
+    expect(copy.withPids('a', [1, 2])).toMatch(/1.+2/)
+  })
+
+  it('puts a space between a Latin name and the Chinese after it, and none after Chinese', () => {
+    expect(zh.holders.waiting('终端里运行的 hermes', false)).toBe('终端里运行的 hermes 在用 APEX 引擎，它退出后自动安装更新。')
+    expect(zh.holders.waiting('其他程序（Code Helper）', false)).toBe('其他程序（Code Helper）在用 APEX 引擎，它退出后自动安装更新。')
+    expect(en.holders.join(['a', 'b', 'c'])).toBe('a, b, and c')
+    expect(en.holders.join(['a', 'b'])).toBe('a and b')
+  })
+})

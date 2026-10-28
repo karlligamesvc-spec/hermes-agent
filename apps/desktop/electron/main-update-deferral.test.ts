@@ -422,3 +422,26 @@ describe('main.ts wiring for deferred engine updates (hc-906)', () => {
     expect(enclosingFunction(installs.find(call => isWithin(call, reinstall))!)).toBe(reinstall)
   })
 })
+
+describe('main.ts wiring for engine holders (hc-1094)', () => {
+  it('H1: the shell updater ends leftovers through the same switch gate', () => {
+    const [updater] = callsTo(topLevelFunction('initShellUpdater'), 'createShellUpdater')
+
+    expect(isMember(optionsOf(updater!, 0).get('endLeftovers'), 'runtimeSwitch', 'endLeftovers')).toBe(true)
+  })
+
+  it('H2: a busy packaged or legacy apply hands its error and the log to the deferred answer', () => {
+    const apply = topLevelFunction('applyResolvedRuntimeUpdate')
+    const [arm] = callsTo(apply, 'armPackagedRuntimeUpdate')
+    const packagedTry = find(apply, ts.isTryStatement).find(statement => isWithin(arm!, statement.tryBlock))
+    const answer = packagedTry?.catchClause?.block.statements[0] as ts.ReturnStatement
+    const deferred = (answer.expression as ts.ConditionalExpression).whenTrue as ts.CallExpression
+
+    expect(isIdentifier(deferred.arguments[1], packagedTry!.catchClause!.variableDeclaration!.name.getText())).toBe(true)
+    expect(isIdentifier(deferred.arguments[2], 'rememberLog')).toBe(true)
+
+    const [legacy] = callsTo(apply, 'preflightApply')
+
+    expect(isIdentifier(legacy!.arguments[2], 'rememberLog')).toBe(true)
+  })
+})
