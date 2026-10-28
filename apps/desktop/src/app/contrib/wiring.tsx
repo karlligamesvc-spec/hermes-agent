@@ -87,7 +87,7 @@ import {
   setMessages
 } from '@/store/session'
 import { startTaskNotifier } from '@/store/tasks'
-import { $titlebarAppActionsSide, titlebarAppActionsClusterCounts } from '@/store/titlebar-app-actions'
+import { $titlebarAppActionsSide } from '@/store/titlebar-app-actions'
 import { clearSessionTodos, setSessionTodos, todosForHydration } from '@/store/todos'
 import { armWakeWord, stopClientCapture } from '@/store/wake-word'
 import { isAuxiliaryWindow, isBrowserWindow, isHudWindow } from '@/store/windows'
@@ -142,6 +142,7 @@ import { startWorkspaceSession } from '../session/workspace-session-target'
 import { PluginInstallModal } from '../settings/plugin-install-modal'
 import { useOverlayRouting } from '../shell/hooks/use-overlay-routing'
 import { useWindowControlsOverlayWidth } from '../shell/hooks/use-window-controls-overlay-width'
+import { useTitlebarClusterCounts } from '../shell/product-fold'
 import {
   titlebarControlsPosition,
   titlebarControlsYNudge,
@@ -1254,7 +1255,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   const appActionsSide = useStore($titlebarAppActionsSide)
   const paneToolCount = rightTitlebarTools.filter(tool => !tool.hidden).length
   const leftExtraCount = leftTitlebarTools.filter(tool => !tool.hidden).length
-  const clusters = titlebarAppActionsClusterCounts(appActionsSide, leftExtraCount, 0)
+  const clusters = useTitlebarClusterCounts(appActionsSide, leftExtraCount)
   const systemToolsWidth = titlebarToolsWidthCss(clusters.right)
 
   const titlebarToolsWidth =
