@@ -24,7 +24,6 @@
 import { useStore } from '@nanostores/react'
 import { computed } from 'nanostores'
 
-import { withoutNewConversationItems } from '@/app/single-thread/another-conversation'
 import { $fileBrowserOpen, $panesFlipped } from '@/store/layout'
 import { $singleThreadMode } from '@/store/single-thread'
 import { titlebarAppActionsClusterCounts, type TitlebarAppActionsSide } from '@/store/titlebar-app-actions'
@@ -90,23 +89,13 @@ export function useFoldedShortcuts(): ReadonlySet<string> {
   return new Set(Object.keys(FOLDED_SHORTCUTS).filter(actionId => fold[FOLDED_SHORTCUTS[actionId]]))
 }
 
-/** The ⌘K rows of the layout editor: its edit-mode toggle and its reset. */
-const isLayoutEditorRow = (item: { action?: string; id?: string }) =>
-  item.action === 'layout.editMode' || item.id === 'core:layout.reset'
+/** The ⌘K rows of the layout editor: its edit-mode toggle and its reset (keys as `usePaletteContributions` builds them). */
+const isLayoutEditorRow = (item: { action?: string; key: string }) =>
+  item.action === 'layout.editMode' || item.key === 'core:layout.reset'
 
-/** The command palette's groups as single-thread product mode shows them. */
-export function productPaletteGroups<G extends { items: readonly { action?: string; id?: string }[] }>(
-  groups: G[]
-): G[] {
-  const rest = withoutNewConversationItems(groups)
-
-  if (!$titlebarFold.get().layout) {
-    return rest
-  }
-
-  return rest
-    .map(group => ({ ...group, items: group.items.filter(item => !isLayoutEditorRow(item)) }))
-    .filter(group => group.items.length > 0)
+/** The palette's contributed rows, less the layout editor's while it is folded. */
+export function withoutLayoutEditorRows<T extends { action?: string; key: string }>(items: T[]): T[] {
+  return $titlebarFold.get().layout ? items.filter(item => !isLayoutEditorRow(item)) : items
 }
 
 /** The fixed clusters' button counts (the shell reserves their width) with the folded ones taken out. */

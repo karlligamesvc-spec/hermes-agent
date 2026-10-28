@@ -20,7 +20,7 @@ import { titlebarAppActionsClusterCounts } from '@/store/titlebar-app-actions'
 import { setToolViewMode } from '@/store/tool-view'
 
 import { KeybindPanel } from './keybind-panel'
-import { $titlebarFold, productPaletteGroups, titlebarClusterCounts } from './product-titlebar'
+import { $titlebarFold, titlebarClusterCounts, withoutLayoutEditorRows } from './product-titlebar'
 
 /**
  * hc-1085: single-thread product mode folds the titlebar's developer controls
@@ -229,55 +229,35 @@ describe('the folded controls’ shortcuts', () => {
   })
 })
 
-/** The ⌘K 「Commands」 group as the palette builds it from the real registrations. */
-function commandRows() {
-  const { result } = renderHook(() => usePaletteContributions())
+/** The palette's contributed rows as CommandPaletteBody reads them, labels only. */
+function commandLabels(): { all: string[]; shown: string[] } {
+  const { result } = renderHook(() => {
+    const all = usePaletteContributions()
 
-  return [{ items: result.current.map(item => ({ action: item.action, id: item.key, label: item.label })) }]
+    return { all, shown: withoutLayoutEditorRows(all) }
+  })
+
+  return { all: result.current.all.map(item => item.label), shown: result.current.shown.map(item => item.label) }
 }
 
 describe('the layout editor’s ⌘K rows', () => {
-  it.each(['developer', 'switch-off'] as const)('%s: the palette shows them, groups untouched', mode => {
+  it.each(['developer', 'switch-off'] as const)('%s: the palette shows them, rows untouched', mode => {
     setMode(mode)
-    const groups = commandRows()
-    const labels = groups[0].items.map(item => item.label)
+    const { result } = renderHook(() => usePaletteContributions())
 
-    expect(labels).toEqual(expect.arrayContaining(['Toggle layout edit mode', 'Reset layout']))
-    expect(productPaletteGroups(groups)).toBe(groups)
+    expect(result.current.map(item => item.label)).toEqual(
+      expect.arrayContaining(['Toggle layout edit mode', 'Reset layout'])
+    )
+    expect(withoutLayoutEditorRows(result.current)).toBe(result.current)
   })
 
   it('product mode: both rows leave, every other row stays', () => {
     setMode('product')
-    const groups = commandRows()
-    const shown = productPaletteGroups(groups)[0].items.map(item => item.label)
+    const { all, shown } = commandLabels()
 
     expect(shown).not.toContain('Toggle layout edit mode')
     expect(shown).not.toContain('Reset layout')
-    expect(shown).toEqual(
-      groups[0].items
-        .map(item => item.label)
-        .filter(label => label !== 'Toggle layout edit mode' && label !== 'Reset layout')
-    )
-  })
-})
-
-describe('productPaletteGroups keeps hc-1014’s rule', () => {
-  it('product mode still drops the rows that start a second conversation', () => {
-    setMode('product')
-
-    const groups = [
-      {
-        heading: 'Go to',
-        items: [
-          { action: 'session.new', id: 'new' },
-          { action: 'nav.settings', id: 'settings' }
-        ]
-      }
-    ]
-
-    expect(productPaletteGroups(groups)).toEqual([
-      { heading: 'Go to', items: [{ action: 'nav.settings', id: 'settings' }] }
-    ])
+    expect(shown).toEqual(all.filter(label => label !== 'Toggle layout edit mode' && label !== 'Reset layout'))
   })
 })
 

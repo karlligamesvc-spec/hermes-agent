@@ -97,7 +97,8 @@ import { isConsumerHiddenSection, MODEL_TIER_HIDDEN_CONFIG_KEYS, SECTIONS } from
 import { configFieldLabel, type SettingsSearchEntry } from "../settings/settings-search"
 import { settingsSearchTargetQuery } from "../settings/settings-search"
 import { useSettingsSearchCatalog } from "../settings/use-settings-search"
-import { productPaletteGroups } from '../shell/product-titlebar'
+import { withoutLayoutEditorRows } from '../shell/product-titlebar'
+import { withoutNewConversationItems } from '../single-thread/another-conversation'
 import { paletteSessionTitle } from '../single-thread/bot-names'
 
 import { usePaletteContributions } from './contrib'
@@ -697,7 +698,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
   // that generic — the palette never learns which stores its contributions read.
   const [selectTick, setSelectTick] = useState(0)
 
-  const contributedItems = usePaletteContributions()
+  const contributedItems = withoutLayoutEditorRows(usePaletteContributions())
 
   // The active repo's worktrees → "new conversation in <branch>". This is the
   // ⌘K-typed "I want to work on <branch>" reflex: each entry seeds a fresh
@@ -1423,7 +1424,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
 
   const activePage = page ? subPages[page] : null
   const unrankedGroups = activePage ? activePage.groups : groups
-  const visibleGroups = useMemo(() => rankGroups(productPaletteGroups(unrankedGroups), search), [unrankedGroups, search])
+  const visibleGroups = useMemo(() => rankGroups(withoutNewConversationItems(unrankedGroups), search), [unrankedGroups, search])
   const placeholder = activePage ? activePage.placeholder : t.commandCenter.searchPlaceholder
 
   // The HighlightWatcher inside <Command> reports the highlighted row (arrows
