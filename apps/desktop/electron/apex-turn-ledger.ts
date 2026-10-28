@@ -162,13 +162,13 @@ interface LedgerIpc {
  * calls. `quitting` is the local engines' shutdown signal: it aborts as the
  * quit teardown starts, before any engine is stopped.
  */
-export function registerTurnLedger(ipc: LedgerIpc, store: TurnLedgerStore, quitting: AbortSignal): TurnLedger {
+export function registerTurnLedger(ipcMain: LedgerIpc, store: TurnLedgerStore, quitting: AbortSignal): TurnLedger {
   const ledger = createTurnLedger(store)
   const watched = new Set<number>()
 
   quitting.addEventListener('abort', () => ledger.freeze(), { once: true })
 
-  ipc.on('hermes:active-work', (event, payload) => {
+  ipcMain.on('hermes:active-work', (event, payload) => {
     const window = event.sender.id
 
     if (!watched.has(window)) {
@@ -181,8 +181,8 @@ export function registerTurnLedger(ipc: LedgerIpc, store: TurnLedgerStore, quitt
 
     ledger.report(window, sessionIdsOf(payload))
   })
-  ipc.handle('hermes:interrupted-turns', () => ledger.interrupted())
-  ipc.on('hermes:interrupted-turns:settle', (_event, ids) => ledger.settle(sessionIdsOf({ ids })))
+  ipcMain.handle('hermes:interrupted-turns', () => ledger.interrupted())
+  ipcMain.on('hermes:interrupted-turns:settle', (_event, ids) => ledger.settle(sessionIdsOf({ ids })))
 
   return ledger
 }
