@@ -1,16 +1,18 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
 /**
  * hc-1086 (多助手二期 R1): the relay (接力) records and the interface the relay
  * card (R2), the 「交给 X」 button (R4) and the ledger line (R5) use. These are
  * the use cases; the dispatch itself is handoff-runner.test.ts.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
+import { $authState } from './auth'
 import { setSingleThreadFlagForTest } from './single-thread'
 import { botRosterFrom, resetBotRosterForTest, setMultiBotFlagForTest } from './single-thread-bots'
 import {
   $handoffs,
   cancelHandoffsForProfile,
   carryFrom,
+  dropHandoffsOfOtherAccounts,
   forgetHandoff,
   HANDOFF_CARRY_MAX_CHARS,
   HANDOFF_MAX_BATONS,
@@ -35,6 +37,8 @@ import {
   updateHandoff
 } from './single-thread-handoff'
 import { setToolViewMode } from './tool-view'
+
+const SIGNED_OUT_AUTH = $authState.get()
 
 const ROSTER = botRosterFrom(
   [
@@ -81,6 +85,7 @@ function on(): void {
   setToolViewMode('product')
   setMultiBotFlagForTest(true)
   setMultiBotHandoffFlagForTest(true)
+  $authState.set({ ...$authState.get(), accountId: 'acct-1', status: 'signed-in' })
   resetBotRosterForTest(ROSTER)
 }
 
@@ -91,6 +96,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  $authState.set(SIGNED_OUT_AUTH)
   resetHandoffsForTest()
   setMultiBotHandoffFlagForTest(false)
   setMultiBotFlagForTest(false)
@@ -374,5 +380,84 @@ describe('kept on this computer', () => {
     const reloaded = await import('./single-thread-handoff')
 
     expect(reloaded.$handoffs.get().map(record => [record.id, record.status])).toEqual([[a.id, 'running']])
+  })
+})
+
+describe('accounts: a relay belongs to the account it started under', () => {
+  const signIn = (
+    accountId: null | string | undefined,
+    status: 'checking' | 'signed-in' | 'signed-out' = 'signed-in'
+  ) => $authState.set({ ...$authState.get(), accountId, status })
+
+  it('records the account; refuses while the account is not known yet', () => {
+    expect(started().owner).toBe('acct-1')
+
+    // A cached sign-in paints before its subject is read; a changed account is re-checked.
+    signIn(undefined)
+    expect(startHandoff(input({ to: 'editor' }))).toEqual({ ok: false, reason: 'off' })
+    signIn('acct-1', 'checking')
+    expect(startHandoff(input({ to: 'editor' }))).toEqual({ ok: false, reason: 'off' })
+  })
+
+  it('another account signs in: the last one’s relays end, a running turn is interrupted, all leave the list', async () => {
+    const interrupt = vi.fn<HandoffDispatcher['interrupt']>(async () => undefined)
+    const settled: string[] = []
+    const returnedSeen = vi.fn()
+
+    setHandoffDispatcher({ interrupt, kick: vi.fn() })
+    const queued = started()
+    const running = started({ to: 'editor' })
+    const done = started({ to: 'titles' })
+
+    updateHandoff(running.id, { status: 'running' })
+    returned(done.id)
+    onHandoffSettled(record => settled.push(`${record.id}:${record.status}:${record.cancelReason}`))
+    onHandoffReturned(returnedSeen)
+
+    signIn('acct-2')
+    await expect(dropHandoffsOfOtherAccounts()).resolves.toBe(3)
+
+    expect($handoffs.get()).toEqual([])
+    expect(settled).toEqual([`${queued.id}:cancelled:account_changed`, `${running.id}:cancelled:account_changed`])
+    expect(interrupt.mock.calls.map(([record]) => record.id)).toEqual([running.id])
+    expect(returnedSeen).not.toHaveBeenCalled()
+
+    const mine = started()
+
+    await expect(dropHandoffsOfOtherAccounts()).resolves.toBe(0)
+    expect($handoffs.get().map(record => record.id)).toEqual([mine.id])
+  })
+
+  it('signing out drops them too; nothing is dropped while the account is unknown', async () => {
+    started()
+
+    signIn('acct-1', 'checking')
+    await expect(dropHandoffsOfOtherAccounts()).resolves.toBe(0)
+    expect($handoffs.get()).toHaveLength(1)
+
+    signIn(null, 'signed-out')
+    await expect(dropHandoffsOfOtherAccounts()).resolves.toBe(1)
+    expect($handoffs.get()).toEqual([])
+  })
+
+  it('交回 is never announced into another account (R5 writes its ledger line on it)', () => {
+    const seen = vi.fn()
+    const handoff = started()
+
+    updateHandoff(handoff.id, { status: 'running' })
+    onHandoffReturned(seen)
+    signIn('acct-2')
+    returned(handoff.id)
+
+    expect(seen).not.toHaveBeenCalled()
+  })
+
+  it('「再试一次」 only for the account signed in now', () => {
+    const handoff = started()
+
+    updateHandoff(handoff.id, { failure: { kind: 'interrupted', message: '' }, status: 'failed' })
+    signIn('acct-2')
+
+    expect(retryHandoff(handoff.id)).toBe(false)
   })
 })

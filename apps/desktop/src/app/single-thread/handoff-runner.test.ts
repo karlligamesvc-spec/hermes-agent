@@ -1,11 +1,12 @@
-/**
- * hc-1086 (多助手二期 R1): the relay (接力) dispatcher against a fake set of
- * engines, one per assistant, each with its own 「APEX 主线」.
- */
 import type { GatewayEvent } from '@hermes/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { composeHandoffRequest } from '@/lib/handoff-text'
+/**
+ * hc-1086 (多助手二期 R1): the relay (接力) dispatcher against a fake set of
+ * engines, one per assistant, each with its own 「APEX 主线」.
+ */
+import { $authState } from '@/store/auth'
 import { MAIN_THREAD_TITLE, resetMainThreadForTest } from '@/store/main-thread'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
 import { botRosterFrom, resetBotRosterForTest, setMultiBotFlagForTest } from '@/store/single-thread-bots'
@@ -25,6 +26,8 @@ import {
 import { setToolViewMode } from '@/store/tool-view'
 
 import { createHandoffRunner, type HandoffRunner, type HandoffRunnerTiming } from './handoff-runner'
+
+const SIGNED_OUT_AUTH = $authState.get()
 
 const TIMING: HandoffRunnerTiming = {
   missingRounds: 2,
@@ -220,12 +223,14 @@ beforeEach(() => {
   setToolViewMode('product')
   setMultiBotFlagForTest(true)
   setMultiBotHandoffFlagForTest(true)
+  $authState.set({ ...$authState.get(), accountId: 'acct-1', status: 'signed-in' })
   resetBotRosterForTest(ROSTER)
   engines = new Engines()
   threadChanged = vi.fn<(profile: string) => void>()
 })
 
 afterEach(() => {
+  $authState.set(SIGNED_OUT_AUTH)
   runner?.dispose()
   resetHandoffsForTest()
   resetMainThreadForTest()
@@ -651,6 +656,48 @@ describe('a reopened window (Mac: closing the window keeps the app)', () => {
     await vi.waitFor(() => expect(status(handoff.id)).toBe('failed'))
     expect(record(handoff.id).failure?.kind).toBe('interrupted')
     expect(engines.callsTo('writer', 'prompt.submit')).toEqual([])
+  })
+})
+
+describe('accounts', () => {
+  const signIn = (accountId: string, status: 'checking' | 'signed-in' = 'signed-in') =>
+    $authState.set({ ...$authState.get(), accountId, status })
+
+  it('never runs another account’s relay: it is dropped before anything reaches an engine', async () => {
+    engines.thread('writer')
+    const theirs = relay()
+
+    signIn('acct-2')
+    startRunner().kick()
+
+    await vi.waitFor(() => expect(handoffById(theirs.id)).toBeNull())
+    expect(engines.calls).toEqual([])
+  })
+
+  it('the last account’s running relay: its turn is interrupted and never harvested', async () => {
+    engines.thread('writer')
+    startRunner()
+    const theirs = relay()
+
+    await vi.waitFor(() => expect(engines.callsTo('writer', 'prompt.submit')).toHaveLength(1))
+    signIn('acct-2')
+    runner.kick()
+
+    await vi.waitFor(() => expect(engines.callsTo('writer', 'session.interrupt')).toHaveLength(1))
+    engines.finish('writer', '上一个账户的结果')
+    await new Promise(resolve => setTimeout(resolve, TIMING.pollMs * 3))
+    expect(handoffById(theirs.id)).toBeNull()
+  })
+
+  it('runs nothing while the account is not known', () => {
+    engines.thread('writer')
+    relay()
+    signIn('acct-1', 'checking')
+    vi.useFakeTimers()
+    startRunner().kick()
+
+    expect(engines.calls).toEqual([])
+    expect(vi.getTimerCount()).toBe(0)
   })
 })
 
