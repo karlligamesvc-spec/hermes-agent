@@ -294,6 +294,8 @@ describe('deleting an assistant (K9)', () => {
     returned(toWriter.id)
     const again = started()
 
+    // Both are mid-turn: the one to the deleted receiver and the one it sent.
+    updateHandoff(again.id, { status: 'running' })
     updateHandoff(fromWriter.id, {
       from: { messageId: null, profile: 'writer', storedSessionId: null },
       status: 'running'
