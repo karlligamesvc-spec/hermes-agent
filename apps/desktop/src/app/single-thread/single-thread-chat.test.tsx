@@ -256,11 +256,28 @@ describe('hc-1059 bubbles hold the words, and only the words', () => {
       ).toEqual([])
     }
 
-    // The next steps come last, under the steps, as in the prototype.
-    expect(getComputedStyle(container.querySelector('[data-slot="aui_assistant-message-content"]')!).display).toBe(
-      'flex'
+    // hc-1101: the words' box opens up and the reply's column orders what it holds: the
+    // words, the copy / read-aloud / answer-again row right under them, 用时 · 看过程 and its
+    // steps, the next steps, 「记下了」. The words keep their text indent.
+    const content = [...container.querySelectorAll('[data-slot="aui_assistant-message-content"]')].at(-1)!
+    const reply = content.closest('[data-slot="aui_assistant-message-root"]')!
+    const actionRow = reply.querySelector('[data-slot="aui_msg-actions"]')!.parentElement!.parentElement!
+    const order = (element: Element) => Number(getComputedStyle(element).order)
+
+    expect(getComputedStyle(content).display).toBe('contents')
+    expect(actionRow.parentElement).toBe(reply)
+    expect(
+      [
+        content.querySelector(':scope > .aui-md')!,
+        actionRow,
+        content.querySelector(':scope > [data-single-thread-process]')!,
+        content.querySelector(':scope > [data-next-steps]')!,
+        reply.querySelector(':scope > [data-memory-noted]')!
+      ].map(order)
+    ).toEqual([0, 1, 2, 3, 4])
+    expect(getComputedStyle(content.querySelector(':scope > .aui-md')!).marginInlineStart).toBe(
+      'var(--message-text-indent)'
     )
-    expect(getComputedStyle(container.querySelector('[data-next-steps]')!).order).toBe('1')
   })
 
   it('the failure card and the activity line are outside the bubbles too', async () => {
