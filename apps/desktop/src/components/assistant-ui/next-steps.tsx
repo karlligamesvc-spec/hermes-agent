@@ -16,7 +16,9 @@
  * can take it: relay mode on (`multi_bot_handoff`, several assistants, product mode — never in
  * developer mode), the name is another assistant on the roster, and the assistant on screen is
  * not itself working on a relay (接手的不能再往外交). Otherwise the option is left out and the
- * rest of the row is exactly what it was without it.
+ * rest of the row is exactly what it was without it. When the relay still refuses a click (the
+ * switch, the roster or the chain changed under the row), one plain line under the row says why
+ * and the row stays usable.
  */
 
 import { useAuiState, useMessagePartText } from '@assistant-ui/react'
@@ -33,7 +35,14 @@ import { isHandoff, type NextStepOption, type NextStepsBlock, parseNextSteps } f
 import { $gatewayState } from '@/store/session'
 import { cleanBotName } from '@/store/single-thread-bot-ops'
 import { $botRoster, $currentBotProfile, type ApexBot } from '@/store/single-thread-bots'
-import { $handoffMode, $handoffs, handoffsTo, isHandoffActive, startHandoff } from '@/store/single-thread-handoff'
+import {
+  $handoffMode,
+  $handoffs,
+  handoffsTo,
+  isHandoffActive,
+  startHandoff,
+  type StartHandoffRefusal
+} from '@/store/single-thread-handoff'
 
 // Rows already used, module-scoped: transcript virtualization remounts the row with fresh
 // state, which would otherwise offer the same click twice before the user message lands.
@@ -87,6 +96,7 @@ function NextStepRow({ block, visible }: { block: NextStepsBlock; visible: strin
   const copy = useNextStepsCopy()
   const identity = JSON.stringify([storedId ?? runtimeId, messageId, block])
   const [sent, setSent] = useState(() => used.has(identity))
+  const [refused, setRefused] = useState<null | { name: string; reason: StartHandoffRefusal }>(null)
 
   if (!view || view.live || !view.isLastTurn || !isLastMessage) {
     return null
@@ -136,10 +146,15 @@ function NextStepRow({ block, visible }: { block: NextStepsBlock; visible: strin
       to: bot.profile
     })
 
-    if (started.ok) {
-      used.add(identity)
-      setSent(true)
+    if (!started.ok) {
+      setRefused({ name: bot.name, reason: started.reason })
+
+      return
     }
+
+    setRefused(null)
+    used.add(identity)
+    setSent(true)
   }
 
   if (block.failed !== null) {
@@ -154,7 +169,7 @@ function NextStepRow({ block, visible }: { block: NextStepsBlock; visible: strin
     return null
   }
 
-  return (
+  const row = (
     <div
       aria-label={copy.group}
       className="mt-2 flex min-w-0 max-w-full flex-wrap gap-2"
@@ -188,5 +203,22 @@ function NextStepRow({ block, visible }: { block: NextStepsBlock; visible: strin
         )
       )}
     </div>
+  )
+
+  if (!refused) {
+    return row
+  }
+
+  return (
+    <>
+      {row}
+      <p
+        className="mt-1 text-[12px] text-muted-foreground"
+        data-next-step-handoff-refused={refused.reason}
+        role="status"
+      >
+        {copy.refused[refused.reason](refused.name)}
+      </p>
+    </>
   )
 }

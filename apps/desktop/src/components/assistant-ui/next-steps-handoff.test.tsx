@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider, type Locale, setRuntimeI18nLocale } from '@/i18n'
+import { NEXT_STEPS_COPY } from '@/i18n/next-steps'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $activeSessionId, $gatewayState } from '@/store/session'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
@@ -25,7 +26,7 @@ import { Thread } from './thread'
 // byte for byte by src/next-steps-handoff-identity.test.tsx; this file pins what a click does.
 
 const submitted = vi.hoisted(() => [] as string[])
-const refuse = vi.hoisted(() => ({ on: false }))
+const refuse = vi.hoisted(() => ({ reason: null as null | string }))
 
 vi.mock('@/app/chat/composer/focus', async importActual => ({
   ...(await importActual<Record<string, unknown>>()),
@@ -42,7 +43,7 @@ vi.mock('@/store/single-thread-handoff', async importActual => {
   return {
     ...actual,
     startHandoff: (input: Parameters<typeof actual.startHandoff>[0]) =>
-      refuse.on ? { ok: false, reason: 'nested' } : actual.startHandoff(input)
+      refuse.reason ? { ok: false, reason: refuse.reason } : actual.startHandoff(input)
   }
 })
 
@@ -60,6 +61,9 @@ const ANSWER = '标题写好了：\n\n1. 不打孔也能装的收纳架\n\n参�
 const reply = (...lines: string[]) => `${ANSWER}\n\n<!-- apex:next\n${lines.join('\n')}\n-->`
 
 const TO_WRITER = '@小红书文案 | 写成笔记 | 把第 1 个标题写成小红书笔记'
+
+// Every StartHandoffRefusal of hc-1086 (store/single-thread-handoff.ts).
+const REFUSALS = ['empty', 'nested', 'off', 'self', 'too_many_batons', 'unknown_continues', 'unknown_receiver'] as const
 const PLAIN = '再写 3 个 | 再写 3 个标题'
 
 let answers = 0
@@ -115,7 +119,7 @@ function relayOn(on = true) {
 
 beforeEach(() => {
   submitted.length = 0
-  refuse.on = false
+  refuse.reason = null
   resetHandoffsForTest()
   $activeGatewayProfile.set('default')
   $activeSessionId.set('session-handoff')
@@ -170,19 +174,39 @@ describe('a 「交给」 option with the relay on', () => {
     expect(plain).toHaveProperty('disabled', true)
   })
 
-  it('leaves the row usable when the relay refuses', async () => {
+  it.each(REFUSALS)('says why in plain words when the relay refuses (%s), and the row stays usable', async reason => {
     relayOn()
-    refuse.on = true
-    renderReply(reply(TO_WRITER, PLAIN))
+    refuse.reason = reason
+    const { container } = renderReply(reply(TO_WRITER, PLAIN))
 
     const [handoff, plain] = await rowButtons()
 
+    expect(container.querySelector('[data-next-step-handoff-refused]')).toBeNull()
     fireEvent.click(handoff)
 
+    const note = await waitFor(() => screen.getByRole('status'))
+    expect(note.getAttribute('data-next-step-handoff-refused')).toBe(reason)
+    expect(note.textContent).toBe(NEXT_STEPS_COPY.zh.refused[reason]('小红书文案'))
     expect($handoffs.get()).toEqual([])
     expect(handoff).toHaveProperty('disabled', false)
     fireEvent.click(plain)
     expect(submitted).toEqual(['再写 3 个标题'])
+  })
+
+  it('clears the note once a later click goes through', async () => {
+    relayOn()
+    refuse.reason = 'off'
+    const { container } = renderReply(reply(TO_WRITER, PLAIN))
+
+    const [handoff] = await rowButtons()
+
+    fireEvent.click(handoff)
+    await waitFor(() => expect(container.querySelector('[data-next-step-handoff-refused]')).not.toBeNull())
+    refuse.reason = null
+    fireEvent.click(handoff)
+
+    await waitFor(() => expect(container.querySelector('[data-next-step-handoff-refused]')).toBeNull())
+    expect($handoffs.get()).toHaveLength(1)
   })
 
   it('matches the name the way the sidebar shows it: any case, runs of spaces', async () => {
@@ -194,6 +218,28 @@ describe('a 「交给」 option with the relay on', () => {
     expect(handoff.textContent).toBe('Hand to Captions 2: Add subtitles')
     expect(handoff.getAttribute('title')).toBe('Hands this to Captions 2: Add burned-in subtitles to this cut')
     expect(handoff.getAttribute('data-next-step-handoff')).toBe('captions')
+  })
+})
+
+describe('the refusal lines', () => {
+  it.each(['zh', 'zh-hant', 'en'] as const)('name the assistant for every hc-1086 refusal (%s)', locale => {
+    const copy = NEXT_STEPS_COPY[locale].refused
+
+    expect(Object.keys(copy).sort()).toEqual([...REFUSALS].sort())
+
+    for (const reason of REFUSALS) {
+      expect(copy[reason]('剪辑助手')).toContain('剪辑助手')
+    }
+  })
+
+  it('keeps Chinese lines free of English words and internal names', () => {
+    for (const locale of ['zh', 'zh-hant'] as const) {
+      for (const reason of REFUSALS) {
+        const line = NEXT_STEPS_COPY[locale].refused[reason]('剪辑助手')
+
+        expect(line).not.toMatch(/[A-Za-z]/)
+      }
+    }
   })
 })
 
