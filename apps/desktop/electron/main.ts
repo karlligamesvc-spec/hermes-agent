@@ -1848,10 +1848,10 @@ let desktopLogFlushTimer = null
 let desktopLogFlushPromise = Promise.resolve()
 
 let poolLimits = readPersistedPoolLimits(POOL_LIMITS_PATH, process.env, rememberLog)
-// Hard cap on local backends that are starting OR running (the LRU eviction
-// above is soft — it spares keepalive-fresh entries). Follows the live
-// preference: setPoolLimits() pushes a new max into the coordinator.
-const localBackendSpawnCoordinator = new LocalBackendSpawnCoordinator(poolLimits.maxBackends)
+// Hard cap on local backends that are starting OR running (the LRU eviction above is soft — it spares keepalive-fresh
+// entries). Follows the live preference: setPoolLimits() pushes a new max. hc-1093: a user open queued behind a
+// background dial (it joined that dial's claim) makes room the way an open that owns its dial does (hc-1080).
+const localBackendSpawnCoordinator = new LocalBackendSpawnCoordinator(poolLimits.maxBackends, { onForegroundWait: () => isMultiBotActive(process.env) && evictLruPoolBackends(poolMaxBackends() - 1, 'foreground') })
 // How long a spawn may wait for a free local slot. Must stay under the
 // renderer's BACKEND_BOOT_WAIT_TIMEOUT_MS (45s, src/lib/with-timeout.ts) so
 // the queued ticket fails before the renderer does and the user sees why.

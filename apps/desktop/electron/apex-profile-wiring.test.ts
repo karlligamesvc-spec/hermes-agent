@@ -202,6 +202,27 @@ describe('pooled engines', () => {
     )
   })
 
+  // hc-1093: a user open that joined a background dial's claim only promoted the queued slot request,
+  // and waited 30 s. The slot coordinator now hands every foreground waiter it cannot seat to the same
+  // eviction, under the same switch (behaviour: apex-pool-foreground.test.ts).
+  test('a user open queued behind a background dial makes room the same way', () => {
+    assert.match(
+      code,
+      /new LocalBackendSpawnCoordinator\(poolLimits\.maxBackends, \{ onForegroundWait: \(\) => isMultiBotActive\(process\.env\) && evictLruPoolBackends\(poolMaxBackends\(\) - 1, 'foreground'\) \}\)/
+    )
+
+    // The two ways a click reaches a spawn it did not start both end in a foreground slot request.
+    assert.match(body('function promotePoolEntry('), /entry\.localBackendSpawnRequest\?\.promote\?\.\('foreground'\)/)
+
+    const start = body('async function runPoolBackendStart(')
+
+    assert.match(start, /if \(takeForegroundSpawn\(poolKey, profile\)\) \{\n\s+entry\.spawnPriority = 'foreground'\n\s+\}/)
+    assert.match(
+      start,
+      /localBackendSpawnCoordinator\.request\(poolKey, \{\n\s+timeoutMs: POOL_SLOT_WAIT_MS,\n\s+priority: spawnPriority\n\s+\}\)/
+    )
+  })
+
   test('the idle reaper asks the engine before it stops it', () => {
     const reaper = body('function startPoolIdleReaper(')
 
