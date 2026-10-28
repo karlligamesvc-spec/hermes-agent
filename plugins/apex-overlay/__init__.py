@@ -110,6 +110,13 @@ _CONTEXT_SEAMS = (
         "the sidebar keeps the name its prompt was built with.",
     ),
     (
+        "handoff",
+        "apex-overlay: hc-1088 relay seam did not register (see prior "
+        "warning). With relay on, a job handed over from another assistant "
+        "is not recognised and nothing is handed back, and assistants cannot "
+        "offer a job to the one whose 分工 it is.",
+    ),
+    (
         "proactive_prompt",
         "apex-overlay: hc-1071 proactive prompt section did not register "
         "(see prior warning). With desktop_features.single_thread on, APEX "

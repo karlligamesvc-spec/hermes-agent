@@ -49,6 +49,8 @@ _SEAM_MODULES = (
     "single_thread_prompt",
     # hc-1082 each assistant's own name and the apex_rename tool (several assistants on).
     "assistant_name",
+    # hc-1088 relay between assistants: hand-over turn, 交回摘要 and the roster (relay on).
+    "handoff",
     # hc-1071 ask first, next-step buttons and an offer after a finished piece (single-thread mode).
     "proactive_prompt",
     # hc-1036 evidence levels and delivery honesty in every Desktop session.
