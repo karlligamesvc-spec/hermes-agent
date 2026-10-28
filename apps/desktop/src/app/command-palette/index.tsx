@@ -97,6 +97,7 @@ import { isConsumerHiddenSection, MODEL_TIER_HIDDEN_CONFIG_KEYS, SECTIONS } from
 import { configFieldLabel, type SettingsSearchEntry } from "../settings/settings-search"
 import { settingsSearchTargetQuery } from "../settings/settings-search"
 import { useSettingsSearchCatalog } from "../settings/use-settings-search"
+import { withoutFoldedRows } from '../shell/product-fold'
 import { withoutNewConversationItems } from '../single-thread/another-conversation'
 import { paletteSessionTitle } from '../single-thread/bot-names'
 
@@ -1422,7 +1423,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
   )
 
   const activePage = page ? subPages[page] : null
-  const unrankedGroups = activePage ? activePage.groups : groups
+  const unrankedGroups = withoutFoldedRows(activePage ? activePage.groups : groups)
   const visibleGroups = useMemo(() => rankGroups(withoutNewConversationItems(unrankedGroups), search), [unrankedGroups, search])
   const placeholder = activePage ? activePage.placeholder : t.commandCenter.searchPlaceholder
 
