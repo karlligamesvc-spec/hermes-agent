@@ -120,6 +120,7 @@ const elsewhere: HandoffRecord = {
   from: { messageId: null, name: '小红书文案', profile: 'writer', storedSessionId: null },
   id: 'ho_x',
   notBefore: null,
+  owner: 'acc-1',
   queueReason: null,
   result: null,
   startedAt: 1,

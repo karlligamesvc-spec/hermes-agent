@@ -18,7 +18,7 @@
  */
 
 import { useStore } from '@nanostores/react'
-import type { ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import { ApexAvatar } from '@/components/apex-avatar'
 import { MarkdownTextContent } from '@/components/assistant-ui/markdown-text'
@@ -32,11 +32,13 @@ import {
   useSingleThreadHandoffCopy
 } from '@/i18n/single-thread-handoff'
 import { cn } from '@/lib/utils'
+import { $authState } from '@/store/auth'
 import { $botRoster, type ApexBot, openBot } from '@/store/single-thread-bots'
 import {
   $handoffs,
   carryFrom,
   forgetHandoff,
+  handoffAccountOf,
   type HandoffCarry,
   handoffQueuePosition,
   type HandoffRecord,
@@ -53,7 +55,7 @@ import {
 } from '@/store/single-thread-handoff-confirm'
 
 import type { HandoffRequestView } from './request-view'
-import { useHandoffUsageLine } from './usage-line'
+import { handoffRetryBlocked, useHandoffUsageLine } from './usage-line'
 
 const CARD_CLASS =
   'flex w-[30rem] max-w-full flex-col gap-2 self-start rounded-2xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-3.5 py-3 text-[0.875rem] leading-relaxed text-(--ui-text-primary)'
@@ -176,9 +178,12 @@ export function HandoffConfirmCard({ proposal }: { proposal: HandoffProposal }) 
   const name = bot?.name ?? proposal.input.to
   const carry = carryFrom(proposal.input.previous)
   const ask = proposal.input.ask.trim()
-  const usage = useHandoffUsageLine(1, name)
+  const usage = useHandoffUsageLine(1)
   const blocked = usage?.tone === 'blocked'
+  // hc-1086 starts nothing until the first sign-in check says whose relay it is.
+  const accountPending = handoffAccountOf(useStore($authState)) === undefined
   const refusal = proposal.refusal ?? (ask ? null : 'empty')
+  const note = blocked && usage?.blockedReason ? usage.blockedReason : refusal ? copy.refusal(refusal, name) : null
 
   return (
     <section aria-label={copy.confirmTitle(name)} className={CARD_CLASS} data-handoff-card="confirm">
@@ -202,13 +207,24 @@ export function HandoffConfirmCard({ proposal }: { proposal: HandoffProposal }) 
           {usage.text}
         </p>
       )}
-      {(refusal || (blocked && usage?.blockedReason)) && (
-        <p className="m-0 text-xs text-destructive" role="alert">
-          {blocked && usage?.blockedReason ? usage.blockedReason : copy.refusal(refusal!, name)}
+      {usage?.warning && !blocked && (
+        <p className="m-0 text-xs leading-5 text-(--ui-orange)" data-handoff-usage-warning="">
+          {usage.warning}
         </p>
       )}
+      {note && (
+        <p className="m-0 text-xs text-destructive" role="alert">
+          {note}
+        </p>
+      )}
+      {accountPending && !note && <p className={META_CLASS}>{copy.accountPending}</p>}
       <Actions>
-        <Button disabled={blocked || !ask} onClick={() => confirmHandoffProposal()} size="sm" type="button">
+        <Button
+          disabled={blocked || !ask || accountPending}
+          onClick={() => confirmHandoffProposal()}
+          size="sm"
+          type="button"
+        >
           {copy.confirm}
         </Button>
         <Button onClick={dismissHandoffProposal} size="sm" type="button" variant="outline">
@@ -227,10 +243,15 @@ interface StatusView {
   actions: ReactNode
 }
 
-function relayStatus(record: HandoffRecord, name: string, copy: SingleThreadHandoffCopy, position: null | number) {
+function relayStatus(
+  record: HandoffRecord,
+  name: string,
+  copy: SingleThreadHandoffCopy,
+  position: null | number,
+  retry: () => void
+) {
   const open = () => void openBot(record.to).catch(() => undefined)
   const stop = () => void stopHandoff(record.id)
-  const retry = () => retryHandoff(record.id)
   const close = () => forgetHandoff(record.id)
 
   const closeButton = (
@@ -322,7 +343,7 @@ function relayStatus(record: HandoffRecord, name: string, copy: SingleThreadHand
     case 'failed':
       return {
         actions: null,
-        body: <FailedBody copy={copy} name={name} record={record} />,
+        body: <FailedBody copy={copy} name={name} onRetry={retry} record={record} />,
         chip: <Chip tone="fail">{record.failure?.kind === 'interrupted' ? copy.interruptedChip : copy.failedChip}</Chip>
       }
 
@@ -350,14 +371,24 @@ function relayStatus(record: HandoffRecord, name: string, copy: SingleThreadHand
 }
 
 /** hc-973's three ways on, for a relay: 再试一次 runs the same relay again; the other two hand the same receiver a new sentence (through the confirm card). */
-function FailedBody({ copy, name, record }: { copy: SingleThreadHandoffCopy; name: string; record: HandoffRecord }) {
+function FailedBody({
+  copy,
+  name,
+  onRetry,
+  record
+}: {
+  copy: SingleThreadHandoffCopy
+  name: string
+  onRetry: () => void
+  record: HandoffRecord
+}) {
   const { t } = useI18n()
   const failure = t.assistant.tool.process.failure
   const title = [...record.ask.replace(/\s+/g, ' ').trim()].slice(0, 20).join('')
 
   const onAsk = (message: string) => {
     if (message === failure.retryMessage(title)) {
-      retryHandoff(record.id)
+      onRetry()
 
       return
     }
@@ -388,7 +419,19 @@ export function HandoffRelayCard({ record }: { record: HandoffRecord }) {
   const names = useStore($handoffReceiverNames)
   // A deleted receiver keeps the name it had when the relay started (K9: 「X 已删除」).
   const name = bot?.name ?? names[record.to] ?? record.to
-  const status: StatusView = relayStatus(record, name, copy, position)
+  const [held, setHeld] = useState<null | string>(null)
+
+  // 「再试一次」 runs a turn without a card: a used-up allowance (R5) keeps the relay where it is and says why.
+  const retry = () =>
+    void handoffRetryBlocked().then(reason => {
+      setHeld(reason)
+
+      if (!reason) {
+        retryHandoff(record.id)
+      }
+    })
+
+  const status: StatusView = relayStatus(record, name, copy, position, retry)
 
   return (
     <section
@@ -404,6 +447,11 @@ export function HandoffRelayCard({ record }: { record: HandoffRecord }) {
       <p className={QUOTE_CLASS}>{record.ask}</p>
       {isHandoffActive(record) && <p className={META_CLASS}>{copy.carried(carryCount(record.carry))}</p>}
       {status.body}
+      {held && !isHandoffActive(record) && (
+        <p className="m-0 text-xs text-destructive" role="alert">
+          {held}
+        </p>
+      )}
       {status.actions}
     </section>
   )

@@ -4,6 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { $authState } from './auth'
 import { setSingleThreadFlagForTest } from './single-thread'
 import { type BotProfileRow, botRosterFrom, resetBotRosterForTest, setMultiBotFlagForTest } from './single-thread-bots'
 import {
@@ -40,6 +41,7 @@ function relayOn(on = true): void {
   setMultiBotFlagForTest(true)
   setMultiBotHandoffFlagForTest(on)
   resetBotRosterForTest(botRosterFrom(ROWS, () => true))
+  $authState.set({ ...$authState.get(), accountId: 'acc-1', status: 'signed-in' })
 }
 
 beforeEach(() => {
@@ -113,6 +115,15 @@ describe('proposeHandoff', () => {
     expect($handoffProposal.get()?.refusal).toBe('unknown_receiver')
     expect($handoffs.get()).toEqual([])
     expect(onStarted).not.toHaveBeenCalled()
+  })
+
+  it('starts nothing while the first sign-in check has not said whose account it is', () => {
+    relayOn()
+    $authState.set({ ...$authState.get(), accountId: undefined, status: 'checking' })
+    proposeHandoff(INPUT)
+
+    expect(confirmHandoffProposal()).toEqual({ ok: false, reason: 'off' })
+    expect($handoffs.get()).toEqual([])
   })
 
   it('「先不」 starts nothing', () => {

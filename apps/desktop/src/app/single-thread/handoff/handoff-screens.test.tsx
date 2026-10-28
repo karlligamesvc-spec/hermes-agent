@@ -19,7 +19,9 @@ import { COMPOSER_AREAS } from '@/app/chat/composer/contrib'
 import { stubThreadEnvironment, stubThreadViewportSize } from '@/components/assistant-ui/test-utils'
 import { registry } from '@/contrib/registry'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
+import { $authState } from '@/store/auth'
 import { $mainThread, noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
+import { $planUsage } from '@/store/plan-usage'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $selectedStoredSessionId } from '@/store/session'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
@@ -125,6 +127,7 @@ function record(id: string, over: Partial<HandoffRecord> = {}): HandoffRecord {
     from: { messageId: 't1-answer', name: 'APEX', profile: 'default', storedSessionId: 'chat-a' },
     id,
     notBefore: null,
+    owner: 'acc-1',
     queueReason: null,
     result: null,
     startedAt: t,
@@ -145,6 +148,7 @@ function relayOn(onScreen = 'default', storedId = 'chat-a'): void {
   setMultiBotHandoffFlagForTest(true)
   resetBotRosterForTest(botRosterFrom(ROWS, () => true))
   $activeGatewayProfile.set(onScreen)
+  $authState.set({ ...$authState.get(), accountId: 'acc-1', status: 'signed-in' })
   noteMainThreadClaimed(onScreen, storedId)
   $selectedStoredSessionId.set(storedId)
 }
@@ -280,7 +284,9 @@ describe('the sender’s relay card, each state (⑩ ⑫)', () => {
     })
     expect(handoffById('r')?.status).toBe('stopped')
 
-    fireEvent.click(within(card(container, 's')).getByRole('button', { name: '再试一次' }))
+    await act(async () => {
+      fireEvent.click(within(card(container, 's')).getByRole('button', { name: '再试一次' }))
+    })
     expect(handoffById('s')?.status).toBe('queued')
 
     await act(async () => {
@@ -310,7 +316,9 @@ describe('the sender’s relay card, each state (⑩ ⑫)', () => {
       to: 'writer'
     })
 
-    fireEvent.click(within(card(container, 'f')).getByRole('button', { name: '重试' }))
+    await act(async () => {
+      fireEvent.click(within(card(container, 'f')).getByRole('button', { name: '重试' }))
+    })
     expect(handoffById('f')?.status).toBe('queued')
   })
 })
@@ -337,7 +345,7 @@ describe('the confirm card (L2, L6)', () => {
     expect(shown.textContent).toContain('会带上：上面那条结果（16 字）、1 个文件、1 个链接和你这句话。')
     expect(shown.textContent).toContain('收纳素材')
     expect(shown.textContent).toContain('www.xiaohongshu.com')
-    expect(shown.querySelector('[data-handoff-usage]')?.textContent).toBe('小红书文案要多跑 1 个回合，按你的套餐额度算')
+    expect(shown.querySelector('[data-handoff-usage]')?.textContent).toBe('要多跑 1 个回合，按你的套餐额度算')
     expect(
       shown.closest('[data-slot="aui_message-group"]')?.querySelector('[data-message-id="t1-answer"]')
     ).not.toBeNull()
@@ -347,6 +355,63 @@ describe('the confirm card (L2, L6)', () => {
     expect($handoffs.get()).toHaveLength(1)
     expect(container.querySelector('[data-handoff-card="confirm"]')).toBeNull()
     expect(container.querySelector('[data-handoff-card="relay"]')).not.toBeNull()
+  })
+
+  it('waits for the first sign-in check: 「交给它」 cannot start a relay of nobody’s yet', async () => {
+    relayOn()
+    $authState.set({ ...$authState.get(), accountId: undefined, status: 'checking' })
+    proposeHandoff({
+      ask: '写标题',
+      from: { messageId: null, profile: 'default', storedSessionId: 'chat-a' },
+      to: 'writer'
+    })
+
+    const shown = (await renderTranscript(APEX_THREAD)).querySelector<HTMLElement>('[data-handoff-card="confirm"]')!
+
+    expect((within(shown).getByRole('button', { name: '交给它' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(shown.textContent).toContain('还在确认你登录的账号，稍等一下再交。')
+  })
+
+  it('says the usage line and its reminder; a used-up allowance holds the relay back and says why (R5)', async () => {
+    relayOn()
+    $planUsage.set({ accountId: 'acc-1', usage: { period: 'month', planName: '快速', usedRatio: 0.85 } })
+    proposeHandoff({
+      ask: '写标题',
+      from: { messageId: null, profile: 'default', storedSessionId: 'chat-a' },
+      to: 'writer'
+    })
+
+    let shown = (await renderTranscript(APEX_THREAD)).querySelector<HTMLElement>('[data-handoff-card="confirm"]')!
+
+    expect(shown.querySelector('[data-handoff-usage]')?.textContent).toBe(
+      '要多跑 1 个回合，按你的套餐额度算 · 本月已用 85%'
+    )
+    expect(shown.querySelector('[data-handoff-usage-warning]')).not.toBeNull()
+    expect(shown.querySelector('[data-handoff-usage]')?.getAttribute('data-handoff-usage')).toBe('warn')
+    cleanup()
+
+    $planUsage.set({ accountId: 'acc-1', usage: { period: 'month', planName: '快速', usedRatio: 1 } })
+    shown = (await renderTranscript(APEX_THREAD)).querySelector<HTMLElement>('[data-handoff-card="confirm"]')!
+
+    expect((within(shown).getByRole('button', { name: '交给它' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(within(shown).getByRole('alert').textContent).toContain('本月额度已经用完')
+    $planUsage.set(null)
+  })
+
+  it('「再试一次」 reads the usage first: used up, the relay stays where it is and says why', async () => {
+    relayOn()
+    $planUsage.set({ accountId: 'acc-1', usage: { period: 'month', planName: '快速', usedRatio: 1 } })
+    resetHandoffsForTest([record('s', { status: 'stopped' })])
+
+    const container = await renderTranscript(APEX_THREAD)
+
+    await act(async () => {
+      fireEvent.click(within(card(container, 's')).getByRole('button', { name: '再试一次' }))
+    })
+
+    expect(handoffById('s')?.status).toBe('stopped')
+    expect(within(card(container, 's')).getByRole('alert').textContent).toContain('本月额度已经用完')
+    $planUsage.set(null)
   })
 
   it('cannot start without a sentence, and says so', async () => {

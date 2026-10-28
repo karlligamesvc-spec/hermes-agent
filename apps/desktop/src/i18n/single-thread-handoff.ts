@@ -44,8 +44,8 @@ export interface SingleThreadHandoffCopy {
   carryLine: (count: HandoffCarryCount) => string
   /** Files and links past the ones listed. */
   moreItems: (count: number) => string
-  /** Until R5's line: 「剪辑助手要多跑 1 个回合，按你的套餐额度算」. */
-  turnsLine: (name: string, turns: number) => string
+  /** The first sign-in check has not said whose account it is yet: nothing can start (hc-1086). */
+  accountPending: string
   confirm: string
   notNow: string
   refusal: (reason: StartHandoffRefusal, name: string) => string
@@ -125,7 +125,7 @@ const en: SingleThreadHandoffCopy = {
     return `${parts ? `Takes ${parts} and what you wrote` : 'Takes what you wrote'}. It already knows “About you”.`
   },
   moreItems: count => `and ${count} more`,
-  turnsLine: (name, turns) => `${name} runs ${turns} more turn${turns === 1 ? '' : 's'}, counted against your plan`,
+  accountPending: 'Still checking which account you’re signed in to. Hand it over in a moment.',
   confirm: 'Hand it over',
   notNow: 'Not now',
   refusal: (reason, name) =>
@@ -222,7 +222,7 @@ const zh: SingleThreadHandoffCopy = {
     return `会带上：${parts.length ? `${parts.join('、')}和你这句话` : '你这句话'}。「关于你」不用带，它本来就知道。`
   },
   moreItems: count => `等 ${count} 个`,
-  turnsLine: (name, turns) => `${name}要多跑 ${turns} 个回合，按你的套餐额度算`,
+  accountPending: '还在确认你登录的账号，稍等一下再交。',
   confirm: '交给它',
   notNow: '先不',
   refusal: (reason, name) =>
@@ -323,7 +323,7 @@ const zhHant: SingleThreadHandoffCopy = {
     return `會帶上：${parts.length ? `${parts.join('、')}和你這句話` : '你這句話'}。「關於你」不用帶，它本來就知道。`
   },
   moreItems: count => `等 ${count} 個`,
-  turnsLine: (name, turns) => `${name}要多跑 ${turns} 個回合，按你的套餐額度算`,
+  accountPending: '還在確認你登入的帳號，稍等一下再交。',
   confirm: '交給它',
   notNow: '先不',
   refusal: (reason, name) =>

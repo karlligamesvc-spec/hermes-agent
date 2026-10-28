@@ -4,13 +4,14 @@
  * names, what goes along, where a card sits, what a hand-over says, and the
  * sidebar's line.
  */
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join, relative } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SINGLE_THREAD_HANDOFF_COPY } from '@/i18n/single-thread-handoff'
 import { composeHandoffRequest } from '@/lib/handoff-text'
+import { $authState } from '@/store/auth'
 import { $composerDraft, setComposerDraft } from '@/store/composer'
 import { $mainThread, noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
 import { $activeGatewayProfile } from '@/store/profile'
@@ -70,6 +71,7 @@ function relayOn(on = true): void {
   setMultiBotFlagForTest(true)
   setMultiBotHandoffFlagForTest(on)
   resetBotRosterForTest(botRosterFrom(ROWS, () => true))
+  $authState.set({ ...$authState.get(), accountId: 'acc-1', status: 'signed-in' })
 }
 
 const reply = (id: string, text: string, extra: Record<string, unknown> = {}) => ({
@@ -93,6 +95,7 @@ function record(id: string, over: Partial<HandoffRecord> = {}): HandoffRecord {
     from: { messageId: null, name: 'APEX', profile: 'default', storedSessionId: 'chat-a' },
     id,
     notBefore: null,
+    owner: 'acc-1',
     queueReason: null,
     result: null,
     startedAt: 1_000,
@@ -459,5 +462,40 @@ describe('handoffRowLine: the sidebar line', () => {
     )
     expect(handoffRowLine('writer', 'working', [record('q', { status: 'queued' })], roster, copy)).toBeNull()
     expect(handoffRowLine('default', 'idle', [record('r1', { status: 'returned' })], roster, copy)).toBeNull()
+  })
+})
+
+describe('who starts a relay (L6: a used-up allowance is held back only before the relay starts)', () => {
+  const SRC = join(__dirname, '..', '..', '..')
+
+  function sources(dir: string): string[] {
+    return readdirSync(dir).flatMap(name => {
+      const path = join(dir, name)
+
+      if (statSync(path).isDirectory()) {
+        return name === 'node_modules' || name.startsWith('__') ? [] : sources(path)
+      }
+
+      return /\.(ts|tsx)$/.test(name) && !/\.test\.(ts|tsx)$/.test(name) ? [path] : []
+    })
+  }
+
+  it('startHandoff only behind the confirm card; retryHandoff only behind the relay card’s usage check', () => {
+    const callers = sources(SRC).flatMap(path => {
+      const imports = [
+        ...readFileSync(path, 'utf8').matchAll(/import\s*\{([^}]*)\}\s*from\s*'[^']*\/single-thread-handoff'/g)
+      ]
+
+      const names = imports.flatMap(match => match[1]!.split(',').map(name => name.trim()))
+
+      return names
+        .filter(name => name === 'startHandoff' || name === 'retryHandoff')
+        .map(name => `${relative(SRC, path)}: ${name}`)
+    })
+
+    expect(callers.sort()).toEqual([
+      'app/single-thread/handoff/cards.tsx: retryHandoff', // after handoffRetryBlocked() (usage-line.ts)
+      'store/single-thread-handoff-confirm.ts: startHandoff' // 「交给它」, the card shows R5's line and blocks when used up
+    ])
   })
 })
