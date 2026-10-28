@@ -17,6 +17,7 @@
  *   its row has been read from the engine (`revision` > 0): rows painted from
  *   this install's cache have no conversations listed yet, and one that has
  *   them must not flash 「先问 3 个小问题」.
+ * - hc-1087: a relay (接力) the row is part of names it first (handoff/row-line.ts).
  */
 
 import { useStore } from '@nanostores/react'
@@ -43,6 +44,7 @@ import { $threadActivity, $threadInCall } from '@/store/thread-signals'
 import { backgroundActivity } from './bot-activity'
 import { useBotIntakeCopy } from './bot-intake-copy'
 import { botIntakeStatusLine } from './bot-intake-status'
+import { useHandoffRowLine } from './handoff/row-line'
 import { useStatusLine } from './sidebar-status'
 
 export interface BotRowStatus {
@@ -98,6 +100,8 @@ export function useBotRowStatus(
   )
 
   const line = useStatusLine(presence)
+  // hc-1087: a relay this row is part of speaks first (「在帮 APEX：…」, 「等小红书文案交回」).
+  const relayLine = useHandoffRowLine(bot.profile, presence.kind)
   const intakeCopy = useBotIntakeCopy()
   // Working, waiting and in a call always have a line, so only a quiet row is left.
   const fresh = !bot.isApex && bot.revision > 0 && !line && !lastSessions[bot.profile]
@@ -111,7 +115,7 @@ export function useBotRowStatus(
 
   return {
     kind: presence.kind,
-    line: fresh ? botIntakeStatusLine(bot.uiMeta[BOT_INTAKE_META_KEY], intakeCopy) : line,
+    line: relayLine ?? (fresh ? botIntakeStatusLine(bot.uiMeta[BOT_INTAKE_META_KEY], intakeCopy) : line),
     unread: botUnread(reply, seen) && !onScreen
   }
 }

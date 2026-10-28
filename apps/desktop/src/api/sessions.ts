@@ -1,5 +1,6 @@
 import { isMissingRestEndpoint } from '@/lib/gateway-rpc'
 import { maybeBackfillLegacySessionOwners } from '@/lib/legacy-session-owner-backfill'
+import { withVisiblePreviews, withVisibleSnippets } from '@/lib/reply-markers'
 import { stampRowsWithOwningConnection } from '@/lib/session-owner-stamp'
 import { recordTranscriptTail } from '@/store/transcript-tail'
 import type {
@@ -58,7 +59,7 @@ function stampActiveConnectionOwner(sessions: SessionInfo[]): SessionInfo[] {
   // idempotent server-side; never blocks or fails the list that triggered it.
   maybeBackfillLegacySessionOwners()
 
-  return stampRowsWithOwningConnection(sessions, getApiRequestConnection())
+  return stampRowsWithOwningConnection(withVisiblePreviews(sessions), getApiRequestConnection())
 }
 
 /**
@@ -379,10 +380,12 @@ export function setSessionUnreadRemote(id: string, unread: boolean, profile?: st
   })
 }
 
-export function searchSessions(query: string): Promise<SessionSearchResponse> {
-  return hermesApi<SessionSearchResponse>({
+export async function searchSessions(query: string): Promise<SessionSearchResponse> {
+  const response = await hermesApi<SessionSearchResponse>({
     path: `/api/sessions/search?q=${encodeURIComponent(query)}`
   })
+
+  return withVisibleSnippets(response)
 }
 
 // Resolves a single session row by id on one backend (the active profile, or

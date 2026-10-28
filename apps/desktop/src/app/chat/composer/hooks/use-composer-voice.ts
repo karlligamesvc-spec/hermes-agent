@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '@/i18n'
 import { chatMessageText, collectUnspokenTurnSpeech } from '@/lib/chat-messages'
 import { triggerHaptic } from '@/lib/haptics'
+import { visibleReplyText } from '@/lib/reply-markers'
 import { adoptSpokenReplySession, markAssistantIdSpoken, resolveSpokenReply } from '@/lib/spoken-reply'
 import { CONVERSATION_LEASE, READ_ALOUD_LEASE, syncTtsLease } from '@/lib/tts-lease'
 import { useStoreSelector } from '@/lib/use-session-slice'
@@ -264,7 +265,7 @@ export function useComposerVoice({
     toLiveHistory(
       readVoiceMessages()
         .filter(m => !m.hidden && (m.role === 'user' || m.role === 'assistant'))
-        .map(m => ({ role: m.role as 'assistant' | 'user', text: chatMessageText(m) }))
+        .map(m => ({ role: m.role as 'assistant' | 'user', text: visibleReplyText(chatMessageText(m)) }))
     )
 
   /** The tool Hermes is running right now, for quiet progress in the voice. */
