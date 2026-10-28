@@ -54,7 +54,7 @@ class Engines {
   room = true
   listeners = new Set<(event: GatewayEvent) => void>()
   /** Throw this from the next matching request, once per entry. */
-  failures: { error: unknown; method: string; profile: string }[] = []
+  failures: { error: unknown; method: string; profile: string; then?: () => void }[] = []
   created = 0
 
   thread(profile: string, patch: Partial<Thread> = {}): Thread {
@@ -103,10 +103,14 @@ class Engines {
   request(profile: string) {
     return async <T>(method: string, params: Record<string, unknown> = {}): Promise<T> => {
       this.calls.push([profile, method, params])
+      // An RPC crosses IPC and a socket: the answer never lands in the same tick.
+      await new Promise(resolve => setTimeout(resolve, 0))
       const failure = this.failures.findIndex(entry => entry.profile === profile && entry.method === method)
 
       if (failure >= 0) {
-        const [{ error }] = this.failures.splice(failure, 1)
+        const [{ error, then }] = this.failures.splice(failure, 1)
+
+        then?.()
 
         throw error
       }
@@ -329,6 +333,12 @@ describe('the queue (L3, L7)', () => {
     expect(record(handoff.id)).toMatchObject({ attempts: 0, status: 'queued' })
     expect(engines.callsTo('writer', 'prompt.submit')).toEqual([])
 
+    // It looks again once per queue round, not in a tight loop.
+    const before = engines.callsTo('writer', 'session.list').length
+
+    await new Promise(resolve => setTimeout(resolve, TIMING.queueMs * 10))
+    expect(engines.callsTo('writer', 'session.list').length - before).toBeLessThanOrEqual(12)
+
     engines.threads.writer!.running = false
 
     await vi.waitFor(() => expect(engines.callsTo('writer', 'prompt.submit')).toHaveLength(1))
@@ -497,13 +507,31 @@ describe('when the turn does not simply come back', () => {
     engines.failures.push({
       error: { code: 4001, message: 'session not in memory' },
       method: 'prompt.submit',
-      profile: 'writer'
+      profile: 'writer',
+      // The gateway reaped the live session: a resume mints a new one.
+      then: () => {
+        engines.threads.writer!.runtime = 'writer-live-2'
+      }
     })
     startRunner()
     const handoff = relay()
 
     await vi.waitFor(() => expect(engines.callsTo('writer', 'prompt.submit')).toHaveLength(2))
     await vi.waitFor(() => expect(record(handoff.id).status).toBe('running'))
+    // Within the same attempt: resume by the stored id, submit on the new session — no trip back to the queue.
+    expect(
+      engines
+        .callsTo('writer')
+        .map(([, method, params]) => `${method} ${String(params.session_id ?? '')}`)
+        .slice(0, 5)
+    ).toEqual([
+      'session.list ',
+      'session.resume writer-root',
+      'prompt.submit writer-live',
+      'session.resume writer-root',
+      'prompt.submit writer-live-2'
+    ])
+    expect(record(handoff.id)).toMatchObject({ attempts: 1, turn: { runtimeSessionId: 'writer-live-2' } })
     engines.finish('writer', '好')
     await vi.waitFor(() => expect(status(handoff.id)).toBe('returned'))
   })
