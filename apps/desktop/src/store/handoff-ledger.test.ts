@@ -279,6 +279,18 @@ describe('a relay that comes back (hc-1090)', () => {
     await waitFor(() => expect(bridge).toHaveBeenCalledTimes(1))
   })
 
+  it('a relay another account started is not written, even when asked directly', async () => {
+    const record = settle(running().id, 'returned')
+
+    expect(record.owner).toBe('acc-1')
+    signIn('acc-2')
+    $memoryLedger.set({ accountId: 'acc-2', ledger: LEDGER, status: 'ready' })
+
+    expect(await noteHandoffInLedger(record)).toBe(false)
+    expect(bridge).not.toHaveBeenCalled()
+    expect(localStorage.getItem(STORE_KEY)).toBeNull()
+  })
+
   it('signed out: nothing is written or kept', async () => {
     signIn(null)
     const record = settle(running().id, 'returned')

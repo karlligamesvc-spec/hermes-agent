@@ -13,6 +13,7 @@
  *   account until the cloud has it, so a retry sends the very same sentence
  *   (the cloud keeps one entry per sentence) and never to another account;
  * - a relay this install has written, or is writing, is not written again;
+ * - only a relay of the account signed in now (its `owner`, hc-1086);
  * - a write that did not get through (offline, signed out, the window closed
  *   mid-write) is tried again the next time relay comes on or the account
  *   signs back in, for a day; later its 「最近发生的」 date would be wrong, so it
@@ -33,7 +34,14 @@ import { readJson, writeJson } from '@/lib/storage'
 import { $authState } from './auth'
 import { addMemory } from './memory-ledger'
 import { $botRoster, botFor } from './single-thread-bots'
-import { $handoffMode, $handoffs, type HandoffRecord, isHandoffMode, onHandoffReturned } from './single-thread-handoff'
+import {
+  $handoffMode,
+  $handoffs,
+  type HandoffRecord,
+  isHandoffMode,
+  isOwnHandoff,
+  onHandoffReturned
+} from './single-thread-handoff'
 
 const STORE_KEY = 'apex.single-thread.handoff-ledger.v1'
 
@@ -122,6 +130,11 @@ export function noteHandoffInLedger(record: HandoffRecord): Promise<boolean> {
   const accountId = ledgerAccount()
 
   if (!isHandoffMode() || record.status !== 'returned' || !record.result || !accountId || writing.has(record.id)) {
+    return Promise.resolve(false)
+  }
+
+  // R1 announces 交回 only for the account signed in now; checked again here for any other caller.
+  if (!isOwnHandoff(record, accountId)) {
     return Promise.resolve(false)
   }
 
