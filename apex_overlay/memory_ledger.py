@@ -268,7 +268,10 @@ def refresh_mirror_soon() -> Optional[threading.Thread]:
             _refresh["again"] = True
             return None
         _refresh["running"] = True
-    thread = threading.Thread(target=_refresh_loop, name="apex-memory-ledger-mirror", daemon=True)
+    from agent.memory_provider import spawn_context_thread
+
+    # Under the caller's context: the key and the root follow the profile scope this engine serves.
+    thread = spawn_context_thread(_refresh_loop, name="apex-memory-ledger-mirror")
     thread.start()
     return thread
 

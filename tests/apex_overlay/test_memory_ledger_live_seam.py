@@ -56,7 +56,8 @@ AFTER_PAYLOAD = {
     "entries": {
         "about_you": [_entry("5c6d7e8f", NOTED, "2026-10-28T01:07:00+00:00"),
                       _entry("3f2a9c1d", "不露脸，女声配音", "2026-10-20T02:00:00+00:00")],
-        "recent": [_entry("9a8b7c6d", "剪好了小橙子测评的第一条口播", "2026-10-28T01:30:00+00:00"),
+        # 01:30 on 10-28 in Beijing is still 10-27 in UTC: the list must date it as the segment does.
+        "recent": [_entry("9a8b7c6d", "剪好了小橙子测评的第一条口播", "2026-10-27T17:30:00+00:00"),
                    _entry("ab12cd34", "交付了收纳三样的成片", "2026-10-27T03:00:00+00:00")],
     },
     "prompt_segment": SEGMENTS["after"],
@@ -184,6 +185,27 @@ def test_the_assistant_that_noted_it_hears_no_news(root, monkeypatch, gateway):
     )
     assert NOTED_LINE in memory_ledger_live.on_pre_llm_call(session_id="c", platform="desktop")
     assert memory_ledger_live.on_pre_llm_call(session_id="c", platform="desktop") is None
+
+
+def test_the_assistant_that_forgot_it_hears_no_news(root, monkeypatch, gateway):
+    """A forget through apex_memory is no news to the session that made it."""
+    gone = BASE.replace("- 10-27 [ab12cd34] 交付了收纳三样的成片", "（还没有）")
+    gateway.entry = {"id": "ab12cd34-0000-4000-8000-000000000000"}
+    gateway.ledger = {"entries": {}, "prompt_segment": gone}
+    mirror(root, BASE)
+    for session_id in ("a", "c"):
+        memory_ledger_live.note_frozen({"session_id": session_id}, BASE)
+        memory_ledger_live.on_pre_llm_call(session_id=session_id, platform="desktop")
+    result = json.loads(memory_ledger.handle({"action": "forget", "ref": "ab12cd34"}, session_id="a"))
+    assert result["ok"] is True
+    for thread in threading.enumerate():
+        if thread.name == "apex-memory-ledger-mirror":
+            thread.join(5)
+    assert (root / "apex" / "memory-ledger-prompt.md").read_text(encoding="utf-8") == gone + "\n"
+    assert memory_ledger_live.on_pre_llm_call(session_id="a", platform="desktop") is None
+    assert memory_ledger_live.on_pre_llm_call(session_id="c", platform="desktop") == _note(
+        (memory_ledger_live.GONE, ["- 10-27 [ab12cd34] 交付了收纳三样的成片"])
+    )
 
 
 # ── 2. what a note says ──────────────────────────────────────────────────────

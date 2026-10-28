@@ -105,27 +105,30 @@ describe('hc-1097 looking the ledger up in 「看过程」', () => {
     ['zh', '查一下记得什么', '查好了', '忘掉一条', '记住一条'],
     ['zh-hant', '查一下記得什麼', '查好了', '忘掉一條', '記住一條'],
     ['en', 'Check what I remember', 'Checked', 'Forget one thing', 'Remember one thing']
-  ] as const)('%s: a look is never named for remembering, live or reloaded', (locale, title, done, forget, remember) => {
-    setRuntimeI18nLocale(locale)
+  ] as const)(
+    '%s: a look is never named for remembering, live or reloaded',
+    (locale, title, done, forget, remember) => {
+      setRuntimeI18nLocale(locale)
 
-    for (const make of [memory, bridged]) {
-      const [looked] = buildTurnProcess([make('l', { action: 'list' })], false).steps
+      for (const make of [memory, bridged]) {
+        const [looked] = buildTurnProcess([make('l', { action: 'list' })], false).steps
 
-      expect(looked.toolName).toBe('apex_memory')
-      expect(looked.copy.title).toBe(title)
-      expect(looked.copy.done(looked.facts)).toBe(done)
+        expect(looked.toolName).toBe('apex_memory')
+        expect(looked.copy.title).toBe(title)
+        expect(looked.copy.done(looked.facts)).toBe(done)
 
-      const [forgot] = buildTurnProcess([make('f', { action: 'forget', ref: 'a1b2c3d4' })], false).steps
+        const [forgot] = buildTurnProcess([make('f', { action: 'forget', ref: 'a1b2c3d4' })], false).steps
 
-      expect(forgot.copy.title).toBe(forget)
+        expect(forgot.copy.title).toBe(forget)
+      }
+
+      // A step that looked and then remembered is named for remembering.
+      const both = buildTurnProcess(
+        [memory('l', { action: 'list' }), memory('a', { action: 'add', content: 'x', kind: 'recent' })],
+        false
+      )
+
+      expect(both.steps.map(candidate => candidate.copy.title)).toEqual([remember])
     }
-
-    // A step that looked and then remembered is named for remembering.
-    const both = buildTurnProcess(
-      [memory('l', { action: 'list' }), memory('a', { action: 'add', content: 'x', kind: 'recent' })],
-      false
-    )
-
-    expect(both.steps.map(candidate => candidate.copy.title)).toEqual([remember])
-  })
+  )
 })

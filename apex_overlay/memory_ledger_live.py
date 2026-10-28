@@ -207,7 +207,7 @@ def _session(session_id: str, history: Any) -> _Session:
         return session
     # Built by an earlier engine: restored after a restart, or a new id after compaction.
     known = _stored_ledger(session_id)
-    return _Session(_with_notes(known, history) if known is not None else None, _hinted(history))
+    return _Session(_with_notes(known, history) if known is not None else None)
 
 
 def note_frozen(session_info: Mapping[str, Any] | None, text: str) -> None:
