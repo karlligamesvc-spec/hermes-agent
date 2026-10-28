@@ -7,7 +7,7 @@ import {
   parseMaybeObject
 } from '@/components/assistant-ui/tool/fallback-model/format'
 import { runtimeTranslations, translateNow } from '@/i18n'
-import { desktopOnlyStepCopy, MEMORY_FORGET_STEP } from '@/i18n/desktop-only-steps'
+import { desktopOnlyStepCopy, memoryStepKey } from '@/i18n/desktop-only-steps'
 import type { StepCopy, StepFacts } from '@/i18n/types-process'
 import { connectorCalls } from '@/lib/connector-tools'
 import { isOnboardingEnabled } from '@/lib/onboarding-enabled'
@@ -575,12 +575,11 @@ export function stepCopyFor(toolName: string): StepCopy {
   return copy.steps[toolName] ?? desktopOnlyStepCopy(toolName) ?? copy.unknownStep
 }
 
-/** hc-1063: a memory-ledger step that only forgot entries is named for that, not for remembering. */
+/** hc-1063 / hc-1097: a memory-ledger step that only forgot, or only looked, is named for that. */
 function stepCopyKey(calls: ProcessCall[]): string {
   const toolName = calls[0].toolName
-  const forgetOnly = calls.every(call => parseMaybeObject(call.part.args).action === 'forget')
 
-  return toolName === 'apex_memory' && forgetOnly ? MEMORY_FORGET_STEP : toolName
+  return toolName === 'apex_memory' ? memoryStepKey(calls.map(call => call.args.action)) : toolName
 }
 
 function stepState(calls: ProcessCall[]): { failedCalls: number; state: CallState } {

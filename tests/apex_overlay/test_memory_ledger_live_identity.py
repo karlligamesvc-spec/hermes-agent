@@ -10,10 +10,18 @@ whole prompt with and without a seam in the same run.
 
 The ledger segments come from the cloud's own renderer (``__identity__/memory-ledger-live/
 segments.json``), so the section is the text Desktop mirrors.
+
+With the live seam registered, while the ledger stays the same:
+
+* every plugin section, and the whole system prompt, stays byte for byte;
+* the user messages stay byte for byte, except that a session people talk to gets the one lookup
+  line on its first turn;
+* apex_memory's schema differs by exactly ``with_list_action``: the ``list`` action and one sentence.
 """
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,7 +30,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import hermes_yaml as yaml
-from apex_overlay import assistant_name, memory_ledger, single_thread_prompt
+from apex_overlay import assistant_name, memory_ledger, memory_ledger_live, single_thread_prompt
 from hermes_cli import plugins
 from hermes_cli.plugins import PLUGIN_SECTIONS_END, PLUGIN_SECTIONS_START, PluginContext, PluginManager, PluginManifest
 from run_agent import AIAgent
@@ -42,8 +50,22 @@ CASES = {
     "cron": (False, "", "cron", 1),
 }
 
-# The seams this golden covers. hc-1097 adds its own to this list; the bytes must not move.
+# The seams the golden was recorded with (fork main), and the same with hc-1097's in its table slot.
 SEAMS = (memory_ledger, single_thread_prompt, assistant_name)
+LIVE_SEAMS = (memory_ledger, memory_ledger_live, single_thread_prompt, assistant_name)
+
+# hc-1097's one change to apex_memory's schema: the sentence that follows the forget one.
+_AFTER = "用户说「别记这个」「忘掉……」时 forget 对应那条。"
+LIST_SENTENCE = "用户问到他自己的事、提示和对话里都找不到时，先 list 查最新的底账再回答。"
+
+
+def with_list_action(schema: dict) -> dict:
+    """apex_memory's schema as fork main had it, plus the list action (hc-1097)."""
+    changed = copy.deepcopy(schema)
+    assert changed["description"].count(_AFTER) == 1
+    changed["description"] = changed["description"].replace(_AFTER, _AFTER + LIST_SENTENCE)
+    changed["parameters"]["properties"]["action"]["enum"].append("list")
+    return changed
 
 
 @pytest.fixture
@@ -62,7 +84,7 @@ def root(tmp_path, monkeypatch):
     return home
 
 
-def _manager(*seams) -> PluginManager:
+def overlay_manager(*seams) -> PluginManager:
     manager = PluginManager()
     manager._discovered = True
     ctx = PluginContext(PluginManifest(name="apex-overlay", key="apex-overlay", source="bundled"), manager)
@@ -76,7 +98,7 @@ def _reply(content: str) -> SimpleNamespace:
     return SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason="stop")], model="test/model", usage=None)
 
 
-def _agent(platform: str, session_id: str) -> AIAgent:
+def scripted_agent(platform: str, session_id: str) -> AIAgent:
     with (
         patch("model_tools.get_tool_definitions", return_value=[]),
         patch("model_tools.check_toolset_requirements", return_value={}),
@@ -153,7 +175,7 @@ def setup_case(root: Path, monkeypatch, case: str) -> tuple[str, int]:
         monkeypatch.setenv(assistant_name.SWITCH_ENV, "1")
     if profile:
         home = root / "profiles" / profile
-        home.mkdir(parents=True)
+        home.mkdir(parents=True, exist_ok=True)
         (home / "SOUL.md").write_text(
             assistant_name.SOUL_NAME_LINE.format(name="小剪") + "\n", encoding="utf-8"
         )
@@ -171,7 +193,7 @@ def seams(monkeypatch):
 
     def install(*modules):
         model_tools._clear_tool_defs_cache()
-        manager = _manager(*modules)
+        manager = overlay_manager(*modules)
         monkeypatch.setattr(plugins, "_plugin_manager", manager)
         monkeypatch.setattr(plugins, "_plugin_managers_by_home", {})
         return manager
@@ -194,14 +216,54 @@ def capture(root, monkeypatch, seams, modules) -> dict:
             platform, turns = setup_case(root, scoped, case)
             scoped.setattr(assistant_name, "_told", {})
             seams(*modules)
-            cases[case] = snapshot(run_turns(_agent(platform, f"20261028_090700_{case}"), turns))
+            cases[case] = snapshot(run_turns(scripted_agent(platform, f"20261028_090700_{case}"), turns))
         model_tools._clear_tool_defs_cache()
     apex = sorted(name for name in registry.get_all_tool_names() if name.startswith("apex_"))
     return {"cases": cases, "apex_tool_schemas": {name: registry.get_entry(name).schema for name in apex}}
 
 
-def test_unchanged_ledger_sends_what_main_sent(root, monkeypatch, seams):
+def _golden() -> dict:
+    return json.loads(GOLDEN.read_text(encoding="utf-8"))
+
+
+def _with_every_apex_tool(monkeypatch, seams, modules) -> None:
+    """Register every apex tool (apex_rename only exists with several assistants on) for the schema half."""
     with monkeypatch.context() as scoped:
         scoped.setenv(assistant_name.SWITCH_ENV, "1")
-        seams(*SEAMS)  # registers every apex tool, apex_rename included, for the schema half
-    assert capture(root, monkeypatch, seams, SEAMS) == json.loads(GOLDEN.read_text(encoding="utf-8"))
+        seams(*modules)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_sessions(monkeypatch):
+    monkeypatch.setattr(memory_ledger_live, "_sessions", memory_ledger_live.OrderedDict())
+
+
+def test_unchanged_ledger_sends_what_main_sent(root, monkeypatch, seams):
+    _with_every_apex_tool(monkeypatch, seams, SEAMS)
+    golden = _golden()
+    golden["apex_tool_schemas"]["apex_memory"] = with_list_action(golden["apex_tool_schemas"]["apex_memory"])
+    assert capture(root, monkeypatch, seams, SEAMS) == golden
+
+
+def test_with_the_live_seam_only_the_first_turn_gains_the_lookup_line(root, monkeypatch, seams):
+    _with_every_apex_tool(monkeypatch, seams, LIVE_SEAMS)
+    expected = _golden()
+    expected["apex_tool_schemas"]["apex_memory"] = with_list_action(expected["apex_tool_schemas"]["apex_memory"])
+    for case, (_multi, _profile, platform, _turns) in CASES.items():
+        if platform not in memory_ledger_live.NON_INTERACTIVE_PLATFORMS:
+            user = expected["cases"][case]["user"]
+            user[0] = f"{user[0]}\n\n{memory_ledger_live.LOOKUP_HINT}"
+    assert capture(root, monkeypatch, seams, LIVE_SEAMS) == expected
+
+
+@pytest.mark.parametrize("case", list(CASES))
+def test_the_whole_system_prompt_is_the_same_with_the_live_seam(root, monkeypatch, seams, case):
+    def prompt(modules) -> str:
+        with monkeypatch.context() as scoped:
+            platform, turns = setup_case(root, scoped, case)
+            scoped.setattr(assistant_name, "_told", {})
+            scoped.setattr(memory_ledger_live, "_sessions", memory_ledger_live.OrderedDict())
+            seams(*modules)
+            return system_prompt(run_turns(scripted_agent(platform, f"20261028_090700_{case}"), turns))
+
+    assert prompt(LIVE_SEAMS) == prompt(SEAMS)

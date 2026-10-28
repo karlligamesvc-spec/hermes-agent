@@ -29,6 +29,8 @@ from hermes_cli.plugins import PLUGIN_SECTIONS_END, PLUGIN_SECTIONS_START, Plugi
 from run_agent import AIAgent
 from tools.registry import registry
 
+from tests.apex_overlay.test_memory_ledger_live_identity import with_list_action
+
 GOLDEN = Path(__file__).parent / "__identity__" / "multi-bot-off" / "before-hc1082.json"
 LEDGER = "【APEX 记得的 · 记忆底账】\n关于你：\n- [3f2a9c1d] 不露脸，女声配音\n【APEX 记得的 · 完】\n"
 
@@ -144,7 +146,10 @@ def test_switch_off_matches_what_main_built_before_this_seam(seams):
         "apex_tools": apex_tools,
         "apex_tool_schemas": {name: registry.get_entry(name).schema for name in apex_tools},
     }
-    assert snapshot == json.loads(GOLDEN.read_text(encoding="utf-8"))
+    golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
+    # hc-1097 gave apex_memory a list action for everyone; nothing else in this golden moved.
+    golden["apex_tool_schemas"]["apex_memory"] = with_list_action(golden["apex_tool_schemas"]["apex_memory"])
+    assert snapshot == golden
     assert single_thread_prompt.render_section({"profile_name": "default"}) == single_thread_prompt.SINGLE_THREAD_PROMPT
 
 

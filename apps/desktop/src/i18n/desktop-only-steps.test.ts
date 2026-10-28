@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { buildTurnProcess, stepChain, type TurnPart } from '@/components/assistant-ui/process/turn-process'
 
-import { DESKTOP_ONLY_STEPS, MEMORY_FORGET_STEP } from './desktop-only-steps'
+import { DESKTOP_ONLY_STEPS, MEMORY_FORGET_STEP, MEMORY_LIST_STEP } from './desktop-only-steps'
 import { enProcess } from './en-process'
 import { setRuntimeI18nLocale } from './runtime'
 import { zhHantProcess } from './zh-hant-process'
@@ -56,7 +56,9 @@ describe('hc-1063 the memory ledger step in 「看过程」', () => {
 
     for (const steps of Object.values(DESKTOP_ONLY_STEPS)) {
       expect(Object.keys(steps).filter(key => mirrored.has(key))).toEqual([])
-      expect(Object.keys(steps).sort()).toEqual(['apex_memory', 'apex_rename', MEMORY_FORGET_STEP].sort())
+      expect(Object.keys(steps).sort()).toEqual(
+        ['apex_memory', 'apex_rename', MEMORY_FORGET_STEP, MEMORY_LIST_STEP].sort()
+      )
     }
   })
 })
@@ -86,5 +88,44 @@ describe('hc-1082 an assistant renaming itself in 「看过程」', () => {
       expect(step.copy.title).toBe(title)
       expect(step.copy.done(step.facts)).toBe(done)
     }
+  })
+})
+
+describe('hc-1097 looking the ledger up in 「看过程」', () => {
+  const bridged = (id: string, args: Record<string, unknown>): TurnPart =>
+    ({
+      args: { calls: [{ arguments: args, name: 'apex_memory' }] },
+      result: { ok: true },
+      toolCallId: id,
+      toolName: 'tool_call',
+      type: 'tool-call'
+    }) as TurnPart
+
+  it.each([
+    ['zh', '查一下记得什么', '查好了', '忘掉一条', '记住一条'],
+    ['zh-hant', '查一下記得什麼', '查好了', '忘掉一條', '記住一條'],
+    ['en', 'Check what I remember', 'Checked', 'Forget one thing', 'Remember one thing']
+  ] as const)('%s: a look is never named for remembering, live or reloaded', (locale, title, done, forget, remember) => {
+    setRuntimeI18nLocale(locale)
+
+    for (const make of [memory, bridged]) {
+      const [looked] = buildTurnProcess([make('l', { action: 'list' })], false).steps
+
+      expect(looked.toolName).toBe('apex_memory')
+      expect(looked.copy.title).toBe(title)
+      expect(looked.copy.done(looked.facts)).toBe(done)
+
+      const [forgot] = buildTurnProcess([make('f', { action: 'forget', ref: 'a1b2c3d4' })], false).steps
+
+      expect(forgot.copy.title).toBe(forget)
+    }
+
+    // A step that looked and then remembered is named for remembering.
+    const both = buildTurnProcess(
+      [memory('l', { action: 'list' }), memory('a', { action: 'add', content: 'x', kind: 'recent' })],
+      false
+    )
+
+    expect(both.steps.map(candidate => candidate.copy.title)).toEqual([remember])
   })
 })

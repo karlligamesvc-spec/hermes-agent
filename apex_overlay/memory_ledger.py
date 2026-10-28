@@ -12,6 +12,11 @@ agents. Two kinds: 关于你 (who the user is) and 最近发生的 (what happene
 * Writing: the ``apex_memory`` tool adds an entry or forgets one through the
   agent-key route ``/api/v1/media/memory-ledger`` with the Desktop's managed key
   (plugins/apexnodes_gateway.py resolves base and key).
+* hc-1097: ``list`` reads the whole ledger as it stands, and after any of the
+  three the engine mirrors the cloud's fresh segment itself (only over a mirror
+  Desktop already wrote, for the key it read with), so assistants with a
+  session already open hear the change on their next turn
+  (``memory_ledger_live.py``) whether or not Desktop's window showed it.
 
 The mirror file is the only switch: no file, no section and no tool. So with
 the feature off, signed out, or in a cloud container (which never has the file)
@@ -21,8 +26,10 @@ the agent's prompt and tool list are what they were before this seam.
 from __future__ import annotations
 
 import logging
+import threading
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -44,12 +51,13 @@ SCHEMA = {
         "学到关于用户、以后还用得上的新东西时 add 一条 about_you;"
         "做完一件事或用户报了数据时 add 一条 recent;"
         "用户说「别记这个」「忘掉……」时 forget 对应那条。"
+        "用户问到他自己的事、提示和对话里都找不到时，先 list 查最新的底账再回答。"
         "不记密码、验证码、证件号、卡号和别人的隐私。"
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "action": {"type": "string", "enum": ["add", "forget"]},
+            "action": {"type": "string", "enum": ["add", "forget", "list"]},
             "kind": {
                 "type": "string",
                 "enum": list(KINDS),
@@ -75,6 +83,12 @@ REFUSALS = {
     "memory_ledger_unavailable": "这个账号没有记忆底账。",
 }
 LEDGER_OFF = "记忆底账没有打开(或者没有登录),这次不记。"
+# The cloud's segment opens with this line (apex-nodes app/services/memory_ledger.py SEGMENT_BEGIN).
+SEGMENT_BEGIN = "【APEX 记得的 · 记忆底账】"
+# The cloud dates 最近发生的 entries in Beijing time.
+BEIJING = timezone(timedelta(hours=8))
+# A fresh read for the mirror waits this long; the tool's own call has already answered.
+REFRESH_TIMEOUT_SECONDS = 20
 
 # Whether the mirror existed when a session prompt was last built; see _note_switch.
 _last_seen: bool | None = None
@@ -117,9 +131,19 @@ def _note_switch(present: bool) -> None:
     _last_seen = present
 
 
-def render_section(_session_info: Mapping[str, Any] | None = None) -> str:
+def render_section(session_info: Mapping[str, Any] | None = None) -> str:
     """The mirrored segment, or "" when there is none (the runtime then adds no section)."""
     _note_switch(ledger_on())
+    text = mirror_text()
+    # hc-1097: what this session's frozen prompt holds, to tell it later what changed.
+    from apex_overlay import memory_ledger_live
+
+    memory_ledger_live.note_frozen(session_info, text)
+    return text
+
+
+def mirror_text() -> str:
+    """The segment Desktop mirrored, or "" when there is no usable one."""
     path = prompt_path()
     try:
         text = path.read_text(encoding="utf-8").strip()
@@ -161,8 +185,114 @@ def _refused(exc: Exception) -> str:
     return tool_error(REFUSALS.get(code or "", str(exc)), code=code)
 
 
-def handle(args: Mapping[str, Any] | None, **_kwargs: Any) -> str:
-    """add → {ok, action, created, entry}; forget → {ok, action, deleted}. Content is never logged."""
+def _entry_lines(entries: Any) -> dict[str, list[str]]:
+    """The ledger's entries as the segment writes them: 关于你 "[ref] content", 最近发生的 "MM-DD [ref] content"."""
+    entries = entries if isinstance(entries, Mapping) else {}
+    lines: dict[str, list[str]] = {}
+    for kind in KINDS:
+        lines[kind] = []
+        for entry in entries.get(kind) or ():
+            if not isinstance(entry, Mapping) or not entry.get("ref") or not entry.get("content"):
+                continue
+            line = f"[{entry['ref']}] {entry['content']}"
+            if kind == "recent":
+                try:
+                    line = f"{datetime.fromisoformat(str(entry.get('created_at'))).astimezone(BEIJING):%m-%d} {line}"
+                except ValueError:
+                    pass
+            lines[kind].append(line)
+    return lines
+
+
+def _mirror_segment(segment: Any, key: str) -> bool:
+    """Put a segment this engine read in place of Desktop's mirror; True when the mirror changed.
+
+    Desktop's main process owns the mirror: it writes it while the ledger is on and removes it when the
+    switch goes off, on sign-out and on a change of account. So this only replaces a mirror that is
+    there, with the cloud's own rendering, read with the key still configured (another account's reply
+    never lands), in the same bytes and mode Desktop writes (electron/apex-memory-ledger.ts).
+    """
+    from utils import atomic_write_text
+
+    text = segment.strip() if isinstance(segment, str) else ""
+    if not text.startswith(SEGMENT_BEGIN) or len(text) > MAX_CHARS:
+        return False
+    path = prompt_path()
+    try:
+        if not path.is_file() or path.read_text(encoding="utf-8") == text + "\n":
+            return False
+        if _gateway().agent_api_key() != key:
+            return False
+        atomic_write_text(path, text + "\n", mode=0o600)
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.warning("apex-overlay: could not refresh the memory ledger mirror at %s: %s", path, exc)
+        return False
+    return True
+
+
+def refresh_mirror() -> bool:
+    """Read the ledger again and mirror it; True when the mirror changed."""
+    gateway = _gateway()
+    key = gateway.agent_api_key()
+    try:
+        body = gateway.request_json("GET", LEDGER_PATH, timeout=REFRESH_TIMEOUT_SECONDS)
+    except gateway.GatewayError as exc:
+        logger.info("apex-overlay: memory ledger not re-read after a change (%s)", getattr(exc, "code", None))
+        return False
+    return _mirror_segment(body.get("prompt_segment"), key)
+
+
+_REFRESH_LOCK = threading.Lock()
+# One reader at a time; a change made while it reads asks for one more read.
+_refresh = {"running": False, "again": False}
+
+
+def _refresh_loop() -> None:
+    while True:
+        try:
+            refresh_mirror()
+        except Exception:
+            logger.warning("apex-overlay: memory ledger mirror refresh failed", exc_info=True)
+        with _REFRESH_LOCK:
+            # Decide and stand down in one step, or a change asking right now would be dropped.
+            if not _refresh["again"]:
+                _refresh["running"] = False
+                return
+            _refresh["again"] = False
+
+
+def refresh_mirror_soon() -> Optional[threading.Thread]:
+    """Re-read and mirror the ledger in the background, so this tool call does not wait for it."""
+    with _REFRESH_LOCK:
+        if _refresh["running"]:
+            _refresh["again"] = True
+            return None
+        _refresh["running"] = True
+    thread = threading.Thread(target=_refresh_loop, name="apex-memory-ledger-mirror", daemon=True)
+    thread.start()
+    return thread
+
+
+def _list(gateway, session_id: str) -> str:
+    """The whole ledger as it stands now; the mirror and this session's view follow it."""
+    from apex_overlay import memory_ledger_live
+    from tools.registry import tool_result
+
+    key = gateway.agent_api_key()
+    body = gateway.request_json("GET", LEDGER_PATH, timeout=20)
+    segment = body.get("prompt_segment")
+    _mirror_segment(segment, key)
+    memory_ledger_live.note_seen(session_id, segment if isinstance(segment, str) else "")
+    lines = _entry_lines(body.get("entries"))
+    return tool_result(ok=True, action="list", about_you=lines["about_you"], recent=lines["recent"])
+
+
+def handle(args: Mapping[str, Any] | None, session_id: str = "", **_kwargs: Any) -> str:
+    """add → {ok, action, created, entry}; forget → {ok, action, deleted}; list → {ok, action, about_you, recent}.
+
+    Content is never logged.
+    """
+    from apex_overlay import memory_ledger_live
     from tools.registry import tool_error, tool_result
 
     if not ledger_on():
@@ -172,6 +302,8 @@ def handle(args: Mapping[str, Any] | None, **_kwargs: Any) -> str:
     action = str(args.get("action") or "").strip()
     gateway = _gateway()
     try:
+        if action == "list":
+            return _list(gateway, session_id)
         if action == "add":
             kind = str(args.get("kind") or "").strip()
             content = str(args.get("content") or "").strip()
@@ -181,6 +313,8 @@ def handle(args: Mapping[str, Any] | None, **_kwargs: Any) -> str:
                 return tool_error(REFUSALS["empty_content"])
             body = gateway.request_json("POST", f"{LEDGER_PATH}/entries", {"kind": kind, "content": content}, timeout=20)
             entry = body.get("entry") if isinstance(body.get("entry"), dict) else {}
+            memory_ledger_live.note_own_change(session_id, str(entry.get("ref") or ""))
+            refresh_mirror_soon()
             return tool_result(
                 ok=True,
                 action="add",
@@ -192,10 +326,12 @@ def handle(args: Mapping[str, Any] | None, **_kwargs: Any) -> str:
             if not ref:
                 return tool_error("forget 要写 ref:底账里方括号中的编号。")
             body = gateway.request_json("DELETE", f"{LEDGER_PATH}/entries/{ref}", timeout=20)
+            memory_ledger_live.note_own_change(session_id, str(body.get("deleted") or ref))
+            refresh_mirror_soon()
             return tool_result(ok=True, action="forget", deleted=body.get("deleted"))
     except gateway.GatewayError as exc:
         return _refused(exc)
-    return tool_error("action 只能是 add 或 forget。")
+    return tool_error("action 只能是 add、forget 或 list。")
 
 
 def apply(ctx: Any) -> bool:
