@@ -1,6 +1,7 @@
 import { atom, computed } from 'nanostores'
 
 import { $activeGatewayProfile, normalizeProfileKey } from '@/store/profile'
+import { $multiBotMode } from '@/store/single-thread-bots'
 
 // ── Shared settings "Applies to" scope ──────────────────────────────────────
 // One selection shared by every config-backed settings page (Model, Workspace,
@@ -53,6 +54,16 @@ $activeGatewayProfile.subscribe(value => {
 
   if (key !== lastActiveProfile) {
     lastActiveProfile = key
+    $settingsScopeOverride.set(null)
+  }
+})
+
+// hc-1098: the same drop when several assistants come on screen (single-thread
+// product mode with multi_bot: from developer mode, or a switch turning on).
+// Their settings are 「X 的设置」 for the assistant on screen and the 「应用于」
+// chips are gone, so a chip picked before must not keep the pages on another.
+$multiBotMode.listen(on => {
+  if (on) {
     $settingsScopeOverride.set(null)
   }
 })
