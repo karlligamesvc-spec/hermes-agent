@@ -22,8 +22,9 @@
 # - 壳的自更新关不掉：没有环境变量；改 bundle 里的 app-update.yml 会破坏签名封印，macOS 不让起
 #   （已启动过的副本连改都不让改）；--proxy-pac-url、--host-resolver-rules 挡不住 electron-updater。
 #   自更新装完由 ShipIt 重启时不带测试目录的环境变量，会跑到本机真实家目录上（2026-10-28 踩过）。
-#   所以：只跑线上最新版（prepare、launch 都核对 feed），launch 同时起看门狗，副本日志一出现
-#   「[shell-update] Found version / update available」就结束副本，抢在下载完、空闲安装之前。
+#   所以：只跑线上最新版（prepare、launch 都核对 feed），launch 同时起看门狗，1 秒一轮，副本日志一出现
+#   「[shell-update] Found version / update available / 任何 download 字样」就结束副本，抢在下载完、空闲安装之前。
+#   每次启动前、stop 后都比一次共用更新缓存的清单，多出来的只报告，不删（那是本机真实用户的目录）。
 set -euo pipefail
 
 usage() { sed -n '2,9p' "$0"; exit 2; }
@@ -135,7 +136,7 @@ launch() {
   local app_pid=$! log="$dir/home/hermes/logs/desktop.log" from
   from=$(( $( [ -f "$log" ] && wc -l < "$log" || echo 0) + 1 ))
   nohup bash -c "while kill -0 $app_pid 2>/dev/null; do
-      if tail -n +$from '$log' 2>/dev/null | grep -qE '\[shell-update\] (Found version|update available|Downloading update)'; then
+      if tail -n +$from '$log' 2>/dev/null | grep -qE '\[shell-update\] (Found version|update available|.*[Dd]ownload)'; then
         kill -TERM $app_pid; echo \"\$(date -u +%FT%TZ) 发现新版，结束副本 pid $app_pid\" >> '$dir/watchdog.log'; break
       fi; sleep 1; done" >/dev/null 2>&1 &
   echo "$(date -u +%FT%TZ) launch pid $app_pid single_thread=${single:-unset} multi_bot=${multi:-unset} fast_pool=${fast:-0}" >> "$dir/launches.log"
@@ -200,6 +201,11 @@ stop() {
   fi
   local left
   left=$(test_pids "$dir")
+  if [ -f "$dir/updater-cache.before" ] && [ "$(updater_cache_list)" != "$(cat "$dir/updater-cache.before")" ]; then
+    echo "注意：共用更新缓存 $UPDATER_CACHE 和这次启动前不一样（只报告，不删）："
+    diff "$dir/updater-cache.before" <(updater_cache_list) | sed 's/^/  /'
+  fi
+  [ -s "$dir/watchdog.log" ] && { echo "看门狗记录："; sed 's/^/  /' "$dir/watchdog.log"; }
   if [ -z "$left" ]; then echo "测试目录下 0 个进程"; return; fi
   echo "残留进程（ppid 1 的是孤儿）："; ps -o pid=,ppid=,command= -p "$(echo "$left" | paste -sd, -)" | cut -c1-200
   if [ "${2:-}" = "--force" ]; then

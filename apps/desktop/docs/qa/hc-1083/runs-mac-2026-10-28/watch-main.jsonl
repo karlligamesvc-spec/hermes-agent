@@ -1,7 +1,7 @@
 {"kind": "watch_start", "home": "<test-dir>/home/hermes", "t": 1793177353.9786491, "iso": "2026-10-28T08:49:13.978Z"}
 {"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793177354.019063, "iso": "2026-10-28T08:49:14.019Z"}
 {"t": 1793177358.448, "kind": "log", "event": "primary_start", "text": "[boot] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tm", "iso": "2026-10-28T08:49:18.448Z"}
-{"t": 1793177358.448, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tmp/claud", "iso": "2026-10-28T08:49:18.448Z"}
+{"t": 1793177358.448, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>…", "iso": "2026-10-28T08:49:18.448Z"}
 {"kind": "proc_new", "t": 1793177358.45217, "pid": 94672, "proc_kind": "engine", "profile": "default", "iso": "2026-10-28T08:49:18.452Z"}
 {"kind": "mem", "engines": {"94672": {"profile": "default", "rss": 149553152, "uss": null, "tree_rss": 149553152}}, "all_rss": 941031424, "processes": 6, "t": 1793177359.377033, "iso": "2026-10-28T08:49:19.377Z"}
 {"t": 1793177360.788, "kind": "log", "event": "ready", "port": "53857", "text": "HERMES_BACKEND_READY port=53857", "iso": "2026-10-28T08:49:20.788Z"}
@@ -14,7 +14,7 @@
 {"kind": "proc_gone", "pid": 94672, "proc_kind": "engine", "profile": "default", "t": 1793177389.235842, "iso": "2026-10-28T08:49:49.235Z"}
 {"kind": "mem", "engines": {}, "all_rss": 309297152, "processes": 3, "t": 1793177391.360707, "iso": "2026-10-28T08:49:51.360Z"}
 {"t": 1793177393.643, "kind": "log", "event": "primary_start", "text": "[boot] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tm", "iso": "2026-10-28T08:49:53.643Z"}
-{"t": 1793177393.643, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tmp/claud", "iso": "2026-10-28T08:49:53.643Z"}
+{"t": 1793177393.643, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>…", "iso": "2026-10-28T08:49:53.643Z"}
 {"kind": "proc_new", "t": 1793177393.647213, "pid": 95560, "proc_kind": "engine", "profile": "default", "iso": "2026-10-28T08:49:53.647Z"}
 {"kind": "listen", "pid": 95560, "ports": [53984], "profile": "default", "t": 1793177396.169238, "iso": "2026-10-28T08:49:56.169Z"}
 {"t": 1793177396.095, "kind": "log", "event": "ready", "port": "53984", "text": "HERMES_BACKEND_READY port=53984", "iso": "2026-10-28T08:49:56.095Z"}
@@ -25,7 +25,7 @@
 {"kind": "mem", "engines": {}, "all_rss": 398639104, "processes": 4, "t": 1793177412.643483, "iso": "2026-10-28T08:50:12.643Z"}
 {"kind": "proc_new", "t": 1793177414.693775, "pid": 95913, "proc_kind": "engine", "profile": "default", "iso": "2026-10-28T08:50:14.693Z"}
 {"t": 1793177414.69, "kind": "log", "event": "primary_start", "text": "[boot] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tm", "iso": "2026-10-28T08:50:14.690Z"}
-{"t": 1793177414.69, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tmp/claud", "iso": "2026-10-28T08:50:14.690Z"}
+{"t": 1793177414.69, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>…", "iso": "2026-10-28T08:50:14.690Z"}
 {"t": 1793177417.088, "kind": "log", "event": "ready", "port": "54085", "text": "HERMES_BACKEND_READY port=54085", "iso": "2026-10-28T08:50:17.088Z"}
 {"kind": "listen", "pid": 95913, "ports": [54085], "profile": "default", "t": 1793177417.447326, "iso": "2026-10-28T08:50:17.447Z"}
 {"kind": "mem", "engines": {"95913": {"profile": "default", "rss": 278855680, "uss": null, "tree_rss": 278855680}}, "all_rss": 1086783488, "processes": 6, "t": 1793177417.9766662, "iso": "2026-10-28T08:50:17.976Z"}
@@ -171,7 +171,7 @@
 {"kind": "proc_gone", "pid": 2335, "proc_kind": "engine", "profile": "apex-bot-5", "t": 1793177975.077665, "iso": "2026-10-28T08:59:35.077Z"}
 {"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793177975.6256242, "iso": "2026-10-28T08:59:35.625Z"}
 {"t": 1793177979.177, "kind": "log", "event": "primary_start", "text": "[boot] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tm", "iso": "2026-10-28T08:59:39.177Z"}
-{"t": 1793177979.177, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tmp/claud", "iso": "2026-10-28T08:59:39.177Z"}
+{"t": 1793177979.177, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>…", "iso": "2026-10-28T08:59:39.177Z"}
 {"kind": "proc_new", "t": 1793177979.181147, "pid": 3814, "proc_kind": "engine", "profile": "default", "iso": "2026-10-28T08:59:39.181Z"}
 {"kind": "mem", "engines": {"3814": {"profile": "default", "rss": 214269952, "uss": null, "tree_rss": 214269952}}, "all_rss": 1015365632, "processes": 6, "t": 1793177980.978241, "iso": "2026-10-28T08:59:40.978Z"}
 {"kind": "listen", "pid": 3814, "ports": [55683], "profile": "default", "t": 1793177981.5088892, "iso": "2026-10-28T08:59:41.508Z"}
