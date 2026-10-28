@@ -13,7 +13,7 @@
 
 import { atom } from 'nanostores'
 
-import type { DesktopShellUpdateState } from '@/global'
+import type { DesktopEngineHolder, DesktopShellUpdateState } from '@/global'
 
 export const $shellUpdate = atom<DesktopShellUpdateState | null>(null)
 
@@ -85,4 +85,24 @@ export async function installShellUpdate(): Promise<{ deferred?: boolean }> {
     throw new Error(result.error || 'install_failed')
   }
   return result
+}
+
+/**
+ * hc-1094: end the APEX leftovers among `holders`, each named by PID and start time, so the main
+ * process ends only the processes the user saw. The caller retries its install or switch after.
+ */
+export async function endEngineLeftovers(
+  holders: DesktopEngineHolder[]
+): Promise<{ ok: boolean; error?: string; ended?: Record<string, string> }> {
+  const bridge = window.hermesDesktop?.shellUpdate
+
+  if (!bridge?.endLeftovers) {
+    return { ok: false, error: 'unsupported' }
+  }
+
+  return bridge.endLeftovers(
+    holders.flatMap(holder =>
+      holder.endable && holder.created !== null ? [{ pid: holder.pid, created: holder.created }] : []
+    )
+  )
 }

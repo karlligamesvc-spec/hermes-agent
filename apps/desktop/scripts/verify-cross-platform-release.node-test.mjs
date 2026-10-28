@@ -52,19 +52,21 @@ test('verifyCrossPlatformRelease fails when one production leg is stale', async 
   )
 })
 
-test('the production readback passes a later release while the Intel feed stays at 0.17.63', async () => {
-  // Mac x64 is no longer built, so desktop/mac-x64/ never advances past 0.17.63.
+test('the production readback passes a Mac arm64 release while the Windows and Intel feeds stay frozen', async () => {
+  // Only Mac arm64 is built. desktop/win-x64/ stays at 0.17.66 and desktop/mac-x64/ at 0.17.63.
+  const frozen = { '/desktop/win-x64/': '0.17.66', '/desktop/mac-x64/': '0.17.63' }
   const requested = []
   const fetchImpl = async (url, options = {}) => {
     requested.push(url)
     if (options.method === 'HEAD') return response(200, '', 123)
-    const version = url.includes('/desktop/mac-x64/') ? '0.17.63' : '0.17.64'
+    const version = Object.entries(frozen).find(([prefix]) => url.includes(prefix))?.[1] ?? '0.17.67'
     return response(200, `version: ${version}\npath: APEX-${version}.zip\n`)
   }
 
-  const results = await verifyCrossPlatformRelease({ expectedVersion: '0.17.64', fetchImpl })
-  assert.deepEqual(results.map(result => result.platform), ['mac-arm64', 'win-x64'])
+  const results = await verifyCrossPlatformRelease({ expectedVersion: '0.17.67', fetchImpl })
+  assert.deepEqual(results.map(result => result.platform), ['mac-arm64'])
   assert.ok(requested.some(url => url.endsWith('/desktop/mac-arm64/latest-mac.yml')))
-  assert.ok(requested.some(url => url.endsWith('/desktop/win-x64/latest.yml')))
-  assert.ok(!requested.some(url => url.includes('/desktop/mac-x64/')), 'the readback must not read the frozen Intel feed')
+  for (const prefix of Object.keys(frozen)) {
+    assert.ok(!requested.some(url => url.includes(prefix)), `the readback must not read the frozen feed ${prefix}`)
+  }
 })

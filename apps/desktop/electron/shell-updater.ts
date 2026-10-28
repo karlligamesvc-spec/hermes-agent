@@ -36,6 +36,7 @@ import {
   STATUS_START,
   STATUS_SUCCESS
 } from './apexnodes-telemetry'
+import { describeRuntimeUpdateBusy, engineHolderIdentities, type EngineHolderSummary, summarizeEngineHolders } from './engine-holders'
 import { isRuntimeUpdateBusy, runtimeUpdateBusyReason, type RuntimeUpdateBusyReason } from './runtime-update-busy'
 import { prepareDifferentialBase } from './shell-update-diff-base'
 
@@ -76,6 +77,8 @@ interface ShellUpdaterState {
   // hc-1030: set while a requested install waits for idle, with what it waits for.
   deferred?: boolean
   deferredReason?: null | RuntimeUpdateBusyReason
+  // hc-1094: for `engine_holders`, what holds the engine and which of it APEX may end.
+  deferredHolders?: EngineHolderSummary[] | null
 }
 
 function initialState(disabled): ShellUpdaterState {
@@ -112,15 +115,6 @@ function normalizeReleaseNotes(value) {
   return null
 }
 
-// hc-1030: what a deferred install waits for, as one log line. Engine holders
-// carry their process name and executable; the gate has already redacted argv.
-function describeDeferral(error: any): string {
-  const holders = Object.entries(error?.idleProof?.holders ?? {}).map(([pid, detail]: [string, any]) =>
-    `${pid} ${detail?.name || '?'}${detail?.exe ? ` (${detail.exe})` : ''}`)
-
-  return `${runtimeUpdateBusyReason(error)}: ${error?.message || 'busy'}${holders.length ? ` [${holders.join('; ')}]` : ''}`
-}
-
 /**
  * 装配壳自更新。返回 { getState, checkNow, dispose } —— main.ts 只管调一次,
  * 返回值主要给测试用(dispose 清定时器/摘监听)。
@@ -142,6 +136,8 @@ function describeDeferral(error: any): string {
  *   缺省 null——遥测里的 app_version 字段本就是可选的。
  * @param {Function} [options.prepareDiffBase] hc-1058 每次检查前核对差分旧包与
  *   blockmap 是否配对，缺省 shell-update-diff-base.ts;测试可替换。
+ * @param {Function} [options.endLeftovers] hc-1094 结束用户确认过的 APEX 遗留进程
+ *   (runtime-switch-gate.ts);缺省时 end-leftovers 请求回 unsupported。
  */
 function createShellUpdater(options) {
   const {
@@ -159,7 +155,8 @@ function createShellUpdater(options) {
     appVersion = null,
     beforeInstall = async () => {},
     installRetryMs = 15_000,
-    prepareDiffBase = prepareDifferentialBase
+    prepareDiffBase = prepareDifferentialBase,
+    endLeftovers = null
   } = options
 
   const disabled = !isPackaged || !autoUpdater
@@ -217,14 +214,14 @@ function createShellUpdater(options) {
           return { ok: false, error: error?.message || String(error) }
         }
         // hc-1030: say why once per change of reason, not on every retry.
-        const deferral = describeDeferral(error)
+        const deferral = describeRuntimeUpdateBusy(error)
         if (deferral !== lastDeferral) {log(`[shell-update] install deferred (version=${state.version || '?'}): ${deferral}`)}
         lastDeferral = deferral
-        setState({ deferred: true, deferredReason: runtimeUpdateBusyReason(error) })
+        setState({ deferred: true, deferredReason: runtimeUpdateBusyReason(error), deferredHolders: summarizeEngineHolders(error) })
         clearTimeout(retryInstall)
         retryInstall = setTimeout(() => {
           void installWhenIdle().then(result => {
-            if (!result.ok && !disposed) {setState({ phase: 'error', error: result.error, deferred: false, deferredReason: null })}
+            if (!result.ok && !disposed) {setState({ phase: 'error', error: result.error, deferred: false, deferredReason: null, deferredHolders: null })}
           })
         }, installRetryMs)
         retryInstall.unref?.()
@@ -234,7 +231,7 @@ function createShellUpdater(options) {
       clearTimeout(retryInstall)
       handoffScheduled = true
       lastDeferral = null
-      setState({ deferred: false, deferredReason: null })
+      setState({ deferred: false, deferredReason: null, deferredHolders: null })
       log(`[shell-update] verified idle; quitAndInstall requested (version=${state.version || '?'})`)
       fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'shell_update_apply', status: STATUS_START })
       setImmediate(() => {
@@ -259,6 +256,19 @@ function createShellUpdater(options) {
     return installPending
   }
   ipcMain.handle('hermes:shell-update:install', installWhenIdle)
+  // hc-1094: end the APEX leftovers the user confirmed from a deferral; the renderer then asks to
+  // install (or switch) again through the usual gate.
+  ipcMain.handle('hermes:shell-update:end-leftovers', async (_event, confirmed) => {
+    if (disabled || !endLeftovers) {return { ok: false, error: disabled ? 'disabled' : 'unsupported' }}
+
+    try {
+      return { ok: true, ended: await endLeftovers(engineHolderIdentities(confirmed)) }
+    } catch (error: any) {
+      log(`[shell-update] ending leftovers failed: ${error?.message || String(error)}`)
+
+      return { ok: false, error: error?.message || String(error) }
+    }
+  })
 
   if (disabled) {
     log('[shell-update] disabled (dev / unpackaged build)')
@@ -367,7 +377,7 @@ function createShellUpdater(options) {
         clearTimeout(retryInstall)
         lastDeferral = null
         const message = (error && error.message) || String(error)
-        setState({ phase: 'error', error: message, deferred: false, deferredReason: null })
+        setState({ phase: 'error', error: message, deferred: false, deferredReason: null, deferredHolders: null })
         log(`[shell-update] error (silent): ${message}`)
         // hc-473: covers BOTH a check failure and a download failure — the
         // underlying autoUpdater API collapses both into this one 'error'

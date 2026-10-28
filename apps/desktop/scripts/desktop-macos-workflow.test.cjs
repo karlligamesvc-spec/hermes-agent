@@ -78,7 +78,7 @@ function bashRunBody(step) {
     .join('\n')
 }
 
-test('manual macOS builds are artifact-only and paired calls own production publish', () => {
+test('manual macOS builds are artifact-only and the release workflow owns production publish', () => {
   const source = workflowSource()
   const dispatchBlock = source.slice(source.indexOf('  workflow_dispatch:'), source.indexOf('\npermissions:'))
   const publishStep = namedStep(
@@ -160,8 +160,8 @@ test('macOS matrix stages and reads back the requested package architecture', ()
 })
 
 test('the macOS matrix builds only arm64 and the parity readback covers exactly what it builds', async () => {
-  // Mac x64 (Intel) stopped after 0.17.63. A Mac arch built but not read back would
-  // advance one feed unchecked; one read back but not built fails every release.
+  // Mac x64 (Intel) stopped after 0.17.63 and Windows x64 after 0.17.66. A feed built but
+  // not read back would advance unchecked; one read back but not built fails every release.
   const source = workflowSource()
   const matrixAt = source.indexOf('      matrix:')
   assert.notEqual(matrixAt, -1, 'missing build matrix')
@@ -171,8 +171,7 @@ test('the macOS matrix builds only arm64 and the parity readback covers exactly 
   assert.doesNotMatch(source, /runner: macos-\d+-intel/)
 
   const { DEFAULT_FEEDS } = await import(pathToFileURL(path.resolve(__dirname, 'verify-cross-platform-release.mjs')).href)
-  const macFeeds = DEFAULT_FEEDS.map(feed => feed.platform).filter(platform => platform.startsWith('mac-'))
-  assert.deepEqual(macFeeds, arches.map(arch => `mac-${arch}`))
+  assert.deepEqual(DEFAULT_FEEDS.map(feed => feed.platform), arches.map(arch => `mac-${arch}`))
 })
 
 test('direct single-platform dispatches are artifact-only', () => {
@@ -214,22 +213,37 @@ test('release identity steps are valid Bash on both platform workflows', () => {
   }
 })
 
-test('the production coordinator owns both platform workflows and a final parity readback', () => {
+test('the production coordinator builds only Mac arm64 and ends in a parity readback', () => {
+  // Windows x64 is paused after 0.17.66: installed Windows shells keep polling desktop/win-x64/.
   const source = fs.readFileSync(synchronizedWorkflowPath, 'utf8')
+  const jobs = source.slice(source.indexOf('\njobs:\n'))
+  const uses = [...jobs.matchAll(/^ +uses: \.\/\.github\/workflows\/(\S+)$/gm)].map(match => match[1])
 
-  assert.match(source, /uses: \.\/\.github\/workflows\/desktop-macos\.yml/)
-  assert.match(source, /uses: \.\/\.github\/workflows\/desktop-windows\.yml/)
-  assert.match(source, /needs: \[macos, windows\]/)
+  assert.deepEqual(uses, ['desktop-macos.yml'])
+  assert.deepEqual([...jobs.matchAll(/^ {2}([a-z][\w-]*):$/gm)].map(match => match[1]), ['macos', 'verify-release-parity'])
+  assert.match(source, /needs: \[macos\]/)
+  assert.doesNotMatch(source, /needs\.windows\b/)
   assert.match(source, /test "\$MAC_SHA" = "\$CALLER_SHA"/)
-  assert.match(source, /test "\$WINDOWS_SHA" = "\$CALLER_SHA"/)
-  assert.match(source, /test "\$WINDOWS_IDENTITY_VERIFIED" = "true"/)
+  assert.match(source, /test "\$MAC_VERSION" = "\$PACKAGE_VERSION"/)
+  assert.match(source, /test "\$MAC_RUNTIME_COMMIT" = "\$PINNED_RUNTIME_COMMIT"/)
+  assert.match(source, /test "\$MAC_RUNTIME_VERSION" = "\$PINNED_RUNTIME_VERSION"/)
   assert.match(source, /verify-cross-platform-release\.mjs --expected-version/)
+})
+
+test('no workflow calls desktop-windows.yml, so its publish job cannot run', () => {
+  // A direct dispatch has no publish input (see the artifact-only test above); a workflow_call
+  // with publish would be the only way to advance desktop/win-x64/, which stays at 0.17.66.
+  const dir = path.dirname(windowsWorkflowPath)
+  const callers = fs.readdirSync(dir)
+    .filter(name => /\.ya?ml$/.test(name))
+    .filter(name => /^\s*uses:\s*\.\/\.github\/workflows\/desktop-windows\.ya?ml\b/m.test(fs.readFileSync(path.join(dir, name), 'utf8')))
+  assert.deepEqual(callers, [])
 })
 
 test('the production coordinator release identity check is valid Bash', () => {
   const source = fs.readFileSync(synchronizedWorkflowPath, 'utf8')
   const script = bashRunBody(
-    namedStep(source, 'Assert reusable workflows packaged one release identity')
+    namedStep(source, 'Assert the macOS workflow packaged the release identity')
   )
   const result = spawnSync('bash', ['-n'], { input: script, encoding: 'utf8' })
 

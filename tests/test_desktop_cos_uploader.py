@@ -18,8 +18,8 @@ spec.loader.exec_module(publisher)
 
 @pytest.mark.parametrize('served_size', [0, 2, 3])
 def test_actual_published_size_gates_success(tmp_path, monkeypatch, served_size):
-    local = tmp_path / 'APEX-0.17.50-win-x64.exe'
-    local.write_bytes(b'MZx')
+    local = tmp_path / 'APEX-0.17.50-mac-arm64.zip'
+    local.write_bytes(b'PKx')
     client = Mock()
 
     class Response(io.BytesIO):
@@ -33,14 +33,14 @@ def test_actual_published_size_gates_success(tmp_path, monkeypatch, served_size)
 
     monkeypatch.setattr(publisher.urllib.request, 'urlopen', urlopen)
     if served_size == 3:
-        result = publisher.upload_and_verify(local, 'desktop/win-x64/' + local.name, client)
+        result = publisher.upload_and_verify(local, 'desktop/mac-arm64/' + local.name, client)
         assert result['publicHeadVerified'] and result['bytes'] == 3
     else:
         with pytest.raises(RuntimeError, match='exact size'):
-            publisher.upload_and_verify(local, 'desktop/win-x64/' + local.name, client)
+            publisher.upload_and_verify(local, 'desktop/mac-arm64/' + local.name, client)
     assert client.upload_file.call_count == 1
     assert requests[0].get_method() == 'HEAD'
-    assert requests[0].full_url == publisher.BASE + '/desktop/win-x64/' + local.name
+    assert requests[0].full_url == publisher.BASE + '/desktop/mac-arm64/' + local.name
 
 
 @pytest.mark.parametrize('key', ['desktop/other/file.zip', 'desktop/mac-arm64/../file.zip',
@@ -54,15 +54,22 @@ def test_foreign_or_mismatched_objects_never_upload(tmp_path, key):
     client.upload_file.assert_not_called()
 
 
-@pytest.mark.parametrize('name', ['latest-mac.yml', 'APEX-0.17.64-mac-x64.zip'])
-def test_frozen_intel_feed_is_never_written(tmp_path, monkeypatch, name):
-    # Mac x64 is no longer built; installed Intel shells keep polling desktop/mac-x64/ at 0.17.63.
+@pytest.mark.parametrize('prefix,name', [
+    ('desktop/mac-x64/', 'latest-mac.yml'),
+    ('desktop/mac-x64/', 'APEX-0.17.64-mac-x64.zip'),
+    ('desktop/win-x64/', 'latest.yml'),
+    ('desktop/win-x64/', 'APEX-0.17.67-win-x64.exe'),
+    ('desktop/win-x64/', 'APEX-0.17.67-win-x64.exe.blockmap'),
+])
+def test_frozen_feeds_are_never_written(tmp_path, monkeypatch, prefix, name):
+    # Neither is built any more. Installed shells keep polling desktop/mac-x64/ at 0.17.63
+    # (Intel) and desktop/win-x64/ at 0.17.66 (Windows, paused).
     local = tmp_path / name
-    local.write_bytes(b'version: 0.17.64\n')
+    local.write_bytes(b'version: 0.17.67\n')
     client = Mock()
     monkeypatch.setattr(publisher.urllib.request, 'urlopen', Mock(side_effect=AssertionError('no network in tests')))
     with pytest.raises(ValueError, match='invalid Desktop object key'):
-        publisher.upload_and_verify(local, 'desktop/mac-x64/' + name, client)
+        publisher.upload_and_verify(local, prefix + name, client)
     client.upload_file.assert_not_called()
 
 
@@ -77,12 +84,12 @@ class CosS3Client:
     def __init__(self, config): pass
     def upload_file(self, **kwargs): raise RuntimeError('credential-redline-test-value')
 ''')
-    local = tmp_path / 'APEX-0.17.50-win-x64.exe'
-    local.write_bytes(b'MZx')
+    local = tmp_path / 'APEX-0.17.50-mac-arm64.zip'
+    local.write_bytes(b'PKx')
     env = {**os.environ, 'PYTHONPATH': str(tmp_path),
            'COS_SECRET_ID': 'fixture-identity', 'COS_SECRET_KEY': 'credential-redline-test-value'}
     result = subprocess.run([sys.executable, str(SCRIPT), '--file', str(local), '--key',
-                             'desktop/win-x64/' + local.name], env=env, capture_output=True, text=True, check=False)
+                             'desktop/mac-arm64/' + local.name], env=env, capture_output=True, text=True, check=False)
     assert result.returncode == 1
     assert 'RuntimeError' in result.stderr
     assert 'credential-redline-test-value' not in result.stdout + result.stderr
@@ -91,10 +98,10 @@ class CosS3Client:
 @pytest.mark.parametrize('failed_route,served_size', [('network', 3), ('network', 2), ('service', 3)])
 def test_cli_transport_failover_keeps_service_and_public_size_gates(tmp_path, monkeypatch, capsys,
                                                                  failed_route, served_size):
-    local = tmp_path / 'APEX-0.17.52-win-x64.exe'
-    local.write_bytes(b'MZx')
+    local = tmp_path / 'APEX-0.17.52-mac-arm64.zip'
+    local.write_bytes(b'PKx')
     monkeypatch.setattr(sys, 'argv', [str(SCRIPT), '--file', str(local), '--key',
-                                    'desktop/win-x64/' + local.name])
+                                    'desktop/mac-arm64/' + local.name])
     monkeypatch.setenv('COS_SECRET_ID', 'fixture-identity')
     monkeypatch.setenv('COS_SECRET_KEY', 'credential-redline-test-value')
     sdk, errors = ModuleType('qcloud_cos'), ModuleType('qcloud_cos.cos_exception')
@@ -147,7 +154,7 @@ def test_stalled_owned_worker_is_bounded_and_only_transient_exits_resume(monkeyp
         if outcome == 'timeout': raise subprocess.TimeoutExpired(args, kwargs['timeout'])
         return subprocess.CompletedProcess(args, outcome)
     monkeypatch.setattr(publisher.subprocess, 'run', run)
-    args = ['--file', '/owned/release.exe', '--key', 'desktop/win-x64/release.exe']
+    args = ['--file', '/owned/release.zip', '--key', 'desktop/mac-arm64/release.zip']
     assert publisher.run_bounded_upload(args) == expected
     assert len(seen) == calls
     assert all(command[-4:] == args and '--transfer-worker' in command and options['timeout'] == 600

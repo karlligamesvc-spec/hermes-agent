@@ -18390,8 +18390,8 @@ function initShellUpdater() {
     isPackaged: app.isPackaged && updatesAllowed,
     log: rememberLog,
     beforeInstall: () => runtimeSwitch.prepare(ACTIVE_HERMES_ROOT),
-    // hc-532 (gate 3): thread the shell version so the shell-update beacons
-    // carry app_version (createShellUpdater defaults it to null when omitted).
+    endLeftovers: runtimeSwitch.endLeftovers, // hc-1094
+    // hc-532 (gate 3): the shell-update beacons carry app_version (createShellUpdater defaults it to null).
     appVersion: app.getVersion(),
     broadcast: versionMirror.broadcast
   }).getState())
@@ -21946,7 +21946,7 @@ async function applyResolvedRuntimeUpdate(pin) {
         return { ok: true, applied: true, via: 'packaged', reloadRequired: true, latest: { version: pin.version, key: pin.key } }
       }
     } catch (error: any) {
-      return isRuntimeUpdateBusy(error) ? deferredRuntimeApply(pin) : { ok: false, error: error.message || String(error) }
+      return isRuntimeUpdateBusy(error) ? deferredRuntimeApply(pin, error, rememberLog) : { ok: false, error: error.message || String(error) }
     }
   }
 
@@ -22028,7 +22028,7 @@ async function applyResolvedRuntimeUpdate(pin) {
 
   // 3. Don't-brick pre-flight: confirm the new source tarball actually exists
   //    before we retarget. (No URL -> non-CN git path, which verifies itself.)
-  const deferred = await preflightApply(pin, runtimeSwitch.preflight)
+  const deferred = await preflightApply(pin, runtimeSwitch.preflight, rememberLog)
 
   if (deferred) {
     return deferred
