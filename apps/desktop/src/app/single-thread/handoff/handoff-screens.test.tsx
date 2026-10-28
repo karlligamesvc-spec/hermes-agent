@@ -13,9 +13,11 @@ import { act, cleanup, fireEvent, render, renderHook, within } from '@testing-li
 import { MemoryRouter } from 'react-router'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { renderTranscript, seedShellState } from '@/__identity__/single-thread-shell/render'
+import { renderSidebar, renderTranscript, seedShellState } from '@/__identity__/single-thread-shell/render'
 import { restoreRecordingTimeZone } from '@/__identity__/single-thread-shell/time-zone'
+import { COMPOSER_AREAS } from '@/app/chat/composer/contrib'
 import { stubThreadEnvironment, stubThreadViewportSize } from '@/components/assistant-ui/test-utils'
+import { registry } from '@/contrib/registry'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
 import { $mainThread, noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
 import { $activeGatewayProfile } from '@/store/profile'
@@ -46,6 +48,7 @@ import { SingleThreadEmptyState } from '../thread-empty'
 
 import { ComposerTriggerPopover, HANDOFF_ITEM_PROFILE, useAtCompletions } from './composer-at'
 import { resetBotRolesForTest } from './roles'
+import { HANDOFF_MENTION_MIDDLEWARE_ID, useHandoffScreens } from './use-handoff-screens'
 
 const { ensureGatewayProfile, ownAt } = vi.hoisted(() => ({
   ensureGatewayProfile: vi.fn(async (_profile: string) => undefined),
@@ -525,5 +528,52 @@ describe('our @ list (L10)', () => {
     expect(renderHook(() => useAtCompletions({ cwd: null, gateway: null, sessionId: null })).result.current).not.toBe(
       ownAt
     )
+  })
+})
+
+describe('the sidebar line', () => {
+  const status = (container: HTMLElement, profile: string) =>
+    container.querySelector(`[data-single-thread-bot="${profile}"] [data-single-thread-status]`)?.textContent ?? null
+
+  it('the receiver 「在帮 APEX：…」, the sender 「等小红书文案交回」', () => {
+    relayOn()
+    resetHandoffsForTest([record('r')])
+
+    const { container } = renderSidebar('/chat-a', 'chat')
+
+    expect(status(container, 'writer')).toBe('在帮 APEX：按这个选题写 3 个标题')
+    expect(status(container, 'default')).toBe('等小红书文案交回')
+  })
+
+  it('says nothing of a relay with relay off (records stay on this install)', () => {
+    relayOn()
+    setMultiBotHandoffFlagForTest(false)
+    resetHandoffsForTest([record('r')])
+
+    const { container } = renderSidebar('/chat-a', 'chat')
+
+    expect(container.textContent).not.toContain('在帮')
+    expect(container.textContent).not.toContain('交回')
+  })
+})
+
+describe('the shell part', () => {
+  const registered = () =>
+    registry.getArea(COMPOSER_AREAS.middleware).find(contribution => contribution.id === HANDOFF_MENTION_MIDDLEWARE_ID)
+
+  it('registers the @ middleware ahead of the single-thread one only while relay is on', () => {
+    relayOn()
+
+    const view = renderHook(({ multiBot }) => useHandoffScreens(multiBot), { initialProps: { multiBot: true } })
+
+    expect(registered()?.order).toBeLessThan(-100)
+
+    act(() => setMultiBotHandoffFlagForTest(false))
+    expect(registered()).toBeUndefined()
+
+    act(() => setMultiBotHandoffFlagForTest(true))
+    view.rerender({ multiBot: false })
+    expect(registered()).toBeUndefined()
+    view.unmount()
   })
 })

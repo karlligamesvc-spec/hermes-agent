@@ -454,6 +454,10 @@ describe('handoffRowLine: the sidebar line', () => {
     expect(handoffRowLine('default', 'idle', running, roster, copy)).toBe('等小红书文案交回')
     expect(handoffRowLine('default', 'working', running, roster, copy)).toBeNull()
     expect(handoffRowLine('cutter', 'idle', running, roster, copy)).toBeNull()
+    expect(handoffRowLine('writer', 'idle', [record('q', { status: 'queued' })], roster, copy)).toBe(
+      'APEX 交来的活排着'
+    )
+    expect(handoffRowLine('writer', 'working', [record('q', { status: 'queued' })], roster, copy)).toBeNull()
     expect(handoffRowLine('default', 'idle', [record('r1', { status: 'returned' })], roster, copy)).toBeNull()
   })
 })

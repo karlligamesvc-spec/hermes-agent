@@ -4,6 +4,7 @@
  *
  * - the receiver, while the relay's turn runs: 「在帮 APEX：按这个选题写 3 个标题」;
  *   while that turn waits on the user: 「在等你决定（APEX 交来的活）」;
+ * - the receiver, quiet with a relay waiting for it: 「APEX 交来的活排着」;
  * - the sender, while it is otherwise quiet and a relay it sent is not back:
  *   「等小红书文案交回」.
  *
@@ -45,7 +46,17 @@ export function handoffRowLine(
       : copy.helping(from, helping.ask.replace(/\s+/g, ' ').trim())
   }
 
-  const waiting = kind === 'idle' ? handoffsFrom(profile, records).find(isHandoffActive) : undefined
+  if (kind !== 'idle') {
+    return null
+  }
+
+  const queued = handoffsTo(profile, records).find(record => record.status === 'queued')
+
+  if (queued) {
+    return copy.queuedFor(nameOf(roster, queued.from.profile, queued.from.name))
+  }
+
+  const waiting = handoffsFrom(profile, records).find(isHandoffActive)
 
   return waiting ? copy.waitingFor(nameOf(roster, waiting.to)) : null
 }
