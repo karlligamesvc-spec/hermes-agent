@@ -25,6 +25,12 @@
  * - K9: deleting an assistant calls `cancelHandoffsForProfile(profile)`
  *   (single-thread-bot-ops.ts `deleteBot`).
  *
+ * Every relay belongs to the managed account it started under (`owner`). Signing
+ * out or into another account ends and drops the previous account's relays
+ * ({@link dropHandoffsOfOtherAccounts}), so nothing one account handed over
+ * comes back into another's thread or memory ledger; 交回 is announced only for
+ * the account signed in now.
+ *
  * The switch is `desktop_features.multi_bot_handoff` or this install's
  * APEXNODES_MULTI_BOT_HANDOFF, counted only while several assistants are on
  * (`$multiBotMode`: single-thread product mode with `multi_bot`). Off, nothing
@@ -39,6 +45,7 @@ import { desktopFeatureOn } from '@/lib/desktop-features'
 import { HANDOFF_RESULT_MAX_CHARS, handoffCarryText } from '@/lib/handoff-text'
 import { persistBoolean, readJson, storedBoolean, writeJson } from '@/lib/storage'
 
+import { $authState, type DesktopAuthState } from './auth'
 import { normalizeProfileKey } from './profile'
 import { $botRoster, $multiBotFlag, $multiBotMode, botFor } from './single-thread-bots'
 
@@ -147,7 +154,10 @@ export type HandoffFailureKind =
   | 'turn_error' // the turn failed for another reason
   | 'unreachable' // the receiver's engine never answered
 
-export type HandoffCancelReason = 'receiver_deleted' | 'sender_deleted'
+export type HandoffCancelReason =
+  | 'account_changed' // signed out, or into another account (the record then leaves this computer's list)
+  | 'receiver_deleted'
+  | 'sender_deleted'
 
 /** Where the work came from: the sender's thread and the message whose result is carried (「来源」). */
 export interface HandoffSource {
@@ -225,6 +235,8 @@ export interface HandoffRecord {
   result: null | HandoffResult
   failure: null | { kind: HandoffFailureKind; message: string }
   cancelReason: null | HandoffCancelReason
+  /** The managed account it started under (the login's subject); null without a managed login. */
+  owner: null | string
 }
 
 const ACTIVE: ReadonlySet<HandoffStatus> = new Set(['queued', 'running', 'waiting'])
@@ -371,7 +383,8 @@ function announce(before: HandoffRecord, after: HandoffRecord): void {
     return
   }
 
-  if (after.status === 'returned') {
+  // 交回 reaches the ledger of the account signed in now, never another one's.
+  if (after.status === 'returned' && isOwnHandoff(after)) {
     fire(returnedListeners, after)
   }
 
@@ -402,7 +415,7 @@ export interface StartHandoffInput {
 export type StartHandoffRefusal =
   | 'empty' // no ask (the hand-over always says 要你做)
   | 'nested' // the sender is itself working on a relay (接手的不能再往外交)
-  | 'off' // the switch is off
+  | 'off' // the switch is off, or the account is not known yet
   | 'self' // handed to the sender itself
   | 'too_many_batons' // the chain already has HANDOFF_MAX_BATONS
   | 'unknown_continues' // `continues` names no relay that came back
@@ -423,11 +436,67 @@ function newHandoffId(now: number): string {
   return `ho_${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`
 }
 
+// ── whose relays ─────────────────────────────────────────────────────────────
+
+/**
+ * The account relays belong to now: the managed login's subject, null without
+ * one (signed out, or a build without managed login); undefined until the first
+ * auth check has said (a cached sign-in paints before its subject is known).
+ */
+export function handoffAccount(): null | string | undefined {
+  return handoffAccountOf($authState.get())
+}
+
+export function handoffAccountOf(auth: Pick<DesktopAuthState, 'accountId' | 'status'>): null | string | undefined {
+  return auth.status === 'checking' || auth.accountId === undefined ? undefined : auth.accountId
+}
+
+/** A relay of the account signed in now (never while that is still unknown). */
+export function isOwnHandoff(record: Pick<HandoffRecord, 'owner'>, account = handoffAccount()): boolean {
+  return account !== undefined && (record.owner ?? null) === account
+}
+
+/**
+ * Signed out, or into another account: every relay of another account ends —
+ * a turn still running for it is interrupted — and leaves this computer's list,
+ * so its cards and its result never reach the account now signed in. Resolves
+ * to how many were dropped. Nothing happens while the account is unknown.
+ */
+export async function dropHandoffsOfOtherAccounts(account = handoffAccount()): Promise<number> {
+  if (account === undefined) {
+    return 0
+  }
+
+  const foreign = $handoffs.get().filter(record => (record.owner ?? null) !== account)
+
+  if (!foreign.length) {
+    return 0
+  }
+
+  for (const record of foreign.filter(isHandoffActive)) {
+    updateHandoff(record.id, {
+      cancelReason: 'account_changed',
+      finishedAt: Date.now(),
+      queueReason: null,
+      status: 'cancelled',
+      waitingFor: null
+    })
+  }
+
+  const gone = new Set(foreign.map(record => record.id))
+
+  save($handoffs.get().filter(record => !gone.has(record.id)))
+  await Promise.all(foreign.filter(isHandoffInTurn).map(interruptTurn))
+
+  return foreign.length
+}
+
 function refusalFor(input: StartHandoffInput, records: readonly HandoffRecord[]): StartHandoffRefusal | null {
   const from = normalizeProfileKey(input.from.profile)
   const to = normalizeProfileKey(input.to)
 
-  if (!isHandoffMode()) {
+  // Off, or the account is not known yet (it owns every relay).
+  if (!isHandoffMode() || handoffAccount() === undefined) {
     return 'off'
   }
 
@@ -496,6 +565,7 @@ export function startHandoff(input: StartHandoffInput): StartHandoffResult {
     },
     id,
     notBefore: null,
+    owner: handoffAccount() ?? null,
     queueReason: null,
     result: null,
     startedAt: null,
@@ -594,7 +664,12 @@ export async function cancelHandoffsForProfile(profile: string): Promise<number>
 export function retryHandoff(id: string): boolean {
   const record = handoffById(id)
 
-  if (!record || (record.status !== 'failed' && record.status !== 'stopped') || !isHandoffMode()) {
+  if (
+    !record ||
+    (record.status !== 'failed' && record.status !== 'stopped') ||
+    !isHandoffMode() ||
+    !isOwnHandoff(record)
+  ) {
     return false
   }
 

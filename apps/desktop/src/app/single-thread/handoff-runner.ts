@@ -41,6 +41,7 @@ import { useEffect } from 'react'
 
 import { onGatewayEvent } from '@/contrib/events'
 import { handbackResult, handoffRequestText, parseHandoffHeader } from '@/lib/handoff-text'
+import { $authState } from '@/store/auth'
 import { openSecondaryCount } from '@/store/gateway'
 import { MAIN_THREAD_TITLE, resolveMainThread, resolveProfileThread } from '@/store/main-thread'
 import { $poolLimits } from '@/store/pool-limits'
@@ -50,7 +51,10 @@ import { APEX_PROFILE } from '@/store/single-thread-bots'
 import {
   $handoffMode,
   $handoffs,
+  dropHandoffsOfOtherAccounts,
   HANDOFF_MAX_RUNNING,
+  handoffAccount,
+  handoffAccountOf,
   handoffById,
   type HandoffDispatcher,
   type HandoffFailureKind,
@@ -59,6 +63,7 @@ import {
   type HandoffRecord,
   type HandoffTurn,
   isHandoffInTurn,
+  isOwnHandoff,
   loadMultiBotHandoffFlag,
   setHandoffDispatcher,
   updateHandoff
@@ -645,18 +650,29 @@ export function createHandoffRunner(
       queueTimer = null
     }
 
+    const account = handoffAccount()
+
+    // Whose relays these are is not known yet: run nothing (the shell starts a new runner when it is).
+    if (account === undefined) {
+      return
+    }
+
+    // Another account's relays end and leave the list before anything runs (they are gone from it at once).
+    void dropHandoffsOfOtherAccounts(account)
+    const own = () => $handoffs.get().filter(record => isOwnHandoff(record, account))
+
     // A reopened window (or a restarted app) follows what is still in a turn.
-    for (const record of $handoffs.get()) {
+    for (const record of own()) {
       if (isHandoffInTurn(record) && !following.has(record.id)) {
         void run(record.id, true)
       }
     }
 
-    const active = $handoffs.get().filter(isHandoffInTurn)
+    const active = own().filter(isHandoffInTurn)
     const busy = new Set(active.map(record => record.to))
     let free = HANDOFF_MAX_RUNNING - active.length
 
-    for (const record of $handoffs.get().filter(candidate => candidate.status === 'queued')) {
+    for (const record of own().filter(candidate => candidate.status === 'queued')) {
       const reason = queueReason(record, free, busy)
 
       if (reason === 'hold') {
@@ -684,7 +700,7 @@ export function createHandoffRunner(
       void run(record.id, false)
     }
 
-    if ($handoffs.get().some(record => record.status === 'queued')) {
+    if (own().some(record => record.status === 'queued')) {
       queueTimer = setTimeout(tick, timing.queueMs)
     }
   }
@@ -774,17 +790,28 @@ export function liveHandoffDeps(): HandoffRunnerDeps {
 
 /**
  * The shell's part (use-multi-bot-shell.ts): read the relay switch once several
- * assistants are on, and run the dispatcher while relay is on and the gateway
- * is open. Off, it reads nothing and runs nothing.
+ * assistants are on; when the signed-in account changes, drop the previous
+ * account's relays; run the dispatcher while relay is on, the gateway is open
+ * and the account is known (a new account gets a new runner). Off, it reads
+ * nothing and runs nothing.
  */
 export function useHandoffRunner(multiBot: boolean, gatewayOpen: boolean): void {
-  const on = useStore($handoffMode) && multiBot && gatewayOpen
+  const relay = useStore($handoffMode) && multiBot
+  const account = handoffAccountOf(useStore($authState))
+  const on = relay && gatewayOpen && account !== undefined
 
   useEffect(() => {
     if (multiBot) {
       void loadMultiBotHandoffFlag()
     }
   }, [multiBot])
+
+  // Signed out or into another account, the gateway open or not.
+  useEffect(() => {
+    if (relay && account !== undefined) {
+      void dropHandoffsOfOtherAccounts(account)
+    }
+  }, [account, relay])
 
   useEffect(() => {
     if (!on) {
@@ -800,5 +827,5 @@ export function useHandoffRunner(multiBot: boolean, gatewayOpen: boolean): void 
       setHandoffDispatcher(null)
       runner.dispose()
     }
-  }, [on])
+  }, [account, on])
 }
