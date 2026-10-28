@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider, type Locale, setRuntimeI18nLocale } from '@/i18n'
 import { NEXT_STEPS_COPY } from '@/i18n/next-steps'
+import { $authState } from '@/store/auth'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $activeSessionId, $gatewayState } from '@/store/session'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
@@ -113,6 +114,8 @@ async function rowButtons(name = '下一步') {
 }
 
 function relayOn(on = true) {
+  // hc-1086 starts a relay only once the signed-in account is known (it owns every relay).
+  $authState.set({ ...$authState.get(), accountId: 'acct-handoff', status: 'signed-in' })
   setSingleThreadFlagForTest(true)
   setMultiBotFlagForTest(true)
   setMultiBotHandoffFlagForTest(on)

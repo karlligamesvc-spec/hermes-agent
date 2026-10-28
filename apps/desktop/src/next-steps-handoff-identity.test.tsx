@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { stubThreadEnvironment, stubThreadViewportSize, ThreadRuntime } from '@/components/assistant-ui/test-utils'
 import { Thread } from '@/components/assistant-ui/thread'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
+import { $authState } from '@/store/auth'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $activeSessionId, $gatewayState } from '@/store/session'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
@@ -153,6 +154,8 @@ afterAll(restoreRecordingTimeZone)
 
 beforeEach(() => {
   seedShellState()
+  // hc-1086 starts a relay only once the signed-in account is known (it owns every relay).
+  $authState.set({ ...$authState.get(), accountId: 'acct-next-steps-handoff', status: 'signed-in' })
   $activeGatewayProfile.set('default')
   $activeSessionId.set('session-next-steps-handoff')
   $gatewayState.set('open')
