@@ -1,5 +1,5 @@
 import { type ThreadMessage } from '@assistant-ui/react'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider, type Locale, setRuntimeI18nLocale } from '@/i18n'
@@ -14,19 +14,21 @@ import {
   setMultiBotFlagForTest
 } from '@/store/single-thread-bots'
 import { $handoffs, resetHandoffsForTest, setMultiBotHandoffFlagForTest } from '@/store/single-thread-handoff'
-import type * as HandoffStore from '@/store/single-thread-handoff'
+import { $handoffProposal, confirmHandoffProposal, dismissHandoffProposal } from '@/store/single-thread-handoff-confirm'
+import type * as ConfirmStore from '@/store/single-thread-handoff-confirm'
 import { $toolDisclosureStates, setToolViewMode } from '@/store/tool-view'
 
 import { createdAt, stubThreadEnvironment, stubThreadViewportSize, ThreadRuntime } from './test-utils'
 import { Thread } from './thread'
 
-// hc-1089 「交给 X」: a 「交给」 option in the 「下一步」 block (`@助手名字 | 按钮字 | 要它做什么`) hands its
-// sentence, with the reply above as the carried result, to another assistant through the relay
-// (hc-1086 startHandoff) — never as a message in this thread. Which states hide it is pinned
+// hc-1089 「交给 X」: a 「交给」 option in the 「下一步」 block (`@助手名字 | 按钮字 | 要它做什么`) proposes
+// its sentence, with the reply above as the carried result, to another assistant: hc-1087's
+// confirmation card (proposeHandoff), which starts the hc-1086 relay on 「交给它」 — never a
+// message in this thread. Which states hide it is pinned
 // byte for byte by src/next-steps-handoff-identity.test.tsx; this file pins what a click does.
 
 const submitted = vi.hoisted(() => [] as string[])
-const refuse = vi.hoisted(() => ({ reason: null as null | string }))
+const refuse = vi.hoisted(() => ({ on: false }))
 
 vi.mock('@/app/chat/composer/focus', async importActual => ({
   ...(await importActual<Record<string, unknown>>()),
@@ -37,13 +39,14 @@ vi.mock('@/app/chat/composer/focus', async importActual => ({
   }
 }))
 
-vi.mock('@/store/single-thread-handoff', async importActual => {
-  const actual = await importActual<typeof HandoffStore>()
+// proposeHandoff answers false when the relay is off at the moment of the click.
+vi.mock('@/store/single-thread-handoff-confirm', async importActual => {
+  const actual = await importActual<typeof ConfirmStore>()
 
   return {
     ...actual,
-    startHandoff: (input: Parameters<typeof actual.startHandoff>[0]) =>
-      refuse.reason ? { ok: false, reason: refuse.reason } : actual.startHandoff(input)
+    proposeHandoff: (...args: Parameters<typeof actual.proposeHandoff>) =>
+      refuse.on ? false : actual.proposeHandoff(...args)
   }
 })
 
@@ -119,7 +122,7 @@ function relayOn(on = true) {
 
 beforeEach(() => {
   submitted.length = 0
-  refuse.reason = null
+  refuse.on = false
   resetHandoffsForTest()
   $activeGatewayProfile.set('default')
   $activeSessionId.set('session-handoff')
@@ -129,6 +132,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  dismissHandoffProposal()
   resetHandoffsForTest()
   setMultiBotHandoffFlagForTest(false)
   setMultiBotFlagForTest(false)
@@ -151,7 +155,7 @@ describe('a 「交给」 option with the relay on', () => {
     expect(plain.textContent).toBe('再写 3 个')
   })
 
-  it('hands the sentence and the reply above to that assistant, and sends nothing here', async () => {
+  it('proposes the sentence and the reply above to that assistant, and sends nothing here', async () => {
     relayOn()
     renderReply(reply(TO_WRITER, PLAIN))
 
@@ -160,12 +164,33 @@ describe('a 「交给」 option with the relay on', () => {
     fireEvent.click(handoff)
 
     expect(submitted).toEqual([])
-    const [record] = $handoffs.get()
+    expect($handoffs.get()).toEqual([])
+    expect($handoffProposal.get()?.input).toEqual({
+      ask: '把第 1 个标题写成小红书笔记',
+      from: { messageId: `handoff-answer-${answers}`, profile: 'default', storedSessionId: null },
+      previous: { files: [], links: ['https://www.douyin.com/video/7'], text: ANSWER },
+      to: 'writer'
+    })
+    // Not used up yet: the card may still be answered 「先不」.
+    expect(handoff).toHaveProperty('disabled', false)
+    expect(plain).toHaveProperty('disabled', false)
+  })
+
+  it('is used up once 「交给它」 starts the relay', async () => {
+    relayOn()
+    renderReply(reply(TO_WRITER, PLAIN))
+
+    const [handoff, plain] = await rowButtons()
+
+    fireEvent.click(handoff)
+    act(() => {
+      confirmHandoffProposal()
+    })
+
     expect($handoffs.get()).toHaveLength(1)
-    expect(record).toMatchObject({
+    expect($handoffs.get()[0]).toMatchObject({
       ask: '把第 1 个标题写成小红书笔记',
       carry: { files: [], links: ['https://www.douyin.com/video/7'], text: ANSWER, truncated: false },
-      from: { messageId: `handoff-answer-${answers}`, profile: 'default', storedSessionId: null },
       status: 'queued',
       to: 'writer'
     })
@@ -174,9 +199,32 @@ describe('a 「交给」 option with the relay on', () => {
     expect(plain).toHaveProperty('disabled', true)
   })
 
-  it.each(REFUSALS)('says why in plain words when the relay refuses (%s), and the row stays usable', async reason => {
+  it('stays usable after 「先不」, or when the relay refuses the confirmed card', async () => {
     relayOn()
-    refuse.reason = reason
+    renderReply(reply(TO_WRITER, PLAIN))
+
+    const [handoff, plain] = await rowButtons()
+
+    fireEvent.click(handoff)
+    act(() => dismissHandoffProposal())
+    expect($handoffProposal.get()).toBeNull()
+
+    fireEvent.click(handoff)
+    // The assistant was deleted while the card was up: hc-1086 refuses (unknown_receiver).
+    act(() => resetBotRosterForTest(botRosterFrom(ROSTER_ROWS.slice(0, 1), () => true)))
+    act(() => {
+      confirmHandoffProposal()
+    })
+
+    expect($handoffs.get()).toEqual([])
+    expect(plain).toHaveProperty('disabled', false)
+    fireEvent.click(plain)
+    expect(submitted).toEqual(['再写 3 个标题'])
+  })
+
+  it('says so in plain words when the relay is off by the time of the click, and the row stays usable', async () => {
+    relayOn()
+    refuse.on = true
     const { container } = renderReply(reply(TO_WRITER, PLAIN))
 
     const [handoff, plain] = await rowButtons()
@@ -185,28 +233,28 @@ describe('a 「交给」 option with the relay on', () => {
     fireEvent.click(handoff)
 
     const note = await waitFor(() => screen.getByRole('status'))
-    expect(note.getAttribute('data-next-step-handoff-refused')).toBe(reason)
-    expect(note.textContent).toBe(NEXT_STEPS_COPY.zh.refused[reason]('小红书文案'))
-    expect($handoffs.get()).toEqual([])
+    expect(note.getAttribute('data-next-step-handoff-refused')).toBe('off')
+    expect(note.textContent).toBe('现在没开接力，交不给小红书文案。')
+    expect($handoffProposal.get()).toBeNull()
     expect(handoff).toHaveProperty('disabled', false)
     fireEvent.click(plain)
     expect(submitted).toEqual(['再写 3 个标题'])
   })
 
-  it('clears the note once a later click goes through', async () => {
+  it('clears that line once a later click is proposed', async () => {
     relayOn()
-    refuse.reason = 'off'
+    refuse.on = true
     const { container } = renderReply(reply(TO_WRITER, PLAIN))
 
     const [handoff] = await rowButtons()
 
     fireEvent.click(handoff)
     await waitFor(() => expect(container.querySelector('[data-next-step-handoff-refused]')).not.toBeNull())
-    refuse.reason = null
+    refuse.on = false
     fireEvent.click(handoff)
 
     await waitFor(() => expect(container.querySelector('[data-next-step-handoff-refused]')).toBeNull())
-    expect($handoffs.get()).toHaveLength(1)
+    expect($handoffProposal.get()?.input.to).toBe('writer')
   })
 
   it('matches the name the way the sidebar shows it: any case, runs of spaces', async () => {

@@ -11,14 +11,15 @@
  * user message (a click or anything typed) moves the conversation on and the row goes away.
  *
  * hc-1089: a 「交给」 option (`@助手名字 | 按钮字 | 要它做什么`) is drawn as 「交给 X：按钮字」 and a
- * click hands its sentence, with this reply as the carried result, to that assistant through
- * the relay (hc-1086 `startHandoff`) instead of saying it here. It shows only while the relay
+ * click proposes handing its sentence, with this reply as the carried result, to that assistant
+ * (hc-1087 `proposeHandoff`: a confirmation card in this thread, which starts the hc-1086 relay
+ * on 「交给它」) instead of saying it here. The row is used up only once the relay started. It shows only while the relay
  * can take it: relay mode on (`multi_bot_handoff`, several assistants, product mode — never in
  * developer mode), the name is another assistant on the roster, and the assistant on screen is
  * not itself working on a relay (接手的不能再往外交). Otherwise the option is left out and the
- * rest of the row is exactly what it was without it. When the relay still refuses a click (the
- * switch, the roster or the chain changed under the row), one plain line under the row says why
- * and the row stays usable.
+ * rest of the row is exactly what it was without it. When the relay is off by the time of the
+ * click (the switch changed under the row), one plain line under the row says so and the row
+ * stays usable; a refusal after 「交给它」 is the confirmation card's to explain.
  */
 
 import { useAuiState, useMessagePartText } from '@assistant-ui/react'
@@ -40,9 +41,9 @@ import {
   $handoffs,
   handoffsTo,
   isHandoffActive,
-  startHandoff,
   type StartHandoffRefusal
 } from '@/store/single-thread-handoff'
+import { proposeHandoff } from '@/store/single-thread-handoff-confirm'
 
 // Rows already used, module-scoped: transcript virtualization remounts the row with fresh
 // state, which would otherwise offer the same click twice before the user message lands.
@@ -139,22 +140,23 @@ function NextStepRow({ block, visible }: { block: NextStepsBlock; visible: strin
       return
     }
 
-    const started = startHandoff({
-      ask: option.message,
-      from: { messageId, profile: currentProfile, storedSessionId: storedId ?? null },
-      previous: { text: visible, ...handoffReplyAttachments(visible) },
-      to: bot.profile
-    })
+    const proposed = proposeHandoff(
+      {
+        ask: option.message,
+        from: { messageId, profile: currentProfile, storedSessionId: storedId ?? null },
+        previous: { text: visible, ...handoffReplyAttachments(visible) },
+        to: bot.profile
+      },
+      {
+        onStarted: () => {
+          used.add(identity)
+          setSent(true)
+        },
+        origin: 'next_step'
+      }
+    )
 
-    if (!started.ok) {
-      setRefused({ name: bot.name, reason: started.reason })
-
-      return
-    }
-
-    setRefused(null)
-    used.add(identity)
-    setSent(true)
+    setRefused(proposed ? null : { name: bot.name, reason: 'off' })
   }
 
   if (block.failed !== null) {
