@@ -12,6 +12,9 @@
  * Switch off and developer mode are pinned byte for byte in
  * src/user-message-identity.test.tsx; here they show that none of this reaches them.
  */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { cleanup, fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -354,5 +357,14 @@ describe('a failed send says so once', () => {
     notifyPromptFailed(new Error('gateway closed'), '发送失败')
 
     expect($notifications.get()).toHaveLength(toasts)
+  })
+
+  // The census: the one place a failed prompt toasts is submit.ts's catch, right
+  // after it adds the error card, and it goes through the single-thread gate.
+  it('submit.ts toasts a failed prompt only through notifyPromptFailed', () => {
+    const submit = readFileSync(join(__dirname, '../../../app/session/hooks/use-prompt-actions/submit.ts'), 'utf8')
+
+    expect(submit.match(/notifyPromptFailed\(err, copy\.promptFailed\)/g)).toHaveLength(1)
+    expect(submit).not.toMatch(/notifyError\(\w+, copy\.promptFailed\)/)
   })
 })
