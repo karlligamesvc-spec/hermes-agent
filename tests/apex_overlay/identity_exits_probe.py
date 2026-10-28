@@ -25,6 +25,7 @@ sys.path.insert(0, str(ROOT))
 
 def _pin_machine() -> None:
     import agent.coding_context
+    import hermes_cli
     import hermes_cli._startup_fast as startup_fast
     from hermes_cli import banner
     from hermes_cli import config
@@ -34,6 +35,8 @@ def _pin_machine() -> None:
     from hermes_cli.version_info import VersionInfo
 
     hermes_time.now = lambda: datetime(2026, 10, 28, 12, 0, tzinfo=UTC)
+    # Every upstream sync moves the engine's release date; the cloud image in production says 2026.8.31.
+    hermes_cli.__release_date__ = "2026.8.31"
     agent.coding_context.build_coding_workspace_block = lambda cwd=None: "Workspace: pinned"
     version = VersionInfo(base_version="0.22.5", derived_version="0.22.5", distance=0, commit=None, branch=None,
                           source="build", distribution="desktop-app")

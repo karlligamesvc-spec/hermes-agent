@@ -61,6 +61,8 @@ _SEAM_MODULES = (
     "desktop_version",
     # hc-1065 native vision for the relay's Flash tier; direct, reasoning-free answers.
     "vision_answer",
+    # hc-1103 APEX identity, cloud help line and /version on APEX surfaces.
+    "apex_identity",
 )
 
 

@@ -1,6 +1,2 @@
-Hermes Agent v0.22.5 · stable
-Install directory: /Applications/APEX.app/Contents/Resources/engine
-Install method: desktop-app
-Python: <pinned>
-OpenAI SDK: 2.0.0
-Update available: 1 commit behind — run 'hermes update'
+APEX 0.17.67（自带的 AI 引擎 2026.10.27，跟着 APEX 一起更新）
+更新：新版 0.17.68 已经下载好了，还没装：点左下角的「安装并重启」就能装上。
