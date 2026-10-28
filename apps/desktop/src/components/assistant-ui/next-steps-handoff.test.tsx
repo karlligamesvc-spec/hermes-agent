@@ -172,6 +172,7 @@ describe('a 「交给」 option with the relay on', () => {
       previous: { files: [], links: ['https://www.douyin.com/video/7'], text: ANSWER },
       to: 'writer'
     })
+    expect($handoffProposal.get()?.origin).toBe('next_step')
     // Not used up yet: the card may still be answered 「先不」.
     expect(handoff).toHaveProperty('disabled', false)
     expect(plain).toHaveProperty('disabled', false)
