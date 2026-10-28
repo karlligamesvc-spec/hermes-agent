@@ -127,6 +127,13 @@ export function isHandoff(option: NextStepOption): option is NextStepOption & { 
   return option.to !== undefined
 }
 
+/** hc-1091: one 「交给」 line on its own (a relay plan's batons are written the same way); null for any other line. */
+export function parseHandoffLine(line: string): (NextStepOption & { to: string }) | null {
+  const option = splitOption(line.trim())
+
+  return option && isHandoff(option) ? option : null
+}
+
 // One button per label, and per assistant for 「交给」 options (a newline never occurs inside a line).
 const optionKey = (option: NextStepOption) => (isHandoff(option) ? `${option.label}\n${option.to}` : option.label)
 

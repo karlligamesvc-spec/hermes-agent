@@ -16,7 +16,8 @@
  *   names the assistant in system notifications (bot-notifications.ts);
  * - runs the relay (接力) dispatcher while relay is on (hc-1086, handoff-runner.ts),
  *   notes each relay that comes back in the memory ledger (hc-1090), and turns
- *   a send naming another assistant into the confirm card (hc-1087).
+ *   a send naming another assistant into the confirm card (hc-1087), and
+ *   moves a relay plan on baton by baton (hc-1091).
  *
  * Off (or in a pop-out window) it does nothing.
  */
@@ -27,6 +28,7 @@ import { type MutableRefObject, useEffect, useRef } from 'react'
 import { rememberQuickEntryAssistant } from '@/i18n/quick-entry'
 import { botNotificationTitle } from '@/store/bot-notifications'
 import { useHandoffLedger } from '@/store/handoff-ledger'
+import { useHandoffPlanDriver } from '@/store/handoff-plan'
 import { $mainThreadsByProfile, resolveProfileThread } from '@/store/main-thread'
 import { setNotificationTitleNamer } from '@/store/notification-title'
 import { $selectedStoredSessionId } from '@/store/session'
@@ -80,6 +82,8 @@ export function useMultiBotShell(
   useHandoffLedger(multiBot)
   // hc-1086: the relay dispatcher, while relay is on (it reads its switch only once several assistants are).
   useHandoffRunner(multiBot, gatewayOpen)
+  // hc-1091: a relay plan's next baton starts once the one before came back (relay on only).
+  useHandoffPlanDriver()
   // hc-1087: the relay screens (a send naming another assistant becomes the confirm card).
   useHandoffScreens(multiBot)
 

@@ -495,6 +495,10 @@ describe('who starts a relay (L6: a used-up allowance is held back only before t
 
     expect(callers.sort()).toEqual([
       'app/single-thread/handoff/cards.tsx: retryHandoff', // after handoffRetryBlocked() (usage-line.ts)
+      // hc-1091: 「开始」 on the plan card (it shows R5's line for all the plan's turns and blocks when used up),
+      // then each next baton after checkHandoffUsage(1); 「再试一次」 after checkHandoffUsage(1).
+      'store/handoff-plan.ts: retryHandoff',
+      'store/handoff-plan.ts: startHandoff',
       'store/single-thread-handoff-confirm.ts: startHandoff' // 「交给它」, the card shows R5's line and blocks when used up
     ])
   })

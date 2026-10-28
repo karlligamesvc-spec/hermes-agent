@@ -14,7 +14,15 @@ hand-over message and submits it there. This seam makes both engines handle it:
 * the ``apex.handoff`` section lists the user's other assistants with the 「分工」 hc-1079 wrote into
   each SOUL.md, so an assistant can offer a job to the one it belongs to with a 「交给」 line in its
   next-step block (hc-1089; the user clicks, the assistant only offers), and a session hears once when
-  that list changed after its prompt was frozen. The skills' 「交给」 rule counts on this list.
+  that list changed after its prompt was frozen. The skills' 「交给」 rule counts on this list;
+* for APEX (the main assistant) only, the same section says how to propose a relay plan (一条龙接力,
+  hc-1091): an ``<!-- apex:plan … -->`` block of up to three batons that Desktop draws as a plan card and
+  runs one relay at a time once the user clicks 「开始」. Desktop's own marker, not part of the 「下一步」
+  protocol; its template is pinned in ``apps/desktop/shared/apex-handoff-plan-cases.json``;
+* outside Desktop chat — the Desktop-hosted IM gateway (WeChat and the others share single-thread mode),
+  the terminal, cron — nobody draws a plan card or reads a 交回摘要, so the final reply that is sent and
+  stored loses both blocks (hc-1091). The hooks after this one still see the rest: apexnodes-next-steps
+  numbers its 「下一步」 block as before.
 
 The message, the block and the readers' rules are pinned in ``apps/desktop/shared/apex-handoff-cases.json``,
 which Desktop's tests and these read.
@@ -105,6 +113,24 @@ OFFER_RULE = (
     "和别的项一起最多 3 项。用户点了才交，你自己交不了，也不替它做；顺手的小事自己做，不提。"
 )
 TURN_RULE = "- 别的助手交来活、或者把你交出去的活交回来时，那一回合会另外告诉你怎么接。"
+# hc-1091 一条龙接力: APEX proposes, Desktop draws the card (lib/handoff-plan.ts reads the block), the user starts it.
+PLAN_MAX_LEGS = 3
+PLAN_TEMPLATE = (
+    "<!-- apex:plan\n"
+    "已有 | 你已经做好的那部分\n"
+    "@助手名字 | 这一棒做什么 | 要它做什么\n"
+    "@助手名字 | 这一棒做什么 | 要它做什么\n"
+    "-->"
+)
+PLAN_RULE = (
+    "- 用户要几个助手接着做完一件事（比如「选题、标题、成片一条龙做完」）时，可以排一个接力计划：在回复最后写下面这个块，"
+    "用户在卡上点「开始」才按顺序跑，后一棒拿前一棒交回的结果接着做，中途要用户拍板会停在那一棒：\n"
+    f"{PLAN_TEMPLATE}\n"
+    f"  一行一棒，连「已有」最多 {PLAN_MAX_LEGS} 棒。「已有」只写在第一行，是你在这条回复里或前面已经做好的那部分，没有就不写；"
+    "其余每行交给上面的一个助手，名字照上面写，不能是你自己；中间写这一棒做什么（16 字以内）；"
+    "最后用用户的口吻写清要它做什么、用谁交回的哪个结果。第一棒要用的材料写进这条回复正文（会一起交过去）；"
+    "要用户先定的先问清楚再排。排了接力计划的回复不写「下一步」块；只交一棒用「交给」项就够了。"
+)
 MAIN_ROLE = "主助手，什么活都能接"
 NO_ROLE = "还没定分工"
 
@@ -211,12 +237,12 @@ def _return_body(body: str) -> Optional[dict]:
     return {"summary": _cap(joined, SUMMARY_MAX_CHARS), "files": files, "links": links}
 
 
-def _cut_unterminated_tail(text: str) -> str:
+def _cut_unterminated_tail(text: str, marker: str = RETURN_MARKER) -> str:
     start = text.rfind("<!--")
     if start < 0 or "-->" in text[start:]:
         return text
     tail = text[start + 4 :].strip()
-    if tail.startswith(RETURN_MARKER) or (tail and RETURN_MARKER.startswith(tail)):
+    if tail.startswith(marker) or (tail and marker.startswith(tail)):
         return text[:start]
     return text
 
@@ -375,12 +401,14 @@ def render_section(session_info: Mapping[str, Any] | None = None) -> str:
     info = session_info or {}
     if not switch_on() or info.get("platform") != PLATFORM:
         return ""
-    lines = _roster_lines(_own_profile(str(info.get("profile_name") or "")))
+    own = _own_profile(str(info.get("profile_name") or ""))
+    lines = _roster_lines(own)
     _remember(str(info.get("session_id") or ""), lines)
     if not lines:
         return ""
     indented = "\n".join("  " + line for line in lines.split("\n"))
-    return "\n".join((SECTION_HEAD, "- 用户在 APEX 里还有这几个助手，各有分工：", indented, OFFER_RULE, TURN_RULE))
+    plan = (PLAN_RULE,) if own == MAIN_PROFILE else ()
+    return "\n".join((SECTION_HEAD, "- 用户在 APEX 里还有这几个助手，各有分工：", indented, OFFER_RULE, *plan, TURN_RULE))
 
 
 # ── the return box ───────────────────────────────────────────────────────────
@@ -462,6 +490,58 @@ def take_returns(profile: str) -> list[str]:
     return notes
 
 
+# ── the reply outside Desktop chat (hc-1091) ─────────────────────────────────
+
+PLAN_MARKER = "apex:plan"
+_PLAN_RE = re.compile(r"<!--\s*apex:plan(?![A-Za-z0-9_]).*?-->", re.DOTALL)
+
+
+def strip_plan(text: str) -> str:
+    """The reply without any relay plan block (Desktop's lib/handoff-plan.ts rules); untouched when none."""
+    if not text or "<!--" not in text:
+        return text or ""
+    removed = _PLAN_RE.sub("", text)
+    if removed != text:
+        removed = _EMPTY_FENCE_RE.sub("", removed)
+    visible = _cut_unterminated_tail(removed, PLAN_MARKER)
+    if visible == text:
+        return text
+    return re.sub(r"\n{3,}", "\n\n", visible).strip()
+
+
+def strip_desktop_markers(text: str) -> str:
+    """The reply without the blocks only Desktop's chat reads: a relay plan and a 交回摘要."""
+    return parse_return(strip_plan(text))[0]
+
+
+def _transform_hook(manager: Any):
+    """``transform_llm_output`` for one plugin manager: outside Desktop chat, the reply that is sent (an
+    IM message, the terminal, a cron delivery) and stored loses the Desktop-only blocks. Only the first
+    answer of this hook counts, so what is left goes on to the hooks after this one (apexnodes-next-steps
+    numbering its 「下一步」 block), and their answer, if any, is the reply."""
+
+    def on_transform_llm_output(response_text: Any = None, platform: str = "", **kwargs: Any) -> Optional[str]:
+        if platform == PLATFORM or not isinstance(response_text, str) or "<!--" not in response_text:
+            return None
+        visible = strip_desktop_markers(response_text)
+        if visible == response_text:
+            return None
+        callbacks = list(getattr(manager, "_hooks", {}).get("transform_llm_output", ()))
+        later = callbacks[callbacks.index(on_transform_llm_output) + 1 :] if on_transform_llm_output in callbacks else []
+        for callback in later:
+            try:
+                result = callback(response_text=visible, platform=platform, **kwargs)
+            except Exception:
+                logger.warning("apex-overlay: a transform_llm_output hook failed after the relay strip", exc_info=True)
+                continue
+            if isinstance(result, str) and result:
+                return result
+        return visible or None
+
+    on_transform_llm_output.__qualname__ = "on_transform_llm_output"
+    return on_transform_llm_output
+
+
 # ── hooks ────────────────────────────────────────────────────────────────────
 
 
@@ -513,7 +593,8 @@ def on_post_llm_call(
 
 
 def apply(ctx: Any) -> bool:
-    """Register the section and both turn hooks on this plugin's context. Idempotent per plugin manager.
+    """Register the section, both turn hooks and the output strip on this plugin's context. Idempotent per
+    plugin manager.
 
     Only while the switch is on: Desktop settles all three variables before the engine starts, so with
     any of them off nothing is added.
@@ -536,4 +617,12 @@ def apply(ctx: Any) -> bool:
         return False
     register_hook("pre_llm_call", on_pre_llm_call)
     register_hook("post_llm_call", on_post_llm_call)
+    # First among the output transforms, whatever order the plugins loaded in: the blocks must be gone
+    # before another hook's answer (the first one wins) becomes the reply.
+    transform = _transform_hook(getattr(ctx, "_manager", None))
+    register_hook("transform_llm_output", transform)
+    transforms = hooks.get("transform_llm_output") if isinstance(hooks, dict) else None
+    if isinstance(transforms, list) and transform in transforms:
+        transforms.remove(transform)
+        transforms.insert(0, transform)
     return True

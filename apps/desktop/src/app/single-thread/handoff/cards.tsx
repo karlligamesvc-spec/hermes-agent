@@ -15,6 +15,8 @@
  * - {@link HandoffReceivedCard}: the receiver's side, in place of the
  *   hand-over message: 「X 交来的活」, its source a click away (⑪).
  * - {@link HandoffHandedBackLine}: under the receiver's reply once it went back.
+ *
+ * hc-1091's plan card (plan-card.tsx) is drawn with the same pieces.
  */
 
 import { useStore } from '@nanostores/react'
@@ -57,15 +59,15 @@ import {
 import type { HandoffRequestView } from './request-view'
 import { handoffRetryBlocked, useHandoffUsageLine } from './usage-line'
 
-const CARD_CLASS =
+export const CARD_CLASS =
   'flex w-[30rem] max-w-full flex-col gap-2 self-start rounded-2xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-3.5 py-3 text-[0.875rem] leading-relaxed text-(--ui-text-primary)'
 
-const META_CLASS = 'm-0 text-xs leading-5 text-(--ui-text-tertiary)'
+export const META_CLASS = 'm-0 text-xs leading-5 text-(--ui-text-tertiary)'
 
-const QUOTE_CLASS =
+export const QUOTE_CLASS =
   'm-0 rounded-[0.625rem] bg-(--ui-bg-tertiary) px-2.5 py-2 text-[0.8125rem] whitespace-pre-line wrap-anywhere text-(--ui-text-secondary)'
 
-type ChipTone = 'done' | 'fail' | 'run' | 'wait'
+export type ChipTone = 'done' | 'fail' | 'run' | 'wait'
 
 const CHIP_CLASS: Record<ChipTone, string> = {
   done: 'bg-[color-mix(in_srgb,var(--ui-green)_14%,transparent)] text-(--ui-green)',
@@ -74,7 +76,7 @@ const CHIP_CLASS: Record<ChipTone, string> = {
   wait: 'bg-[color-mix(in_srgb,var(--ui-orange)_14%,transparent)] text-(--ui-orange)'
 }
 
-function Chip({ children, tone }: { children: ReactNode; tone: ChipTone }) {
+export function Chip({ children, tone }: { children: ReactNode; tone: ChipTone }) {
   return (
     <span
       className={cn('shrink-0 rounded-full px-2 py-px text-xs font-semibold whitespace-nowrap', CHIP_CLASS[tone])}
@@ -85,7 +87,7 @@ function Chip({ children, tone }: { children: ReactNode; tone: ChipTone }) {
   )
 }
 
-function CardHead({ bot, children, title }: { bot: ApexBot | null; children?: ReactNode; title: string }) {
+export function CardHead({ bot, children, title }: { bot: ApexBot | null; children?: ReactNode; title: string }) {
   return (
     <div className="flex min-w-0 items-center gap-2 text-[0.90625rem] font-semibold">
       {bot && <ApexAvatar className="size-5.5" color={bot.color} shape={bot.shape} />}
@@ -95,7 +97,7 @@ function CardHead({ bot, children, title }: { bot: ApexBot | null; children?: Re
   )
 }
 
-function Actions({ children }: { children: ReactNode }) {
+export function Actions({ children }: { children: ReactNode }) {
   return <div className="flex flex-wrap gap-2">{children}</div>
 }
 
@@ -153,7 +155,7 @@ export function carryCount(carry: HandoffCarry): HandoffCarryCount {
 }
 
 /** The files and links that came back, drawn the way a reply draws them (media players, file cards, links). */
-function ReturnedItems({ files, links }: { files: readonly string[]; links: readonly string[] }) {
+export function ReturnedItems({ files, links }: { files: readonly string[]; links: readonly string[] }) {
   if (!files.length && !links.length) {
     return null
   }
