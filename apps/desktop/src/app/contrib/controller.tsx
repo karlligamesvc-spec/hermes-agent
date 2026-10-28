@@ -6,6 +6,7 @@ import { useLocation } from 'react-router'
 import { SessionDraftTitle } from '@/app/chat/session-draft-title'
 import { SessionStatusDot } from '@/app/chat/session-status-dot'
 import { PALETTE_AREA, type PaletteContribution, paletteToggle } from '@/app/command-palette/contrib'
+import { unlessFolded } from '@/app/shell/product-titlebar'
 import { type StatusbarItem } from '@/app/shell/statusbar-controls'
 import { AskDirective } from '@/components/assistant-ui/ask-directive'
 import { InlinePreviewDirective } from '@/components/assistant-ui/inline-preview-directive'
@@ -276,7 +277,7 @@ registry.registerMany([
       id: 'layout.editMode',
       label: 'Toggle layout edit mode',
       defaults: ['mod+shift+\\'],
-      run: toggleLayoutEditMode
+      run: unlessFolded('layout.editMode', toggleLayoutEditMode)
     } satisfies KeybindContribution
   },
   paletteToggle({

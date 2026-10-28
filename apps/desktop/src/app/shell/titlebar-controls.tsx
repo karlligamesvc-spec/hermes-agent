@@ -29,6 +29,7 @@ import { $titlebarAppActionsSide } from '@/store/titlebar-app-actions'
 
 import { appViewForPath, hidesFixedTitlebarClusters, isOverlayView } from '../routes'
 
+import { $titlebarFold } from './product-titlebar'
 import {
   TITLEBAR_ICON_BADGE_SCALE,
   titlebarButtonClass,
@@ -141,6 +142,8 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   const sidebarOpen = useStore($sidebarOpen)
   const unreadCount = useStore($unreadSessionCount)
   const appActionsSide = useStore($titlebarAppActionsSide)
+  // hc-1085: the developer controls single-thread product mode folds (product-titlebar.ts).
+  const fold = useStore($titlebarFold)
   const unreadBadge = unreadCount > 0 ? unreadCount : undefined
   const unreadHint = unreadBadge ? ` · ${t.titlebar.unreadSessions(unreadBadge)}` : ''
 
@@ -176,6 +179,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
 
   const flipTool: TitlebarTool = {
     actionId: 'view.flipPanes',
+    hidden: fold.flip,
     icon: <TitlebarIcon name="arrow-swap" />,
     id: 'flip-panes',
     label: t.titlebar.swapSidebarSides,
@@ -188,6 +192,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   const rightSidebarTool: TitlebarTool = {
     actionId: 'view.toggleRightSidebar',
     badge: panesFlipped ? unreadBadge : undefined,
+    hidden: fold.rightEdge,
     icon: <TitlebarIcon name="layout-sidebar-right" />,
     id: 'right-sidebar',
     label: `${rightLabel}${panesFlipped ? unreadHint : ''}`,
@@ -213,6 +218,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
     },
     {
       className: 'group/tool',
+      hidden: fold.layout,
       // Hover + held ⌘/Ctrl morphs the glyph into its reset form (see
       // LayoutGlyph) — the mod-click telegraphs itself before it happens.
       icon: <LayoutGlyph modHeld={modHeld} />,
@@ -237,6 +243,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
       // crowds the ⌘⇧H hint off the tooltip. Label only — the hint is appended
       // from the action registry, same as every other tool here.
       actionId: 'view.toggleHud',
+      hidden: fold.hud,
       icon: <TitlebarIcon name="comment-discussion" />,
       id: 'hud',
       label: t.titlebar.enterHud,
@@ -327,8 +334,11 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
         {visibleSystemTools.map(tool => (
           <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
         ))}
-        <TitlebarToolButton navigate={navigate} tool={flipTool} />
-        <TitlebarToolButton navigate={navigate} tool={rightSidebarTool} />
+        {[flipTool, rightSidebarTool]
+          .filter(tool => !tool.hidden)
+          .map(tool => (
+            <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
+          ))}
         <Slot area="titleBar.right" />
       </div>
     </>

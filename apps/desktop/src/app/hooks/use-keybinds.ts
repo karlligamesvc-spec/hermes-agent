@@ -6,6 +6,7 @@ import { hudTargetSessionId } from '@/app/hud/handoff'
 import { setTerminalTakeover } from '@/app/right-sidebar/store'
 import { closeActiveTerminal, createTerminal, cycleTerminal } from '@/app/right-sidebar/terminal/terminals'
 import { appViewForPath, isOverlayView } from '@/app/routes'
+import { withFoldedShortcuts } from '@/app/shell/product-titlebar'
 import {
   activateTreeTabSlot,
   cycleTreeTabInFocusedZone,
@@ -187,7 +188,7 @@ export function useKeybinds(deps: KeybindRuntimeDeps): void {
     setTerminalTakeover(false)
   }
 
-  handlersRef.current = {
+  handlersRef.current = withFoldedShortcuts({
     'keybinds.openPanel': () => navigate(`${SETTINGS_ROUTE}?tab=keybinds`),
 
     'composer.focus': () => requestComposerFocus('active'),
@@ -313,7 +314,7 @@ export function useKeybinds(deps: KeybindRuntimeDeps): void {
     'profile.prev': () => cycleProfile(-1),
     'profile.toggleAll': toggleShowAllProfiles,
     'profile.create': requestProfileCreate
-  }
+  })
 
   // A keyboard-driven overlay closing hands typing back to the composer: Radix
   // restores focus to the trigger (a toolbar button for the model pill), so

@@ -31,6 +31,8 @@ import {
 import { useModelChoiceHidden } from '@/store/model-choice'
 import { MODEL_TIER_HIDDEN_KEYBIND_ACTIONS } from '@/store/model-tiers'
 
+import { useFoldedShortcuts } from './product-titlebar'
+
 // The full hotkey map. Quiet popover, click a row's chip to rebind.
 export function KeybindPanel() {
   const { t } = useI18n()
@@ -40,6 +42,8 @@ export function KeybindPanel() {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   // hc-960: the model-picker chord is inert on an APEX account, so unlisted.
   const modelChoiceHidden = useModelChoiceHidden()
+  // hc-1085: the folded titlebar controls' shortcuts are inert in product mode, so unlisted.
+  const folded = useFoldedShortcuts()
 
   const openCombo = bindings[KEYBIND_PANEL_ACTION]?.[0]
 
@@ -82,7 +86,8 @@ export function KeybindPanel() {
                 action =>
                   action.category === category &&
                   action.id !== KEYBIND_PANEL_ACTION &&
-                  !(modelChoiceHidden && MODEL_TIER_HIDDEN_KEYBIND_ACTIONS.has(action.id))
+                  !(modelChoiceHidden && MODEL_TIER_HIDDEN_KEYBIND_ACTIONS.has(action.id)) &&
+                  !folded.has(action.id)
               )
 
               const readonly = KEYBIND_READONLY.filter(shortcut => shortcut.category === category)

@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react'
 import { useMemo, useState } from 'react'
 
+import { useFoldedShortcuts } from '@/app/shell/product-titlebar'
 import { Codicon } from '@/components/ui/codicon'
 import { DisclosureCaret } from '@/components/ui/disclosure-caret'
 import { Kbd, KbdCombo } from '@/components/ui/kbd'
@@ -44,9 +45,11 @@ export function KeybindSettings() {
 
   // hc-960: the model-picker chord is inert on an APEX account, so unlisted.
   const modelChoiceHidden = useModelChoiceHidden()
+  // hc-1085: the folded titlebar controls' shortcuts are inert in product mode, so unlisted.
+  const folded = useFoldedShortcuts()
 
   const actionList = allKeybindActions().filter(
-    action => !(modelChoiceHidden && MODEL_TIER_HIDDEN_KEYBIND_ACTIONS.has(action.id))
+    action => !(modelChoiceHidden && MODEL_TIER_HIDDEN_KEYBIND_ACTIONS.has(action.id)) && !folded.has(action.id)
   )
 
   const [query, setQuery] = useState('')
