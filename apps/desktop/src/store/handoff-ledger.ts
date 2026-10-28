@@ -221,8 +221,11 @@ export function useHandoffLedger(multiBot: boolean): void {
   }, [on])
 }
 
-/** Tests only: forget what was written and what is being written. */
-export function resetHandoffLedgerForTest(): void {
+/** Tests only: forget the writes in flight (a restart) and, unless kept, what was written. */
+export function resetHandoffLedgerForTest(options: { keepMarks?: boolean } = {}): void {
   writing.clear()
-  writeJson(STORE_KEY, null)
+
+  if (!options.keepMarks) {
+    writeJson(STORE_KEY, null)
+  }
 }

@@ -46,7 +46,9 @@ describe('handoffUsageHint (the card line)', () => {
     for (const ratio of [0, 0.004, 0.29, 0.805, 0.999, 1.25]) {
       const percent = formatUsedPercent(ratio, SINGLE_THREAD_SIDEBAR_COPY.zh)
 
-      expect(handoffUsageHint(1, month(ratio), 'zh').line).toBe(`要多跑 1 个回合，按你的套餐额度算 · 本月已用 ${percent}`)
+      expect(handoffUsageHint(1, month(ratio), 'zh').line).toBe(
+        `要多跑 1 个回合，按你的套餐额度算 · 本月已用 ${percent}`
+      )
     }
   })
 
@@ -144,7 +146,7 @@ function relayOn(on: boolean): void {
 }
 
 const zhProvider = ({ children }: { children: ReactNode }) =>
-  createElement(I18nProvider, { configClient: null, initialLocale: 'zh' }, children)
+  createElement(I18nProvider, { children, configClient: null, initialLocale: 'zh' })
 
 describe('useHandoffUsageHint / checkHandoffUsage', () => {
   beforeEach(() => {

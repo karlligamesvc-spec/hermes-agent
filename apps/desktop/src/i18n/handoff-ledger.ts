@@ -90,7 +90,12 @@ const SENTENCE_END_RE = /[。！？!?]|\.(?=\s|$)/u
 export function handbackKeyPoint(summary: null | string | undefined): string {
   for (const raw of String(summary ?? '').split('\n')) {
     const line = cleanLedgerText(
-      raw.replace(URL_RE, ' ').replace(MEDIA_RE, ' ').replace(/[*_`]+/g, '').trim().replace(LIST_MARK_RE, '')
+      raw
+        .replace(URL_RE, ' ')
+        .replace(MEDIA_RE, ' ')
+        .replace(/\*\*|__|`/g, '')
+        .trim()
+        .replace(LIST_MARK_RE, '')
     )
 
     if (!line) {
