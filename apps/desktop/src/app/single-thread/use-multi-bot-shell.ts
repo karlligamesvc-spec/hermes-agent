@@ -14,7 +14,8 @@
  *   retried in a loop;
  * - tells the quick-entry window which assistant a capture will reach, and
  *   names the assistant in system notifications (bot-notifications.ts);
- * - runs the relay (接力) dispatcher while relay is on (hc-1086, handoff-runner.ts).
+ * - runs the relay (接力) dispatcher while relay is on (hc-1086, handoff-runner.ts),
+ *   and notes each relay that comes back in the memory ledger (hc-1090).
  *
  * Off (or in a pop-out window) it does nothing.
  */
@@ -24,6 +25,7 @@ import { type MutableRefObject, useEffect, useRef } from 'react'
 
 import { rememberQuickEntryAssistant } from '@/i18n/quick-entry'
 import { botNotificationTitle } from '@/store/bot-notifications'
+import { useHandoffLedger } from '@/store/handoff-ledger'
 import { $mainThreadsByProfile, resolveProfileThread } from '@/store/main-thread'
 import { setNotificationTitleNamer } from '@/store/notification-title'
 import { $selectedStoredSessionId } from '@/store/session'
@@ -69,6 +71,8 @@ export function useMultiBotShell(
   const switching = multiBot && current !== profile
   const followed = useRef<null | string>(null)
 
+  // hc-1090: relays that come back go into the memory ledger; mounted first, so the dispatcher's harvest is heard.
+  useHandoffLedger(multiBot)
   // hc-1086: the relay dispatcher, while relay is on (it reads its switch only once several assistants are).
   useHandoffRunner(multiBot, gatewayOpen)
 

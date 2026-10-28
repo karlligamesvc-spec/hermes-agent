@@ -32,7 +32,7 @@ import { $accountTeam, loadAccountTeam, teamFor } from '@/store/account-team'
 import { $authState, type AuthAccount, captureManagedAuthRecoveryScope, signOutAccount } from '@/store/auth'
 import { notify } from '@/store/notifications'
 import { requestManagedReSignIn } from '@/store/onboarding'
-import { $planUsage, planUsageFor, planUsageReadFor, refreshPlanUsage } from '@/store/plan-usage'
+import { $planUsage, planUsageFor, planUsageOwner, planUsageReadFor, refreshPlanUsage } from '@/store/plan-usage'
 import { $threadPresence } from '@/store/single-thread-presence'
 
 import { AccountPanel } from '../chat/sidebar/account-panel'
@@ -102,7 +102,7 @@ function SignedInAccountRow({ onNavigateBusiness }: SingleThreadAccountRowProps)
   const { t } = useI18n()
   const a = t.auth.account
   const { account, accountId } = useStore($authState)
-  const owner = accountId || account.email || 'managed'
+  const owner = planUsageOwner({ account, accountId })
   const planLine = usePlanLine(owner)
   const [open, setOpen] = useState(false)
   const name = displayName(account, a.fallbackName)
