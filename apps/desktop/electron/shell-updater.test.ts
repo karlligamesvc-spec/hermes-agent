@@ -200,6 +200,75 @@ test('a deferred install logs what it waits for once per reason and tells the re
   } finally { h.updater.dispose() }
 })
 
+test('hc-1094: a wait on classified holders tells the renderer who they are, and clears it once installing', async () => {
+  const holders = {
+    1347: { name: 'python3.11', ppid: 1, exe: '/e/venv/bin/python', argv: ['/e/venv/bin/python', '-m', 'hermes_cli.main', 'gateway', 'run', '--replace'], created: 7.5, kind: 'leftover_gateway', endable: true },
+    2001: { name: 'python3.11', ppid: 700, exe: '/e/venv/bin/python', argv: ['/e/venv/bin/python', '/e/venv/bin/hermes'], created: 8.5, kind: 'terminal_hermes', endable: false }
+  }
+
+  let busy: Error | null = Object.assign(new RuntimeUpdateBusy('Waiting for engine workers: 1347, 2001', 'engine_holders'), { idleProof: { holders } })
+  const h = harness({ beforeInstall: async () => { if (busy) {throw busy} }, installRetryMs: 10 })
+
+  try {
+    h.autoUpdater.emit('update-downloaded', { version: '0.17.67' })
+    assert.deepEqual(await h.ipcMain.invoke('hermes:shell-update:install'), { ok: true, deferred: true })
+    assert.deepEqual(h.broadcasts.at(-1).payload.deferredHolders, [
+      { pid: 1347, kind: 'leftover_gateway', name: 'hermes', created: 7.5, endable: true },
+      { pid: 2001, kind: 'terminal_hermes', name: 'hermes', created: 8.5, endable: false }
+    ])
+    assert.ok(h.logs.includes('[shell-update] install deferred (version=0.17.67): engine_holders: Waiting for engine workers: 1347, 2001 [1347 python3.11 (/e/venv/bin/python) leftover_gateway endable; 2001 python3.11 (/e/venv/bin/python) terminal_hermes]'))
+    busy = null
+    await waitUntil(() => h.autoUpdater.installCalls.length === 1)
+    assert.equal(h.updater.getState().deferredHolders, null, 'installing names no holders')
+  } finally { h.updater.dispose() }
+})
+
+test('hc-1094: a wait for another reason drops the holders it named before', async () => {
+  const holders = { 1347: { name: 'python3.11', ppid: 1, exe: '/e/venv/bin/python', argv: [], created: 7.5, kind: 'leftover_gateway', endable: true } }
+  let busy: Error = Object.assign(new RuntimeUpdateBusy('Waiting for engine workers: 1347', 'engine_holders'), { idleProof: { holders } })
+  const h = harness({ beforeInstall: async () => {throw busy}, installRetryMs: 10 })
+
+  try {
+    h.autoUpdater.emit('update-downloaded', { version: '0.17.67' })
+    await h.ipcMain.invoke('hermes:shell-update:install')
+    assert.equal(h.updater.getState().deferredHolders?.length, 1)
+    busy = new RuntimeUpdateBusy()
+    await waitUntil(() => h.updater.getState().deferredReason === 'active_work')
+    assert.equal(h.updater.getState().deferredHolders, null)
+  } finally { h.updater.dispose() }
+})
+
+test('hc-1094: ending leftovers passes only whole PID + start-time pairs and reports what ended', async () => {
+  const calls: unknown[] = []
+
+  const h = harness({ beforeInstall: async () => {}, endLeftovers: async (confirmed: unknown) => { calls.push(confirmed);
+
+ return { 1347: 'terminated' } } })
+
+  try {
+    assert.deepEqual(await h.ipcMain.invoke('hermes:shell-update:end-leftovers', [{ pid: 1347, created: 7.5 }, { pid: '9', created: 1 }, { pid: 3 }]), { ok: true, ended: { 1347: 'terminated' } })
+    assert.deepEqual(calls, [[{ pid: 1347, created: 7.5 }]])
+    assert.deepEqual(h.autoUpdater.installCalls, [], 'ending never installs by itself; the renderer asks again')
+  } finally { h.updater.dispose() }
+})
+
+test('hc-1094: a failed end request is returned and logged; without the gate or packaged it is refused', async () => {
+  const failing = harness({ endLeftovers: async () => {throw new Error('scan failed')} })
+  const missing = harness()
+  const unpackaged = harness({ isPackaged: false, endLeftovers: async () => ({}) })
+
+  try {
+    assert.deepEqual(await failing.ipcMain.invoke('hermes:shell-update:end-leftovers', []), { ok: false, error: 'scan failed' })
+    assert.ok(failing.logs.includes('[shell-update] ending leftovers failed: scan failed'))
+    assert.deepEqual(await missing.ipcMain.invoke('hermes:shell-update:end-leftovers', []), { ok: false, error: 'unsupported' })
+    assert.deepEqual(await unpackaged.ipcMain.invoke('hermes:shell-update:end-leftovers', []), { ok: false, error: 'disabled' })
+  } finally {
+    failing.updater.dispose()
+    missing.updater.dispose()
+    unpackaged.updater.dispose()
+  }
+})
+
 test('a gate failure that is not busy is logged, not only returned (hc-1030)', async () => {
   const h = harness({ beforeInstall: async () => {throw new Error('identity probe failed')} })
   try {

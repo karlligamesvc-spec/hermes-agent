@@ -10,7 +10,7 @@
  * complete, ja and ar read en.
  */
 
-import type { DesktopShellUpdateDeferralReason } from '@/global'
+import type { DesktopEngineHolderKind, DesktopShellUpdateDeferralReason } from '@/global'
 
 import { useI18n } from './context'
 import { getRuntimeI18nLocale } from './runtime'
@@ -37,14 +37,46 @@ export type DesktopUpdateErrorCode =
   | 'update_plan_transition_failed'
   | 'updated_shell_still_incompatible'
 
+/** What follows ending APEX's leftovers: the update install, or the built-in engine switch. */
+export type EngineHoldersThen = 'install' | 'switch'
+
+/** hc-1094: a wait on engine holders that the gate named. */
+export interface EngineHoldersCopy {
+  /** Each kind in a few words; `other` names the program when its name is known. */
+  names: Record<Exclude<DesktopEngineHolderKind, 'other'>, string> & { other: (name: null | string) => string }
+  /** Names joined into one list. */
+  join: (names: string[]) => string
+  /** A name followed by the process IDs it covers, for the confirmation. */
+  withPids: (name: string, pids: number[]) => string
+  /** Between two sentences of one note. */
+  gap: string
+  /** The waiting line; `many` when it names more than one. */
+  waiting: (names: string, many: boolean) => string
+  /** Every holder is APEX's own leftover, so APEX may end it. */
+  endable: (many: boolean) => string
+  /** A hermes command in a terminal: how to stop it. */
+  terminal: string
+  endAction: Record<EngineHoldersThen, string>
+  confirmTitle: string
+  confirmBody: (names: string, then: EngineHoldersThen) => string
+  /** Added when a leftover messaging gateway is among them. */
+  gatewayNote: string
+  ending: string
+  endFailed: string
+}
+
 export interface DesktopUpdateCopy {
   /** Sidebar line while the requested install waits, by what it waits for. */
   deferred: Record<DesktopShellUpdateDeferralReason, string>
+  holders: EngineHoldersCopy
   /** `network` covers Chromium `net::ERR_*` failures; `generic` covers codes not listed. */
   errors: Record<DesktopUpdateErrorCode | 'generic' | 'network', string>
   /** The raw code under the sentence, for support. */
   errorCode: (code: string) => string
 }
+
+/** A space between a name ending in a Latin word (`hermes`) and the Chinese that follows. */
+const latinEnd = (text: string) => (/[A-Za-z0-9]$/.test(text) ? ' ' : '')
 
 const en: DesktopUpdateCopy = {
   deferred: {
@@ -53,6 +85,30 @@ const en: DesktopUpdateCopy = {
     engine_holders: 'Another program is using the APEX engine. The update installs once it exits.',
     gateway_busy: 'A messaging channel is still replying. The update installs once it is done.',
     previous_worker: 'An earlier APEX engine process is still exiting. The update installs after it.'
+  },
+  holders: {
+    names: {
+      apex_running: "APEX's own background process",
+      leftover_engine: 'an AI engine an earlier APEX left running',
+      leftover_gateway: 'the messaging gateway left from an earlier session',
+      terminal_hermes: 'hermes running in a terminal',
+      other: name => (name ? `another program (${name})` : 'another program')
+    },
+    join: names =>
+      names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`,
+    withPids: (name, pids) => `${name} (process ${pids.join(', ')})`,
+    gap: ' ',
+    waiting: (names, many) =>
+      `${names.charAt(0).toUpperCase()}${names.slice(1)} ${many ? 'are' : 'is'} using the APEX engine. The update installs once ${many ? 'they exit' : 'it exits'}.`,
+    endable: many => `${many ? 'They were' : 'It was'} left behind by APEX and can be ended.`,
+    terminal: 'Press Ctrl+C in the terminal running hermes to stop it.',
+    endAction: { install: 'End and install', switch: 'End and switch' },
+    confirmTitle: 'End what APEX left behind?',
+    confirmBody: (names, then) =>
+      `To end: ${names}. APEX asks them to exit first and forces them after 10 seconds, then ${then === 'install' ? 'installs the update and restarts' : 'switches to the built-in engine'}.`,
+    gatewayNote: 'Messaging channels such as WeChat and Feishu pause until APEX opens again.',
+    ending: 'Ending…',
+    endFailed: "APEX couldn't end them. Quit APEX completely and open it again, or restart the computer."
   },
   errors: {
     apply_failed: 'The AI engine update did not finish. Quit APEX completely, open it again, and retry.',
@@ -90,6 +146,28 @@ const zh: DesktopUpdateCopy = {
     gateway_busy: '消息渠道还在回复消息，回复完自动安装更新。',
     previous_worker: '上次的 APEX 引擎进程还在退出，退出后自动安装更新。'
   },
+  holders: {
+    names: {
+      apex_running: 'APEX 自己的后台进程',
+      leftover_engine: '上一次 APEX 的引擎',
+      leftover_gateway: '上一次留下的消息网关',
+      terminal_hermes: '终端里运行的 hermes',
+      other: name => (name ? `其他程序（${name}）` : '其他程序')
+    },
+    join: names => names.join('、'),
+    withPids: (name, pids) => `${name}（进程 ${pids.join('、')}）`,
+    gap: '',
+    waiting: (names, many) => `${names}${latinEnd(names)}在用 APEX 引擎，${many ? '它们' : '它'}退出后自动安装更新。`,
+    endable: many => `${many ? '这些' : '这'}是 APEX 之前没关干净留下的，可以直接结束。`,
+    terminal: '在运行 hermes 的终端里按 Ctrl+C 退出它。',
+    endAction: { install: '结束并安装', switch: '结束并换引擎' },
+    confirmTitle: '结束 APEX 留下的进程？',
+    confirmBody: (names, then) =>
+      `将结束：${names}。APEX 会先请它们自己退出，10 秒内没退出就强制结束，然后${then === 'install' ? '安装更新并重启' : '换成自带引擎'}。`,
+    gatewayNote: '它停下后，微信、飞书等消息渠道要等 APEX 重新打开才会恢复。',
+    ending: '正在结束…',
+    endFailed: '没能结束这些进程。请完全退出 APEX 后重新打开，或重启电脑。'
+  },
   errors: {
     apply_failed: 'AI 引擎没有更新完。请完全退出 APEX 后重新打开，再试一次。',
     desktop_update_required_but_not_ready: '新的 AI 引擎需要先更新应用，应用新版本还在下载，好了之后再试。',
@@ -122,6 +200,28 @@ const zhHant: DesktopUpdateCopy = {
     engine_holders: '有別的程式在用 APEX 引擎，它退出後自動安裝更新。',
     gateway_busy: '訊息渠道還在回覆訊息，回覆完自動安裝更新。',
     previous_worker: '上次的 APEX 引擎程序還在退出，退出後自動安裝更新。'
+  },
+  holders: {
+    names: {
+      apex_running: 'APEX 自己的後台程序',
+      leftover_engine: '上一次 APEX 的引擎',
+      leftover_gateway: '上一次留下的訊息網關',
+      terminal_hermes: '終端裡執行的 hermes',
+      other: name => (name ? `其他程式（${name}）` : '其他程式')
+    },
+    join: names => names.join('、'),
+    withPids: (name, pids) => `${name}（程序 ${pids.join('、')}）`,
+    gap: '',
+    waiting: (names, many) => `${names}${latinEnd(names)}在用 APEX 引擎，${many ? '它們' : '它'}退出後自動安裝更新。`,
+    endable: many => `${many ? '這些' : '這'}是 APEX 之前沒關乾淨留下的，可以直接結束。`,
+    terminal: '在執行 hermes 的終端裡按 Ctrl+C 退出它。',
+    endAction: { install: '結束並安裝', switch: '結束並換引擎' },
+    confirmTitle: '結束 APEX 留下的程序？',
+    confirmBody: (names, then) =>
+      `將結束：${names}。APEX 會先請它們自己退出，10 秒內沒退出就強制結束，然後${then === 'install' ? '安裝更新並重啟' : '換成自帶引擎'}。`,
+    gatewayNote: '它停下後，微信、飛書等訊息渠道要等 APEX 重新打開才會恢復。',
+    ending: '正在結束…',
+    endFailed: '沒能結束這些程序。請完全退出 APEX 後重新打開，或重新啟動電腦。'
   },
   errors: {
     apply_failed: 'AI 引擎沒有更新完。請完全退出 APEX 後重新打開，再試一次。',

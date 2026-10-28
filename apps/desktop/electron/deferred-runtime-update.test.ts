@@ -127,3 +127,43 @@ test('a retry that is still busy keeps the pin and tries again; a failed upgrade
   expect(log).toHaveBeenLastCalledWith(expect.stringContaining('Bundled upgrade was not activated'))
   deferral.dispose()
 })
+
+test('hc-1094: a busy boot upgrade says what it waits for, once per change', async () => {
+  vi.useFakeTimers()
+
+  let busy: Error | null = Object.assign(new RuntimeUpdateBusy('Waiting for engine workers: 7', 'engine_holders'), {
+    idleProof: { holders: { 7: { name: 'python3.11', ppid: 1, exe: '/e/venv/bin/python', argv: [], kind: 'leftover_gateway', endable: true } } }
+  })
+
+  const log = vi.fn()
+
+  const retry = createDeferredRuntimeUpdate({
+    preflight: async () => { if (busy) {throw busy} },
+    install: async () => true,
+    activated: vi.fn(),
+    log,
+    retryMs: 100
+  })
+
+  retry.schedule()
+  await vi.advanceTimersByTimeAsync(350)
+  expect(log.mock.calls).toEqual([
+    ['[bundled-engine] deferred upgrade still waiting: engine_holders: Waiting for engine workers: 7 [7 python3.11 (/e/venv/bin/python) leftover_gateway endable]']
+  ])
+  busy = new RuntimeUpdateBusy()
+  await vi.advanceTimersByTimeAsync(250)
+  expect(log).toHaveBeenCalledTimes(2)
+  expect(log).toHaveBeenLastCalledWith('[bundled-engine] deferred upgrade still waiting: active_work: Waiting for existing APEX work to finish.')
+  retry.dispose()
+})
+
+test('hc-1094: the boot deferral names its reason in the log', () => {
+  const { deferral, log } = packagedDeferral([])
+
+  deferral.deferIfBusy(new RuntimeUpdateBusy('Waiting for Desktop activity state.', 'activity_unknown'), () => true)
+
+  expect(log).toHaveBeenCalledExactlyOnceWith(
+    '[bundled-engine] deferred while existing work finishes; keeping the current engine usable: activity_unknown: Waiting for Desktop activity state.'
+  )
+  deferral.dispose()
+})

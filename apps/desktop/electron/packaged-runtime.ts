@@ -21,6 +21,7 @@ import { redactArgv } from './argv-redaction'
 import { buildDesktopBackendEnv } from './backend-env'
 import { RUNTIME_YAML_IMPORT } from './bootstrap-platform'
 import type { DesktopBootstrapEvent } from './bootstrap-types'
+import { type ClassifiedHolder, classifyEngineHolders, type EngineHolderDetail } from './engine-holders'
 import { releaseSupersedes, supersededByRelease } from './packaged-runtime-marker'
 import { RuntimeUpdateBusy } from './runtime-update-busy'
 
@@ -343,13 +344,6 @@ export async function probePackagedRuntime(root: string, release: PackagedRuntim
   }
 }
 
-interface HolderDetail {
-  name: string
-  ppid: number
-  exe: string
-  argv: string[]
-}
-
 /** Shared runtime workers must leave before the canonical path can change. Never kills borrowed workers. */
 export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot: string, options: { ownedBackendPids?: number[]; retiringGatewayPids?: number[] } = {}) {
   if (!fs.existsSync(activeRoot)) {return null}
@@ -377,7 +371,19 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
     '  holders.append(p.pid)',
     ' except psutil.NoSuchProcess: continue',
     ' except psutil.AccessDenied: continue',
-    ' try: details[str(p.pid)]={"name":p.name(),"ppid":p.ppid(),"exe":p.exe(),"argv":[arg[:160] for arg in p.cmdline()[:6]]}',
+    ' try:',
+    '  cmd=p.cmdline()',
+    '  details[str(p.pid)]={"name":p.name(),"ppid":p.ppid(),"exe":p.exe(),"argv":[arg[:160] for arg in cmd[:10]],"engineExe":under(p.exe()) or bool(cmd and under(cmd[0]))}',
+    ' except psutil.Error: continue',
+    // hc-1094: start time, live parent and nearest ancestors, so a leftover can be told apart from a
+    // process someone still runs (engine-holders.ts). Without them the holder is named, never ended.
+    ' try:',
+    '  parent=p.parent()',
+    '  ancestors=[]',
+    '  for a in p.parents()[:4]:',
+    '   try: ancestors.append({"pid":a.pid,"name":a.name()})',
+    '   except psutil.Error: ancestors.append({"pid":a.pid,"name":""})',
+    '  details[str(p.pid)].update({"created":p.create_time(),"parent":parent.pid if parent else None,"ancestors":ancestors})',
     ' except psutil.Error: pass',
     'print(json.dumps({"holders":holders,"details":details,"workerPid":os.getpid()}))'
   ].join('\n')
@@ -399,11 +405,17 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
 
     // What each blocker is (name, parent, executable, leading argv), so a busy switch names its holder.
     // A holder can be any process on the machine, so its argv keeps its shape but loses secret values.
-    const holders: Record<number, HolderDetail | undefined> = Object.fromEntries(holderPids.map((pid: number) => {
-      const detail: HolderDetail | undefined = result.details?.[String(pid)]
+    const details: Record<number, EngineHolderDetail | undefined> = Object.fromEntries(holderPids.map((pid: number) => {
+      const detail: EngineHolderDetail | undefined = result.details?.[String(pid)]
 
       return [pid, detail && { ...detail, argv: redactArgv(detail.argv) }]
     }))
+
+    // hc-1094: and what kind of holder it is, which decides what the user is told and whether APEX may end it.
+    const kinds = classifyEngineHolders(details, { desktopPid: process.pid, platform: process.platform })
+
+    const holders: Record<number, ClassifiedHolder | undefined> = Object.fromEntries(
+      holderPids.map((pid: number) => [pid, details[pid] && { ...details[pid], ...kinds[pid] }]))
 
     const idleProof = { ownedProbePid, workerPid: result.workerPid as number, rawHolderPids: result.holders as number[], holderPids: holderPids as number[], holders }
 
@@ -412,6 +424,68 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
     }
 
     return idleProof
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true, maxRetries: 6, retryDelay: 100 })
+  }
+}
+
+// Each target is signalled only while it is still the confirmed process (PID, start time and
+// executable; psutil also refuses a reused PID itself). SIGTERM first, SIGKILL for whatever still
+// runs after the grace period; on Windows both are TerminateProcess.
+const END_HOLDERS = [
+  'import json,psutil,sys',
+  'targets=json.loads(sys.argv[1])',
+  'grace=float(sys.argv[2])',
+  'report={}',
+  'procs=[]',
+  'for t in targets:',
+  ' key=str(t["pid"])',
+  ' try:',
+  '  p=psutil.Process(t["pid"])',
+  '  if p.create_time()!=t["created"] or p.exe()!=t["exe"]:',
+  '   report[key]="changed"',
+  '   continue',
+  '  procs.append(p)',
+  ' except psutil.NoSuchProcess: report[key]="gone"',
+  ' except psutil.AccessDenied: report[key]="denied"',
+  'def send(procs,signal):',
+  ' sent=[]',
+  ' for p in procs:',
+  '  try:',
+  '   signal(p)',
+  '   sent.append(p)',
+  '  except psutil.NoSuchProcess: report[str(p.pid)]="gone"',
+  '  except psutil.AccessDenied: report[str(p.pid)]="denied"',
+  ' return sent',
+  'gone,alive=psutil.wait_procs(send(procs,psutil.Process.terminate),timeout=grace)',
+  'for p in gone: report[str(p.pid)]="terminated"',
+  'gone,alive=psutil.wait_procs(send(alive,psutil.Process.kill),timeout=5)',
+  'for p in gone: report[str(p.pid)]="killed"',
+  'for p in alive: report[str(p.pid)]="survived"',
+  'print(json.dumps(report))'
+].join('\n')
+
+export type EngineHolderEndResult = 'changed' | 'denied' | 'gone' | 'killed' | 'survived' | 'terminated'
+
+/**
+ * hc-1094: end the leftover engine holders a user confirmed (see engine-holders.ts for which those
+ * may be). Reports per PID: terminated, killed (after the grace period), gone (exited before the
+ * signal), changed (no longer the confirmed process; left alone), denied, or survived.
+ */
+export async function endEngineHolders(verifiedRoot: string, targets: { pid: number; created: number; exe: string }[], graceSeconds = 10): Promise<Record<string, EngineHolderEndResult>> {
+  if (!targets.length) {return {}}
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-engine-holder-end-'))
+  const python = path.join(verifiedRoot, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
+
+  try {
+    const { stdout } = await exec(python, ['-c', END_HOLDERS, JSON.stringify(targets), String(graceSeconds)], { cwd: home, env: probeEnv(verifiedRoot, home), windowsHide: true, timeout: (graceSeconds + 20) * 1000, maxBuffer: 64 * 1024 })
+    const report = JSON.parse(stdout)
+
+    if (!report || typeof report !== 'object' || targets.some(target => typeof report[String(target.pid)] !== 'string')) {
+      throw new Error('Invalid engine holder end report')
+    }
+
+    return report
   } finally {
     fs.rmSync(home, { recursive: true, force: true, maxRetries: 6, retryDelay: 100 })
   }
