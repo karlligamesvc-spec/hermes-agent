@@ -324,11 +324,21 @@ describe('the driver: baton by baton, each one the next one’s input', () => {
 
     expect(plan(p.id)).toMatchObject({ batons: [p.batons[0]], hold: { kind: 'nested' } })
 
-    returned((incoming as { handoff: HandoffRecord }).handoff.id, '看完了')
+    // Held, it waits quietly: every change to the relays is looked at here, the usage line (a read through
+    // main) only once the planner is free.
+    const incomingId = (incoming as { handoff: HandoffRecord }).handoff.id
+
+    updateHandoff(incomingId, { status: 'running' })
+    await flush()
+
+    expect(usage.reads).toBe(0)
+
+    returned(incomingId, '看完了')
     await flush()
 
     expect(plan(p.id)).toMatchObject({ hold: null })
     expect(plan(p.id).batons).toHaveLength(2)
+    expect(usage.reads).toBe(1)
   })
 })
 
