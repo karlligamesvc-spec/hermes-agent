@@ -514,6 +514,9 @@ declare global {
         getState: () => Promise<DesktopShellUpdateState>
         check: () => Promise<{ ok: boolean; error?: string; state: DesktopShellUpdateState }>
         install: () => Promise<{ ok: boolean; error?: string; deferred?: boolean }>
+        endLeftovers?: (
+          holders: { pid: number; created: number }[]
+        ) => Promise<{ ok: boolean; error?: string; ended?: Record<string, string> }>
         onEvent: (callback: (state: DesktopShellUpdateState) => void) => () => void
       }
       updateCenter?: {
@@ -2546,6 +2549,9 @@ export interface DesktopRuntimeUpdateExpectedTarget {
 
 export interface DesktopRuntimeUpdateApply {
   deferred?: boolean
+  // hc-1094: for a deferred apply, what it waits for and, for `engine_holders`, who holds the engine.
+  reason?: DesktopShellUpdateDeferralReason
+  holders?: DesktopEngineHolder[] | null
   ok: boolean
   applied?: boolean
   alreadyCurrent?: boolean
@@ -2584,9 +2590,24 @@ export type DesktopShellUpdateDeferralReason =
   | 'gateway_busy'
   | 'previous_worker'
 
+/**
+ * hc-1094: one process holding the engine (electron/engine-holders.ts). Only `endable` holders
+ * (APEX's own leftover gateway or engine and what belongs to them) may be ended from the UI.
+ */
+export type DesktopEngineHolderKind = 'apex_running' | 'leftover_engine' | 'leftover_gateway' | 'other' | 'terminal_hermes'
+
+export interface DesktopEngineHolder {
+  pid: number
+  kind: DesktopEngineHolderKind
+  name: string | null
+  created: number | null
+  endable: boolean
+}
+
 export interface DesktopShellUpdateState {
   deferred?: boolean
   deferredReason?: DesktopShellUpdateDeferralReason | null
+  deferredHolders?: DesktopEngineHolder[] | null
   phase: DesktopShellUpdatePhase
   // electron-updater 的裸 semver(如 0.16.1);idle/checking 阶段为 null。
   version: string | null

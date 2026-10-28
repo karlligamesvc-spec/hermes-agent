@@ -1,11 +1,11 @@
 """ApexNodes hc-911: upstream tests that drive upstream Desktop artifacts APEX does not carry.
 
-apps/desktop stays on the APEX baseline (paired Mac arm64 + Windows x64 NSIS release,
-hard rule #15), so upstream's Desktop identity/packaging modules and shared fixtures are absent
-from this tree. Each entry names the exact test id (or module) and the upstream Desktop paths
-it needs. An entry only takes effect while ALL of its paths are absent: once a path is ported,
-the skip lapses and the test runs again (tests/apex_overlay/test_desktop_baseline_skips.py also
-fails on a stale entry).
+apps/desktop stays on the APEX baseline (Mac arm64 releases; the Windows x64 NSIS build is
+paused after 0.17.66; hard rule #15), so upstream's Desktop identity/packaging modules and
+shared fixtures are absent from this tree. Each entry names the exact test id (or module) and
+the upstream Desktop paths it needs. An entry only takes effect while ALL of its paths are
+absent: once a path is ported, the skip lapses and the test runs again
+(tests/apex_overlay/test_desktop_baseline_skips.py also fails on a stale entry).
 
 Registered from pyproject.toml ``addopts`` (``-p tests._fixtures.apex_desktop_baseline``) so
 upstream test files and conftest stay byte-identical.

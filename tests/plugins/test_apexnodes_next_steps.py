@@ -82,10 +82,10 @@ def _agent(platform: str, session_id: str = "s1"):
     )
 
 
-def _transform(platform: str, session_id: str = "s1"):
+def _transform(platform: str, session_id: str = "s1", reply: str = REPLY):
     from agent.turn_finalizer import apply_llm_output_transform
 
-    final, transformed, _ = apply_llm_output_transform(_agent(platform, session_id), REPLY, turn_id="t1", platform=platform)
+    final, transformed, _ = apply_llm_output_transform(_agent(platform, session_id), reply, turn_id="t1", platform=platform)
     return final, transformed
 
 
@@ -127,6 +127,32 @@ def test_im_on_the_desktop_gateway_gets_numbered_text_and_the_number_maps_back(p
     assert context.startswith("【下一步】用户回复「２」，就是选了你上一条回复末尾编号里的第 2 项「写成脚本」")
     assert "等于用户说了这句话：\n把第 1 个选题写成 60 秒口播脚本\n" in context
     assert _pre_llm_context(platform, "2") == ""
+
+
+# hc-1089: a 「交给」 option hands the next step to another of this person's assistants on this
+# computer. The Desktop chat keeps it for the renderer; IM on the Desktop's own gateway has no
+# relay (K7: WeChat talks to APEX only), so the numbers skip it and a block of only that is dropped.
+HANDOFF_REPLY = (
+    "成片好了。\n\n<!-- apex:next\n"
+    "@剪辑助手 | 做成竖屏成片 | 把这条做成 30 秒竖屏成片\n"
+    "再剪一版 | 再剪一版更快的\n"
+    "-->"
+)
+
+
+def test_desktop_chat_keeps_a_handoff_option_for_the_renderer(plugin):
+    assert _transform("desktop", reply=HANDOFF_REPLY) == (HANDOFF_REPLY, False)
+
+
+@pytest.mark.parametrize("platform", ("weixin", "feishu", "wecom", "dingtalk", "qqbot"))
+def test_im_on_the_desktop_gateway_never_numbers_a_handoff_option(plugin, platform):
+    numbered = "成片好了。\n\n接下来可以：\n1. 再剪一版\n回复数字就行。"
+    assert _transform(platform, reply=HANDOFF_REPLY) == (numbered, True)
+    assert "第 1 项「再剪一版」" in _pre_llm_context(platform, "1")
+
+    only = "成片好了。\n\n<!-- apex:next\n@剪辑助手 | 做成竖屏成片 | 把这条做成 30 秒竖屏成片\n-->"
+    assert _transform(platform, session_id="s2", reply=only) == ("成片好了。", True)
+    assert _pre_llm_context(platform, "1", session_id="s2") == ""
 
 
 def test_api_server_only_loses_the_block(plugin):

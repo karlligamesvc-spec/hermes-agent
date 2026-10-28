@@ -30,9 +30,11 @@
  *                     files: [ { path, content } ] } ] }
  *   GET …/platform-skills?known_hash=<h>
  *     → may short-circuit to { manifest_hash, unchanged: true }
- *   ?caps=next-steps (always sent): this build renders the 「下一步」 block, so the
- *     skills keep the section that asks for it; without it the server drops that
- *     section and hashes that variant separately.
+ *   ?caps=next-steps,next-steps-handoff (always sent): this build renders the
+ *     「下一步」 block, so the skills keep the section that asks for it; without it the
+ *     server drops that section and hashes that variant separately. hc-1089:
+ *     `next-steps-handoff` says it also draws the 「交给」 option, so the section keeps
+ *     the line that asks for it (a build sending only `next-steps` gets it without).
  *   401 → expired/absent JWT; treated as "nothing to sync" (installed set stands),
  *     and main's apex-cloud-login.ts asks the user to sign in again (hc-1073).
  *
@@ -60,7 +62,9 @@ function trimTrailingSlash(value) {
 // What this build renders, sent as ?caps= so the server serves skills that use it.
 // `next-steps`: the 「下一步」 block (apex-nodes docs/NEXT-STEPS-BLOCK-PROTOCOL.md); a build
 // without it gets every SKILL.md minus that section, so its model never writes the block.
-const PLATFORM_SKILLS_CAPS = 'next-steps'
+// `next-steps-handoff` (hc-1089): the block's 「交给」 option, drawn as 「交给 X」 when the relay is
+// on and left out otherwise; a build without it gets the section minus that one rule line.
+const PLATFORM_SKILLS_CAPS = 'next-steps,next-steps-handoff'
 
 /**
  * Build the platform-skills URL for an apiBase, optionally advertising the

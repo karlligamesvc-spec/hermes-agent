@@ -1,0 +1,44 @@
+{
+  "requests": [
+    [
+      "profiles.list",
+      {}
+    ],
+    [
+      "session.list",
+      {
+        "include_hidden": true,
+        "limit": 200,
+        "profile": "default",
+        "title": "APEX 主线"
+      }
+    ],
+    [
+      "profiles.describe",
+      {
+        "name": "writer"
+      }
+    ],
+    [
+      "session.list",
+      {
+        "include_hidden": true,
+        "limit": 200,
+        "profile": "writer",
+        "title": "APEX 主线"
+      }
+    ],
+    [
+      "profiles.list",
+      {}
+    ],
+    [
+      "profiles.list",
+      {}
+    ]
+  ],
+  "storage": [
+    "apex.desktop.quickEntry.assistant",
+    "apex.single-thread.bots.v1"
+  ]
+}

@@ -10,10 +10,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { QUICK_ENTRY_ASSISTANT_KEY } from '@/i18n/quick-entry'
 import { $mainThreadsByProfile, MAIN_THREAD_TITLE, resetMainThreadForTest } from '@/store/main-thread'
 import { notificationTitle } from '@/store/notification-title'
-import { $activeGatewayProfile } from '@/store/profile'
+import { $activeGatewayProfile, $freshSessionRequest, $gatewaySwapTarget } from '@/store/profile'
 import { $activeSessionId, $gatewayState, $selectedStoredSessionId } from '@/store/session'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
-import { $botIntent, $botRoster, resetBotRosterForTest, setMultiBotFlagForTest } from '@/store/single-thread-bots'
+import {
+  $botIntent,
+  $botRoster,
+  openBot,
+  resetBotRosterForTest,
+  setMultiBotFlagForTest
+} from '@/store/single-thread-bots'
 import { setToolViewMode } from '@/store/tool-view'
 
 import { $pendingThreadClaim, type RequestGateway } from './composer-middleware'
@@ -91,6 +97,7 @@ afterEach(() => {
   $pendingThreadClaim.set(null)
   $selectedStoredSessionId.set(null)
   $activeSessionId.set(null)
+  $gatewaySwapTarget.set(null)
   $gatewayState.set('idle')
 })
 
@@ -171,6 +178,107 @@ describe('hc-1077 several assistants in the shell', () => {
     await act(async () => undefined)
 
     expect(ensureGatewayProfile).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * hc-1099: an engine already running is published as the active profile in
+ * the click's own tick (the registry's onActiveRouteChanged mirror), before
+ * the fresh draft drops the conversation being left and well before the swap
+ * settles.
+ */
+function warmEngines(): { asked: [string, null | string][]; stop: () => void } {
+  // Each switch asked for, with the swap that was still in flight when it was asked.
+  const asked: [string, null | string][] = []
+
+  ensureGatewayProfile.mockImplementation(async (profile: string) => {
+    asked.push([profile, $gatewaySwapTarget.get()])
+    $gatewaySwapTarget.set(profile)
+    $activeGatewayProfile.set(profile)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    $gatewaySwapTarget.set(null)
+  })
+
+  // The chat controller's fresh draft lands a little after the engine was published.
+  const stop = $freshSessionRequest.listen(() => {
+    setTimeout(() => $selectedStoredSessionId.set(null), 5)
+  })
+
+  return { asked, stop }
+}
+
+const settle = () => act(async () => new Promise(resolve => setTimeout(resolve, 60)))
+
+describe('hc-1099 a switch to an assistant whose engine is already running', () => {
+  afterEach(() => {
+    ensureGatewayProfile.mockReset()
+    ensureGatewayProfile.mockImplementation(async () => undefined)
+  })
+
+  it('lands: the conversation being left does not pull its assistant back', async () => {
+    setMultiBotFlagForTest(true)
+    $selectedStoredSessionId.set('apex-root')
+    mount(gateway(), '/apex-root')
+    await waitFor(() => expect($mainThreadsByProfile.get().writer?.rootId).toBe('writer-root'))
+    const { asked, stop } = warmEngines()
+
+    act(() => void openBot('writer'))
+    await settle()
+    stop()
+
+    expect(asked).toEqual([['writer', null]])
+    expect($activeGatewayProfile.get()).toBe('writer')
+    expect($botIntent.get()).toBeNull()
+  })
+
+  it('a conversation opened during the switch is still followed once it settles', async () => {
+    setMultiBotFlagForTest(true)
+    $selectedStoredSessionId.set('apex-root')
+    mount(gateway(), '/apex-root')
+    await waitFor(() => expect($mainThreadsByProfile.get().writer?.rootId).toBe('writer-root'))
+    const { asked, stop } = warmEngines()
+
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    act(() => void openBot('writer'))
+    // After the fresh draft, before the swap settles: a notification opens APEX's thread.
+    await act(async () => new Promise(resolve => setTimeout(resolve, 10)))
+    act(() => $selectedStoredSessionId.set('apex-root'))
+    await settle()
+    stop()
+
+    // Followed once nothing was in flight any more, not in the middle of the switch.
+    expect(asked).toEqual([
+      ['writer', null],
+      ['default', null]
+    ])
+    expect($activeGatewayProfile.get()).toBe('default')
+    // The follow says in desktop.log that it undid the click's switch (bot-switch-log.ts).
+    expect(logged.mock.calls.map(([text]) => String(text))).toEqual([
+      expect.stringMatching(
+        /^\[multi-bot\] switch to writer undone: the conversation on screen belongs to default \(\d+ ms after it landed\)$/
+      )
+    ])
+    logged.mockRestore()
+  })
+
+  it('any gateway swap holds the follow too, not only a click (a resume moving the engine)', async () => {
+    setMultiBotFlagForTest(true)
+    $selectedStoredSessionId.set('apex-root')
+    mount(gateway(), '/apex-root')
+    await waitFor(() => expect($mainThreadsByProfile.get().writer?.rootId).toBe('writer-root'))
+
+    // No click: a swap to 小红书文案's engine is published while APEX's thread is still selected.
+    act(() => {
+      $gatewaySwapTarget.set('writer')
+      $activeGatewayProfile.set('writer')
+    })
+    await act(async () => undefined)
+    expect(ensureGatewayProfile).not.toHaveBeenCalled()
+
+    // Settled with APEX's thread still on screen: now it is followed.
+    act(() => $gatewaySwapTarget.set(null))
+    await waitFor(() => expect(ensureGatewayProfile).toHaveBeenCalledWith('default'))
   })
 })
 

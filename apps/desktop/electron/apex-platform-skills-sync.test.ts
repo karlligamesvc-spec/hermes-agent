@@ -265,7 +265,7 @@ test('the 401 path still hands the stored JWT to the transport (hc-1073 hears it
 
   assert.equal(calls.length, 1)
   assert.equal(calls[0].options.bearer, 'jwt-current')
-  assert.match(calls[0].url, /\/api\/v1\/desktop\/platform-skills\?caps=next-steps&known_hash=m1$/)
+  assert.match(calls[0].url, /\/api\/v1\/desktop\/platform-skills\?caps=next-steps,next-steps-handoff&known_hash=m1$/)
   assert.ok(
     lines.includes(
       '[platform-skills] fetch unavailable (401: {"detail":"登录状态无效，请重新登录。"}); keeping installed set'

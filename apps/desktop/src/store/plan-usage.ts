@@ -12,6 +12,8 @@ import { atom } from 'nanostores'
 
 import type { DesktopPlanUsage } from '@/global'
 
+import type { DesktopAuthState } from './auth'
+
 export interface AccountPlanUsage {
   accountId: string
   usage: DesktopPlanUsage | null
@@ -43,6 +45,11 @@ export async function refreshPlanUsage(accountId: string): Promise<void> {
   } catch {
     // Keep the last good line: a broken bridge is not the plan going away.
   }
+}
+
+/** Whose usage line: the account id, else the email, else 「managed」 (the sidebar row and the relay card read the same one). */
+export function planUsageOwner(auth: Pick<DesktopAuthState, 'account' | 'accountId'>): string {
+  return auth.accountId || auth.account.email || 'managed'
 }
 
 /** Has this account been read yet (whatever the answer was)? */

@@ -473,6 +473,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     getState: () => ipcRenderer.invoke('hermes:shell-update:get'),
     check: () => ipcRenderer.invoke('hermes:shell-update:check'),
     install: () => ipcRenderer.invoke('hermes:shell-update:install'),
+    // hc-1094: end the APEX leftovers (PID + start time) the user confirmed from a deferral.
+    endLeftovers: holders => ipcRenderer.invoke('hermes:shell-update:end-leftovers', holders),
     onEvent: callback => {
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('hermes:shell-update:event', listener)

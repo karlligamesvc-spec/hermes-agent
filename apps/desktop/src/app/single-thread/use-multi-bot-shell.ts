@@ -13,7 +13,11 @@
  *   「更早的对话」. Once per selection: a switch that does not land is not
  *   retried in a loop;
  * - tells the quick-entry window which assistant a capture will reach, and
- *   names the assistant in system notifications (bot-notifications.ts).
+ *   names the assistant in system notifications (bot-notifications.ts);
+ * - runs the relay (接力) dispatcher while relay is on (hc-1086, handoff-runner.ts),
+ *   notes each relay that comes back in the memory ledger (hc-1090), and turns
+ *   a send naming another assistant into the confirm card (hc-1087), and
+ *   moves a relay plan on baton by baton (hc-1091).
  *
  * Off (or in a pop-out window) it does nothing.
  */
@@ -23,10 +27,13 @@ import { type MutableRefObject, useEffect, useRef } from 'react'
 
 import { rememberQuickEntryAssistant } from '@/i18n/quick-entry'
 import { botNotificationTitle } from '@/store/bot-notifications'
+import { useHandoffLedger } from '@/store/handoff-ledger'
+import { useHandoffPlanDriver } from '@/store/handoff-plan'
 import { $mainThreadsByProfile, resolveProfileThread } from '@/store/main-thread'
 import { setNotificationTitleNamer } from '@/store/notification-title'
 import { $selectedStoredSessionId } from '@/store/session'
 import {
+  $botSwitchInFlight,
   $currentBot,
   $currentBotProfile,
   $multiBotMode,
@@ -37,6 +44,8 @@ import {
 import { profileOfThreadStoredId } from '@/store/single-thread-presence'
 
 import type { RequestGateway } from './composer-middleware'
+import { useHandoffRunner } from './handoff-runner'
+import { useHandoffScreens } from './handoff/use-handoff-screens'
 
 export const ROSTER_REFRESH_MS = 20_000
 
@@ -63,9 +72,20 @@ export function useMultiBotShell(
   const selected = useStore($selectedStoredSessionId)
   const threads = useStore($mainThreadsByProfile)
   const currentName = useStore($currentBot)?.name ?? null
+  // hc-1099: a switch under way, even one whose engine is already published as the active profile.
+  const settling = useStore($botSwitchInFlight)
   // The assistant asked for is not the one answering yet: nothing may open the old one's thread meanwhile.
   const switching = multiBot && current !== profile
   const followed = useRef<null | string>(null)
+
+  // hc-1090: relays that come back go into the memory ledger; mounted first, so the dispatcher's harvest is heard.
+  useHandoffLedger(multiBot)
+  // hc-1086: the relay dispatcher, while relay is on (it reads its switch only once several assistants are).
+  useHandoffRunner(multiBot, gatewayOpen)
+  // hc-1091: a relay plan's next baton starts once the one before came back (relay on only).
+  useHandoffPlanDriver()
+  // hc-1087: the relay screens (a send naming another assistant becomes the confirm card).
+  useHandoffScreens(multiBot)
 
   useEffect(() => {
     void loadMultiBotFlag()
@@ -97,7 +117,9 @@ export function useMultiBotShell(
   // A marker of what was already tried, not a mirror of an atom.
   // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
   useEffect(() => {
-    if (!multiBot || switching) {
+    // Not while any switch is under way (hc-1099): until it settles, the conversation on screen
+    // can be the one being left, and following it would switch straight back. Re-checked after.
+    if (!multiBot || switching || settling) {
       return
     }
 
@@ -111,9 +133,9 @@ export function useMultiBotShell(
 
     if (followed.current !== selected) {
       followed.current = selected
-      void openBot(owner).catch(() => undefined)
+      void openBot(owner, 'follow').catch(() => undefined)
     }
-  }, [multiBot, profile, selected, switching, threads])
+  }, [multiBot, profile, selected, settling, switching, threads])
 
   return { multiBot, switching }
 }

@@ -4,7 +4,8 @@ import { createNextStepsSpeechFilter, NEXT_STEPS_PROTOCOL, parseNextSteps, strip
 import fixtures from './next-steps.fixtures.json'
 
 interface FixtureCase {
-  block: { failed: null | string; options: [string, string][] } | null
+  // hc-1089: a 「交给」 option carries the assistant's name as a third element.
+  block: { failed: null | string; options: ([string, string] | [string, string, string])[] } | null
   id: string
   text: string
   visible: string
@@ -13,7 +14,12 @@ interface FixtureCase {
 const CASES = fixtures.cases as FixtureCase[]
 
 const asFixture = (block: ReturnType<typeof parseNextSteps>['block']) =>
-  block && { failed: block.failed, options: block.options.map(option => [option.label, option.message]) }
+  block && {
+    failed: block.failed,
+    options: block.options.map(option =>
+      option.to === undefined ? [option.label, option.message] : [option.label, option.message, option.to]
+    )
+  }
 
 describe('parseNextSteps — the shared apex-next/1 fixture (same answers as the apex-nodes plugin)', () => {
   it('is the protocol the fixture describes', () => {
