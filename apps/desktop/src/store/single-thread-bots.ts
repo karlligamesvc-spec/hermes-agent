@@ -18,7 +18,10 @@
  *   「APEX」 about the assistant ({@link withBotName});
  * - switching: {@link openBot} activates the profile's engine
  *   (ensureGatewayForProfile, through store/profile) without remembering it as
- *   the startup profile, so the local IM gateway stays on APEX (K7).
+ *   the startup profile, so the local IM gateway stays on APEX (K7), and says
+ *   in desktop.log when a switch fails, does not land or hangs (hc-1099,
+ *   bot-switch-log.ts); {@link $botSwitchInFlight} tells the shell one is
+ *   under way.
  *
  * Off, nothing here is read: every surface keeps its single-assistant path.
  */
@@ -47,6 +50,7 @@ import {
   type PRODUCT_ASSISTANT_ORIGIN
 } from '../../shared/apex-product-assistant'
 
+import { type BotSwitchCause, watchBotSwitch } from './bot-switch-log'
 import {
   $activeGatewayProfile,
   $gatewaySwapTarget,
@@ -435,6 +439,18 @@ export async function refreshBotRoster(request: RequestGateway): Promise<readonl
 /** The assistant a click asked for, until its engine is active (or the switch failed). */
 export const $botIntent = atom<null | string>(null)
 
+/**
+ * hc-1099: a switch is under way — a click's ({@link $botIntent}) or any
+ * gateway swap's. Until it settles the conversation on screen can still be the
+ * one being left: an engine that is already running is published as the active
+ * profile in the click's own tick (use-gateway-boot.ts onActiveRouteChanged),
+ * before the fresh draft drops the old selection.
+ */
+export const $botSwitchInFlight = computed(
+  [$botIntent, $gatewaySwapTarget],
+  (intent, swapping) => intent !== null || swapping !== null
+)
+
 /** The profile of the assistant on screen: the one asked for or being switched to, else the active one. */
 export const $currentBotProfile = computed(
   [$botIntent, $gatewaySwapTarget, $activeGatewayProfile],
@@ -531,13 +547,18 @@ export function botSwapLabel(profile: null | string): string {
  * profile rail it never remembers the profile for the next launch: the
  * startup profile is what the local IM gateway and the config heal follow,
  * and that stays APEX's (K7). Rejects when the engine cannot be reached.
+ * `cause` only labels the desktop.log line of a switch that goes wrong.
  */
-export async function openBot(profile: string): Promise<void> {
+export async function openBot(profile: string, cause: BotSwitchCause = 'click'): Promise<void> {
   const target = normalizeProfileKey(profile)
 
   if (target === normalizeProfileKey($activeGatewayProfile.get()) && !$gatewaySwapTarget.get() && !$botIntent.get()) {
     return
   }
+
+  // The assistant on screen ($currentBotProfile's rule, read from the plain atoms: no computed store wakes here).
+  const from = normalizeProfileKey($botIntent.get() ?? $gatewaySwapTarget.get() ?? $activeGatewayProfile.get())
+  const watch = watchBotSwitch(target, from, cause)
 
   // Before anything renders: the sidebar, the header and the shell's
   // redirect follow the assistant asked for, not the engine still answering.
@@ -547,7 +568,14 @@ export async function openBot(profile: string): Promise<void> {
 
   try {
     await ensureGatewayProfile(target)
+    watch.resolved(normalizeProfileKey($activeGatewayProfile.get()), $botIntent.get() !== target)
+  } catch (error) {
+    watch.failed(error)
+
+    throw error
   } finally {
+    watch.done()
+
     if ($botIntent.get() === target) {
       $botIntent.set(null)
     }

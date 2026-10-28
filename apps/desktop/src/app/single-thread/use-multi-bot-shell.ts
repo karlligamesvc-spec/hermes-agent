@@ -33,6 +33,7 @@ import { $mainThreadsByProfile, resolveProfileThread } from '@/store/main-thread
 import { setNotificationTitleNamer } from '@/store/notification-title'
 import { $selectedStoredSessionId } from '@/store/session'
 import {
+  $botSwitchInFlight,
   $currentBot,
   $currentBotProfile,
   $multiBotMode,
@@ -71,6 +72,8 @@ export function useMultiBotShell(
   const selected = useStore($selectedStoredSessionId)
   const threads = useStore($mainThreadsByProfile)
   const currentName = useStore($currentBot)?.name ?? null
+  // hc-1099: a switch under way, even one whose engine is already published as the active profile.
+  const settling = useStore($botSwitchInFlight)
   // The assistant asked for is not the one answering yet: nothing may open the old one's thread meanwhile.
   const switching = multiBot && current !== profile
   const followed = useRef<null | string>(null)
@@ -114,7 +117,9 @@ export function useMultiBotShell(
   // A marker of what was already tried, not a mirror of an atom.
   // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
   useEffect(() => {
-    if (!multiBot || switching) {
+    // Not while any switch is under way (hc-1099): until it settles, the conversation on screen
+    // can be the one being left, and following it would switch straight back. Re-checked after.
+    if (!multiBot || switching || settling) {
       return
     }
 
@@ -128,9 +133,9 @@ export function useMultiBotShell(
 
     if (followed.current !== selected) {
       followed.current = selected
-      void openBot(owner).catch(() => undefined)
+      void openBot(owner, 'follow').catch(() => undefined)
     }
-  }, [multiBot, profile, selected, switching, threads])
+  }, [multiBot, profile, selected, settling, switching, threads])
 
   return { multiBot, switching }
 }

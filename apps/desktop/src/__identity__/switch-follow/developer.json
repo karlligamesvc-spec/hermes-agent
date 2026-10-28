@@ -1,0 +1,63 @@
+{
+  "requests": [],
+  "steps": [
+    {
+      "active": "default",
+      "ensure": [],
+      "intent": null,
+      "selected": "apex-root",
+      "step": "settled on APEX",
+      "swap": null,
+      "visited": [
+        "/apex-root"
+      ]
+    },
+    {
+      "active": "writer",
+      "ensure": [],
+      "intent": null,
+      "selected": "apex-root",
+      "step": "engine published, old thread still selected",
+      "swap": "writer",
+      "visited": [
+        "/apex-root"
+      ]
+    },
+    {
+      "active": "writer",
+      "ensure": [],
+      "intent": null,
+      "selected": null,
+      "step": "fresh draft landed",
+      "swap": "writer",
+      "visited": [
+        "/apex-root",
+        "/"
+      ]
+    },
+    {
+      "active": "writer",
+      "ensure": [],
+      "intent": null,
+      "selected": null,
+      "step": "swap settled",
+      "swap": null,
+      "visited": [
+        "/apex-root",
+        "/"
+      ]
+    },
+    {
+      "active": "writer",
+      "ensure": [],
+      "intent": null,
+      "selected": "apex-root",
+      "step": "notification selected APEX’s thread",
+      "swap": null,
+      "visited": [
+        "/apex-root",
+        "/"
+      ]
+    }
+  ]
+}

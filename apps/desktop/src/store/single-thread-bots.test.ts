@@ -15,6 +15,7 @@ import {
   $botIntent,
   $botLastSessions,
   $botRoster,
+  $botSwitchInFlight,
   $currentBot,
   $currentBotProfile,
   $multiBotMax,
@@ -415,6 +416,21 @@ describe('the assistant on screen', () => {
 })
 
 describe('switching assistants', () => {
+  it.each([
+    [null, null, false],
+    ['writer', null, true],
+    [null, 'writer', true],
+    ['writer', 'writer', true]
+  ] as const)('hc-1099: a switch is under way with intent %s and swap %s → %s', (intent, swap, expected) => {
+    $botIntent.set(intent)
+    $gatewaySwapTarget.set(swap)
+
+    const unlisten = $botSwitchInFlight.listen(() => undefined)
+
+    expect($botSwitchInFlight.get()).toBe(expected)
+    unlisten()
+  })
+
   it('does nothing for the assistant already on screen', async () => {
     await openBot('default')
 

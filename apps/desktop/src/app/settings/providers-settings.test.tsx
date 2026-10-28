@@ -16,6 +16,8 @@ const onboarding = atom({ manual: false })
 
 vi.mock('@/store/profile', () => ({
   $activeGatewayProfile: atom('alpha'),
+  // The 「应用于」 row reads the multi-bot switch (hc-1098); that store derives the on-screen assistant from it.
+  $gatewaySwapTarget: atom(null),
   $profiles: atom([]),
   refreshProfiles: async () => {},
   normalizeProfileKey: (p: string | null) => p || 'default'
