@@ -9,6 +9,14 @@
  *
  * Only the newest finished turn has buttons: a reply still streaming has none, and the next
  * user message (a click or anything typed) moves the conversation on and the row goes away.
+ *
+ * hc-1089: a 「交给」 option (`@助手名字 | 按钮字 | 要它做什么`) is drawn as 「交给 X：按钮字」 and a
+ * click hands its sentence, with this reply as the carried result, to that assistant through
+ * the relay (hc-1086 `startHandoff`) instead of saying it here. It shows only while the relay
+ * can take it: relay mode on (`multi_bot_handoff`, several assistants, product mode — never in
+ * developer mode), the name is another assistant on the roster, and the assistant on screen is
+ * not itself working on a relay (接手的不能再往外交). Otherwise the option is left out and the
+ * rest of the row is exactly what it was without it.
  */
 
 import { useAuiState, useMessagePartText } from '@assistant-ui/react'
@@ -17,11 +25,15 @@ import { useMemo, useState } from 'react'
 
 import { requestComposerSubmit } from '@/app/chat/composer/focus'
 import { useSessionView } from '@/app/chat/session-view'
+import { handoffReplyAttachments } from '@/app/single-thread/handoff-text'
 import { FailureActions } from '@/components/assistant-ui/process/process-block'
 import { useTurnView } from '@/components/assistant-ui/process/turn-state'
 import { useNextStepsCopy } from '@/i18n/next-steps'
-import { type NextStepsBlock, parseNextSteps } from '@/lib/next-steps'
+import { isHandoff, type NextStepOption, type NextStepsBlock, parseNextSteps } from '@/lib/next-steps'
 import { $gatewayState } from '@/store/session'
+import { cleanBotName } from '@/store/single-thread-bot-ops'
+import { $botRoster, $currentBotProfile, type ApexBot } from '@/store/single-thread-bots'
+import { $handoffMode, $handoffs, handoffsTo, isHandoffActive, startHandoff } from '@/store/single-thread-handoff'
 
 // Rows already used, module-scoped: transcript virtualization remounts the row with fresh
 // state, which would otherwise offer the same click twice before the user message lands.
@@ -38,16 +50,28 @@ interface ThreadSlice {
 /** Every assistant text part mounts this; only a settled part that carries a block goes further. */
 export function NextStepButtons() {
   const { status, text } = useMessagePartText()
-  const block = useMemo(() => parseNextSteps(text).block, [text])
+  const { block, visible } = useMemo(() => parseNextSteps(text), [text])
 
   if (!block || status.type === 'running') {
     return null
   }
 
-  return <NextStepRow block={block} />
+  return <NextStepRow block={block} visible={visible} />
 }
 
-function NextStepRow({ block }: { block: NextStepsBlock }) {
+/** hc-1089: the roster row a 「交给」 option names (as shown and stored, any case), never the assistant on screen. */
+function handoffTarget(name: string, roster: readonly ApexBot[], current: string): ApexBot | null {
+  const wanted = cleanBotName(name).toLocaleLowerCase()
+
+  return roster.find(bot => bot.profile !== current && cleanBotName(bot.name).toLocaleLowerCase() === wanted) ?? null
+}
+
+interface ShownOption {
+  bot: ApexBot | null
+  option: NextStepOption
+}
+
+function NextStepRow({ block, visible }: { block: NextStepsBlock; visible: string }) {
   const view = useTurnView()
   const session = useSessionView()
   const storedId = useStore(session.$storedId)
@@ -56,6 +80,10 @@ function NextStepRow({ block }: { block: NextStepsBlock }) {
   // The turn's last bubble: a live turn spreads over several, only the final answer has buttons.
   const isLastMessage = useAuiState((state: ThreadSlice) => state.thread.messages.at(-1)?.id === state.message.id)
   const gatewayState = useStore($gatewayState)
+  const handoffMode = useStore($handoffMode)
+  const roster = useStore($botRoster)
+  const currentProfile = useStore($currentBotProfile)
+  const handoffs = useStore($handoffs)
   const copy = useNextStepsCopy()
   const identity = JSON.stringify([storedId ?? runtimeId, messageId, block])
   const [sent, setSent] = useState(() => used.has(identity))
@@ -71,6 +99,19 @@ function NextStepRow({ block }: { block: NextStepsBlock }) {
 
   const target = session.kind === 'tile' ? `tile:${storedId}` : 'main'
   const disabled = sent || gatewayState !== 'open'
+  const canHandOff = handoffMode && !handoffsTo(currentProfile, handoffs).some(isHandoffActive)
+
+  const options: readonly NextStepOption[] = block.options
+
+  const shown = options.flatMap((option): ShownOption[] => {
+    if (!isHandoff(option)) {
+      return [{ bot: null, option }]
+    }
+
+    const bot = canHandOff ? handoffTarget(option.to, roster, currentProfile) : null
+
+    return bot ? [{ bot, option }] : []
+  })
 
   const ask = (message: string) => {
     if (disabled) {
@@ -78,6 +119,24 @@ function NextStepRow({ block }: { block: NextStepsBlock }) {
     }
 
     if (requestComposerSubmit(message, { target })) {
+      used.add(identity)
+      setSent(true)
+    }
+  }
+
+  const handOff = (bot: ApexBot, option: NextStepOption) => {
+    if (disabled) {
+      return
+    }
+
+    const started = startHandoff({
+      ask: option.message,
+      from: { messageId, profile: currentProfile, storedSessionId: storedId ?? null },
+      previous: { text: visible, ...handoffReplyAttachments(visible) },
+      to: bot.profile
+    })
+
+    if (started.ok) {
       used.add(identity)
       setSent(true)
     }
@@ -91,6 +150,10 @@ function NextStepRow({ block }: { block: NextStepsBlock }) {
     )
   }
 
+  if (shown.length === 0) {
+    return null
+  }
+
   return (
     <div
       aria-label={copy.group}
@@ -98,18 +161,32 @@ function NextStepRow({ block }: { block: NextStepsBlock }) {
       data-next-steps=""
       role="group"
     >
-      {block.options.map(option => (
-        <button
-          className={OPTION_CLASS}
-          disabled={disabled}
-          key={option.label}
-          onClick={() => ask(option.message)}
-          title={copy.sends(option.message)}
-          type="button"
-        >
-          {option.label}
-        </button>
-      ))}
+      {shown.map(({ bot, option }) =>
+        bot ? (
+          <button
+            className={OPTION_CLASS}
+            data-next-step-handoff={bot.profile}
+            disabled={disabled}
+            key={`${option.label}\n${bot.profile}`}
+            onClick={() => handOff(bot, option)}
+            title={copy.handsOff(bot.name, option.message)}
+            type="button"
+          >
+            {copy.handoff(bot.name, option.label)}
+          </button>
+        ) : (
+          <button
+            className={OPTION_CLASS}
+            disabled={disabled}
+            key={option.label}
+            onClick={() => ask(option.message)}
+            title={copy.sends(option.message)}
+            type="button"
+          >
+            {option.label}
+          </button>
+        )
+      )}
     </div>
   )
 }

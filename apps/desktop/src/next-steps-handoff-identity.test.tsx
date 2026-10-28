@@ -17,7 +17,12 @@ import {
   resetBotRosterForTest,
   setMultiBotFlagForTest
 } from '@/store/single-thread-bots'
-import { setMultiBotHandoffFlagForTest } from '@/store/single-thread-handoff'
+import {
+  type HandoffRecord,
+  resetHandoffsForTest,
+  setMultiBotHandoffFlagForTest,
+  startHandoff
+} from '@/store/single-thread-handoff'
 import { $toolDisclosureStates, setToolViewMode, type ToolViewMode } from '@/store/tool-view'
 
 import { normalized, seedShellState } from './__identity__/single-thread-shell/render'
@@ -38,6 +43,13 @@ import { restoreRecordingTimeZone } from './__identity__/single-thread-shell/tim
  * - `several`: multi_bot and multi_bot_handoff on, product mode.
  *
  * A diff here means the ordinary row moved: fix the code, do not re-record.
+ *
+ * The same reply with a 「交给」 option in front of the two (`MIXED`) must draw
+ * exactly those goldens wherever the option is hidden: the three states above
+ * plus, with several assistants in product mode, the relay switch off, a name
+ * that is no assistant, the assistant on screen itself, and an assistant on
+ * screen that is working on a relay (接手的不能再往外交). Only `handoff-several`
+ * (recorded with hc-1089) shows it: 「交给小红书文案：写成笔记」 first, then the two.
  */
 
 vi.mock('@/hermes', async importActual => ({
@@ -59,6 +71,9 @@ const ROSTER_ROWS: BotProfileRow[] = [
 
 const ANSWER = '标题写好了：\n\n1. 不打孔也能装的收纳架\n2. 9.9 元改造衣柜'
 const PLAIN = ['再写 3 个 | 再写 3 个标题', '就用第 1 个 | 就用第 1 个标题']
+
+const HANDOFF = (name: string) => `@${name} | 写成笔记 | 把第 1 个标题写成小红书笔记`
+const MIXED = [HANDOFF('小红书文案'), ...PLAIN]
 
 const replyWith = (lines: readonly string[]) => `${ANSWER}\n\n<!-- apex:next\n${lines.join('\n')}\n-->`
 
@@ -146,6 +161,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  resetHandoffsForTest()
   setMultiBotHandoffFlagForTest(false)
   setMultiBotFlagForTest(false)
   resetBotRosterForTest()
@@ -162,5 +178,57 @@ describe.each(Object.keys(STATES) as (keyof typeof STATES)[])('%s: ordinary opti
     applySwitches(STATES[state])
 
     await expect(await transcriptHtml(replyWith(PLAIN))).toMatchFileSnapshot(`${GOLDEN}/plain-${state}.html`)
+  })
+})
+
+describe.each(['classic', 'one-assistant', 'developer'] as const)('%s: a 「交给」 option', state => {
+  it('is left out, and the row is the ordinary golden byte for byte', async () => {
+    applySwitches(STATES[state])
+
+    await expect(await transcriptHtml(replyWith(MIXED))).toMatchFileSnapshot(`${GOLDEN}/plain-${state}.html`)
+  })
+})
+
+describe('several assistants, product mode: a 「交给」 option', () => {
+  it('shows first as 「交给小红书文案：写成笔记」', async () => {
+    applySwitches(STATES.several)
+
+    await expect(await transcriptHtml(replyWith(MIXED))).toMatchFileSnapshot(`${GOLDEN}/handoff-several.html`)
+  })
+
+  it('is left out with the relay switch off', async () => {
+    applySwitches({ ...STATES.several, handoff: false })
+
+    await expect(await transcriptHtml(replyWith(MIXED))).toMatchFileSnapshot(`${GOLDEN}/plain-several.html`)
+  })
+
+  it('is left out when the name is no assistant on the roster', async () => {
+    applySwitches(STATES.several)
+
+    await expect(await transcriptHtml(replyWith([HANDOFF('剪辑助手'), ...PLAIN]))).toMatchFileSnapshot(
+      `${GOLDEN}/plain-several.html`
+    )
+  })
+
+  it('is left out when it names the assistant on screen', async () => {
+    applySwitches(STATES.several)
+    $activeGatewayProfile.set('writer')
+
+    expect(await transcriptHtml(replyWith(MIXED))).toBe(await transcriptHtml(replyWith(PLAIN)))
+  })
+
+  it('is left out while the assistant on screen works on a relay of its own', async () => {
+    applySwitches(STATES.several)
+    $activeGatewayProfile.set('scripts')
+
+    const nested = startHandoff({
+      ask: '写个带货脚本',
+      from: { messageId: null, profile: 'default', storedSessionId: null },
+      to: 'scripts'
+    })
+
+    expect(nested.ok).toBe(true)
+    expect((nested as { handoff: HandoffRecord }).handoff.status).toBe('queued')
+    expect(await transcriptHtml(replyWith(MIXED))).toBe(await transcriptHtml(replyWith(PLAIN)))
   })
 })
