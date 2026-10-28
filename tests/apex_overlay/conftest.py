@@ -45,6 +45,8 @@ _SEAM_MODULES = (
     "memory_ledger",
     # hc-1015 how APEX talks in single-thread mode.
     "single_thread_prompt",
+    # hc-1082 each assistant's own name and the apex_rename tool (several assistants on).
+    "assistant_name",
     # hc-1071 ask first, next-step buttons and an offer after a finished piece (single-thread mode).
     "proactive_prompt",
     # hc-1036 evidence levels and delivery honesty in every Desktop session.
@@ -53,6 +55,8 @@ _SEAM_MODULES = (
     "relay_stream_liveness",
     # hc-1034 one simple command per read-only check; stop and explain after a refusal.
     "approval_rules_prompt",
+    # hc-1095 the APEX version and update state, from Desktop's mirror (single-thread mode).
+    "desktop_version",
     # hc-1065 native vision for the relay's Flash tier; direct, reasoning-free answers.
     "vision_answer",
 )

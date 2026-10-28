@@ -96,6 +96,13 @@ _CONTEXT_SEAMS = (
         "on, answers may name tools, skills and models again.",
     ),
     (
+        "assistant_name",
+        "apex-overlay: hc-1082 assistant name seam did not register (see "
+        "prior warning). With several assistants on, 「以后叫你小李」 has no "
+        "tool to rename this assistant on screen, and a session renamed from "
+        "the sidebar keeps the name its prompt was built with.",
+    ),
+    (
         "proactive_prompt",
         "apex-overlay: hc-1071 proactive prompt section did not register "
         "(see prior warning). With desktop_features.single_thread on, APEX "
@@ -120,6 +127,13 @@ _CONTEXT_SEAMS = (
         "(see prior warning). Read-only checks may be bundled into lines that "
         "need approval again, and a declined or unanswered approval may not be "
         "explained to the user.",
+    ),
+    (
+        "desktop_version",
+        "apex-overlay: hc-1095 Desktop version seam did not fully apply (see "
+        "prior warning). Asked which version it is, APEX may look up the "
+        "open-source engine's releases, say it runs on Hermes Agent and offer "
+        "to upgrade it, instead of naming the APEX version and how to update.",
     ),
 )
 

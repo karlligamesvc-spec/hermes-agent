@@ -8,7 +8,10 @@
  *   draft from anywhere) lands back in the one conversation;
  * - registers the composer middleware that opens segments and refuses sends
  *   outside the thread (composer-middleware.ts);
- * - titles the session the first message of a brand-new thread creates.
+ * - titles the session the first message of a brand-new thread creates;
+ * - hc-1077: with several assistants on, keeps their roster and threads
+ *   (use-multi-bot-shell.ts), and holds the Start-route redirect while a
+ *   switch to another assistant is still settling.
  *
  * Off, it does nothing at all: no lookup, no middleware, no navigation.
  */
@@ -28,6 +31,7 @@ import { isSecondaryWindow } from '@/store/windows'
 import { NEW_CHAT_ROUTE, sessionRoute } from '../routes'
 
 import { $pendingThreadClaim, claimCreatedThread, type RequestGateway, singleThreadSend } from './composer-middleware'
+import { useMultiBotShell } from './use-multi-bot-shell'
 
 export const SINGLE_THREAD_MIDDLEWARE_ID = 'single-thread-send'
 
@@ -45,6 +49,8 @@ export function useSingleThreadShell(requestGateway: RequestGateway): void {
   requestRef.current = requestGateway
   profileRef.current = profile
 
+  const { switching } = useMultiBotShell(singleThread, gatewayOpen, profile, requestRef)
+
   useEffect(() => {
     void loadSingleThreadFlag()
   }, [])
@@ -61,10 +67,10 @@ export function useSingleThreadShell(requestGateway: RequestGateway): void {
   const threadTip = thread.status === 'found' && thread.profile === profile ? thread.tipId : null
 
   useEffect(() => {
-    if (singleThread && pathname === NEW_CHAT_ROUTE && threadTip) {
+    if (singleThread && !switching && pathname === NEW_CHAT_ROUTE && threadTip) {
       navigate(sessionRoute(threadTip), { replace: true })
     }
-  }, [navigate, pathname, singleThread, threadTip])
+  }, [navigate, pathname, singleThread, switching, threadTip])
 
   useEffect(() => {
     if (!singleThread) {

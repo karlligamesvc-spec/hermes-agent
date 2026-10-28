@@ -4,13 +4,20 @@
  * bound by scanning a code, and says 「已绑定」 once this machine's assistant has
  * a WeChat binding. Read through the same imEntry bridge the page uses; with
  * no bridge (a web build) the row only offers the page.
+ *
+ * hc-1077 (K7): with several assistants on, WeChat still reaches APEX only —
+ * the binding follows the startup profile, which switching never moves — so
+ * the row names APEX, by the name APEX has now, whichever assistant is on
+ * screen.
  */
 
+import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { Codicon } from '@/components/ui/codicon'
 import { useSingleThreadSidebarCopy } from '@/i18n/single-thread-sidebar'
+import { $apexBot, withBotName } from '@/store/single-thread-bots'
 
 import { IM_ENTRY_ROUTE } from '../routes'
 
@@ -56,6 +63,7 @@ export function SingleThreadWechatRow() {
   const copy = useSingleThreadSidebarCopy()
   const navigate = useNavigate()
   const bound = useWechatBound()
+  const apexName = useStore($apexBot)?.name
 
   return (
     <button
@@ -66,7 +74,9 @@ export function SingleThreadWechatRow() {
     >
       <Codicon className="shrink-0 text-(--ui-text-secondary)" name="device-mobile" size="1.125rem" />
       <span className="flex min-w-0 flex-1 flex-col leading-tight">
-        <span className="truncate text-[0.875rem] text-(--ui-text-primary)">{copy.wechatTitle}</span>
+        <span className="truncate text-[0.875rem] text-(--ui-text-primary)">
+          {withBotName(copy.wechatTitle, apexName)}
+        </span>
         {bound === null ? null : (
           <span className="truncate pt-0.5 text-[0.75rem] text-(--ui-text-tertiary)">
             {bound ? copy.wechatBound : copy.wechatUnbound}

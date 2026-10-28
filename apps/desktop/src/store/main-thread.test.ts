@@ -4,6 +4,7 @@ import { makeSessionInfo } from '@/test/session-info'
 
 import {
   $mainThread,
+  $mainThreadsByProfile,
   $segmentStarts,
   $threadSegmentStarts,
   isMainThreadStoredId,
@@ -11,7 +12,8 @@ import {
   noteMainThreadClaimed,
   recordSegmentStart,
   resetMainThreadForTest,
-  resolveMainThread
+  resolveMainThread,
+  resolveProfileThread
 } from './main-thread'
 import { $activeSessionStoredIdRotation } from './session'
 
@@ -152,5 +154,70 @@ describe('hc-1014 segment starts', () => {
 
     expect($threadSegmentStarts.get()).toEqual([100, 200])
     expect($segmentStarts.get()['someone-else']).toEqual([300])
+  })
+})
+
+describe('hc-1077 every assistant’s thread, by profile', () => {
+  const tip = (rows: unknown[]) => gatewayAnswering(rows)
+
+  it('keeps the active profile’s thread under its profile too', async () => {
+    await resolveMainThread(tip([{ id: 'apex-root', resolved_id: 'apex-tip', title: MAIN_THREAD_TITLE }]), 'default')
+
+    expect($mainThreadsByProfile.get().default).toMatchObject({
+      rootId: 'apex-root',
+      status: 'found',
+      tipId: 'apex-tip'
+    })
+  })
+
+  it('looks another assistant’s thread up by name on its own profile, without touching the active one', async () => {
+    noteMainThreadClaimed('default', 'apex-root')
+
+    const request = tip([{ id: 'writer-root', title: MAIN_THREAD_TITLE }])
+    const state = await resolveProfileThread(request, 'writer')
+
+    expect(request).toHaveBeenCalledWith('session.list', {
+      include_hidden: true,
+      limit: 200,
+      profile: 'writer',
+      title: MAIN_THREAD_TITLE
+    })
+    expect(state).toMatchObject({ profile: 'writer', rootId: 'writer-root', status: 'found' })
+    expect($mainThread.get()).toMatchObject({ profile: 'default', rootId: 'apex-root' })
+    expect(Object.keys($mainThreadsByProfile.get()).sort()).toEqual(['default', 'writer'])
+  })
+
+  it('never downgrades a thread it holds for a background assistant', async () => {
+    await resolveProfileThread(tip([{ id: 'writer-root', title: MAIN_THREAD_TITLE }]), 'writer')
+    await resolveProfileThread(gatewayAnswering(new Error('offline')), 'writer')
+    await resolveProfileThread(tip([]), 'writer')
+
+    expect($mainThreadsByProfile.get().writer).toMatchObject({ rootId: 'writer-root', status: 'found' })
+  })
+
+  it('records an assistant with no thread yet as absent, and a failed read as an error', async () => {
+    await resolveProfileThread(tip([]), 'fresh')
+    await resolveProfileThread(gatewayAnswering(new Error('offline')), 'down')
+
+    expect($mainThreadsByProfile.get().fresh?.status).toBe('absent')
+    expect($mainThreadsByProfile.get().down?.status).toBe('error')
+  })
+
+  it('follows a background assistant’s rotation onto its new tip', async () => {
+    noteMainThreadClaimed('default', 'apex-root')
+    await resolveProfileThread(tip([{ id: 'writer-root', title: MAIN_THREAD_TITLE }]), 'writer')
+
+    $activeSessionStoredIdRotation.set({
+      nextStoredSessionId: 'writer-tip-2',
+      previousStoredSessionId: 'writer-root',
+      runtimeSessionId: 'rt-writer'
+    })
+
+    expect($mainThreadsByProfile.get().writer).toMatchObject({
+      ids: ['writer-root', 'writer-tip-2'],
+      rootId: 'writer-root',
+      tipId: 'writer-tip-2'
+    })
+    expect($mainThread.get().tipId).toBe('apex-root')
   })
 })

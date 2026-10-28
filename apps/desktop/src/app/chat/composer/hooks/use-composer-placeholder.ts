@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '@/i18n'
 import { useSingleThreadComposerCopy } from '@/i18n/single-thread-composer'
 import { resetBrowseState } from '@/store/composer-input-history'
+import { useBotName, withBotName } from '@/store/single-thread-bots'
 
 import { pickPlaceholder } from '../composer-utils'
 import { useSingleThreadComposer } from '../single-thread-gate'
@@ -28,7 +29,7 @@ export interface ComposerPlaceholder {
  *
  * hc-1060: the single-thread composer rests on one fixed line, 「给 APEX 发消息」,
  * which is also its accessible name (prototype v2). Starting and reconnecting
- * still say so.
+ * still say so. hc-1077: 「给 X 发消息」 for the assistant on screen.
  */
 export function useComposerPlaceholder({
   disabled,
@@ -38,6 +39,7 @@ export function useComposerPlaceholder({
   const { t } = useI18n()
   const singleThread = useSingleThreadComposer()
   const singleThreadCopy = useSingleThreadComposerCopy()
+  const fixedLine = withBotName(singleThreadCopy.placeholder, useBotName())
   const newSessionPlaceholders = t.composer.newSessionPlaceholders
   const followUpPlaceholders = t.composer.followUpPlaceholders
 
@@ -66,7 +68,7 @@ export function useComposerPlaceholder({
     setRestingPlaceholder(pickPlaceholder(sessionId ? followUpPlaceholders : newSessionPlaceholders))
   }, [followUpPlaceholders, newSessionPlaceholders, sessionId])
 
-  const resting = singleThread ? singleThreadCopy.placeholder : restingPlaceholder
+  const resting = singleThread ? fixedLine : restingPlaceholder
 
   // When the transport is disabled it's because the gateway isn't open.
   // Distinguish a cold start ("Starting Hermes...") from a dropped connection
@@ -74,7 +76,7 @@ export function useComposerPlaceholder({
   // flaky network doesn't block drafting; only submit/backend actions stay
   // disabled until the gateway is open again.
   return {
-    label: singleThread ? singleThreadCopy.placeholder : t.composer.message,
+    label: singleThread ? fixedLine : t.composer.message,
     placeholder: disabled
       ? reconnecting
         ? t.composer.placeholderReconnecting

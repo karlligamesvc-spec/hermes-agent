@@ -5,7 +5,8 @@
  * its switch are shared, so nothing shows unless `desktop_features.daily_ideas`
  * is on — drawn as the prototype draws them: tag, title, 怎么拍, 开做. 开做
  * sends the card's prepared request into this conversation, the way a next-step
- * button does.
+ * button does. hc-1077 (K7): only APEX brings today's ideas; another assistant's
+ * empty thread does not, so a day never has several sets.
  */
 
 import { useStore } from '@nanostores/react'
@@ -19,6 +20,7 @@ import { useSingleThreadFirstOpenCopy } from '@/i18n/single-thread-first-open'
 import { $authState } from '@/store/auth'
 import { $dailyIdeas, dailyIdeasFor, loadDailyIdeas, markDailyIdeaStarted } from '@/store/daily-ideas'
 import { $gatewayState } from '@/store/session'
+import { $currentBot } from '@/store/single-thread-bots'
 
 import {
   DAILY_IDEAS_PENDING_REFRESH_LIMIT,
@@ -37,6 +39,7 @@ export function FirstOpenIdeas() {
   const { accountId, status } = useStore($authState)
   const page = dailyIdeasFor(useStore($dailyIdeas), accountId)
   const gatewayOpen = useStore($gatewayState) === 'open'
+  const otherBot = useStore($currentBot)?.isApex === false
   const [refreshes, setRefreshes] = useState(0)
   const pending = page?.pending === true
 
@@ -64,7 +67,7 @@ export function FirstOpenIdeas() {
 
   const cards = page?.cards ?? []
 
-  if (!page || cards.length === 0) {
+  if (!page || cards.length === 0 || otherBot) {
     return null
   }
 

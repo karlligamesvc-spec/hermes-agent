@@ -18,6 +18,12 @@ type Waiter = {
   timer: ReturnType<typeof setTimeout> | null
 }
 
+/**
+ * Called with the key of a foreground waiter that has to queue. Whatever it
+ * returns is awaited; a rejection fails that waiter with the same error.
+ */
+export type ForegroundWaitHook = (key: string) => unknown
+
 const SLOT_WAIT_TIMEOUT_MESSAGE = (key: string) =>
   `Local backend start for "${key}" timed out while waiting for a free slot.`
 
@@ -59,19 +65,25 @@ export async function releaseLocalBackendSlotAfterExit(
  * When the cap is at least 2, one slot is reserved for foreground (user-open)
  * requests so background roster hydration cannot occupy the whole pool.
  * Untagged acquire() is foreground, so existing cap tests still fill `limit`.
+ *
+ * `onForegroundWait` runs once for every foreground waiter the free slots
+ * cannot take, whether it was requested as foreground or promoted while it
+ * waited: the owner may make room. A rejection fails that wait at once.
  */
 export class LocalBackendSpawnCoordinator {
   #limit: number
   #activeForeground = 0
   #activeBackground = 0
   #queue: Waiter[] = []
+  readonly #onForegroundWait: ForegroundWaitHook | undefined
 
-  constructor(limit: number) {
+  constructor(limit: number, options: { onForegroundWait?: ForegroundWaitHook } = {}) {
     if (!Number.isInteger(limit) || limit < 1) {
       throw new RangeError('Local backend spawn limit must be a positive integer.')
     }
 
     this.#limit = limit
+    this.#onForegroundWait = options.onForegroundWait
   }
 
   get activeCount(): number {
@@ -135,6 +147,7 @@ export class LocalBackendSpawnCoordinator {
     })
 
     this.#drain()
+    this.#foregroundWaiting(waiter)
 
     return {
       acquired,
@@ -184,8 +197,24 @@ export class LocalBackendSpawnCoordinator {
 
     waiter.priority = priority
     this.#drain()
+    this.#foregroundWaiting(waiter)
 
     return true
+  }
+
+  // Deferred, so the hook never runs inside a caller's request() or promote().
+  #foregroundWaiting(waiter: Waiter): void {
+    const hook = this.#onForegroundWait
+
+    if (!hook || waiter.priority !== 'foreground' || !this.#queue.includes(waiter)) {
+      return
+    }
+
+    void Promise.resolve()
+      .then(() => hook(waiter.key))
+      .catch((error: unknown) => {
+        this.#rejectWaiter(waiter, error instanceof Error ? error : new Error(String(error)))
+      })
   }
 
   #rejectWaiter(waiter: Waiter, error: Error): boolean {

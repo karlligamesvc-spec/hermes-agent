@@ -33,6 +33,7 @@ import { isSubmitEnter } from '@/lib/ime'
 import { cn } from '@/lib/utils'
 import { $authState } from '@/store/auth'
 import { $creatorProfile, creatorProfileFor, loadCreatorProfile, saveCreatorProfile } from '@/store/creator-profile'
+import { useBotName, withBotName } from '@/store/single-thread-bots'
 
 import {
   CREATOR_CONTENT_TYPES,
@@ -64,10 +65,10 @@ export const FIRST_OPEN_PAIN_POINTS: readonly DesktopCreatorPainPoint[] = [
   'no_shooting'
 ]
 
-const CARD_CLASS =
+export const CARD_CLASS =
   'flex w-[28.75rem] max-w-full flex-col gap-0.5 self-start rounded-2xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-3.5 py-3'
 
-const OPTION_CLASS =
+export const OPTION_CLASS =
   'flex w-full items-center gap-2.5 rounded-[0.625rem] px-2 py-1.5 text-left text-[0.90625rem] text-(--ui-text-primary)'
 
 interface Option {
@@ -142,7 +143,11 @@ function pickFor(
  */
 export function FirstOpen() {
   const copy = useSingleThreadFirstOpenCopy()
-  const { assistantName, greeting } = useSingleThreadChatCopy()
+  const chatCopy = useSingleThreadChatCopy()
+  // hc-1077: the assistant on screen greets and notes in its own name.
+  const botName = useBotName()
+  const assistantName = botName ?? chatCopy.assistantName
+  const greeting = withBotName(chatCopy.greeting, botName)
   const intake = CREATOR_INTAKE_COPY[useI18n().locale]
   const { accountId, status } = useStore($authState)
   const state = useStore($creatorProfile)
@@ -261,7 +266,7 @@ function IntakeTurns({
   )
 }
 
-function AnsweredCard({ pick, title }: { pick: { char: null | string; label: string }; title: string }) {
+export function AnsweredCard({ pick, title }: { pick: { char: null | string; label: string }; title: string }) {
   return (
     <section aria-label={title} className={CARD_CLASS} data-first-open-card="answered">
       <h3 className="m-0 px-2 pt-0.5 pb-1.5 text-[0.84375rem] font-medium text-(--ui-text-secondary)">{title}</h3>

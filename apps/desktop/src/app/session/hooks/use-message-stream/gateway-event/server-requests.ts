@@ -200,7 +200,7 @@ const approval: Handler = ctx => {
         { id: 'approve', text: translateNow('notifications.native.approveAction') },
         { id: 'reject', text: translateNow('notifications.native.rejectAction') }
       ],
-      body: approvalNotificationBody(command, description),
+      body: approvalNotificationBody(command, description, request.profile),
       kind: 'approval',
       sessionId: sessionId || null,
       title: translateNow('notifications.native.approvalTitle')

@@ -16,6 +16,11 @@ install's own APEXNODES_SINGLE_THREAD) into its own output variable
 never set it, and a Desktop with the switch off builds exactly the prompt it
 built before. The engine does not know the renderer's developer mode, so the
 rules stay on there too; developer mode only adds technical detail on screen.
+
+hc-1082: with several assistants on (``APEX_MULTI_BOT_ACTIVE=1``), the name
+line is replaced by apex_overlay/assistant_name.py's lines: this assistant's
+stored name, renaming through its tool, and the shared memory ledger. Without
+that variable the section is ``SINGLE_THREAD_PROMPT`` as before.
 """
 
 from __future__ import annotations
@@ -30,8 +35,10 @@ SECTION_ID = "apex.single-thread"
 SWITCH_ENV = "APEX_SINGLE_THREAD_ACTIVE"
 MAX_CHARS = 2_000
 
-SINGLE_THREAD_PROMPT = """【APEX 怎么说话 · 平台规则】
-- 你叫 APEX。用户给你改了名字（比如「以后叫你小李」），就用新名字称呼自己，并把这个名字记进记忆，以后一直用；被问名字时报最新的那个。
+NAME_RULE = "- 你叫 APEX。用户给你改了名字（比如「以后叫你小李」），就用新名字称呼自己，并把这个名字记进记忆，以后一直用；被问名字时报最新的那个。"
+
+SINGLE_THREAD_PROMPT = f"""【APEX 怎么说话 · 平台规则】
+{NAME_RULE}
 - 只说用户关心的事和结果。不说工具名、技能名、模型名、参数名和任何内部代号，不报「第几步」，不说「调用了…」「加载技能…」「走…流程」。做事的过程界面会自己显示；真要提，用一句人话带过，比如「我先把视频下载下来听一遍」。
 - 信息够了再开工：开工前先用一句话说你要做什么、大概多久，然后直接做。
 - 一次最多问一个问题，并给出你的默认做法，比如「我先按 45 秒口播写，不对你说」。
@@ -43,9 +50,15 @@ def switch_on() -> bool:
     return os.environ.get(SWITCH_ENV, "").strip() == "1"
 
 
-def render_section(_session_info: Mapping[str, Any] | None = None) -> str:
-    """The fixed section while the switch is on, else "" (the runtime then adds none)."""
-    return SINGLE_THREAD_PROMPT if switch_on() else ""
+def render_section(session_info: Mapping[str, Any] | None = None) -> str:
+    """The section while the switch is on, else "" (the runtime then adds none)."""
+    if not switch_on():
+        return ""
+    # Imported here: apex-nodes loads this file on its own to compare the shared rules (tests/test_hc1018_*).
+    from apex_overlay import assistant_name
+
+    name_rules = assistant_name.name_rules(session_info)
+    return SINGLE_THREAD_PROMPT.replace(NAME_RULE, name_rules, 1) if name_rules else SINGLE_THREAD_PROMPT
 
 
 def apply(ctx: Any) -> bool:
