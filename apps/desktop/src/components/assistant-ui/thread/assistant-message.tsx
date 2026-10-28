@@ -55,8 +55,8 @@ import {
   VolumeXIcon,
   XIcon
 } from '@/lib/icons'
-import { stripNextStepBlocks } from '@/lib/next-steps'
 import { extractPreviewTargets } from '@/lib/preview-targets'
+import { visibleReplyText } from '@/lib/reply-markers'
 import { markAssistantIdSpoken } from '@/lib/spoken-reply'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
@@ -215,7 +215,7 @@ const AssistantMessageBody: FC<AssistantMessageProps & { collapsedNotice?: null 
 
   // Copy and read-aloud take the reply without its 「下一步」 block (those are buttons, not text).
   const getMessageText = useCallback(
-    () => stripNextStepBlocks(messageContentText(messageRuntime.getState().content)),
+    () => visibleReplyText(messageContentText(messageRuntime.getState().content)),
     [messageRuntime]
   )
 

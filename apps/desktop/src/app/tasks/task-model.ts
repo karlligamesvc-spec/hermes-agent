@@ -1,4 +1,5 @@
 import { type ChatMessage, chatMessageText, toChatMessages } from '@/lib/chat-messages'
+import { visibleReplyText } from '@/lib/reply-markers'
 import { latestSessionTodos, type TodoItem } from '@/lib/todos'
 import type { CronJob, SessionInfo, SessionMessage } from '@/types/hermes'
 
@@ -135,7 +136,7 @@ function latestAssistantText(chat: readonly ChatMessage[]): null | string {
       continue
     }
 
-    const text = chatMessageText(message).trim()
+    const text = visibleReplyText(chatMessageText(message)).trim()
 
     if (text) {
       return text

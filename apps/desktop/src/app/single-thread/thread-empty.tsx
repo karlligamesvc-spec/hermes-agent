@@ -18,6 +18,7 @@ import { NEW_CHAT_ROUTE } from '../routes'
 
 import { BotIntake } from './bot-intake'
 import { FirstOpen } from './first-open'
+import { HandoffEmptySlot } from './handoff/thread-slots'
 
 export function SingleThreadEmptyState() {
   const { profile, status } = useStore($mainThread)
@@ -43,6 +44,7 @@ export function SingleThreadEmptyState() {
         data-single-thread-empty=""
       >
         {bot && !bot.isApex ? <BotIntake name={bot.name} profile={bot.profile} /> : <FirstOpen />}
+        <HandoffEmptySlot />
       </div>
     </div>
   )

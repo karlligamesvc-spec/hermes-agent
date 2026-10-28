@@ -21,6 +21,7 @@ import { atom, computed } from 'nanostores'
 
 import type { ClientSessionState } from '@/app/types'
 import { type ChatMessage, chatMessageText } from '@/lib/chat-messages'
+import { visibleReplyText } from '@/lib/reply-markers'
 
 import { $mainThread, $mainThreadsByProfile, type MainThreadState } from './main-thread'
 import { $sessionStates } from './session-states'
@@ -70,7 +71,7 @@ export function latestReply(messages: readonly ChatMessage[]): null | ThreadRepl
       continue
     }
 
-    const line = chatMessageText(message)
+    const line = visibleReplyText(chatMessageText(message))
       .split('\n')
       .map(text => text.trim().replace(LEADING_MARKS, '').replace(INLINE_MARKS, '').trim())
       .find(Boolean)
