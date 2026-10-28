@@ -33,6 +33,8 @@ from hermes_cli.plugins import PLUGIN_SECTIONS_END, PLUGIN_SECTIONS_START, Plugi
 from run_agent import AIAgent
 from tools.registry import registry
 
+from tests.apex_overlay.test_memory_ledger_live_identity import with_list_action
+
 GOLDEN = Path(__file__).parent / "__identity__" / "handoff-off" / "before-hc1088.json"
 CASES = json.loads(
     (Path(__file__).resolve().parents[2] / "apps/desktop/shared/apex-handoff-cases.json").read_text(encoding="utf-8")
@@ -167,6 +169,13 @@ def _ctx(manager: PluginManager) -> PluginContext:
 # ── 1. switch off: what main built ───────────────────────────────────────────
 
 
+def _golden(key: str) -> dict:
+    """The golden for ``key``; hc-1097 later gave apex_memory a list action for everyone."""
+    golden = json.loads(GOLDEN.read_text(encoding="utf-8"))[key]
+    golden["apex_tool_schemas"]["apex_memory"] = with_list_action(golden["apex_tool_schemas"]["apex_memory"])
+    return golden
+
+
 @pytest.mark.parametrize(
     ("handoff_env", "multi", "single", "on"),
     [
@@ -208,7 +217,7 @@ def test_relay_off_builds_what_main_built(tmp_path, monkeypatch, state, handoff_
 
     snapshot = _snapshot(root, monkeypatch, (*PROMPT_SEAMS, "handoff"), profile, "desktop")
 
-    assert snapshot == json.loads(GOLDEN.read_text(encoding="utf-8"))[f"{state}/{profile}"]
+    assert snapshot == _golden(f"{state}/{profile}")
 
 
 def test_relay_on_adds_only_its_section_and_two_hooks(tmp_path, monkeypatch):
@@ -217,7 +226,7 @@ def test_relay_on_adds_only_its_section_and_two_hooks(tmp_path, monkeypatch):
     monkeypatch.setenv(single_thread_prompt.SWITCH_ENV, "1")
     root = tmp_path / "apexnodes"
     root.mkdir()
-    before = json.loads(GOLDEN.read_text(encoding="utf-8"))["multi-on/default"]
+    before = _golden("multi-on/default")
 
     after = _snapshot(root, monkeypatch, (*PROMPT_SEAMS, "handoff"), "default", "desktop")
 
