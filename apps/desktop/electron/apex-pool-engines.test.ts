@@ -10,7 +10,6 @@ import {
   MAX_RETIRE_PROBE_FAILURES,
   poolAllBusyError,
   type PoolEngineEntry,
-  poolKeysOnStaleRelayKey,
   reapIdlePoolEngine,
   stampPoolEngine
 } from './apex-pool-engines'
@@ -34,29 +33,8 @@ describe('restart pooled engines on a new relay key', () => {
     assert.equal(entry.apexRelayKey, maskRelayKey(OLD_KEY))
     assert.ok(!JSON.stringify(entry).includes(OLD_KEY))
     assert.equal(spawned('writer', undefined).apexRelayKey, '')
-  })
-
-  test('picks only managed profiles whose live child holds another key', () => {
-    const entries: Array<[string, PoolEngineEntry]> = [
-      ['writer', spawned('writer', OLD_KEY)],
-      ['editor', spawned('editor', NEW_KEY)],
-      ['mine', spawned('mine', OLD_KEY)],
-      ['local::reviewer', spawned('reviewer', OLD_KEY)],
-      ['default', spawned('default', undefined)],
-      ['remote', { process: null, apexProfile: 'writer', apexRelayKey: '' }],
-      ['unstamped', { process: { pid: 2 } }]
-    ]
-
-    assert.deepEqual(poolKeysOnStaleRelayKey(entries, ['default', 'writer', 'editor', 'reviewer'], NEW_KEY), [
-      'writer',
-      'local::reviewer',
-      'default'
-    ])
-    assert.deepEqual(
-      poolKeysOnStaleRelayKey(entries, ['default', 'writer'], undefined),
-      [],
-      'signed out: nothing to restart for'
-    )
+    // Which stamped children restart, and when: apex-engine-relay-key.test.ts (hc-1106).
+    assert.notEqual(spawned('writer', NEW_KEY).apexRelayKey, entry.apexRelayKey)
   })
 })
 
