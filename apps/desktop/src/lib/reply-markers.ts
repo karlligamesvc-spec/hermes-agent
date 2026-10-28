@@ -6,7 +6,9 @@
  * - `<!-- apex:handback … -->`: the 交回摘要 a relay's receiver ends its reply
  *   with (hc-1088, lib/handoff-text.ts `parseHandback`);
  * - `<!-- apex:handoff v=1 … -->`: the header that opens a relay's hand-over
- *   message in the receiver's thread (`parseHandoffHeader`).
+ *   message in the receiver's thread (`parseHandoffHeader`);
+ * - `<!-- apex:plan … -->`: a relay plan (一条龙接力) APEX proposes, drawn as
+ *   the plan card (hc-1091, lib/handoff-plan.ts).
  *
  * The exits are rendering (Markdown, a user bubble), copy, read-aloud,
  * streamed speech, the voice conversation and the turn-done notification;
@@ -14,6 +16,7 @@
  * switches say: they are protocol, never something to read out.
  */
 
+import { isOpenPlanTail, PLAN_BLOCK_RE, stripPlanBlocks } from '@/lib/handoff-plan'
 import { parseHandback } from '@/lib/handoff-text'
 import { createNextStepsSpeechFilter, type NextStepsSpeechFilter, stripNextStepBlocks } from '@/lib/next-steps'
 
@@ -41,21 +44,23 @@ export function visibleReplyText(text: string): string {
     return withoutNext
   }
 
-  return withoutHandoffHeader(parseHandback(withoutNext).visible)
+  return withoutHandoffHeader(stripPlanBlocks(parseHandback(withoutNext).visible))
 }
 
 // What a streamed reply may end with while a block is still arriving: "<", "<!", "<!-".
 const PARTIAL_OPENER_RE = /<(?:!-?)?$/
 
-function openHandbackIndex(text: string): number {
+const isOpenHandbackTail = (tail: string) => {
+  const rest = tail.trimStart()
+
+  return rest.startsWith(HANDBACK_MARKER) || HANDBACK_MARKER.startsWith(rest)
+}
+
+function openBlockIndex(text: string, isOpenTail: (tail: string) => boolean): number {
   const start = text.lastIndexOf('<!--')
 
-  if (start >= 0 && !text.includes('-->', start)) {
-    const tail = text.slice(start + 4).trimStart()
-
-    if (tail.startsWith(HANDBACK_MARKER) || HANDBACK_MARKER.startsWith(tail)) {
-      return start
-    }
+  if (start >= 0 && !text.includes('-->', start) && isOpenTail(text.slice(start + 4))) {
+    return start
   }
 
   const partial = PARTIAL_OPENER_RE.exec(text)
@@ -63,22 +68,29 @@ function openHandbackIndex(text: string): number {
   return partial ? partial.index : -1
 }
 
-/** Streamed speech hears deltas: the 交回摘要 is held back as it arrives and dropped, like the 「下一步」 block. */
-function createHandbackSpeechFilter(): NextStepsSpeechFilter {
+/**
+ * Streamed speech hears deltas: a marker block (the 交回摘要, a relay plan) is
+ * held back as it arrives and dropped, like the 「下一步」 block.
+ */
+function createBlockSpeechFilter(
+  blockRe: RegExp,
+  isOpenTail: (tail: string) => boolean,
+  visible: (text: string) => string
+): NextStepsSpeechFilter {
   let pending = ''
 
   return {
-    // End of the reply: an unfinished block is dropped (parseHandback cuts it), anything else is released.
+    // End of the reply: an unfinished block is dropped (the block's own reader cuts it), anything else is released.
     flush: () => {
-      const rest = parseHandback(pending).visible
+      const rest = visible(pending)
 
       pending = ''
 
       return rest
     },
     push: delta => {
-      pending = (pending + delta).replace(HANDBACK_RE, '')
-      const open = openHandbackIndex(pending)
+      pending = (pending + delta).replace(blockRe, '')
+      const open = openBlockIndex(pending, isOpenTail)
       const ready = open < 0 ? pending : pending.slice(0, open)
 
       pending = open < 0 ? '' : pending.slice(open)
@@ -88,20 +100,21 @@ function createHandbackSpeechFilter(): NextStepsSpeechFilter {
   }
 }
 
-/** The speech filter for a streamed reply: the 「下一步」 block and the 交回摘要 both held back and dropped. */
+/** The speech filter for a streamed reply: the 「下一步」 block, the 交回摘要 and a relay plan held back and dropped. */
 export function createReplyMarkersSpeechFilter(): NextStepsSpeechFilter {
   const next = createNextStepsSpeechFilter()
-  const handback = createHandbackSpeechFilter()
+  const handback = createBlockSpeechFilter(HANDBACK_RE, isOpenHandbackTail, text => parseHandback(text).visible)
+  const plan = createBlockSpeechFilter(PLAN_BLOCK_RE, isOpenPlanTail, stripPlanBlocks)
 
   return {
-    flush: () => handback.push(next.flush()) + handback.flush(),
-    push: delta => handback.push(next.push(delta))
+    flush: () => plan.push(handback.push(next.flush()) + handback.flush()) + plan.flush(),
+    push: delta => plan.push(handback.push(next.push(delta)))
   }
 }
 
-const PREVIEW_BLOCK_RE = /<!--\s*apex:(?:handoff|handback|next)(?![A-Za-z0-9_])[\s\S]*?(?:-->|$)/g
+const PREVIEW_BLOCK_RE = /<!--\s*apex:(?:handoff|handback|next|plan)(?![A-Za-z0-9_])[\s\S]*?(?:-->|$)/g
 // A search snippet cut inside a block: its tail up to the block's end, with no opener before it.
-const PREVIEW_CUT_HEAD_RE = /^[^<]*?apex:(?:handoff|handback|next)(?![A-Za-z0-9_])[^<]*?-->/
+const PREVIEW_CUT_HEAD_RE = /^[^<]*?apex:(?:handoff|handback|next|plan)(?![A-Za-z0-9_])[^<]*?-->/
 
 /**
  * A one-line preview (a session's opening line, a search snippet) without the

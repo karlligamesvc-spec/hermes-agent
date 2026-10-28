@@ -7,6 +7,8 @@
  *   relay. Before the transcript's first loaded message: not shown.
  * - The confirm card and the receiver's queued relays: after the last message.
  * - 「已交回 X」: after the receiver's turn that answered the hand-over.
+ * - A relay plan's batons (hc-1091) have no card of their own: the plan card
+ *   under the reply that proposed it stands for them.
  *
  * Only in an assistant's own 「APEX 主线」 while relay is on: an earlier
  * conversation, developer mode and the switch off have no slot items at all,
@@ -16,6 +18,7 @@
 import { computed } from 'nanostores'
 
 import { parseHandoffHeader } from '@/lib/handoff-text'
+import { $handoffPlanBatonIds } from '@/store/handoff-plan'
 import { $mainThread, isMainThreadStoredId } from '@/store/main-thread'
 import { normalizeProfileKey } from '@/store/profile'
 import { $selectedStoredSessionId, $sessions } from '@/store/session'
@@ -60,8 +63,8 @@ const NO_ITEMS: readonly HandoffSlotItem[] = []
 
 /** Every card the thread on screen holds, oldest relay first, the confirm card last. */
 export const $handoffSlotItems = computed(
-  [$handoffThreadProfile, $handoffs, $handoffProposal],
-  (profile, records, proposal): readonly HandoffSlotItem[] => {
+  [$handoffThreadProfile, $handoffs, $handoffProposal, $handoffPlanBatonIds],
+  (profile, records, proposal, planBatons): readonly HandoffSlotItem[] => {
     if (!profile) {
       return NO_ITEMS
     }
@@ -71,6 +74,10 @@ export const $handoffSlotItems = computed(
 
     for (const record of records) {
       if (record.from.profile === profile) {
+        if (planBatons.has(record.id)) {
+          continue
+        }
+
         items.push({
           ...base,
           at: record.createdAt,

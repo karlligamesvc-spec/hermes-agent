@@ -1,0 +1,227 @@
+{
+  "_about": [
+    "hc-1091 多助手二期 R6: the relay plan (一条龙接力) block, protocol apex-plan/1. Desktop's own marker (not apex-next/1): the engine writes it only in Desktop chat sessions with relay on (apex_overlay/handoff.py PLAN_RULE), Desktop reads it (apps/desktop/src/lib/handoff-plan.ts) and draws the plan card.",
+    "prompt_template: the block exactly as PLAN_RULE prints it (tests/apex_overlay/test_handoff_plan_cases.py asserts it is in the rule; the Desktop test parses it to prompt_template_legs).",
+    "cases: text -> legs (null: no plan), over_cap, visible (the text without plan blocks). Read by apps/desktop/src/lib/handoff-plan.test.ts.",
+    "max_legs: batons in one plan, 「已有」 counted (L3); both sides read it."
+  ],
+  "protocol": "apex-plan/1",
+  "max_legs": 3,
+  "prompt_template": "<!-- apex:plan\n已有 | 你已经做好的那部分\n@助手名字 | 这一棒做什么 | 要它做什么\n@助手名字 | 这一棒做什么 | 要它做什么\n-->",
+  "prompt_template_legs": [
+    {
+      "kind": "have",
+      "label": "你已经做好的那部分"
+    },
+    {
+      "kind": "relay",
+      "to": "助手名字",
+      "label": "这一棒做什么",
+      "ask": "要它做什么"
+    },
+    {
+      "kind": "relay",
+      "to": "助手名字",
+      "label": "这一棒做什么",
+      "ask": "要它做什么"
+    }
+  ],
+  "cases": [
+    {
+      "name": "artboard-13-have-and-two-batons",
+      "text": "选题还是**租房党衣柜改造，不打孔**：前后对比，不打孔、押金保住。\n\n可以，我排了一个接力。你点开始，中途要你拍板我会停下来问你。\n\n<!-- apex:plan\n已有 | 定选题：租房党衣柜改造，不打孔\n@小红书文案 | 写标题和文案 | 按这个选题写 3 个标题和一段 200 字文案\n@剪辑助手 | 剪成 30 秒竖屏 | 用小红书文案交回的标题和文案，把素材剪成 30 秒竖屏\n-->",
+      "legs": [
+        {
+          "kind": "have",
+          "label": "定选题：租房党衣柜改造，不打孔"
+        },
+        {
+          "kind": "relay",
+          "to": "小红书文案",
+          "label": "写标题和文案",
+          "ask": "按这个选题写 3 个标题和一段 200 字文案"
+        },
+        {
+          "kind": "relay",
+          "to": "剪辑助手",
+          "label": "剪成 30 秒竖屏",
+          "ask": "用小红书文案交回的标题和文案，把素材剪成 30 秒竖屏"
+        }
+      ],
+      "over_cap": false,
+      "visible": "选题还是**租房党衣柜改造，不打孔**：前后对比，不打孔、押金保住。\n\n可以，我排了一个接力。你点开始，中途要你拍板我会停下来问你。"
+    },
+    {
+      "name": "three-batons-no-have",
+      "text": "材料在上面。\n\n<!-- apex:plan\n@小红书文案 | 写标题 | 写 3 个标题\n@剪辑助手 | 剪片 | 剪成 30 秒竖屏\n@带货脚本 | 写口播 | 写一段 30 秒口播\n-->",
+      "legs": [
+        {
+          "kind": "relay",
+          "to": "小红书文案",
+          "label": "写标题",
+          "ask": "写 3 个标题"
+        },
+        {
+          "kind": "relay",
+          "to": "剪辑助手",
+          "label": "剪片",
+          "ask": "剪成 30 秒竖屏"
+        },
+        {
+          "kind": "relay",
+          "to": "带货脚本",
+          "label": "写口播",
+          "ask": "写一段 30 秒口播"
+        }
+      ],
+      "over_cap": false,
+      "visible": "材料在上面。"
+    },
+    {
+      "name": "four-batons-over-cap-shown-not-started",
+      "text": "排好了。\n<!-- apex:plan\n已有 | 选题\n@小红书文案 | 写标题 | 写 3 个标题\n@剪辑助手 | 剪片 | 剪成 30 秒竖屏\n@带货脚本 | 写口播 | 写一段 30 秒口播\n-->",
+      "legs": [
+        {
+          "kind": "have",
+          "label": "选题"
+        },
+        {
+          "kind": "relay",
+          "to": "小红书文案",
+          "label": "写标题",
+          "ask": "写 3 个标题"
+        },
+        {
+          "kind": "relay",
+          "to": "剪辑助手",
+          "label": "剪片",
+          "ask": "剪成 30 秒竖屏"
+        },
+        {
+          "kind": "relay",
+          "to": "带货脚本",
+          "label": "写口播",
+          "ask": "写一段 30 秒口播"
+        }
+      ],
+      "over_cap": true,
+      "visible": "排好了。"
+    },
+    {
+      "name": "have-only-on-the-first-line",
+      "text": "<!-- apex:plan\n@小红书文案 | 写标题 | 写 3 个标题\n已有 | 选题\n-->",
+      "legs": [
+        {
+          "kind": "relay",
+          "to": "小红书文案",
+          "label": "写标题",
+          "ask": "写 3 个标题"
+        }
+      ],
+      "over_cap": false,
+      "visible": ""
+    },
+    {
+      "name": "have-alone-is-no-plan",
+      "text": "做好了。\n\n<!-- apex:plan\n已有 | 选题\n-->",
+      "legs": null,
+      "over_cap": false,
+      "visible": "做好了。"
+    },
+    {
+      "name": "wide-marks-list-markers-and-wrappers",
+      "text": "<!-- apex:plan\n1. 已有｜「选题：不打孔」\n- ＠「小红书文案」｜写标题｜“写 3 个标题”\n-->",
+      "legs": [
+        {
+          "kind": "have",
+          "label": "选题：不打孔"
+        },
+        {
+          "kind": "relay",
+          "to": "小红书文案",
+          "label": "写标题",
+          "ask": "写 3 个标题"
+        }
+      ],
+      "over_cap": false,
+      "visible": ""
+    },
+    {
+      "name": "a-line-missing-its-ask-is-skipped",
+      "text": "<!-- apex:plan\n@小红书文案 | 写标题\n@剪辑助手 | 剪片 | 剪成 30 秒竖屏\n随便一句话\n-->",
+      "legs": [
+        {
+          "kind": "relay",
+          "to": "剪辑助手",
+          "label": "剪片",
+          "ask": "剪成 30 秒竖屏"
+        }
+      ],
+      "over_cap": false,
+      "visible": ""
+    },
+    {
+      "name": "fenced-block-leaves-no-empty-fence",
+      "text": "好。\n\n```\n<!-- apex:plan\n@剪辑助手 | 剪片 | 剪成 30 秒竖屏\n-->\n```\n",
+      "legs": [
+        {
+          "kind": "relay",
+          "to": "剪辑助手",
+          "label": "剪片",
+          "ask": "剪成 30 秒竖屏"
+        }
+      ],
+      "over_cap": false,
+      "visible": "好。"
+    },
+    {
+      "name": "unfinished-block-at-the-end-is-cut",
+      "text": "排一下：\n\n<!-- apex:plan\n@剪辑助手 | 剪片",
+      "legs": null,
+      "over_cap": false,
+      "visible": "排一下："
+    },
+    {
+      "name": "the-last-usable-block-counts",
+      "text": "<!-- apex:plan\n@小红书文案 | 写标题 | 写 3 个标题\n-->\n改成这样：\n<!-- apex:plan\n@剪辑助手 | 剪片 | 剪成 30 秒竖屏\n-->\n<!-- apex:plan\n不是一行\n-->",
+      "legs": [
+        {
+          "kind": "relay",
+          "to": "剪辑助手",
+          "label": "剪片",
+          "ask": "剪成 30 秒竖屏"
+        }
+      ],
+      "over_cap": false,
+      "visible": "改成这样："
+    },
+    {
+      "name": "a-glued-marker-is-not-a-plan",
+      "text": "<!-- apex:plans\n@剪辑助手 | 剪片 | 剪成 30 秒竖屏\n-->",
+      "legs": null,
+      "over_cap": false,
+      "visible": "<!-- apex:plans\n@剪辑助手 | 剪片 | 剪成 30 秒竖屏\n-->"
+    },
+    {
+      "name": "no-block",
+      "text": "就是一段普通回复。",
+      "legs": null,
+      "over_cap": false,
+      "visible": "就是一段普通回复。"
+    },
+    {
+      "name": "other-markers-stay-for-their-own-readers",
+      "text": "好。\n\n<!-- apex:plan\n@剪辑助手 | 剪片 | 剪成 30 秒竖屏\n-->\n\n<!-- apex:next\n再挑一个 | 换一个选题\n-->",
+      "legs": [
+        {
+          "kind": "relay",
+          "to": "剪辑助手",
+          "label": "剪片",
+          "ask": "剪成 30 秒竖屏"
+        }
+      ],
+      "over_cap": false,
+      "visible": "好。\n\n<!-- apex:next\n再挑一个 | 换一个选题\n-->"
+    }
+  ]
+}

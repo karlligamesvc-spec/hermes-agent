@@ -14,7 +14,11 @@ hand-over message and submits it there. This seam makes both engines handle it:
 * the ``apex.handoff`` section lists the user's other assistants with the 「分工」 hc-1079 wrote into
   each SOUL.md, so an assistant can offer a job to the one it belongs to with a 「交给」 line in its
   next-step block (hc-1089; the user clicks, the assistant only offers), and a session hears once when
-  that list changed after its prompt was frozen. The skills' 「交给」 rule counts on this list.
+  that list changed after its prompt was frozen. The skills' 「交给」 rule counts on this list;
+* for APEX (the main assistant) only, the same section says how to propose a relay plan (一条龙接力,
+  hc-1091): an ``<!-- apex:plan … -->`` block of up to three batons that Desktop draws as a plan card and
+  runs one relay at a time once the user clicks 「开始」. Desktop's own marker, not part of the 「下一步」
+  protocol; its template is pinned in ``apps/desktop/shared/apex-handoff-plan-cases.json``.
 
 The message, the block and the readers' rules are pinned in ``apps/desktop/shared/apex-handoff-cases.json``,
 which Desktop's tests and these read.
@@ -105,6 +109,24 @@ OFFER_RULE = (
     "和别的项一起最多 3 项。用户点了才交，你自己交不了，也不替它做；顺手的小事自己做，不提。"
 )
 TURN_RULE = "- 别的助手交来活、或者把你交出去的活交回来时，那一回合会另外告诉你怎么接。"
+# hc-1091 一条龙接力: APEX proposes, Desktop draws the card (lib/handoff-plan.ts reads the block), the user starts it.
+PLAN_MAX_LEGS = 3
+PLAN_TEMPLATE = (
+    "<!-- apex:plan\n"
+    "已有 | 你已经做好的那部分\n"
+    "@助手名字 | 这一棒做什么 | 要它做什么\n"
+    "@助手名字 | 这一棒做什么 | 要它做什么\n"
+    "-->"
+)
+PLAN_RULE = (
+    "- 用户要几个助手接着做完一件事（比如「选题、标题、成片一条龙做完」）时，可以排一个接力计划：在回复最后写下面这个块，"
+    "用户在卡上点「开始」才按顺序跑，后一棒拿前一棒交回的结果接着做，中途要用户拍板会停在那一棒：\n"
+    f"{PLAN_TEMPLATE}\n"
+    f"  一行一棒，连「已有」最多 {PLAN_MAX_LEGS} 棒。「已有」只写在第一行，是你在这条回复里或前面已经做好的那部分，没有就不写；"
+    "其余每行交给上面的一个助手，名字照上面写，不能是你自己；中间写这一棒做什么（16 字以内）；"
+    "最后用用户的口吻写清要它做什么、用谁交回的哪个结果。第一棒要用的材料写进这条回复正文（会一起交过去）；"
+    "要用户先定的先问清楚再排。排了接力计划的回复不写「下一步」块；只交一棒用「交给」项就够了。"
+)
 MAIN_ROLE = "主助手，什么活都能接"
 NO_ROLE = "还没定分工"
 
@@ -375,12 +397,14 @@ def render_section(session_info: Mapping[str, Any] | None = None) -> str:
     info = session_info or {}
     if not switch_on() or info.get("platform") != PLATFORM:
         return ""
-    lines = _roster_lines(_own_profile(str(info.get("profile_name") or "")))
+    own = _own_profile(str(info.get("profile_name") or ""))
+    lines = _roster_lines(own)
     _remember(str(info.get("session_id") or ""), lines)
     if not lines:
         return ""
     indented = "\n".join("  " + line for line in lines.split("\n"))
-    return "\n".join((SECTION_HEAD, "- 用户在 APEX 里还有这几个助手，各有分工：", indented, OFFER_RULE, TURN_RULE))
+    plan = (PLAN_RULE,) if own == MAIN_PROFILE else ()
+    return "\n".join((SECTION_HEAD, "- 用户在 APEX 里还有这几个助手，各有分工：", indented, OFFER_RULE, *plan, TURN_RULE))
 
 
 # ── the return box ───────────────────────────────────────────────────────────

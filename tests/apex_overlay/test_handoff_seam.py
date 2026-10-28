@@ -260,6 +260,7 @@ def test_apex_sees_every_other_assistant_with_its_division(root):
             "  - 小剪：剪辑出片，主要给抖音做",
             "  - 文案：还没定分工",
             handoff.OFFER_RULE,
+            handoff.PLAN_RULE,
             handoff.TURN_RULE,
         )
     )
@@ -282,6 +283,9 @@ def test_another_assistant_sees_apex_and_not_itself(root, monkeypatch):
 
     assert "  - APEX：主助手，什么活都能接\n  - 文案：还没定分工\n" in section
     assert "小剪" not in section
+    # hc-1091: only APEX proposes a relay plan; the others keep the single 「交给」 line.
+    assert handoff.OFFER_RULE in section
+    assert handoff.PLAN_RULE not in section and "apex:plan" not in section
 
 
 def test_a_renamed_apex_is_listed_by_its_new_name(root, monkeypatch):
@@ -315,6 +319,20 @@ def test_a_long_role_is_cut_and_the_section_fits_its_cap(root):
 
     assert "  - 文案：" + "长" * handoff.ROLE_MAX_CHARS + "…\n" in section
     assert section.count("\n  - ") == handoff.MAX_ROSTER
+    assert len(section) < handoff.MAX_CHARS
+
+
+def test_apex_s_section_with_the_plan_rule_fits_its_cap_at_the_longest_roster(root):
+    """hc-1091: APEX's section also carries the relay plan rule; the longest names, roles and platforms still fit."""
+    division = "## 分工\n- 主要帮用户：" + "长" * 200 + "\n- 主要给哪个平台做：" + "平" * 200 + "\n"
+    (root / "profiles" / "apex-bot-3" / "SOUL.md").write_text(division, encoding="utf-8")
+    for n in range(4, 12):
+        _profile(root, f"apex-bot-{n}", "十二个字的名字十二个字的", 300 + n, division)
+
+    section = handoff.render_section({"platform": "desktop", "profile_name": "default", "session_id": "s1"})
+
+    assert section.count("\n  - ") == handoff.MAX_ROSTER
+    assert section.endswith(handoff.PLAN_RULE + "\n" + handoff.TURN_RULE)
     assert len(section) < handoff.MAX_CHARS
 
 

@@ -2,6 +2,7 @@
  * hc-1087: the relay markers (apex:handback, apex:handoff) leave every plain-text exit the way the
  * 「下一步」 block does (hard rule 12). The cases come from hc-1088's shared file, so a format change on
  * the engine's side turns these red too; the census at the end pins which files are the exits.
+ * hc-1091: a relay plan (apex:plan, its own shared file) goes the same way.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -28,6 +29,14 @@ const CASES = JSON.parse(
   readFileSync(join(__dirname, '..', '..', 'shared', 'apex-handoff-cases.json'), 'utf8')
 ) as Cases
 
+const PLAN_CASES = JSON.parse(
+  readFileSync(join(__dirname, '..', '..', 'shared', 'apex-handoff-plan-cases.json'), 'utf8')
+) as { cases: { name: string; text: string; visible: string }[] }
+
+const PLAN_REPLY =
+  '选题定了：租房党衣柜改造。\n\n<!-- apex:plan\n已有 | 定选题\n@小红书文案 | 写标题 | 写 3 个标题\n-->\n\n' +
+  '<!-- apex:next\n再挑一个 | 换一个选题\n-->'
+
 describe('visibleReplyText: the 交回摘要 goes like the 「下一步」 block', () => {
   // The handback reader leaves a 「下一步」 block alone; a reader's exit drops that too.
   it.each(CASES.handback.cases.map(c => [c.about, c] as const))('%s', (_about, c) => {
@@ -47,6 +56,16 @@ describe('visibleReplyText: the 交回摘要 goes like the 「下一步」 block
     ['the word in prose', '交回摘要用 apex:handback 写']
   ])('is the 「下一步」 reading when there is no relay marker: %s', (_label, text) => {
     expect(visibleReplyText(text)).toBe(stripNextStepBlocks(text))
+  })
+})
+
+describe('visibleReplyText: a relay plan goes like the 「下一步」 block (hc-1091)', () => {
+  it.each(PLAN_CASES.cases.map(c => [c.name, c] as const))('%s', (_name, c) => {
+    expect(visibleReplyText(c.text)).toBe(stripNextStepBlocks(c.visible))
+  })
+
+  it('takes out the plan and the 「下一步」 block of one reply', () => {
+    expect(visibleReplyText(PLAN_REPLY)).toBe('选题定了：租房党衣柜改造。')
   })
 })
 
@@ -101,6 +120,26 @@ describe('createReplyMarkersSpeechFilter: streamed speech never hears a block', 
     expect(spoken.trim()).toBe('写好了 3 个标题，第 2 个最短。')
   })
 
+  it.each([1, 2, 3, 7, 50])('a relay plan, in deltas of %s characters (hc-1091)', size => {
+    const filter = createReplyMarkersSpeechFilter()
+    let spoken = ''
+
+    for (let index = 0; index < PLAN_REPLY.length; index += size) {
+      spoken += filter.push(PLAN_REPLY.slice(index, index + size))
+    }
+
+    spoken += filter.flush()
+
+    expect(spoken).not.toMatch(/apex:|<!-|-->/)
+    expect(spoken.trim()).toBe('选题定了：租房党衣柜改造。')
+  })
+
+  it('drops an unfinished plan when the reply ends (hc-1091)', () => {
+    const cut = createReplyMarkersSpeechFilter()
+
+    expect(cut.push('排好了。<!-- apex:plan\n@剪辑助手 | 剪') + cut.flush()).toBe('排好了。')
+  })
+
   it('drops an unfinished block when the reply ends, and keeps text that only looked like one', () => {
     const cut = createReplyMarkersSpeechFilter()
 
@@ -125,7 +164,9 @@ describe('visiblePreviewText: one-line previews and search snippets', () => {
       '【APEX 交来的活】'
     ],
     ['a preview cut inside a block', '写好了 <!-- apex:handback 3 个标题，第 2 个...', '写好了'],
-    ['a 「下一步」 block', '好。 <!-- apex:next 写标题 | 写 3 个标题 -->', '好。']
+    ['a 「下一步」 block', '好。 <!-- apex:next 写标题 | 写 3 个标题 -->', '好。'],
+    ['a relay plan (hc-1091)', '排好了。 <!-- apex:plan 已有 | 选题 @剪辑助手 | 剪片 | 剪成竖屏 -->', '排好了。'],
+    ['a snippet cut inside a plan (hc-1091)', 'apex:plan @剪辑助手 | 剪片 | 剪成竖屏 --> 排好了', '排好了']
   ])('%s', (_label, text, expected) => {
     expect(visiblePreviewText(text)).toBe(expected)
   })
