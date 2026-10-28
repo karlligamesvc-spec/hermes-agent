@@ -8,11 +8,15 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { BOOT_TREE, type MountedLayout, mountLayout, sidebarZoneHtml } from '@/__identity__/sidebar-zone/render'
 import { seedShellState } from '@/__identity__/single-thread-shell/render'
 import { restoreRecordingTimeZone } from '@/__identity__/single-thread-shell/time-zone'
+import { COMPOSER_AREAS, type ComposerAtCompletionSource, runComposerMiddleware } from '@/app/chat/composer/contrib'
 import { PALETTE_AREA } from '@/app/command-palette/contrib'
 import { findGroupOfPane, group, split } from '@/components/pane-shell/tree/model'
 import { $layoutTree } from '@/components/pane-shell/tree/store'
 import { $workspaceMode, setWorkspaceScope } from '@/components/pane-shell/workspace-scope'
+import { CHAT_EMPTY_AREA } from '@/lib/chat-empty'
+import { queryClient } from '@/lib/query-client'
 import { $botsPaneVisible } from '@/plugins/hermes-bots/bot-state'
+import { ROSTER_KEY } from '@/plugins/hermes-bots/data'
 import { host } from '@/sdk'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
 import { setToolViewMode } from '@/store/tool-view'
@@ -76,6 +80,15 @@ afterAll(restoreRecordingTimeZone)
 
 const BOTS_PANE = 'hermes-bots:pane'
 const NEW_AGENT_ROW = 'hermes-bots:new-agent'
+
+/** Each held-back id and the area the real plugin registers it in. */
+const HELD_AREAS: Readonly<Record<string, string>> = {
+  [BOTS_PANE]: 'panes',
+  [NEW_AGENT_ROW]: PALETTE_AREA,
+  'hermes-bots:mention-completions': COMPOSER_AREAS.atCompletions,
+  'hermes-bots:mention-middleware': COMPOSER_AREAS.middleware
+}
+
 const LAYOUT_KEY = 'hermes.desktop.layoutTree.v2'
 
 function productMode(): void {
@@ -220,18 +233,22 @@ describe('the real Bot Mode plugin', () => {
     developerMode()
     layout = mountLayout()
 
-    expect(registered('panes', BOTS_PANE)).toBe(true)
-    expect(registered(PALETTE_AREA, NEW_AGENT_ROW)).toBe(true)
-    expect([...PRODUCT_MODE_HIDDEN].sort()).toEqual([BOTS_PANE, NEW_AGENT_ROW].sort())
+    for (const [id, area] of Object.entries(HELD_AREAS)) {
+      expect(registered(area, id)).toBe(true)
+    }
+
+    expect([...PRODUCT_MODE_HIDDEN].sort()).toEqual(Object.keys(HELD_AREAS).sort())
   })
 
   it('product mode: no 「助手」 pane, no 「添加助手」 row; its other contributions stay', async () => {
     productMode()
     layout = mountLayout()
 
-    expect(registered('panes', BOTS_PANE)).toBe(false)
-    expect(registered(PALETTE_AREA, NEW_AGENT_ROW)).toBe(false)
-    expect(registry.getArea('composer.atCompletions').some(c => c.id === 'hermes-bots:mention-completions')).toBe(true)
+    for (const [id, area] of Object.entries(HELD_AREAS)) {
+      expect(registered(area, id)).toBe(false)
+    }
+
+    expect(registered(CHAT_EMPTY_AREA, 'hermes-bots:chat-empty')).toBe(true)
     expect(findGroupOfPane($layoutTree.get()!, BOTS_PANE)).toBeNull()
 
     const html = await sidebarZoneHtml()
@@ -296,5 +313,68 @@ describe('the real Bot Mode plugin', () => {
 
     expect(findGroupOfPane($layoutTree.get()!, BOTS_PANE)?.id).toBe('grp-sessions')
     expect(tabIds(await sidebarZoneHtml())).toEqual(['sessions', BOTS_PANE])
+  })
+})
+
+/** Two assistants in Bot Mode's roster cache, filed where useRoster writes it. */
+function seedRoster(): void {
+  queryClient.setQueryData([...ROSTER_KEY, 'local'], {
+    profiles: [{ is_default: true, name: 'default' }, { name: 'writer' }]
+  })
+}
+
+const atCompletions = (query: string) =>
+  registry
+    .getArea(COMPOSER_AREAS.atCompletions)
+    .flatMap(c => (c.data as ComposerAtCompletionSource).provide(query).map(item => item.insert))
+
+describe('「@助手」 (hc-1074 K5: product mode never merges assistants into Bot Chat)', () => {
+  beforeEach(() => {
+    seedShellState()
+    seedRoster()
+  })
+
+  afterEach(() => {
+    queryClient.removeQueries({ queryKey: ROSTER_KEY })
+  })
+
+  it.each([
+    ['developer', developerMode],
+    ['switch-off', () => setSingleThreadFlagForTest(false)]
+  ] as const)(
+    '%s: the @ popover offers the roster and a send names the agent for message_agent',
+    async (_mode, enter) => {
+      enter()
+      layout = mountLayout()
+
+      expect(atCompletions('wr')).toEqual(['@writer'])
+
+      const sent = await runComposerMiddleware({ text: '@writer 帮我写三个标题' })
+
+      expect(sent?.text).toContain('@writer = agent profile "writer"')
+      expect(sent?.text).toContain('message_agent')
+    }
+  )
+
+  it('product mode: no @ popover rows, and 「@writer …」 goes out as typed', async () => {
+    productMode()
+    layout = mountLayout()
+
+    expect(atCompletions('wr')).toEqual([])
+    expect(await runComposerMiddleware({ text: '@writer 帮我写三个标题' })).toEqual({ text: '@writer 帮我写三个标题' })
+  })
+
+  it('switching modes on screen follows at once', async () => {
+    developerMode()
+    layout = mountLayout()
+    productMode()
+
+    expect(atCompletions('wr')).toEqual([])
+    expect((await runComposerMiddleware({ text: '@writer hi' }))?.text).toBe('@writer hi')
+
+    developerMode()
+
+    expect(atCompletions('wr')).toEqual(['@writer'])
+    expect((await runComposerMiddleware({ text: '@writer hi' }))?.text).toContain('message_agent')
   })
 })

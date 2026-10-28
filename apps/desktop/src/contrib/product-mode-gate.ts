@@ -14,6 +14,11 @@
  *   leaving the registry takes it out of all of them.
  * - `hermes-bots:new-agent`, the ⌘K row 「添加助手」, whose only action is a
  *   hint to open that pane.
+ * - `hermes-bots:mention-completions` and `hermes-bots:mention-middleware`,
+ *   Bot Mode's 「@助手」 messaging: the composer's @ popover offering every
+ *   profile's handle, and the send-time note naming the @-ed agents and
+ *   pointing the model at its message_agent tool. Product mode does not merge
+ *   assistants into Bot Chat (hc-1074 K5), so 「@名字」 is plain text there.
  *
  * Nothing persisted changes: the saved layout keeps the pane where the user
  * left it, so developer mode comes back as it was.
@@ -27,7 +32,12 @@ import { registry } from './registry'
 import type { Contribution } from './types'
 
 /** Scoped contribution ids (`<plugin id>:<id>`) product mode holds back. */
-export const PRODUCT_MODE_HIDDEN: ReadonlySet<string> = new Set(['hermes-bots:pane', 'hermes-bots:new-agent'])
+export const PRODUCT_MODE_HIDDEN: ReadonlySet<string> = new Set([
+  'hermes-bots:pane',
+  'hermes-bots:new-agent',
+  'hermes-bots:mention-completions',
+  'hermes-bots:mention-middleware'
+])
 
 function registerOutsideProductMode(contribution: Contribution): () => void {
   let unregister: (() => void) | null = null
