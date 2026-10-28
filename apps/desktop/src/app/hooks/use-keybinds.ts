@@ -6,7 +6,7 @@ import { hudTargetSessionId } from '@/app/hud/handoff'
 import { setTerminalTakeover } from '@/app/right-sidebar/store'
 import { closeActiveTerminal, createTerminal, cycleTerminal } from '@/app/right-sidebar/terminal/terminals'
 import { appViewForPath, isOverlayView } from '@/app/routes'
-import { withFoldedShortcuts } from '@/app/shell/product-titlebar'
+import { withFoldedShortcuts } from '@/app/shell/product-fold'
 import {
   activateTreeTabSlot,
   cycleTreeTabInFocusedZone,

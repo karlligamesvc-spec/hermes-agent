@@ -29,7 +29,7 @@ import { $titlebarAppActionsSide } from '@/store/titlebar-app-actions'
 
 import { appViewForPath, hidesFixedTitlebarClusters, isOverlayView } from '../routes'
 
-import { $titlebarFold } from './product-titlebar'
+import { $productFold } from './product-fold'
 import {
   TITLEBAR_ICON_BADGE_SCALE,
   titlebarButtonClass,
@@ -142,8 +142,8 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   const sidebarOpen = useStore($sidebarOpen)
   const unreadCount = useStore($unreadSessionCount)
   const appActionsSide = useStore($titlebarAppActionsSide)
-  // hc-1085: the developer controls single-thread product mode folds (product-titlebar.ts).
-  const fold = useStore($titlebarFold)
+  // hc-1085: the developer controls single-thread product mode folds (product-fold.ts).
+  const fold = useStore($productFold)
   const unreadBadge = unreadCount > 0 ? unreadCount : undefined
   const unreadHint = unreadBadge ? ` · ${t.titlebar.unreadSessions(unreadBadge)}` : ''
 

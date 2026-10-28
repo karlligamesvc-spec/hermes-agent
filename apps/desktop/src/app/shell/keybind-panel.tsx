@@ -31,7 +31,7 @@ import {
 import { useModelChoiceHidden } from '@/store/model-choice'
 import { MODEL_TIER_HIDDEN_KEYBIND_ACTIONS } from '@/store/model-tiers'
 
-import { useFoldedShortcuts } from './product-titlebar'
+import { useFoldedShortcuts } from './product-fold'
 
 // The full hotkey map. Quiet popover, click a row's chip to rebind.
 export function KeybindPanel() {

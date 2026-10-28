@@ -1,7 +1,7 @@
 import { useStore } from '@nanostores/react'
 import { useMemo, useState } from 'react'
 
-import { useFoldedShortcuts } from '@/app/shell/product-titlebar'
+import { useFoldedShortcuts } from '@/app/shell/product-fold'
 import { Codicon } from '@/components/ui/codicon'
 import { DisclosureCaret } from '@/components/ui/disclosure-caret'
 import { Kbd, KbdCombo } from '@/components/ui/kbd'

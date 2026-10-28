@@ -7,41 +7,19 @@
       "消息平台",
       "产物",
       "排程",
-      "配置档案",
-      "派生树",
       "记忆图谱"
-    ]
-  },
-  {
-    "heading": "Projects",
-    "rows": [
-      "Open folder as project…CtrlO"
     ]
   },
   {
     "heading": "命令",
     "rows": [
-      "Toggle layout edit modeoffCtrlShift\\",
-      "Reload desktop plugins",
-      "Reset layout",
-      "Toggle status baronCtrlShiftS",
-      "Toggle tabsoffCtrlAltT",
-      "Keyboard shortcuts",
-      "Export profile…",
-      "Import profile…",
-      "Add assistant",
-      "Toggle terminaloffCtrl`",
-      "Toggle logsoff",
-      "Toggle Sessions tabon",
-      "Toggle Assistants taboff",
-      "Toggle yolooff"
+      "Keyboard shortcuts"
     ]
   },
   {
     "heading": "命令中心",
     "rows": [
       "会话",
-      "Import session",
       "系统",
       "用量",
       "重启网关",

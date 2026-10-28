@@ -142,7 +142,7 @@ import { startWorkspaceSession } from '../session/workspace-session-target'
 import { PluginInstallModal } from '../settings/plugin-install-modal'
 import { useOverlayRouting } from '../shell/hooks/use-overlay-routing'
 import { useWindowControlsOverlayWidth } from '../shell/hooks/use-window-controls-overlay-width'
-import { useTitlebarClusterCounts } from '../shell/product-titlebar'
+import { useTitlebarClusterCounts } from '../shell/product-fold'
 import {
   titlebarControlsPosition,
   titlebarControlsYNudge,
