@@ -14,6 +14,7 @@ import { useBotLook, useBotName, withBotName } from '@/store/single-thread-bots'
 import { ThreadActivityPresence } from '@/store/thread-signals'
 
 import { CreatorTipSlot } from './creator-tip'
+import { InterruptedTurnNotice } from './interrupted-turn'
 import { plainStageLine } from './plain-steps'
 import {
   FailureCard,
@@ -140,7 +141,12 @@ export const SingleThreadProcessFooter: FC = () => {
     return Boolean(bounds) && state.thread.messages[bounds!.end]?.id === state.message.id
   })
 
-  return on && turnEnd ? <TurnProcessFooter /> : null
+  return on && turnEnd ? (
+    <>
+      <TurnProcessFooter />
+      <InterruptedTurnNotice />
+    </>
+  ) : null
 }
 
 function TurnProcessFooter() {

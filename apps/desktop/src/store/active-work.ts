@@ -15,14 +15,19 @@ import type { HermesActiveWork } from '@/global'
 import { $sessions } from '@/store/session'
 import { $workingSessionIds } from '@/store/session-states'
 
-const $activeWork = computed([$workingSessionIds, $sessions], (workingIds, sessions): HermesActiveWork => {
-  const titleById = new Map(sessions.map(session => [session.id, session.title?.trim() ?? '']))
+// hc-1100: `ids` also feeds the main process's ledger of turns a quit cuts off (electron/apex-turn-ledger.ts).
+const $activeWork = computed(
+  [$workingSessionIds, $sessions],
+  (workingIds, sessions): HermesActiveWork & { ids: string[] } => {
+    const titleById = new Map(sessions.map(session => [session.id, session.title?.trim() ?? '']))
 
-  return {
-    count: workingIds.length,
-    titles: workingIds.map(id => titleById.get(id) ?? '').filter(Boolean)
+    return {
+      count: workingIds.length,
+      ids: [...workingIds],
+      titles: workingIds.map(id => titleById.get(id) ?? '').filter(Boolean)
+    }
   }
-})
+)
 
 if (typeof window !== 'undefined') {
   // `$sessions` republishes on unrelated churn (previews, heartbeats), so only
