@@ -17,6 +17,7 @@ import {
 } from 'react'
 import { type GetTargetScrollTop, useStickToBottom } from 'use-stick-to-bottom'
 
+import { HandoffRowSlot } from '@/app/single-thread/handoff/thread-slots'
 import { TurnDivider } from '@/app/single-thread/turn-divider'
 import { usePaneLifecycle, usePaneVisible } from '@/components/pane-shell/pane-visibility'
 import { useI18n } from '@/i18n'
@@ -396,6 +397,7 @@ const TurnRow = memo(function TurnRow({ components, group, resetKey, virtualized
           <ThreadPrimitive.MessageByIndex components={components} index={group.index} />
         )}
       </MessageRenderBoundary>
+      <HandoffRowSlot indices={group.kind === 'turn' ? group.indices : [group.index]} />
     </div>
   )
 })
