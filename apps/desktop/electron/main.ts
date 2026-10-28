@@ -176,6 +176,7 @@ import {
 } from './apex-runtime-select'
 import { loadScenarioCatalog } from './apex-scenario-catalog'
 import { loginShellPathProbeArgs, parseLoginShellPath, resolveAugmentedPath } from './apex-shell-path'
+import { createDesktopVersionMirror } from './apex-version-state'
 import {
   cancelWorkflowDomainRun,
   completeWorkflowDomainProject,
@@ -18399,7 +18400,9 @@ function initShellUpdater() {
     }
   }
 
-  createShellUpdater({
+  // hc-1095: the updater's events also keep <HERMES_HOME>/apex/desktop-version.json (what the engine says) current.
+  const versionMirror = createDesktopVersionMirror({ appVersion: app.getVersion(), enginePin: shippedEnginePin, hermesHome: HERMES_HOME, log: rememberLog, windows: () => BrowserWindow.getAllWindows() })
+  versionMirror.follow(createShellUpdater({
     autoUpdater,
     ipcMain,
     isPackaged: app.isPackaged && updatesAllowed,
@@ -18408,14 +18411,8 @@ function initShellUpdater() {
     // hc-532 (gate 3): thread the shell version so the shell-update beacons
     // carry app_version (createShellUpdater defaults it to null when omitted).
     appVersion: app.getVersion(),
-    broadcast: (channel, payload) => {
-      for (const win of BrowserWindow.getAllWindows()) {
-        if (!win.isDestroyed()) {
-          win.webContents.send(channel, payload)
-        }
-      }
-    }
-  })
+    broadcast: versionMirror.broadcast
+  }).getState())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -21848,6 +21845,9 @@ async function reconcileMessagingGateway() {
   }
 }
 
+// The engine this package ships, only where it runs: applyResolvedRuntimeUpdate's offline branch, hc-1095's version file.
+const shippedEnginePin = () => (IS_PACKAGED && !IS_DIAGNOSTIC_TRIAL && !process.env.HERMES_DESKTOP_HERMES_ROOT ? bundledEnginePin(process.resourcesPath) : null)
+
 // ── R5/R6: desktop opt-in runtime update ────────────────────────────────────
 // version (R6): the installed engine version, read purely from the local
 // bootstrap marker. No network, no state change — so the About panel can show
@@ -21860,8 +21860,7 @@ registerRuntimeVersionIpc(ipcMain, {
   minEngineVersion: readDeclaredMinEngineVersion,
   updateDeferred: packagedDeferral.isDeferred,
   keptBack: () => packagedEngineKeptBack(ensurePackagedEngine.waitForPending(), () => readPackagedRuntime(process.resourcesPath).release, HERMES_HOME),
-  // Only where applyResolvedRuntimeUpdate takes its offline packaged branch, never the source installer.
-  bundledEnginePin: () => (IS_PACKAGED && !IS_DIAGNOSTIC_TRIAL && !process.env.HERMES_DESKTOP_HERMES_ROOT ? bundledEnginePin(process.resourcesPath) : null),
+  bundledEnginePin: shippedEnginePin,
   applyPin: applyResolvedRuntimeUpdate,
   log: rememberLog
 })

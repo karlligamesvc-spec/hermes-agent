@@ -128,6 +128,13 @@ _CONTEXT_SEAMS = (
         "need approval again, and a declined or unanswered approval may not be "
         "explained to the user.",
     ),
+    (
+        "desktop_version",
+        "apex-overlay: hc-1095 Desktop version seam did not fully apply (see "
+        "prior warning). Asked which version it is, APEX may look up the "
+        "open-source engine's releases, say it runs on Hermes Agent and offer "
+        "to upgrade it, instead of naming the APEX version and how to update.",
+    ),
 )
 
 

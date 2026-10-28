@@ -52,6 +52,19 @@ function topLevelFunction(name: string): ts.FunctionDeclaration {
   return found
 }
 
+/** The initializer of a top-level `const name = …`, whitespace collapsed. */
+function topLevelConst(name: string): string {
+  for (const statement of main.statements) {
+    const declaration = ts.isVariableStatement(statement)
+      ? statement.declarationList.declarations.find(item => item.name.getText(main) === name)
+      : undefined
+
+    if (declaration?.initializer) {return declaration.initializer.getText(main).replace(/\s+/g, ' ')}
+  }
+
+  throw new Error(`main.ts has no top-level const ${name}`)
+}
+
 function enclosingFunction(node: ts.Node): string | null {
   for (let current = node.parent; current; current = current.parent) {
     if (ts.isFunctionDeclaration(current) && current.name) {return current.name.text}
@@ -84,7 +97,10 @@ describe('main.ts engine marker wiring (hc-1033)', () => {
     const wiring = properties(calls('registerRuntimeVersionIpc')[0], 1)
 
     expect(wiring.keptBack).toBe('() => packagedEngineKeptBack(ensurePackagedEngine.waitForPending(), () => readPackagedRuntime(process.resourcesPath).release, HERMES_HOME)')
-    expect(wiring.bundledEnginePin).toBe('() => (IS_PACKAGED && !IS_DIAGNOSTIC_TRIAL && !process.env.HERMES_DESKTOP_HERMES_ROOT ? bundledEnginePin(process.resourcesPath) : null)')
+    expect(wiring.bundledEnginePin).toBe('shippedEnginePin')
+    expect(topLevelConst('shippedEnginePin')).toBe('() => (IS_PACKAGED && !IS_DIAGNOSTIC_TRIAL && !process.env.HERMES_DESKTOP_HERMES_ROOT ? bundledEnginePin(process.resourcesPath) : null)')
+    // hc-1095: the engine's version file names the same shipped engine, so the two cannot disagree on where it runs.
+    expect(properties(calls('createDesktopVersionMirror')[0], 0).enginePin).toBe('shippedEnginePin')
     expect(wiring.applyPin).toBe('applyResolvedRuntimeUpdate')
   })
 })
