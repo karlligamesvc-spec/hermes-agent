@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider, type Locale, setRuntimeI18nLocale } from '@/i18n'
-import { NEXT_STEPS_COPY } from '@/i18n/next-steps'
+import { SINGLE_THREAD_HANDOFF_COPY } from '@/i18n/single-thread-handoff'
 import { $authState } from '@/store/auth'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $activeSessionId, $gatewayState } from '@/store/session'
@@ -66,8 +66,6 @@ const reply = (...lines: string[]) => `${ANSWER}\n\n<!-- apex:next\n${lines.join
 
 const TO_WRITER = '@小红书文案 | 写成笔记 | 把第 1 个标题写成小红书笔记'
 
-// Every StartHandoffRefusal of hc-1086 (store/single-thread-handoff.ts).
-const REFUSALS = ['empty', 'nested', 'off', 'self', 'too_many_batons', 'unknown_continues', 'unknown_receiver'] as const
 const PLAIN = '再写 3 个 | 再写 3 个标题'
 
 let answers = 0
@@ -237,7 +235,9 @@ describe('a 「交给」 option with the relay on', () => {
 
     const note = await waitFor(() => screen.getByRole('status'))
     expect(note.getAttribute('data-next-step-handoff-refused')).toBe('off')
-    expect(note.textContent).toBe('现在没开接力，交不给小红书文案。')
+    // The confirmation card's own words (hc-1087): one copy of the refusal sentences.
+    expect(note.textContent).toBe(SINGLE_THREAD_HANDOFF_COPY.zh.refusal('off', '小红书文案'))
+    expect(note.textContent).toBe('接力已经关了。')
     expect($handoffProposal.get()).toBeNull()
     expect(handoff).toHaveProperty('disabled', false)
     fireEvent.click(plain)
@@ -269,28 +269,6 @@ describe('a 「交给」 option with the relay on', () => {
     expect(handoff.textContent).toBe('Hand to Captions 2: Add subtitles')
     expect(handoff.getAttribute('title')).toBe('Hands this to Captions 2: Add burned-in subtitles to this cut')
     expect(handoff.getAttribute('data-next-step-handoff')).toBe('captions')
-  })
-})
-
-describe('the refusal lines', () => {
-  it.each(['zh', 'zh-hant', 'en'] as const)('name the assistant for every hc-1086 refusal (%s)', locale => {
-    const copy = NEXT_STEPS_COPY[locale].refused
-
-    expect(Object.keys(copy).sort()).toEqual([...REFUSALS].sort())
-
-    for (const reason of REFUSALS) {
-      expect(copy[reason]('剪辑助手')).toContain('剪辑助手')
-    }
-  })
-
-  it('keeps Chinese lines free of English words and internal names', () => {
-    for (const locale of ['zh', 'zh-hant'] as const) {
-      for (const reason of REFUSALS) {
-        const line = NEXT_STEPS_COPY[locale].refused[reason]('剪辑助手')
-
-        expect(line).not.toMatch(/[A-Za-z]/)
-      }
-    }
   })
 })
 

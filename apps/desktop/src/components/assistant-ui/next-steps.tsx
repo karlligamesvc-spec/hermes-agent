@@ -18,8 +18,9 @@
  * developer mode), the name is another assistant on the roster, and the assistant on screen is
  * not itself working on a relay (接手的不能再往外交). Otherwise the option is left out and the
  * rest of the row is exactly what it was without it. When the relay is off by the time of the
- * click (the switch changed under the row), one plain line under the row says so and the row
- * stays usable; a refusal after 「交给它」 is the confirmation card's to explain.
+ * click (the switch changed under the row), one plain line under the row says so, in the
+ * confirmation card's own words (hc-1087 `refusal('off')`), and the row stays usable; a refusal
+ * after 「交给它」 is the card's to explain.
  */
 
 import { useAuiState, useMessagePartText } from '@assistant-ui/react'
@@ -31,18 +32,13 @@ import { useSessionView } from '@/app/chat/session-view'
 import { FailureActions } from '@/components/assistant-ui/process/process-block'
 import { useTurnView } from '@/components/assistant-ui/process/turn-state'
 import { useNextStepsCopy } from '@/i18n/next-steps'
+import { useSingleThreadHandoffCopy } from '@/i18n/single-thread-handoff'
 import { replyAttachments } from '@/lib/handoff-text'
 import { isHandoff, type NextStepOption, type NextStepsBlock, parseNextSteps } from '@/lib/next-steps'
 import { $gatewayState } from '@/store/session'
 import { cleanBotName } from '@/store/single-thread-bot-ops'
 import { $botRoster, $currentBotProfile, type ApexBot } from '@/store/single-thread-bots'
-import {
-  $handoffMode,
-  $handoffs,
-  handoffsTo,
-  isHandoffActive,
-  type StartHandoffRefusal
-} from '@/store/single-thread-handoff'
+import { $handoffMode, $handoffs, handoffsTo, isHandoffActive } from '@/store/single-thread-handoff'
 import { proposeHandoff } from '@/store/single-thread-handoff-confirm'
 
 // Rows already used, module-scoped: transcript virtualization remounts the row with fresh
@@ -95,9 +91,11 @@ function NextStepRow({ block, visible }: { block: NextStepsBlock; visible: strin
   const currentProfile = useStore($currentBotProfile)
   const handoffs = useStore($handoffs)
   const copy = useNextStepsCopy()
+  const handoffCopy = useSingleThreadHandoffCopy()
   const identity = JSON.stringify([storedId ?? runtimeId, messageId, block])
   const [sent, setSent] = useState(() => used.has(identity))
-  const [refused, setRefused] = useState<null | { name: string; reason: StartHandoffRefusal }>(null)
+  // The assistant a 「交给」 click was for when the relay was off at that moment (proposeHandoff answered false).
+  const [relayOffFor, setRelayOffFor] = useState<null | string>(null)
 
   if (!view || view.live || !view.isLastTurn || !isLastMessage) {
     return null
@@ -156,7 +154,7 @@ function NextStepRow({ block, visible }: { block: NextStepsBlock; visible: strin
       }
     )
 
-    setRefused(proposed ? null : { name: bot.name, reason: 'off' })
+    setRelayOffFor(proposed ? null : bot.name)
   }
 
   if (block.failed !== null) {
@@ -207,19 +205,15 @@ function NextStepRow({ block, visible }: { block: NextStepsBlock; visible: strin
     </div>
   )
 
-  if (!refused) {
+  if (relayOffFor === null) {
     return row
   }
 
   return (
     <>
       {row}
-      <p
-        className="mt-1 text-[12px] text-muted-foreground"
-        data-next-step-handoff-refused={refused.reason}
-        role="status"
-      >
-        {copy.refused[refused.reason](refused.name)}
+      <p className="mt-1 text-[12px] text-muted-foreground" data-next-step-handoff-refused="off" role="status">
+        {handoffCopy.refusal('off', relayOffFor)}
       </p>
     </>
   )
