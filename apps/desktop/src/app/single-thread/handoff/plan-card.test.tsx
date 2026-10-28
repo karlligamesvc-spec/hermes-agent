@@ -369,7 +369,12 @@ describe('started', () => {
       'the first relay baton running',
       [baton('b1')],
       plan(),
-      { chip: '进行中', steps: ['已有', '在做', '等上一棒'], buttons: ['看它在做什么', '停下', '剩下的不做了'] }
+      {
+        chip: '进行中',
+        steps: ['已有', '在做', '等上一棒'],
+        buttons: ['看它在做什么', '停下', '剩下的不做了'],
+        text: '小红书文案 写标题和文案'
+      }
     ],
     [
       'waiting on the user: jump to the receiver to answer',

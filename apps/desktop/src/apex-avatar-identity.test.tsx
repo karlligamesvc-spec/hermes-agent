@@ -47,9 +47,10 @@ const read = (...parts: string[]) => readFileSync(join(SRC, ...parts), 'utf8')
  *  (hc-1077 added the several-assistants rows, mounted only by sidebar.tsx in that mode). */
 const AVATAR_SURFACES = [
   'app/single-thread/bot-sheet.tsx',
-  // hc-1087: the relay cards and our @ list (single-thread product mode with relay on only).
+  // hc-1087 / hc-1091: the relay cards, our @ list and the plan card (single-thread product mode with relay on only).
   'app/single-thread/handoff/cards.tsx',
   'app/single-thread/handoff/composer-at.tsx',
+  'app/single-thread/handoff/plan-card.tsx',
   'app/single-thread/sidebar-bots.tsx',
   'app/single-thread/sidebar.tsx',
   'app/single-thread/thread-header.tsx',
