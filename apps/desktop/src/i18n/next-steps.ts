@@ -16,20 +16,30 @@ export interface NextStepsCopy {
   group: string
   /** Hover text: the sentence a click sends as the user's message. */
   sends: (message: string) => string
+  /** hc-1089 「交给」 option: the button names the assistant that takes the work. */
+  handoff: (name: string, label: string) => string
+  /** hc-1089: hover text of a 「交给」 button, with what that assistant is asked to do. */
+  handsOff: (name: string, message: string) => string
 }
 
 const en: NextStepsCopy = {
   group: 'Next steps',
+  handoff: (name, label) => `Hand to ${name}: ${label}`,
+  handsOff: (name, message) => `Hands this to ${name}: ${message}`,
   sends: message => `Sends: ${message}`
 }
 
 const zh: NextStepsCopy = {
   group: '下一步',
+  handoff: (name, label) => `交给${name}：${label}`,
+  handsOff: (name, message) => `点一下交给${name}：${message}`,
   sends: message => `点一下就发：${message}`
 }
 
 const zhHant: NextStepsCopy = {
   group: '下一步',
+  handoff: (name, label) => `交給${name}：${label}`,
+  handsOff: (name, message) => `點一下交給${name}：${message}`,
   sends: message => `點一下就發：${message}`
 }
 

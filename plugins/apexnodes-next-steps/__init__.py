@@ -36,6 +36,11 @@
 APEX Desktop 的聊天(选题库路径)和本机网关接的 IM(编号)都靠那份。
 apex-nodes ``tests/test_next_steps_block.py`` 在 CI 里比对两份字节相同。
 
+hc-1089「交给」项:块里一行写成 ``@助手名字 | 按钮字 | 要它做什么``,是提议把下一步交给
+本机另一个助手(多助手接力)。解析出来是三元组 ``(按钮字, 要它做什么, 助手名字)``,普通项仍是
+``(按钮字, 那句话)``。桌面端渲染层画成「交给 X」按钮;IM 和终端不接力(微信只接 APEX),编号里
+没有这一项,只剩它的块也只删不编号。
+
 开关:``NEXT_STEPS_DISABLE=1`` 时只删块,不出编号、不注入任何文字。
 """
 
@@ -59,6 +64,9 @@ MAX_LABEL_CHARS = 16
 MAX_MESSAGE_CHARS = 300
 MAX_TITLE_CHARS = 20
 DEFAULT_FAILED_TITLE = "刚才那一步"
+# hc-1089:「交给」项的助手名字上限 = APEX Desktop 助手名字上限(fork store/single-thread-bot-ops.ts BOT_NAME_MAX)。
+MAX_TARGET_CHARS = 12
+_HANDOFF_MARKS = ("@", "＠")
 
 # 桌面端聊天:块原样留给渲染层画成按钮。
 RENDERED_PLATFORMS = frozenset({"desktop"})
@@ -123,22 +131,40 @@ def _unwrap(text: str) -> str:
     return value
 
 
-def _split_option(line: str) -> Optional[tuple[str, str]]:
-    cuts = [line.find(sep) for sep in ("|", "｜") if sep in line]
-    if not cuts:
+def _first_cut(text: str) -> int:
+    cuts = [text.find(sep) for sep in ("|", "｜") if sep in text]
+    return min(cuts) if cuts else -1
+
+
+def _split_option(line: str) -> Optional[tuple[str, ...]]:
+    """``按钮字 | 那句话`` → ``(按钮字, 那句话)``;``@助手名字 | 按钮字 | 要它做什么`` → 三元组(hc-1089)。"""
+    cut = _first_cut(line)
+    if cut < 0:
         return None
-    cut = min(cuts)
     label = _unwrap(_LIST_MARKER_RE.sub("", line[:cut].strip()))
-    message = _unwrap(line[cut + 1 :])
+    message = line[cut + 1 :]
+    target = None
+    if label.startswith(_HANDOFF_MARKS):
+        target = _unwrap(label[1:])
+        cut = _first_cut(message)
+        if cut < 0 or not 1 <= len(target) <= MAX_TARGET_CHARS:
+            return None
+        label, message = _unwrap(message[:cut]), message[cut + 1 :]
+    message = _unwrap(message)
     if not (1 <= len(label) <= MAX_LABEL_CHARS and 1 <= len(message) <= MAX_MESSAGE_CHARS):
         return None
-    return label, message
+    return (label, message) if target is None else (label, message, target)
+
+
+def is_handoff(option: tuple[str, ...]) -> bool:
+    """「交给」项(hc-1089):第三个元素是助手名字。"""
+    return len(option) == 3
 
 
 def _parse_body(body: str) -> Optional[dict]:
-    """块内文字 → ``{"failed": 标题或 None, "options": [(按钮字, 那句话), ...]}``;没有可用内容返回 None。"""
-    options: list[tuple[str, str]] = []
-    seen: set[str] = set()
+    """块内文字 → ``{"failed": 标题或 None, "options": [(按钮字, 那句话[, 助手名字]), ...]}``;没有可用内容返回 None。"""
+    options: list[tuple[str, ...]] = []
+    seen: set[tuple[str, ...]] = set()
     for raw in body.split("\n"):
         line = raw.strip()
         if not line:
@@ -148,9 +174,11 @@ def _parse_body(body: str) -> Optional[dict]:
             title = _unwrap(failed.group("title"))[:MAX_TITLE_CHARS] or DEFAULT_FAILED_TITLE
             return {"failed": title, "options": []}
         option = _split_option(line)
-        if option is None or option[0] in seen:
+        # 同一个按钮只留第一个:交给不同助手的同名按钮是不同的按钮。
+        key = (option[0], *option[2:]) if option else ()
+        if option is None or key in seen:
             continue
-        seen.add(option[0])
+        seen.add(key)
         options.append(option)
         if len(options) == MAX_OPTIONS:
             break
@@ -187,14 +215,14 @@ def parse_next_steps(text: str) -> tuple[str, Optional[dict]]:
 
 
 def block_language(block: dict) -> str:
-    sample = block["failed"] or "".join(label for label, _ in block["options"])
+    sample = block["failed"] or "".join(option[0] for option in block["options"] if not is_handoff(option))
     return "zh" if _has_cjk(sample) else "en"
 
 
 def options_for(block: dict) -> list[tuple[str, str]]:
-    """按钮(或编号)要显示的选项;失败块换成 hc-973 的三项。"""
+    """编号要显示的选项;失败块换成 hc-973 的三项。「交给」项不在里面:IM 和终端不接力(hc-1089)。"""
     if block["failed"] is None:
-        return list(block["options"])
+        return [option for option in block["options"] if not is_handoff(option)]
     title = block["failed"]
     return [(label, message.format(title=title)) for label, message in FAILURE_OPTIONS[block_language(block)]]
 
@@ -412,13 +440,20 @@ def _on_transform_llm_output(
     if visible == response_text and not note:
         return None
     visible = "\n\n".join(part for part in (visible, note) if part)
-    if _disabled() or platform in NON_INTERACTIVE_PLATFORMS or block is None:
-        _log_event("stripped", platform=platform, had_block=block is not None)
+    options = options_for(block) if block is not None else []
+    handoffs = sum(map(is_handoff, block["options"])) if block is not None else 0
+    if _disabled() or platform in NON_INTERACTIVE_PLATFORMS or not options:
+        _log_event("stripped", platform=platform, had_block=block is not None, handoffs=handoffs or None)
         return visible or None
-    options = options_for(block)
     if session_id:
         _remember(session_id, options)
-    _log_event("numbered", platform=platform, count=len(options), failed=block["failed"] is not None)
+    _log_event(
+        "numbered",
+        platform=platform,
+        count=len(options),
+        failed=block["failed"] is not None,
+        handoffs=handoffs or None,
+    )
     return render_numbered(visible, block)
 
 
