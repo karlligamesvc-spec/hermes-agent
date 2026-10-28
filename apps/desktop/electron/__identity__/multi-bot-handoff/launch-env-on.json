@@ -1,0 +1,57 @@
+{
+  "all three from the platform": {
+    "env": {
+      "APEX_SINGLE_THREAD_ACTIVE": "1",
+      "APEX_MULTI_BOT_ACTIVE": "1",
+      "APEX_MULTI_BOT_HANDOFF_ACTIVE": "1"
+    },
+    "lines": [
+      "[client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)",
+      "[client-config] APEX_MULTI_BOT_ACTIVE=1 (desktop_features.multi_bot)",
+      "[client-config] APEX_MULTI_BOT_HANDOFF_ACTIVE=1 (desktop_features.multi_bot_handoff)"
+    ],
+    "set": [
+      "APEX_SINGLE_THREAD_ACTIVE",
+      "APEX_MULTI_BOT_ACTIVE",
+      "APEX_MULTI_BOT_HANDOFF_ACTIVE"
+    ]
+  },
+  "relay from this install": {
+    "env": {
+      "APEXNODES_MULTI_BOT_HANDOFF": "1",
+      "APEX_SINGLE_THREAD_ACTIVE": "1",
+      "APEX_MULTI_BOT_ACTIVE": "1",
+      "APEX_MULTI_BOT_HANDOFF_ACTIVE": "1"
+    },
+    "lines": [
+      "[client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)",
+      "[client-config] APEX_MULTI_BOT_ACTIVE=1 (desktop_features.multi_bot)",
+      "[client-config] APEX_MULTI_BOT_HANDOFF_ACTIVE=1 (desktop_features.multi_bot_handoff)"
+    ],
+    "set": [
+      "APEX_SINGLE_THREAD_ACTIVE",
+      "APEX_MULTI_BOT_ACTIVE",
+      "APEX_MULTI_BOT_HANDOFF_ACTIVE"
+    ]
+  },
+  "all from this install": {
+    "env": {
+      "APEXNODES_MULTI_BOT_HANDOFF": "1",
+      "APEXNODES_MULTI_BOT": "1",
+      "APEXNODES_SINGLE_THREAD": "1",
+      "APEX_SINGLE_THREAD_ACTIVE": "1",
+      "APEX_MULTI_BOT_ACTIVE": "1",
+      "APEX_MULTI_BOT_HANDOFF_ACTIVE": "1"
+    },
+    "lines": [
+      "[client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)",
+      "[client-config] APEX_MULTI_BOT_ACTIVE=1 (desktop_features.multi_bot)",
+      "[client-config] APEX_MULTI_BOT_HANDOFF_ACTIVE=1 (desktop_features.multi_bot_handoff)"
+    ],
+    "set": [
+      "APEX_SINGLE_THREAD_ACTIVE",
+      "APEX_MULTI_BOT_ACTIVE",
+      "APEX_MULTI_BOT_HANDOFF_ACTIVE"
+    ]
+  }
+}
