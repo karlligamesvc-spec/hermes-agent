@@ -17,6 +17,7 @@ import {
   $botRoster,
   $currentBot,
   $currentBotProfile,
+  $multiBotMax,
   $multiBotMode,
   APEX_PROFILE,
   botFor,
@@ -27,6 +28,7 @@ import {
   canDeleteBot,
   canRestyleBot,
   followsApexTier,
+  loadMultiBotFlag,
   MULTI_BOT_HINT_KEY,
   MULTI_BOT_MAX_DEFAULT,
   multiBotMaxFrom,
@@ -118,6 +120,50 @@ describe('the switch', () => {
   ])('caps at desktop_features.multi_bot_max %j → %d (K2: APEX + 4 by default)', (payload, max) => {
     expect(multiBotMaxFrom(payload)).toBe(max)
     expect(MULTI_BOT_MAX_DEFAULT).toBe(5)
+  })
+
+  // hc-1093: clients that make room at once read a key of their own first, so a config can
+  // raise their cap and leave the old key, which older clients read alone, where it is.
+  it.each([
+    ['the new key alone', { multi_bot_max_v2: 3 }, 3],
+    ['both: the new key wins', { multi_bot_max_v2: 5, multi_bot_max: 4 }, 5],
+    ['both: the new key wins even when lower', { multi_bot_max_v2: 2, multi_bot_max: 4 }, 2],
+    ['new key 0 → the old key', { multi_bot_max_v2: 0, multi_bot_max: 4 }, 4],
+    ['new key negative → the old key', { multi_bot_max_v2: -1, multi_bot_max: 4 }, 4],
+    ['new key 2.5 → the old key', { multi_bot_max_v2: 2.5, multi_bot_max: 4 }, 4],
+    ['new key a string → the old key', { multi_bot_max_v2: '5', multi_bot_max: 4 }, 4],
+    ['new key null → the old key', { multi_bot_max_v2: null, multi_bot_max: 4 }, 4],
+    ['new key true → the old key', { multi_bot_max_v2: true, multi_bot_max: 4 }, 4],
+    ['new key unusable, old key unusable → 5', { multi_bot_max_v2: 0, multi_bot_max: 2.5 }, MULTI_BOT_MAX_DEFAULT],
+    ['new key unusable, no old key → 5', { multi_bot_max_v2: 'many' }, MULTI_BOT_MAX_DEFAULT],
+    ['the old key alone, as before', { multi_bot_max: 4 }, 4],
+    ['neither → 5', { multi_bot: true }, MULTI_BOT_MAX_DEFAULT]
+  ])('%s', (_case, features, max) => {
+    expect(multiBotMaxFrom({ desktop_features: features })).toBe(max)
+  })
+
+  it.each([
+    // v6 today: the old key at 4. This client keeps 4 until a config sets the new key.
+    [{ version: 6, desktop_features: { multi_bot: true, multi_bot_max: 4 } }, 4],
+    // v7: the new key at 5 for this client; the old key stays at 4 for clients that read only it.
+    [{ version: 7, desktop_features: { multi_bot: true, multi_bot_max: 4, multi_bot_max_v2: 5 } }, 5]
+  ])("the sheet's limit follows the client config as read at launch: %j → %d", async (payload, max) => {
+    const { version, ...rest } = payload
+
+    ;(window as unknown as { hermesDesktop?: unknown }).hermesDesktop = {
+      clientConfig: { get: async () => ({ installSwitches: {}, payload: rest, version }) }
+    }
+
+    try {
+      setMultiBotFlagForTest(false)
+      await loadMultiBotFlag()
+
+      expect($multiBotMax.get()).toBe(max)
+      expect(rest.desktop_features.multi_bot_max).toBe(4)
+    } finally {
+      delete (window as unknown as { hermesDesktop?: unknown }).hermesDesktop
+      $multiBotMax.set(MULTI_BOT_MAX_DEFAULT)
+    }
   })
 })
 

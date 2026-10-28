@@ -253,7 +253,7 @@ async function deleteProfileDir(profile: string): Promise<void> {
 
 /**
  * Create an assistant and return its profile name. `count` is how many the sidebar lists now (APEX
- * included) and `max` the limit (`desktop_features.multi_bot_max`).
+ * included) and `max` the limit (`multiBotMaxFrom`: `multi_bot_max_v2`, else `multi_bot_max`).
  */
 export async function createBot(look: ApexBotLook, { count, max }: { count: number; max: number }): Promise<string> {
   if (count >= max) {

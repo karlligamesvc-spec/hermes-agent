@@ -241,6 +241,8 @@ export interface MakeRoomDeps {
  * used first, and each is asked to retire (askPoolEngineToRetire): an idle one
  * goes (its assistant cold-starts next time), one with a turn in flight, still
  * starting, or that cannot say, stays. `room: false` means all of them are working.
+ * hc-1093: an open that joined a background dial for the same assistant gets the
+ * same treatment, through the slot coordinator's onForegroundWait (main.ts).
  */
 export async function makeRoomInPool(deps: MakeRoomDeps): Promise<MakeRoomResult> {
   const local = [...deps.entries]
@@ -294,6 +296,11 @@ export async function makeRoomInPool(deps: MakeRoomDeps): Promise<MakeRoomResult
     await deps.stop(key)
     evicted.push(key)
     excess -= 1
+  }
+
+  // hc-1093: the refusal leaves a trace in desktop.log too, not only in the renderer.
+  if (excess > 0) {
+    deps.log(`No room for another assistant: every pooled engine is working (${busy.join(', ')})`)
   }
 
   return { room: excess <= 0, evicted, busy }

@@ -355,6 +355,7 @@ describe('makeRoomInPool', () => {
 
     assert.deepEqual(await p.run(2), { room: true, evicted: [], busy: [] })
     assert.deepEqual(p.asked(), [])
+    assert.deepEqual(p.lines, [])
   })
 
   test('the least recently used idle engine goes, even one pinged seconds ago', async () => {
@@ -391,6 +392,7 @@ describe('makeRoomInPool', () => {
     assert.deepEqual(await p.run(2), { room: false, evicted: [], busy: ['writer', 'editor', 'maxer'] })
     assert.deepEqual(p.stopped, [])
     assert.deepEqual(p.asked(), ['writer', 'maxer'], 'an engine still starting is never asked')
+    assert.deepEqual(p.lines, ['No room for another assistant: every pooled engine is working (writer, editor, maxer)'])
   })
 
   test('several over the limit (the limit was lowered): as many as needed go', async () => {

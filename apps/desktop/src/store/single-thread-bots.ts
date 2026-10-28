@@ -9,8 +9,8 @@
  * - the switch: `desktop_features.multi_bot` or this install's
  *   APEXNODES_MULTI_BOT, counted only in single-thread PRODUCT mode (the same
  *   rule main applies for the engine, electron/apex-multi-bot.ts, plus the
- *   renderer's developer mode); `desktop_features.multi_bot_max` caps the
- *   count, APEX included (default 5, K2);
+ *   renderer's developer mode); `desktop_features.multi_bot_max_v2` (else
+ *   `multi_bot_max`) caps the count, APEX included (default 5, K2);
  * - the roster: `profiles.list` rows with a SOUL.md that Bot Mode has not
  *   hidden, APEX first, the rest in creation order; each row's name and look
  *   read from the profile's `ui_meta.apex` ({@link ApexBotMeta});
@@ -69,13 +69,24 @@ export const MULTI_BOT_HINT_KEY = 'apex.desktop.feature.multi-bot'
 /** How many assistants, APEX included, when the client config says nothing (K2: APEX + 4 on every plan). */
 export const MULTI_BOT_MAX_DEFAULT = 5
 
+/**
+ * The cap key this client reads first. Clients before hc-1093 read only
+ * {@link MULTI_BOT_MAX_LEGACY_KEY}, and on them one assistant more than the
+ * pool holds waited out a 30 s slot wait; a config can raise this key for the
+ * clients that make room at once and leave the old key lower for the rest.
+ */
+export const MULTI_BOT_MAX_KEY = 'multi_bot_max_v2'
+
+/** The cap key every multi-bot client reads; this one only when {@link MULTI_BOT_MAX_KEY} is unusable. */
+export const MULTI_BOT_MAX_LEGACY_KEY = 'multi_bot_max'
+
 /** The switch as read: the admin client config or this install's own switch. */
 export const $multiBotFlag = atom<boolean>(storedBoolean(MULTI_BOT_HINT_KEY, false))
 
 /** Several assistants on screen: the switch, in single-thread product mode only. */
 export const $multiBotMode = computed([$singleThreadMode, $multiBotFlag], (singleThread, on) => singleThread && on)
 
-/** `desktop_features.multi_bot_max`, or {@link MULTI_BOT_MAX_DEFAULT}. The new-assistant sheet (hc-1078) enforces it. */
+/** The cap from {@link multiBotMaxFrom}. The new-assistant sheet (hc-1078) enforces it. */
 export const $multiBotMax = atom<number>(MULTI_BOT_MAX_DEFAULT)
 
 /**
@@ -100,19 +111,27 @@ export function multiBotSwitchFrom(
   return typeof install === 'boolean' ? install : desktopFeatureOn(state?.payload, MULTI_BOT_FEATURE)
 }
 
-/** The cap from a client-config payload: a whole number of at least 1, else the default. */
+/**
+ * The cap from a client-config payload: `desktop_features.multi_bot_max_v2`
+ * when it is a whole number of at least 1, else `multi_bot_max` under the same
+ * rule, else the default.
+ */
 export function multiBotMaxFrom(payload: unknown): number {
   const features =
     payload && typeof payload === 'object' && !Array.isArray(payload)
       ? (payload as { desktop_features?: unknown }).desktop_features
       : null
 
-  const raw =
-    features && typeof features === 'object' && !Array.isArray(features)
-      ? (features as Record<string, unknown>).multi_bot_max
-      : undefined
+  const cap = (key: string): null | number => {
+    const raw =
+      features && typeof features === 'object' && !Array.isArray(features)
+        ? (features as Record<string, unknown>)[key]
+        : undefined
 
-  return typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 ? raw : MULTI_BOT_MAX_DEFAULT
+    return typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 ? raw : null
+  }
+
+  return cap(MULTI_BOT_MAX_KEY) ?? cap(MULTI_BOT_MAX_LEGACY_KEY) ?? MULTI_BOT_MAX_DEFAULT
 }
 
 function settle(on: boolean): void {
