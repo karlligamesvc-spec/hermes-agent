@@ -57,7 +57,7 @@ describe('withoutHandoffHeader: the hand-over header never reads as text', () =>
     const out = withoutHandoffHeader(text)
 
     expect(out).not.toContain('apex:handoff')
-    expect(out.trim()).toBe(text.replace(/^\s*<!--[^\n]*-->[ \t]*\r?\n?/, '').trim())
+    expect(out.trim()).toBe(text.replace(/<!--\s*apex:handoff[^\n]*-->[ \t]*\r?\n?/, '').trim())
   })
 
   it.each(CASES.request.cases.map(c => [c.about, c.text] as const))('a whole hand-over message: %s', (_about, text) => {
