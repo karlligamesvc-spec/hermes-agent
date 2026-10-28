@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
 
+import { ShellUpdateHoldersNote } from '@/app/chat/sidebar/engine-holders-note'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useI18n } from '@/i18n'
@@ -196,6 +197,7 @@ export function EngineUpdateSection({ dialogLayer }: { dialogLayer?: number } = 
                     : updateCopy.engineOnly(latestRuntimeVersion ?? '')}
               </p>
             )}
+            <ShellUpdateHoldersNote layer={dialogLayer} shell={shell} />
             {latest && compatNotes && (
               <p className="mt-2 whitespace-pre-line text-xs text-muted-foreground">
                 <span className="font-medium text-foreground">{a.engineCompatNotes}: </span>
