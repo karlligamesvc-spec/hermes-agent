@@ -155,12 +155,15 @@ describe('the hover rail beside your bubble', () => {
     expect(railLabels(userRoots()[1])).toEqual(labels)
   })
 
-  it('offers no 复制 on a message that is only pictures (nothing to copy)', async () => {
-    mode('single-thread')
-    await renderThread()
+  it.each(['single-thread', 'developer', 'off'] as const)(
+    '%s mode: a message that is only pictures has no rail at all (nothing to copy or restore)',
+    async name => {
+      mode(name)
+      await renderThread()
 
-    expect(railLabels(userRoots()[0])).toEqual([])
-  })
+      expect(userRoots()[0].querySelector('[data-slot="popover-anchor"] > div')).toBeNull()
+    }
+  )
 
   it('copies the message as the bubble shows it, and says it did', async () => {
     mode('single-thread')
