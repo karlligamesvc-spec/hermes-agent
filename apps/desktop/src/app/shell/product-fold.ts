@@ -62,22 +62,8 @@ const NOTHING_FOLDED: ProductFold = {
   terminal: false
 }
 
-// One object per combination, so a store that merely recomputed (a sash drag
-// rewrites the tree every frame) hands subscribers the same value.
-const folds = new Map<string, ProductFold>()
-
-function foldOf(fold: ProductFold): ProductFold {
-  const key = JSON.stringify(fold)
-  let known = folds.get(key)
-
-  if (!known) {
-    known = fold
-    folds.set(key, known)
-  }
-
-  return known
-}
-
+// Every input is a boolean store, which notifies only when its value flips: a
+// sash drag rewrites the tree every frame, and must not re-render the shell.
 export const $productFold = computed(
   [
     $singleThreadMode,
@@ -89,7 +75,7 @@ export const $productFold = computed(
   ],
   (productMode, flipped, rightOpen, statusbarShown, terminalShown, logsShown): ProductFold =>
     productMode
-      ? foldOf({
+      ? {
           devCommands: true,
           flip: !flipped,
           hud: true,
@@ -98,7 +84,7 @@ export const $productFold = computed(
           rightEdge: !flipped && !rightOpen,
           statusbar: statusbarShown,
           terminal: !terminalShown
-        })
+        }
       : NOTHING_FOLDED
 )
 

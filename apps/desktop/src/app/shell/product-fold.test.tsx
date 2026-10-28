@@ -170,7 +170,7 @@ describe('$productFold', () => {
     }
   )
 
-  it('a recompute that changes nothing keeps the same value (no re-render per sash frame)', () => {
+  it('a layout rewrite that changes no input keeps the same value (no re-render per sash frame)', () => {
     setMode('product')
     const before = $productFold.get()
 
