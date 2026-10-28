@@ -10,6 +10,12 @@ name: Build ApexNodes Desktop (Windows)
 # artifact for a different purpose. No code signing here, matching the unsigned
 # Mac dmg for V0.1 (signing is a V0.2 item). Native windows-latest avoids the
 # Mac cross-build pitfalls (wrong node-pty binary, @electron/get download hangs).
+#
+# Windows x64 is paused after 0.17.66: desktop-release.yml no longer calls this
+# workflow, so nothing passes publish and the publish job below cannot run, and
+# scripts/release/upload-desktop-cos.py refuses desktop/win-x64/. Installed
+# Windows shells keep polling that feed, which stays at 0.17.66. A direct
+# dispatch still builds the installer as a diagnostic artifact.
 
 on:
   workflow_call:
