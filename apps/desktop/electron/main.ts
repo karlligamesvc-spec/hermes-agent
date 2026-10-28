@@ -17432,8 +17432,10 @@ ipcMain.on('hermes:active-work', (event, payload) => {
   activeWorkByWebContents.set(id, normalizeActiveWork(payload))
   updateStreamThrottleFromActiveWork()
 })
-// hc-1100: which conversations a quit cuts off mid-turn (apex-turn-ledger.ts)
+// hc-1100: which conversations a quit cuts off mid-turn (apex-turn-ledger.ts), and ⌘W's window close in
+// product mode (src/app/chat/close-window.ts), the red button's own path: 'close' fires, geometry is kept.
 registerTurnLedger(ipcMain, turnLedgerStoreIn(() => app.getPath('userData')), localBackendLifecycle.signal)
+ipcMain.on('hermes:close-window', event => BrowserWindow.fromWebContents(event.sender)?.close())
 
 ipcMain.on('hermes:titlebar-theme', (_event, payload) => {
   if (!payload || !isHexColor(payload.background) || !isHexColor(payload.foreground)) {

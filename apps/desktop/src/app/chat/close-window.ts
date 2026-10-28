@@ -26,8 +26,15 @@ export function closeActiveTabOrWindow(loadSessionIntoWorkspace?: (storedSession
   return closeActiveTab(loadSessionIntoWorkspace, closeThisWindow)
 }
 
+/** Through main's `win.close()`, the red button's path ('close' fires, the geometry is saved). */
 function closeThisWindow(): boolean {
-  window.close()
+  const bridge = window.hermesDesktop as unknown as undefined | { closeWindow?: () => void }
+
+  if (bridge?.closeWindow) {
+    bridge.closeWindow()
+  } else {
+    window.close()
+  }
 
   return true
 }
