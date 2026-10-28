@@ -365,6 +365,10 @@ def test_tokens_sums_every_assistant(home: Path, capsys) -> None:
 _MAIN = "apps/desktop/electron/main.ts"
 _POOL = "apps/desktop/electron/apex-pool-engines.ts"
 _PROFILE_CONFIG = "apps/desktop/electron/apex-profile-config.ts"
+_BOT_SWITCH = "apps/desktop/src/store/bot-switch-log.ts"
+_RENDERER_LOG = "apps/desktop/electron/renderer-log.ts"
+_SWITCH_LINE = ("[renderer console:main] [multi-bot] switch default → apex-bot-5 still waiting after 15003 ms "
+                "(app://-/assets/index-Bx1.js:41)")
 LOG_CONTRACT = [
     ("pool_start", [(_MAIN, 'Starting Hermes backend for profile "${profile}" via ${backend.label}')],
      'Starting Hermes backend for profile "apex-bot-2" via bundled runtime'),
@@ -403,6 +407,14 @@ LOG_CONTRACT = [
     ("relay_key", [(_MAIN, "[apexnodes] config.yaml relay key write FAILED (${reason})"),
                    (_PROFILE_CONFIG, "`[apexnodes] ${subject} relay key write FAILED (${reason})")],
      "[apexnodes] config.yaml relay key write FAILED (sign-in): unreadable"),
+    ("key_restart", [(_MAIN, '[apexnodes] restarting profile backend "${key}" for the refreshed relay key (${reason})')],
+     '[apexnodes] restarting profile backend "apex-bot-2" for the refreshed relay key (managed-runtime-complete)'),
+    ("key_reload_primary", [(_MAIN, "[apexnodes] reloading the local backend so it picks up the refreshed relay key (${reason})")],
+     "[apexnodes] reloading the local backend so it picks up the refreshed relay key (sign-in)…"),
+    # hc-1099: the renderer writes the line, main's console capture puts it in desktop.log; both halves are pinned
+    ("bot_switch", [(_BOT_SWITCH, "console.error(`[multi-bot] ${text}`)")], _SWITCH_LINE),
+    ("bot_switch", [(_RENDERER_LOG, "`[renderer console:${label}] ${String(text)} (${String(src)}:${String(lineNo)})`")],
+     _SWITCH_LINE),
 ]
 
 
@@ -423,6 +435,22 @@ def test_log_patterns_match_the_product_text(event: str, sources: list[tuple[str
         assert parsed["profile"] == "apex-bot-2"
     if event in ("evict_room", "reap") and "committed" in line:
         assert parsed["profile"] == "apex-bot-2" and parsed["reason"] == "committed"
+
+
+@pytest.mark.parametrize(("detail", "also_401"), [
+    # the reason carries main's own words; it must not be counted as a second slot_timeout
+    ('switch default → apex-bot-5 failed after 30012 ms: Local backend start for "apex-bot-5" timed out while '
+     "waiting for a free slot.", False),
+    ("switch to apex-bot-2 undone: the conversation on screen belongs to default (while that switch was still under way)", False),
+    ("switch default → apex-bot-2 failed after 812 ms: HTTP 401 Unauthorized", True),
+])
+def test_switch_diagnostics_are_read_whole(detail: str, also_401: bool) -> None:
+    line = f"[2026-10-28T20:00:00.000Z] [hermes] [renderer console:main] [multi-bot] {detail} (app://-/assets/index-Bx1.js:41)"
+
+    parsed = qa.parse_log_line(line)
+
+    assert (parsed["event"], parsed["detail"]) == ("bot_switch", detail)
+    assert bool(parsed.get("also_401")) is also_401
 
 
 def _ev(t: float, kind: str, **fields) -> dict:
@@ -470,6 +498,26 @@ def test_report_times_cold_starts_and_slot_waits() -> None:
     assert report["engine_exits"] == [{"iso": qa.iso(314.5), "profile": "apex-bot-3", "pid": 12}]
     assert (report["peak_all_rss_mb"], report["peak_engines"]) == (1100, 1)
     assert "| apex-bot-5 | 14 | 15.0 | 22.0 | READY |" in qa.render_report(report)
+
+
+def test_report_lists_key_restarts_switch_diagnostics_and_every_401() -> None:
+    detail = "switch default → apex-bot-2 failed after 812 ms: HTTP 401 Unauthorized"
+    events = [
+        _ev(10.0, "log", event="key_restart", profile="apex-bot-3", text="[apexnodes] restarting profile backend"),
+        _ev(10.1, "log", event="key_reload_primary", text="[apexnodes] reloading the local backend"),
+        _ev(20.0, "log", event="bot_switch", detail=detail, also_401=True, text="[renderer console:main] [multi-bot] …"),
+        _ev(21.0, "log", event="http_401", text="POST /v1/chat/completions 401"),
+    ]
+
+    report = qa.build_report(events)
+    text = qa.render_report(report)
+
+    # problem 9: the primary engine shows up only when something reloaded it
+    assert report["key_restarts"] == [{"iso": qa.iso(10.0), "profile": "apex-bot-3"}, {"iso": qa.iso(10.1), "profile": "主引擎"}]
+    assert report["http_401"] == 2
+    assert f"- {qa.iso(10.1)} 为新 key 重启 主引擎" in text
+    assert f"- {qa.iso(20.0)} 切换诊断 [multi-bot] {detail}" in text
+    assert "- 含 401 的日志行：2" in text
 
 
 @pytest.mark.parametrize(("argv", "expected"), [

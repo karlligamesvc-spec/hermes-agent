@@ -615,9 +615,12 @@ def diff_snapshots(before: dict, after: dict) -> list[str]:
 # ---------------------------------------------------------------- watch
 
 LOG_LINE = re.compile(r"^\[(?P<ts>\d{4}-\d{2}-\d{2}T[\d:.]+Z)\] \[hermes\] (?P<text>.*)$")
-# 都是 apps/desktop/electron/main.ts、pool-spawn-coordinator.ts 和 hermes_cli/web_server.py 里的原文；
+# 都是 apps/desktop/electron/main.ts、pool-spawn-coordinator.ts、apps/desktop/src/store/bot-switch-log.ts 和 hermes_cli/web_server.py 里的原文；
 # tests/scripts/test_multi_bot_qa.py 钉着，产品改了日志措辞这里会红，免得 watch 悄悄数成 0。
 LOG_EVENTS = (
+    # hc-1099（0.17.67）：切换没落地时渲染端写一行 console.error，主进程转进 desktop.log。放第一个：
+    # 它的原因里常带主进程的原话（如「timed out while waiting for a free slot」），不能被下面的池事件先认走
+    ("bot_switch", re.compile(r"\[renderer console:[\w-]+\] \[multi-bot\] (?P<detail>.+?)(?: \([^()]*:\d+\))?$")),
     ("pool_start", re.compile(r'Starting Hermes backend for profile "(?P<profile>[^"]+)" via ')),
     ("primary_start", re.compile(r"Starting Hermes backend via ")),
     ("ready", re.compile(r"HERMES_BACKEND_READY port=(?P<port>\d+)")),
@@ -637,8 +640,12 @@ LOG_EVENTS = (
     ("exit", re.compile(r'Hermes backend for profile "(?P<profile>[^"]+)" exited \((?P<code>[^)]*)\)')),
     # hc-1080（fork #500）起每个托管 profile 各记一行：「[apexnodes] profile <名字> config.yaml relay key …」
     ("relay_key", re.compile(r"\[apexnodes\] (?:profile (?P<profile>\S+) )?config\.yaml relay key (?P<what>refreshed|write FAILED)")),
+    # 换了 key 之后谁被重启：池里的引擎各一行；主引擎只有走 reloadBackendForRelayKey 才有那一行（问题 9）
+    ("key_restart", re.compile(r'\[apexnodes\] restarting profile backend "(?P<profile>[^"]+)" for the refreshed relay key')),
+    ("key_reload_primary", re.compile(r"\[apexnodes\] reloading the local backend so it picks up the refreshed relay key")),
     ("http_401", re.compile(r"\b401\b")),
 )
+HTTP_401 = dict(LOG_EVENTS)["http_401"]
 POOL_EVENTS = ("slot_wait", "slot_timeout", "evict", "evict_room", "reap", "reap_kept", "start_failed", "exit")
 
 
@@ -650,7 +657,11 @@ def parse_log_line(line: str) -> dict | None:
     for event, pattern in LOG_EVENTS:
         hit = pattern.search(text)
         if hit:
-            return {"t": parse_iso(match.group("ts")), "kind": "log", "event": event, **hit.groupdict(), "text": text[:240]}
+            record = {"t": parse_iso(match.group("ts")), "kind": "log", "event": event, **hit.groupdict(), "text": text[:240]}
+            # 401 也可能出现在先被别的事件认走的行里（比如切换诊断的原因），照样要数
+            if event != "http_401" and HTTP_401.search(text):
+                record["also_401"] = True
+            return record
     return None
 
 
@@ -820,9 +831,12 @@ def build_report(events: list[dict]) -> dict:
         "engine_exits": [{"iso": e["iso"], "profile": e.get("profile"), "pid": e["pid"]}
                          for e in events if e["kind"] == "proc_gone" and e.get("proc_kind") == "engine"],
         "marks": [{"iso": e["iso"], "label": e["label"]} for e in events if e["kind"] == "mark"],
-        "http_401": sum(1 for e in events if e.get("event") == "http_401"),
+        "http_401": sum(1 for e in events if e.get("event") == "http_401" or e.get("also_401")),
         "relay_key": [{"iso": e["iso"], "what": e.get("what"), "profile": e.get("profile") or "default"}
                       for e in events if e.get("event") == "relay_key"],
+        "key_restarts": [{"iso": e["iso"], "profile": e.get("profile") or "主引擎"}
+                         for e in events if e.get("event") in ("key_restart", "key_reload_primary")],
+        "bot_switch": [{"iso": e["iso"], "detail": e.get("detail")} for e in events if e.get("event") == "bot_switch"],
         "peak_all_rss_mb": round(max((e["all_rss"] for e in mem), default=0) / 2**20),
         "peak_engines": max((len(e["engines"]) for e in mem), default=0),
     }
@@ -845,6 +859,8 @@ def render_report(report: dict) -> str:
     out += [f"- {e['iso']} 引擎进程退出 {_cell(e['profile'])}（pid {e['pid']}）" for e in report["engine_exits"]]
     out += ["", "## 其他", "", f"- 含 401 的日志行：{report['http_401']}"]
     out += [f"- {k['iso']} {k['profile']} 的中转 key {k['what']}" for k in report["relay_key"]]
+    out += [f"- {k['iso']} 为新 key 重启 {k['profile']}" for k in report["key_restarts"]]
+    out += [f"- {b['iso']} 切换诊断 [multi-bot] {b['detail']}" for b in report["bot_switch"]]
     out += [f"- 标记 {m['iso']} {m['label']}" for m in report["marks"]]
     return "\n".join(out) + "\n"
 

@@ -12,7 +12,7 @@
 | 账号 | Kael 登录的 Flash 档账号（他确认是他的）。I 组重新登录后侧栏底部的账号和之前相同 |
 | 线上开关 | 开测时是 v5（06:14Z 起 `multi_bot: true`），09:50Z 起是 v6（加 `multi_bot_max: 4`） |
 | 时间 | 08:06Z–10:10Z、13:07Z–13:24Z（UTC） |
-| 证据 | 截图在 `screenshots/`；watch 记录、`report` 输出、快照在 `runs-mac-2026-10-28/`（测试目录路径已换成 `<test-dir>`，不含密钥） |
+| 证据 | 截图在 `screenshots/`；watch 记录、`report` 输出、快照在 `runs-mac-2026-10-28/`（测试目录路径已换成 `<test-dir>`，不含密钥）。`watch-main3.jsonl` 截到副本退出（14:48:55Z）：之后 4 个多小时都是 0 个进程的内存采样，只有 16:07Z、17:13Z 各一次 5 秒内的单个小进程（RSS 0.1 MB、2.8 MB，不是引擎），为了不超仓库单文件 500 KiB 的上限删掉了 |
 
 **隔离失效（06:07Z–06:53Z，第 A 组原计划的 0.17.65 对照副本）**：
 
@@ -171,6 +171,7 @@
 | C6 把「改名前建的会话提示还是旧名字」判成 FAIL | 判 WARN，以下一轮回复为准；新助手提示里没有名字仍是 FAIL | `test_rename_after_the_session_started_is_a_warning`（2 条）、`wrong-name` |
 | `watch` 在进程退出时被 psutil 的 `SystemError` 打崩（09:33Z 那次） | 不让 `process_iter` 预取属性，逐个读并接住 | `test_watcher_survives_a_process_that_fails_mid_exit` |
 | `stop` 认不出只带相对路径的孤儿进程 | 也按工作目录找；不算 watch 和脚本自己 | 本机用假孤儿演练过 |
+| 读不到 0.17.67 的 `[multi-bot]` 切换诊断行，也看不出换 key 后重启了谁（问题 9 只能翻原始日志） | `report` 列出这两类行；切换行放在最前面认，免得它原因里的「timed out while waiting for a free slot」被数成第二次超时；401 按整行原文数 | `test_switch_diagnostics_are_read_whole`（3 条）、`test_report_lists_key_restarts_switch_diagnostics_and_every_401`、日志措辞契约 4 条；反向注入 7 处全红（笔记目录 `hc-1083-reverse-verify-v4*`） |
 | 旧版副本会自更新、丢隔离 | `prepare` 读 feed 最新版，旧了就拒；`isolation` 核对 | 本机用 0.17.65 演练过：被拒，副本删掉 |
 
 ## 8. 还没做的
@@ -193,7 +194,7 @@
 
 | 项 | 对应 | 看什么 |
 |---|---|---|
-| E1 / C9 | hc-1093 | 「设置 › 高级」把池上限调成 2，4 分钟内点开 3 个冷助手：最后一个不排队，有 `evict_room`，没有「暂时打不开」 |
+| E1 / C9 | hc-1093 | 「设置 › 高级」把池上限调成 2，4 分钟内点开 3 个冷助手：最后一个不排队，有 `evict_room`，没有「暂时打不开」。通过了协调会话才请 Kael 批 v7（上限回到 5）；没通过就不出 v7，把现象和 `report` 里的 `[multi-bot]` 切换诊断行一起报 |
 | E2 | hc-1093 | 池里的都在做事时点开新的一个：说清在等谁 |
 | N2 | hc-1085 | 产品模式左栏没有「助手」页；⌘K 没有会话和标签栏入口；@ 关掉了 |
 | 问题 2 | hc-1099 | 被打断回合的助手、刚改过名的助手之间来回切，不再被拉回；遇到就按清单记四项 |

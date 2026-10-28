@@ -108,7 +108,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File fresh-env-win.ps1 cleanup -R
 |---|---|
 | `$PY -I multi_bot_qa.py watch --home <家目录> --out runs/watch-<场景>.jsonl --uss` | 一直开着：盯 desktop.log 和本测试目录的进程，记冷启动、内存和池事件。Ctrl-C 停 |
 | `$PY -I multi_bot_qa.py mark --out runs/watch-<场景>.jsonl "点剪辑助手"` | 点之前打一个时间点，报告里会出「标记→就绪」 |
-| `$PY -I multi_bot_qa.py report runs/watch-<场景>.jsonl` | 出冷启动、内存、池事件三张表（Markdown，直接贴进 QA 记录） |
+| `$PY -I multi_bot_qa.py report runs/watch-<场景>.jsonl` | 出冷启动、内存、池事件三张表（Markdown，直接贴进 QA 记录）；「其他」里列含 401 的行数、换 key 后重启了哪些引擎（主引擎只在被重载时出现，问题 9），以及 0.17.67 起切换没落地时的 `[multi-bot]` 诊断行（hc-1099） |
 | `$PY -I multi_bot_qa.py snapshot --home <家目录> --live --out runs/snap-<步骤>.json` | 快照，见下面的清单 |
 | `$PY -I multi_bot_qa.py check --home <家目录>` | 跑 C1–C9，有 FAIL 时退出码 1 |
 | `$PY -I multi_bot_qa.py diff runs/snap-a.json runs/snap-b.json` | 两份快照差在哪（改名、删除、改设置、重新登录前后） |
