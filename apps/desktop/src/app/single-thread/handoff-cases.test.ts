@@ -5,8 +5,9 @@
  *
  * - request: the hand-over message the relay runner submits;
  * - request_header: how the runner finds that message again in the thread;
- * - handback: the 交回摘要 read out of the receiver's reply, and the reply without it;
- * - roster: the assistants the engine lists are the sidebar's (botRosterFrom).
+ * - handback: the 交回摘要 read out of the receiver's reply, and the reply without it.
+ *
+ * `division` and `roster` are hc-1088's (handoff-division-roster.test.ts).
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -25,7 +26,6 @@ import {
   parseHandback,
   parseHandoffHeader
 } from '@/lib/handoff-text'
-import { type BotProfileRow, botRosterFrom } from '@/store/single-thread-bots'
 
 interface Cases {
   protocol: string
@@ -46,10 +46,6 @@ interface Cases {
     summary_max_chars: number
   }
   return_box: { head_max_chars: number }
-  roster: {
-    expected: { name: string; profile: string }[]
-    profiles: { profile: string; soul: null | string; ui_meta?: Record<string, unknown> }[]
-  }
 }
 
 const CASES = JSON.parse(
@@ -85,19 +81,28 @@ describe('apex-handoff-cases.json, as Desktop reads it', () => {
   it.each(CASES.handback.cases.map(c => [c.about, c] as const))('handback: %s', (_about, c) => {
     expect(parseHandback(c.reply)).toEqual({ block: c.block, visible: c.visible })
   })
+})
 
-  it('roster: the assistants the engine lists, in the sidebar’s order and names', () => {
-    const rows: BotProfileRow[] = CASES.roster.profiles.map(row => ({
-      is_default: row.profile === 'default',
-      name: row.profile,
-      ui_meta: row.ui_meta
-    }))
+describe('beyond the cases: the same reading as the engine (apex_overlay/handoff.py)', () => {
+  it('cuts a long summary, drops the whitespace before the ellipsis', () => {
+    const summary = `${'很'.repeat(HANDBACK_SUMMARY_MAX_CHARS - 1)} 后面`
+    const block = parseHandback(`好\n<!-- apex:handback\n${summary}\n-->`).block
 
-    const souls = new Map(CASES.roster.profiles.map(row => [row.profile, row.soul]))
-    const roster = botRosterFrom(rows, profile => Boolean(souls.get(profile)?.trim()))
+    expect(block?.summary).toBe(`${'很'.repeat(HANDBACK_SUMMARY_MAX_CHARS - 1)}…`)
+  })
 
-    expect(roster.map(bot => ({ name: bot.name, profile: bot.profile }))).toEqual(
-      CASES.roster.expected.map(({ name, profile }) => ({ name, profile }))
-    )
+  it('reads file and link keys in any case', () => {
+    expect(
+      parseHandback('好\n<!-- apex:handback\n摘要\n- files: /Users/me/a.png\nLINK：https://x.test\n-->').block
+    ).toEqual({
+      files: ['/Users/me/a.png'],
+      links: ['https://x.test'],
+      summary: '摘要'
+    })
+  })
+
+  it('takes only lowercase letters as a header key', () => {
+    expect(parseHandoffHeader('<!-- apex:handoff v=1 id=h1 from=default Round=2 -->')).toBeNull()
+    expect(parseHandoffHeader('<!-- apex:handoff v=1 id=h1 from=default round_2=x -->')).toBeNull()
   })
 })

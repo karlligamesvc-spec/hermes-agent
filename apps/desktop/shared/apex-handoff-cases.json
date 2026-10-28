@@ -1,5 +1,5 @@
 {
-  "_about": "hc-1088 (多助手二期 R3) with hc-1086 (R1): a job one assistant hands to another inside the user's own Desktop, and what comes back. Desktop composes the hand-over message (request) and submits it as a user message in the receiving assistant's 「APEX 主线」 (platform desktop); the engine (apex_overlay/handoff.py) knows that turn by the header on the message's first line, asks for a 交回摘要 block at the end of the reply (handback), and carries the block, or without one the start of the reply, into the sender's next turn once, through its return box (return_box). Desktop does not paste the summary into the sender's next message. Read by apps/desktop/src/app/single-thread/handoff-cases.test.ts and tests/apex_overlay/test_handoff_cases.py; change it only together with both sides.",
+  "_about": "hc-1088 (多助手二期 R3) with hc-1086 (R1): a job one assistant hands to another inside the user's own Desktop, and what comes back. Desktop composes the hand-over message (request) and submits it as a user message in the receiving assistant's 「APEX 主线」 (platform desktop); the engine (apex_overlay/handoff.py) knows that turn by the header on the message's first line, asks for a 交回摘要 block at the end of the reply (handback), and carries the block, or without one the start of the reply, into the sender's next turn once, through its return box (return_box). Desktop does not paste the summary into the sender's next message. Read by Desktop's tests (hc-1088 apps/desktop/src/app/single-thread/handoff-division-roster.test.ts for division and roster; hc-1086's for request and handback) and by tests/apex_overlay/test_handoff_cases.py; change it only together with both sides.",
   "protocol": "apex-handoff/1",
   "request": {
     "_about": "The hand-over message. Parts, joined by one blank line: (1) the header line `<!-- apex:handoff v=1 id=<id> from=<profile> -->` and the line 【<from_name> 交来的活】; (2) 要你做： and the user's sentence; (3) only with a non-empty result: <from_name> 上一条结果： (or <from_name> 上一条结果（前 2,000 字，后面没带）： when cut) and the result's first 2,000 code points; (4) only with files or links: 里面的文件和链接： and one `- <item>` per line, files first, at most 20, blank items dropped; (5) 来源：<from_name> 的对话. Texts are cleaned first: line endings unified to \\n, leading blank lines and trailing whitespace dropped; the result has every apex:next and apex:handback block taken out before that (next-steps' visible text, then the handback reader's). The ask and the result are quoted line by line: `> line` with the line's trailing spaces dropped, `>` for a blank line. from_name is one line (runs of whitespace become one space, trimmed). id: 1-64 of [A-Za-z0-9_-]; from: the sender's profile id (default for APEX). Nothing about the user and no earlier conversation goes in: the memory ledger is shared and each assistant's 分工 is in its own SOUL.",
@@ -43,7 +43,7 @@
           "from": "apex-bot-3",
           "from_name": "  文案  助手 ",
           "ask": "\r\n把下面这段改成小红书笔记\r\n\r\n语气轻松一点  \r\n",
-          "result": "\r\n\r\n第一段正文\r\n第二段  \r\n\r\n<!-- apex:next\r\n出整条 | 出整条成片\r\n-->\r\n<!-- apex:handback\r\n上一棒的摘要\r\n文件：/tmp/old.mp4\r\n-->\r\n",
+          "result": "\r\n\r\n第一段正文\r\n第二段  \r\n\r\n<!-- apex:next\r\n出整条 | 出整条成片\r\n-->\r\n<!-- apex:handback\r\n上一棒的摘要\r\n文件：/Users/me/Movies/旧版.mp4\r\n-->\r\n",
           "files": [],
           "links": [
             "  ",
@@ -119,7 +119,7 @@
     ]
   },
   "request_header": {
-    "_about": "Which messages are a hand-over: the header must open the message (leading whitespace allowed) and stay on one line; `apex:handoff` not followed by [A-Za-z0-9_]; space-separated key=value tokens in any order, each key once, unknown keys ignored; v=1, id and from as in request. Anything else is an ordinary message. request: what the reader returns.",
+    "_about": "Which messages are a hand-over: the header opens the message (leading whitespace allowed) or a paragraph after a blank line, and stays on one line; only the first header counts. Desktop's text always starts with it; the engine reads the model input, where the gateway may put its own per-turn notes (a reaction, the HUD, interrupted speech) in front with a blank line between. Quoted lines start with > and never open a paragraph. `apex:handoff` not followed by [A-Za-z0-9_]; space-separated key=value tokens in any order, each key once, unknown keys ignored; v=1, id and from as in request. Anything else is an ordinary message. request: what the reader returns.",
     "cases": [
       {
         "text": "<!-- apex:handoff v=1 id=h1 from=default -->\n【APEX 交来的活】",
@@ -157,7 +157,25 @@
         }
       },
       {
+        "text": "（用户刚给你上一条回复点了 ❤️）\n\n<!-- apex:handoff v=1 id=h1 from=default -->\n【APEX 交来的活】",
+        "request": {
+          "id": "h1",
+          "from": "default"
+        }
+      },
+      {
+        "text": "你好\n  \n<!-- apex:handoff v=1 id=h1 from=default -->",
+        "request": {
+          "id": "h1",
+          "from": "default"
+        }
+      },
+      {
         "text": "你好\n<!-- apex:handoff v=1 id=h1 from=default -->",
+        "request": null
+      },
+      {
+        "text": "<!-- apex:handoff v=2 id=h1 from=default -->\n\n<!-- apex:handoff v=1 id=h2 from=default -->",
         "request": null
       },
       {
