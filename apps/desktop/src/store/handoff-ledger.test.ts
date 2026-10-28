@@ -279,6 +279,34 @@ describe('a relay that comes back (hc-1090)', () => {
     await waitFor(() => expect(bridge).toHaveBeenCalledTimes(1))
   })
 
+  it('a relay another account started is not written, even when asked directly', async () => {
+    const record = settle(running().id, 'returned')
+
+    expect(record.owner).toBe('acc-1')
+    signIn('acc-2')
+    $memoryLedger.set({ accountId: 'acc-2', ledger: LEDGER, status: 'ready' })
+
+    expect(await noteHandoffInLedger(record)).toBe(false)
+    expect(bridge).not.toHaveBeenCalled()
+    expect(localStorage.getItem(STORE_KEY)).toBeNull()
+  })
+
+  it('a login that expired keeps the line and writes it once signed in again', async () => {
+    renderHook(() => useHandoffLedger(true))
+    const record = running()
+
+    $authState.set({ ...$authState.get(), status: 'expired' })
+    settle(record.id, 'returned')
+    await Promise.resolve()
+
+    expect(bridge).not.toHaveBeenCalled()
+    expect(Object.keys(JSON.parse(localStorage.getItem(STORE_KEY) ?? '{}').pending)).toEqual([record.id])
+
+    $authState.set({ ...$authState.get(), status: 'signed-in' })
+    await waitFor(() => expect(bridge).toHaveBeenCalledTimes(1))
+    expect(adds()).toEqual([{ action: 'add', content: LINE, kind: 'recent' }])
+  })
+
   it('signed out: nothing is written or kept', async () => {
     signIn(null)
     const record = settle(running().id, 'returned')
