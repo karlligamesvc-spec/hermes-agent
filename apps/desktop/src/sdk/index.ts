@@ -41,6 +41,7 @@ import {
   type WorkspaceNewSessionTarget
 } from '@/components/pane-shell/workspace-scope'
 import { onGatewayEvent } from '@/contrib/events'
+import { pluginPaneVisibility } from '@/contrib/product-mode-gate'
 import { registry } from '@/contrib/registry'
 import type { WorkspaceMode } from '@/contrib/types'
 import { deleteProfile, getLogs, getStatus, hermesApi, type HermesGateway } from '@/hermes'
@@ -1272,8 +1273,9 @@ export const host = {
    *  its zone's active tab slot (a lone pane in its own zone counts). The
    *  contribution-scoped pane id is `<pluginId>:<paneId>`. Memoized per id —
    *  safe to call in render. Feature-detect on older desktops
-   *  (`typeof host.paneVisibility === 'function'`). */
-  paneVisibility: (paneId: string): ReadableAtom<boolean> => $paneVisible(paneId),
+   *  (`typeof host.paneVisibility === 'function'`). A pane single-thread
+   *  product mode holds back reads false (contrib/product-mode-gate.ts). */
+  paneVisibility: (paneId: string): ReadableAtom<boolean> => pluginPaneVisibility(paneId, $paneVisible(paneId)),
 
   /** Reveal a contributed pane and its zone from an explicit user action. */
   revealPane: (paneId: string): void => {
