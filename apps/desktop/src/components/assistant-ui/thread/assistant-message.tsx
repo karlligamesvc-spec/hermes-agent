@@ -23,6 +23,7 @@ import {
   pickPrimaryPreviewTarget
 } from '@/components/assistant-ui/thread/content'
 import { MemoryNotedLine } from '@/components/assistant-ui/thread/memory-noted-line'
+import { useMessageMenuTime, useReplyCopyMenu } from '@/components/assistant-ui/thread/message-menu'
 import { MESSAGE_PARTS_COMPONENTS } from '@/components/assistant-ui/thread/message-parts'
 import { ReactionPicker } from '@/components/assistant-ui/thread/message-reactions'
 import { ResponseLoadingIndicator, TurnActivityIndicator } from '@/components/assistant-ui/thread/status'
@@ -234,14 +235,21 @@ const AssistantMessageBody: FC<AssistantMessageProps & { collapsedNotice?: null 
   // are off, so the root carries no listener at all.
   const onDoubleClick = useTapbackDoubleClick(messageId, 'assistant')
 
+  // hc-1101: single-thread mode's right-click on a reply is its time, then 「复制」 (message-menu.ts).
+  const copyMenu = useReplyCopyMenu(getMessageText)
+  const menuTime = useMessageMenuTime()
+
   return (
     <MessagePrimitive.Root
       className={cn(
         'group flex w-full min-w-0 max-w-full flex-col gap-0 self-start overflow-hidden',
         collapsedNotice && 'pb-(--conversation-turn-gap)'
       )}
+      data-context-menu-skip={copyMenu && ''}
+      data-message-at={menuTime}
       data-role="assistant"
       data-slot="aui_assistant-message-root"
+      onContextMenu={copyMenu}
       // Collapsed inter-agent rows never carried the tapback listener; keeping
       // that exact truth table means gating it on the notice rather than on
       // whether the hook returned a handler.

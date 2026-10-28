@@ -7,7 +7,7 @@
  *   「改一下」, then 「从这条重来」 (or stop while its turn runs).
  * - A plain right-click opens the app menu: the message's time on top, then
  *   「复制」 for the whole message ({@link useUserBubbleCopyMenu},
- *   {@link useMessageMenuTime}).
+ *   message-menu.ts).
  * - Selecting part of it works too: the app menu and ⌘C already copy a
  *   selection.
  *
@@ -20,18 +20,16 @@
  * right-click does what it always did (user-message-identity.test.tsx).
  */
 
-import { ActionBarPrimitive, useAuiState } from '@assistant-ui/react'
+import { ActionBarPrimitive } from '@assistant-ui/react'
 import { type ComponentProps, type MouseEvent, type ReactElement, useCallback } from 'react'
 
-import { openDomContextMenu } from '@/app/context-menu/store'
-import { resolveDomTarget } from '@/app/context-menu/target'
 import { referenceRe } from '@/components/assistant-ui/reference-kinds'
+import { openMessageCopyMenu } from '@/components/assistant-ui/thread/message-menu'
 import { useThreadCopy } from '@/components/assistant-ui/thread/thread-copy'
 import { Codicon } from '@/components/ui/codicon'
 import { CopyButton } from '@/components/ui/copy-button'
 import { triggerHaptic } from '@/lib/haptics'
 import { StopFilled } from '@/lib/icons'
-import { menuCaptionFor } from '@/lib/message-menu-time'
 import { cn } from '@/lib/utils'
 import { useSingleThreadMode } from '@/store/single-thread'
 import { notifyThreadEditOpen } from '@/store/thread-scroll'
@@ -169,32 +167,12 @@ export function UserMessageRail({ copyText, editable, onRestore, onStop, primary
   )
 }
 
-/** When this message was sent (epoch ms) in single-thread mode, for the top of its right-click menu; undefined anywhere else. */
-export function useMessageMenuTime(): number | undefined {
-  const singleThread = useSingleThreadMode()
-  const at = useAuiState(s => (s.message.createdAt instanceof Date ? s.message.createdAt.getTime() : NaN))
-
-  return singleThread && Number.isFinite(at) ? at : undefined
-}
-
 /** A plain right-click on your bubble in single-thread mode: the app menu, its time on top, its 「复制」 copying the whole message. */
 export function useUserBubbleCopyMenu(copyText: string): ((event: MouseEvent<HTMLElement>) => void) | undefined {
   const singleThread = useSingleThreadMode()
   const text = copyableMessageText(copyText)
 
-  const open = useCallback(
-    (event: MouseEvent<HTMLElement>) => {
-      event.preventDefault()
-      // The app menu copies a selection; the whole message stands in for one,
-      // so the menu's one 「复制」 row copies it. A live selection never gets
-      // here: the app menu's own listener claims that right-click first.
-      const element = event.target instanceof Element ? event.target : null
-      const target = resolveDomTarget(element)
-
-      openDomContextMenu(event.clientX, event.clientY, { ...target, selectionText: text }, menuCaptionFor(element))
-    },
-    [text]
-  )
+  const open = useCallback((event: MouseEvent<HTMLElement>) => openMessageCopyMenu(event, text), [text])
 
   return singleThread && text ? open : undefined
 }

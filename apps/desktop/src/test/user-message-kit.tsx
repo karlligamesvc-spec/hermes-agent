@@ -50,9 +50,9 @@ export function user(
   } as ThreadMessage
 }
 
-export function assistant(id: string, running = false): ThreadMessage {
+export function assistant(id: string, running = false, text = '好。'): ThreadMessage {
   return {
-    content: [{ text: running ? '' : '好。', type: 'text' }],
+    content: [{ text: running ? '' : text, type: 'text' }],
     createdAt: SENT_AT,
     id,
     metadata: { custom: {}, steps: [], unstable_annotations: [], unstable_data: [], unstable_state: null },

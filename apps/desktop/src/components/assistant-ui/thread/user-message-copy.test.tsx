@@ -23,6 +23,7 @@ import { $activeSessionId, $gatewayState } from '@/store/session'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
 import { setToolViewMode } from '@/store/tool-view'
 import {
+  assistant,
   bubble,
   bubbleText,
   mode,
@@ -31,6 +32,7 @@ import {
   SENT_AS_SHOWN,
   settle,
   transcript,
+  user,
   userRoots
 } from '@/test/user-message-kit'
 
@@ -220,6 +222,91 @@ describe('selecting what you sent', () => {
 
     expect(getComputedStyle(rail).right).toBe('calc(100% + 4px)')
     expect(getComputedStyle(bubble(userRoots()[1])).right).toBe('auto')
+  })
+})
+
+describe('a hand-over never brings its header to the clipboard', () => {
+  // A relay's hand-over opens with this one-line header (R3's request header); R2
+  // takes it out of the bubble's own text, which is what both copies read.
+  const HANDED_OVER = '<!-- apex:handoff v=1 id=h-1 from=default -->\n【剪辑师 交来的活】\n要你做：粗剪'
+
+  it('copies the hand-over without its header, from the rail and from the menu', async () => {
+    mode('single-thread')
+    await renderThread(transcript({ text: HANDED_OVER }))
+
+    fireEvent.click(within(userRoots()[1]).getByRole('button', { name: '复制' }))
+    await waitFor(() => expect(writeClipboard).toHaveBeenLastCalledWith('【剪辑师 交来的活】\n要你做：粗剪'))
+
+    fireEvent.contextMenu(bubbleText(userRoots()[1]))
+    fireEvent.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: '复制' }))
+    await waitFor(() => expect(writeClipboard).toHaveBeenCalledTimes(2))
+
+    expect(writeClipboard).toHaveBeenLastCalledWith('【剪辑师 交来的活】\n要你做：粗剪')
+    expect(writeClipboard.mock.calls.flat().join('')).not.toContain('apex:')
+  })
+})
+
+describe('a plain right-click on APEX’s reply', () => {
+  const REPLY = '1.2 万比你前几条都高。\n\n<!-- apex:next\n按这个改下一条 | 按这个改下一条\n-->'
+  const replies = () => [user('u-ask', '发了，1.2 万播放'), assistant('a-reply', false, REPLY)]
+  const words = () =>
+    [...window.document.querySelectorAll<HTMLElement>('[data-slot="aui_assistant-message-root"] .aui-md')].at(-1)!
+
+  it('single-thread mode: its time on top, then 复制 for the reply as you read it (no 下一步 block)', async () => {
+    mode('single-thread')
+    await renderThread(replies())
+
+    fireEvent.contextMenu(words())
+
+    const menu = await screen.findByRole('menu')
+
+    expect(menu.textContent).toBe('今天 09:00复制')
+    fireEvent.click(within(menu).getByRole('menuitem', { name: '复制' }))
+
+    await waitFor(() => expect(writeClipboard).toHaveBeenCalledWith('1.2 万比你前几条都高。'))
+  })
+
+  it.each(['developer', 'off'] as const)('%s mode: the shell menu, as before', async name => {
+    mode(name)
+    await renderThread(replies())
+
+    fireEvent.contextMenu(words())
+
+    expect((await screen.findByRole('menu')).textContent).toContain('新建会话')
+  })
+
+  it('single-thread mode: the transcript’s blank space keeps the shell menu', async () => {
+    mode('single-thread')
+    await renderThread(replies())
+
+    fireEvent.contextMenu(window.document.querySelector('[data-slot="aui_thread-viewport"]')!)
+
+    const menu = await screen.findByRole('menu')
+
+    expect(menu.textContent).toContain('新建会话')
+    expect(menu.textContent).not.toContain('今天')
+  })
+
+  it('single-thread mode: with part of it selected, 复制 copies the selection, time on top', async () => {
+    mode('single-thread')
+    await renderThread(replies())
+
+    const text = window.document.createTreeWalker(words(), NodeFilter.SHOW_TEXT).nextNode()!
+    const range = window.document.createRange()
+
+    range.setStart(text, 0)
+    range.setEnd(text, 5)
+    window.getSelection()!.removeAllRanges()
+    window.getSelection()!.addRange(range)
+
+    fireEvent.contextMenu(words())
+
+    const menu = await screen.findByRole('menu')
+
+    expect(menu.textContent).toBe('今天 09:00复制')
+    fireEvent.click(within(menu).getByRole('menuitem', { name: '复制' }))
+
+    await waitFor(() => expect(writeClipboard).toHaveBeenCalledWith('1.2 万'))
   })
 })
 

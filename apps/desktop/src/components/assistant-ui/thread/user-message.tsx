@@ -3,13 +3,13 @@ import { type FC, type ReactNode, useCallback, useEffect, useRef, useState } fro
 
 import { DirectiveContent } from '@/components/assistant-ui/directive-text'
 import { messageAttachmentRefs, messageContentText } from '@/components/assistant-ui/thread/content'
+import { useMessageMenuTime } from '@/components/assistant-ui/thread/message-menu'
 import { ReactionBadge, ReactionPicker } from '@/components/assistant-ui/thread/message-reactions'
 import { useThreadCopy } from '@/components/assistant-ui/thread/thread-copy'
 import { MessageTimelineTimestamp } from '@/components/assistant-ui/thread/timeline-timestamp'
 import { type RestoreMessageTarget } from '@/components/assistant-ui/thread/types'
 import { useMessageReactions } from '@/components/assistant-ui/thread/use-message-reactions'
 import {
-  useMessageMenuTime,
   UserBubbleEdit,
   UserMessageRail,
   useUserBubbleCopyMenu

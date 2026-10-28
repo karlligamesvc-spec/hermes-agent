@@ -177,8 +177,8 @@ const EXITS: Record<string, string> = {
   'app/chat/composer/hooks/use-composer-voice.ts': 'visibleReplyText(', // the live voice model's history
   'app/session/hooks/use-message-stream/index.ts': 'visibleReplyText(', // the turn-done notification
   'app/tasks/task-model.ts': 'visibleReplyText(', // a task's last answer
-  'components/assistant-ui/thread/assistant-message.tsx': 'visibleReplyText(', // copy and read-aloud
-  'components/assistant-ui/thread/user-message.tsx': 'withoutHandoffHeader(', // the user bubble, edit and restore
+  'components/assistant-ui/thread/assistant-message.tsx': 'visibleReplyText(', // copy (button and right-click), read-aloud
+  'components/assistant-ui/thread/user-message.tsx': 'withoutHandoffHeader(', // the user bubble, edit, restore and 复制 (hc-1101 rail and menu)
   'lib/markdown-preprocess.ts': 'visibleReplyText(', // every rendered reply
   'lib/speech-text.ts': 'visibleReplyText(', // read-aloud, auto-speak, the voice conversation
   'lib/voice-playback.ts': 'createReplyMarkersSpeechFilter(', // streamed speech
