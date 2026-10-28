@@ -11,14 +11,16 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { type ThreadMessage } from '@assistant-ui/react'
+import { AssistantRuntimeProvider, ExportedMessageRepository, type ThreadMessage } from '@assistant-ui/react'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AppContextMenu } from '@/app/context-menu/app-context-menu'
 import { $contextMenu } from '@/app/context-menu/store'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
+import { useIncrementalExternalStoreRuntime } from '@/lib/incremental-external-store-runtime'
 import { $reactionsEnabled } from '@/store/reactions-enabled'
 import { $activeSessionId, $gatewayState } from '@/store/session'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
@@ -79,13 +81,28 @@ const settle = () =>
     await new Promise(resolve => setTimeout(resolve, 30))
   })
 
-async function renderThread(messages = transcript()) {
+/** A runtime that edits, as the app's does: a click on the bubble really opens the editor. */
+function EditableRuntime({ children, messages }: { children: ReactNode; messages: ThreadMessage[] }) {
+  const runtime = useIncrementalExternalStoreRuntime<ThreadMessage>({
+    isRunning: false,
+    messageRepository: ExportedMessageRepository.fromArray(messages),
+    onCancel: async () => {},
+    onEdit: async () => {},
+    onNew: async () => {},
+    onReload: async () => {},
+    setMessages: () => {}
+  })
+
+  return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>
+}
+
+async function renderThread(messages = transcript(), Runtime = ThreadRuntime) {
   const view = render(
     <I18nProvider configClient={null} initialLocale="zh">
       <MemoryRouter>
-        <ThreadRuntime messages={messages}>
+        <Runtime messages={messages}>
           <Thread onCancel={() => {}} onRestoreToMessage={() => {}} />
-        </ThreadRuntime>
+        </Runtime>
         <AppContextMenu />
       </MemoryRouter>
     </I18nProvider>
@@ -262,22 +279,28 @@ describe('selecting what you sent', () => {
     expect(getComputedStyle(text).userSelect).toBe(name === 'single-thread' ? 'text' : 'auto')
   })
 
-  it('a drag that ends in a selection keeps the editor shut', async () => {
+  it.each([
+    ['a click with nothing selected opens the editor', false, true],
+    ['a drag that ends in a selection keeps it shut', true, false]
+  ])('%s', async (_name, selected, opens) => {
     mode('single-thread')
-    await renderThread()
+    await renderThread(transcript(), EditableRuntime)
 
     const target = bubble(userRoots()[1])
-    const range = document.createRange()
 
-    range.selectNodeContents(target.querySelector('[data-slot="aui_user-inline-text"]')!)
-    window.getSelection()!.removeAllRanges()
-    window.getSelection()!.addRange(range)
+    if (selected) {
+      const range = document.createRange()
+
+      range.selectNodeContents(target.querySelector('[data-slot="aui_user-inline-text"]')!)
+      window.getSelection()!.removeAllRanges()
+      window.getSelection()!.addRange(range)
+    }
+
     fireEvent.pointerDown(target)
     fireEvent.click(target)
     await settle()
 
-    expect(document.querySelector('[data-slot="aui_edit-composer-root"]')).toBeNull()
-    expect(document.querySelectorAll('button.composer-human-message')).toHaveLength(2)
+    expect(screen.queryByRole('textbox', { name: '编辑消息' }) !== null).toBe(opens)
   })
 })
 
