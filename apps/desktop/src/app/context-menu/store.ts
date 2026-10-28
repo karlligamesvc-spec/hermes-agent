@@ -51,6 +51,8 @@ export type OpenContextMenu =
       y: number
       target: ContextMenuDomTarget
       spellcheck: SpellcheckContext | null
+      /** A read-only line on top: when the message was sent (hc-1101, lib/message-menu-time.ts). */
+      caption?: string
     }
   | {
       kind: 'guest'
@@ -95,8 +97,8 @@ function probeClipboard(opened: Extract<OpenContextMenu, { kind: 'terminal' }>):
     .catch(() => undefined)
 }
 
-export function openDomContextMenu(x: number, y: number, target: ContextMenuDomTarget): void {
-  $contextMenu.set({ kind: 'dom', x, y, target, spellcheck: null })
+export function openDomContextMenu(x: number, y: number, target: ContextMenuDomTarget, caption?: string): void {
+  $contextMenu.set({ kind: 'dom', x, y, target, spellcheck: null, ...(caption && { caption }) })
 }
 
 export function openGuestContextMenu(x: number, y: number, params: GuestMenuParams, guest: GuestMenuHandle): void {

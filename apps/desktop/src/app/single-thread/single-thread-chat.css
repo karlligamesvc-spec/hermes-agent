@@ -60,7 +60,8 @@
   margin-left: auto;
 }
 
-[data-single-thread-chat] button.composer-human-message {
+/* Your words: [data-user-bubble] since hc-1101 (no click-to-edit); a watch window keeps its button. */
+[data-single-thread-chat] :is(button, [data-user-bubble]).composer-human-message {
   --conversation-text-font-size: 14.5px;
   --dt-line-height: 1.7;
   --human-msg-line-height: 1.7;
@@ -71,32 +72,41 @@
   color: var(--st-me-text);
 }
 
-[data-single-thread-chat] button.composer-human-message .sticky-human-clamp {
+[data-single-thread-chat] :is(button, [data-user-bubble]).composer-human-message .sticky-human-clamp {
   max-height: none;
   -webkit-mask-image: none;
   mask-image: none;
 }
 
-[data-single-thread-chat] button.composer-human-message :is(a, .ref) {
+[data-single-thread-chat] :is(button, [data-user-bubble]).composer-human-message :is(a, .ref) {
   color: inherit;
   text-decoration: underline;
 }
 
-[data-single-thread-chat] button.composer-human-message code {
+[data-single-thread-chat] :is(button, [data-user-bubble]).composer-human-message code {
   background-color: rgb(255 255 255 / 0.18);
   color: inherit;
 }
 
-/* hc-1101: what you sent can be selected and copied. The bubble is a button (a click
-   opens the editor) and every button is unselectable app-wide (styles.css); a drag
-   that ends in a selection keeps the editor shut (user-message.tsx). */
-[data-single-thread-chat] button.composer-human-message,
-[data-single-thread-chat] button.composer-human-message * {
+/* hc-1101: what you sent can be selected and copied: the words select like any text
+   (every button is unselectable app-wide in styles.css, so this also covers a watch
+   window's button), and nothing on them asks for a click but their links. */
+[data-single-thread-chat] :is(button, [data-user-bubble]).composer-human-message,
+[data-single-thread-chat] :is(button, [data-user-bubble]).composer-human-message * {
   -webkit-user-select: text;
   user-select: text;
 }
 
-[data-single-thread-chat] button.composer-human-message ::selection {
+[data-single-thread-chat] [data-user-bubble],
+[data-single-thread-chat] [data-user-bubble] .sticky-human-clamp {
+  cursor: auto;
+}
+
+[data-single-thread-chat] [data-user-bubble] a {
+  cursor: pointer;
+}
+
+[data-single-thread-chat] :is(button, [data-user-bubble]).composer-human-message ::selection {
   background-color: rgb(255 255 255 / 0.36);
   color: var(--st-me-text);
 }
@@ -107,8 +117,10 @@
   margin-block: 0;
 }
 
-/* The hover rail (复制, then restore / stop) moves beside the bubble, on its left. */
-[data-single-thread-chat] [data-slot='aui_user-message-root'] [data-slot='popover-anchor'] > div {
+/* The hover rail (复制, 改一下, then 从这条重来 or stop) moves beside the bubble, on its left.
+   In the transcript only your bubble's reaction anchor holds divs: the rail and, since
+   hc-1101, the bubble itself, which stays put. */
+[data-single-thread-chat] [data-slot='popover-anchor'] > div:not([data-user-bubble]) {
   right: calc(100% + 4px);
   bottom: 6px;
   gap: 2px;

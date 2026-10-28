@@ -227,11 +227,8 @@ describe('hc-1059 bubbles hold the words, and only the words', () => {
     expect(getComputedStyle(root).getPropertyValue('--st-ai-bubble').trim()).toBe('#ececf1')
     expect(getComputedStyle(root).getPropertyValue('--composer-width').trim()).toBe('720px')
 
-    // The violet fill: your words, and the first (recommended) next step.
-    expect(painted(container, ME)).toEqual([
-      screen.getByRole('button', { name: '编辑消息' }),
-      nextSteps.firstElementChild
-    ])
+    // The violet fill: your words (a plain block since hc-1101, editing is in the rail), and the first (recommended) next step.
+    expect(painted(container, ME)).toEqual([container.querySelector('[data-user-bubble]'), nextSteps.firstElementChild])
     expect(painted(container, APEX)).toEqual([words('好的，我先把视频下载下来'), words('逐字稿拿到了'), words(RESULT)])
   })
 
@@ -306,7 +303,7 @@ describe('hc-1059 bubbles hold the words, and only the words', () => {
     await screen.findByText(RESULT, { exact: false })
 
     const userRoot = container.querySelector('[data-slot="aui_user-message-root"]')!
-    const bubble = screen.getByRole('button', { name: '编辑消息' })
+    const bubble = container.querySelector('[data-user-bubble]')!
 
     expect(userRoot.classList.contains('sticky')).toBe(true)
     expect(getComputedStyle(userRoot).position).toBe('static')

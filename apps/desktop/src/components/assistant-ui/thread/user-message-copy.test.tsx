@@ -1,8 +1,10 @@
 /**
  * hc-1101: in single-thread product mode, what you sent can be copied, the way
- * APEX's replies can. 「复制」 sits in the hover rail beside the bubble. A plain
- * right-click on the bubble opens the app menu with 「复制」. The bubble's text
- * can be selected, and a drag that selects keeps the editor shut.
+ * APEX's replies can:
+ * - 「复制」 sits in the hover rail beside the bubble;
+ * - a plain right-click on the bubble opens the app menu, with the message's
+ *   time on top and 「复制」 under it;
+ * - the bubble's text can be selected.
  *
  * Switch off and developer mode are pinned byte for byte in
  * src/user-message-identity.test.tsx; here they only show that none of this
@@ -11,128 +13,42 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { AssistantRuntimeProvider, ExportedMessageRepository, type ThreadMessage } from '@assistant-ui/react'
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import type { ReactNode } from 'react'
-import { MemoryRouter } from 'react-router'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { AppContextMenu } from '@/app/context-menu/app-context-menu'
 import { $contextMenu } from '@/app/context-menu/store'
-import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
-import { useIncrementalExternalStoreRuntime } from '@/lib/incremental-external-store-runtime'
+import { setRuntimeI18nLocale } from '@/i18n'
 import { $reactionsEnabled } from '@/store/reactions-enabled'
 import { $activeSessionId, $gatewayState } from '@/store/session'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
 import { setToolViewMode } from '@/store/tool-view'
+import {
+  bubble,
+  bubbleText,
+  mode,
+  railLabels,
+  renderThread,
+  SENT_AS_SHOWN,
+  settle,
+  transcript,
+  userRoots
+} from '@/test/user-message-kit'
 
-import { createdAt, stubThreadEnvironment, stubThreadViewportSize, ThreadRuntime } from '../test-utils'
+import { stubThreadEnvironment, stubThreadViewportSize } from '../test-utils'
 
 import { copyableMessageText } from './user-message-rail'
-
-import { Thread } from '.'
 
 stubThreadEnvironment()
 stubThreadViewportSize()
 
-const SENT = '先跑 `npm test`\n再看 @file:`/Users/xiaoman/脚本 v2.md` 和 @url:`https://v.douyin.com/iRemix01/`'
-const SENT_AS_SHOWN = '先跑 `npm test`\n再看 /Users/xiaoman/脚本 v2.md 和 https://v.douyin.com/iRemix01/'
-
 const desktopWindow = window as unknown as { hermesDesktop?: Window['hermesDesktop'] }
-
-function user(id: string, text: string, custom: Record<string, unknown> = {}): ThreadMessage {
-  return {
-    attachments: [],
-    content: [{ text, type: 'text' }],
-    createdAt,
-    id,
-    metadata: { custom },
-    role: 'user'
-  } as ThreadMessage
-}
-
-function assistant(id: string, running = false): ThreadMessage {
-  return {
-    content: [{ text: running ? '' : '好。', type: 'text' }],
-    createdAt,
-    id,
-    metadata: { custom: {}, steps: [], unstable_annotations: [], unstable_data: [], unstable_state: null },
-    role: 'assistant',
-    status: running ? { type: 'running' } : { reason: 'stop', type: 'complete' }
-  } as unknown as ThreadMessage
-}
-
-function transcript({ running = false, text = SENT } = {}): ThreadMessage[] {
-  return [
-    user('u-picture', '', { attachmentRefs: ['@image:`/tmp/数据截图.png`'] }),
-    assistant('a-picture'),
-    user('u-last', text),
-    assistant('a-last', running)
-  ]
-}
-
-function mode(name: 'developer' | 'off' | 'single-thread') {
-  setSingleThreadFlagForTest(name !== 'off')
-  setToolViewMode(name === 'developer' ? 'technical' : 'product')
-}
-
-const settle = () =>
-  act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 30))
-  })
-
-/** A runtime that edits, as the app's does: a click on the bubble really opens the editor. */
-function EditableRuntime({ children, messages }: { children: ReactNode; messages: ThreadMessage[] }) {
-  const runtime = useIncrementalExternalStoreRuntime<ThreadMessage>({
-    isRunning: false,
-    messageRepository: ExportedMessageRepository.fromArray(messages),
-    onCancel: async () => {},
-    onEdit: async () => {},
-    onNew: async () => {},
-    onReload: async () => {},
-    setMessages: () => {}
-  })
-
-  return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>
-}
-
-async function renderThread(messages = transcript(), Runtime = ThreadRuntime) {
-  const view = render(
-    <I18nProvider configClient={null} initialLocale="zh">
-      <MemoryRouter>
-        <Runtime messages={messages}>
-          <Thread onCancel={() => {}} onRestoreToMessage={() => {}} />
-        </Runtime>
-        <AppContextMenu />
-      </MemoryRouter>
-    </I18nProvider>
-  )
-
-  await waitFor(() => expect(view.container.querySelectorAll('[data-slot="aui_user-message-root"]')).toHaveLength(2))
-  await settle()
-
-  return view
-}
-
-/** The bubble roots, in order: the picture-only message, then the latest ask. */
-function userRoots(): HTMLElement[] {
-  return [...document.querySelectorAll<HTMLElement>('[data-slot="aui_user-message-root"]')]
-}
-
-/** The labels of the hover rail beside a bubble (the anchor's absolute child), left to right. */
-function railLabels(root: HTMLElement): string[] {
-  const rail = root.querySelector('[data-slot="popover-anchor"] > div')
-
-  return rail ? [...rail.querySelectorAll('button')].map(button => button.getAttribute('aria-label') ?? '') : []
-}
-
-function bubble(root: HTMLElement): HTMLElement {
-  return root.querySelector<HTMLElement>('button.composer-human-message')!
-}
 
 let writeClipboard: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
+  // The menu's time line reads the clock: half an hour after the message was sent.
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date(2026, 9, 28, 9, 30))
   writeClipboard = vi.fn().mockResolvedValue(undefined)
   desktopWindow.hermesDesktop = {
     // The picture-only message's thumbnail reads its file through the bridge.
@@ -147,6 +63,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   $contextMenu.set(null)
   delete desktopWindow.hermesDesktop
   setRuntimeI18nLocale('en')
@@ -154,13 +71,13 @@ afterEach(() => {
   setToolViewMode('product')
   $reactionsEnabled.set(false)
   window.getSelection()?.removeAllRanges()
-  document.head.querySelectorAll('style[data-test-css]').forEach(node => node.remove())
+  window.document.head.querySelectorAll('style[data-test-css]').forEach(node => node.remove())
 })
 
 describe('the hover rail beside your bubble', () => {
   it.each([
-    ['single-thread', false, ['复制', '恢复检查点']],
-    ['single-thread', true, ['复制', '停止']],
+    ['single-thread', false, ['复制', '改一下', '从这条重来']],
+    ['single-thread', true, ['复制', '改一下', '停止']],
     ['developer', false, ['恢复检查点']],
     ['developer', true, ['停止']],
     ['off', false, ['恢复检查点']],
@@ -173,12 +90,12 @@ describe('the hover rail beside your bubble', () => {
   })
 
   it.each(['single-thread', 'developer', 'off'] as const)(
-    '%s mode: a message that is only pictures has no rail at all (nothing to copy or restore)',
+    '%s mode: a message that is only pictures has no rail at all (nothing to copy, edit or restore)',
     async name => {
       mode(name)
       await renderThread()
 
-      expect(userRoots()[0].querySelector('[data-slot="popover-anchor"] > div')).toBeNull()
+      expect(userRoots()[0].querySelector('[data-slot="popover-anchor"] > div:not([data-user-bubble])')).toBeNull()
     }
   )
 
@@ -196,12 +113,17 @@ describe('the hover rail beside your bubble', () => {
 })
 
 describe('a plain right-click on your bubble', () => {
-  it('opens the app menu in single-thread mode, and its 复制 copies the whole message', async () => {
+  it('opens the app menu in single-thread mode: the time on top, then 复制 for the whole message', async () => {
     mode('single-thread')
     await renderThread()
 
-    fireEvent.contextMenu(bubble(userRoots()[1]).querySelector('[data-slot="aui_user-message-text"]')!)
-    fireEvent.click(await screen.findByRole('menuitem', { name: '复制' }))
+    fireEvent.contextMenu(bubbleText(userRoots()[1]))
+
+    const menu = await screen.findByRole('menu')
+
+    expect(within(menu).getByText('今天 09:00')).toBeTruthy()
+    expect(menu.textContent).toBe('今天 09:00复制')
+    fireEvent.click(within(menu).getByRole('menuitem', { name: '复制' }))
 
     await waitFor(() => expect(writeClipboard).toHaveBeenCalledWith(SENT_AS_SHOWN))
   })
@@ -210,7 +132,7 @@ describe('a plain right-click on your bubble', () => {
     mode(name)
     await renderThread()
 
-    fireEvent.contextMenu(bubble(userRoots()[1]).querySelector('[data-slot="aui_user-message-text"]')!)
+    fireEvent.contextMenu(bubbleText(userRoots()[1]))
     await settle()
 
     expect($contextMenu.get()).toBeNull()
@@ -221,30 +143,40 @@ describe('a plain right-click on your bubble', () => {
     $reactionsEnabled.set(true)
     await renderThread()
 
-    fireEvent.contextMenu(bubble(userRoots()[1]).querySelector('[data-slot="aui_user-message-text"]')!)
+    fireEvent.contextMenu(bubbleText(userRoots()[1]))
     await settle()
 
     expect($contextMenu.get()).toBeNull()
   })
 
-  it('copies the selection, not the whole message, when part of it is selected', async () => {
-    mode('single-thread')
-    await renderThread()
+  it.each([
+    ['single-thread', '今天 09:00'],
+    ['off', null]
+  ] as const)(
+    '%s mode: with part of it selected, 复制 copies the selection (time on top: %s)',
+    async (name, caption) => {
+      mode(name)
+      await renderThread()
 
-    const text = bubble(userRoots()[1]).querySelector('[data-slot="aui_user-inline-text"]')!
-    const words = document.createTreeWalker(text, NodeFilter.SHOW_TEXT).nextNode()!
-    const range = document.createRange()
+      const text = bubbleText(userRoots()[1])
+      const words = window.document.createTreeWalker(text, NodeFilter.SHOW_TEXT).nextNode()!
+      const range = window.document.createRange()
 
-    range.setStart(words, 0)
-    range.setEnd(words, 2)
-    window.getSelection()!.removeAllRanges()
-    window.getSelection()!.addRange(range)
+      range.setStart(words, 0)
+      range.setEnd(words, 2)
+      window.getSelection()!.removeAllRanges()
+      window.getSelection()!.addRange(range)
 
-    fireEvent.contextMenu(text)
-    fireEvent.click(await screen.findByRole('menuitem', { name: '复制' }))
+      fireEvent.contextMenu(text)
 
-    await waitFor(() => expect(writeClipboard).toHaveBeenCalledWith('先跑'))
-  })
+      const menu = await screen.findByRole('menu')
+
+      expect(menu.textContent).toBe(`${caption ?? ''}复制`)
+      fireEvent.click(within(menu).getByRole('menuitem', { name: '复制' }))
+
+      await waitFor(() => expect(writeClipboard).toHaveBeenCalledWith('先跑'))
+    }
+  )
 })
 
 describe('selecting what you sent', () => {
@@ -254,11 +186,11 @@ describe('selecting what you sent', () => {
     const sheet = readFileSync(join(__dirname, '../../../app/single-thread/single-thread-chat.css'), 'utf8')
 
     for (const css of ['button, [role="button"] { user-select: none; }', sheet]) {
-      const style = document.createElement('style')
+      const style = window.document.createElement('style')
 
       style.dataset.testCss = ''
       style.textContent = css
-      document.head.appendChild(style)
+      window.document.head.appendChild(style)
     }
   }
 
@@ -271,36 +203,23 @@ describe('selecting what you sent', () => {
     injectStyles()
     await renderThread()
 
-    const text = bubble(userRoots()[1]).querySelector('[data-slot="aui_user-inline-text"]')!
-
     expect(getComputedStyle(bubble(userRoots()[1])).userSelect).toBe(expected)
     // jsdom does not resolve a child's "auto" against its button the way Chrome does
     // (none); what matters is that only single-thread mode declares text on it.
-    expect(getComputedStyle(text).userSelect).toBe(name === 'single-thread' ? 'text' : 'auto')
+    expect(getComputedStyle(bubbleText(userRoots()[1])).userSelect).toBe(name === 'single-thread' ? 'text' : 'auto')
   })
 
-  it.each([
-    ['a click with nothing selected opens the editor', false, true],
-    ['a drag that ends in a selection keeps it shut', true, false]
-  ])('%s', async (_name, selected, opens) => {
+  it('single-thread mode: the rail moves beside the bubble; the bubble itself stays put', async () => {
     mode('single-thread')
-    await renderThread(transcript(), EditableRuntime)
+    injectStyles()
+    await renderThread()
 
-    const target = bubble(userRoots()[1])
+    const rail = userRoots()[1].querySelector<HTMLElement>(
+      '[data-slot="popover-anchor"] > div:not([data-user-bubble])'
+    )!
 
-    if (selected) {
-      const range = document.createRange()
-
-      range.selectNodeContents(target.querySelector('[data-slot="aui_user-inline-text"]')!)
-      window.getSelection()!.removeAllRanges()
-      window.getSelection()!.addRange(range)
-    }
-
-    fireEvent.pointerDown(target)
-    fireEvent.click(target)
-    await settle()
-
-    expect(screen.queryByRole('textbox', { name: '编辑消息' }) !== null).toBe(opens)
+    expect(getComputedStyle(rail).right).toBe('calc(100% + 4px)')
+    expect(getComputedStyle(bubble(userRoots()[1])).right).toBe('auto')
   })
 })
 

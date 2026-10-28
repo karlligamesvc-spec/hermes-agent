@@ -26,6 +26,7 @@ import { MemoryNotedLine } from '@/components/assistant-ui/thread/memory-noted-l
 import { MESSAGE_PARTS_COMPONENTS } from '@/components/assistant-ui/thread/message-parts'
 import { ReactionPicker } from '@/components/assistant-ui/thread/message-reactions'
 import { ResponseLoadingIndicator, TurnActivityIndicator } from '@/components/assistant-ui/thread/status'
+import { useThreadCopy } from '@/components/assistant-ui/thread/thread-copy'
 import { MessageTimelineTimestamp } from '@/components/assistant-ui/thread/timeline-timestamp'
 import { useMessageReactions, useTapbackDoubleClick } from '@/components/assistant-ui/thread/use-message-reactions'
 import { AGENT_MESSAGE_RE } from '@/components/assistant-ui/thread/user-message'
@@ -704,7 +705,8 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
   onBranchInNewChat
 }) => {
   const { t } = useI18n()
-  const copy = t.assistant.thread
+  // hc-1101: 「重新回答」, not 「刷新」, in single-thread mode.
+  const copy = useThreadCopy()
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const { enabled: reactionsEnabled, react, reactions: shownReactions } = useMessageReactions(messageId, 'assistant')
