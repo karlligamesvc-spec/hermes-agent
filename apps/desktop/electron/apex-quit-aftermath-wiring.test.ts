@@ -24,7 +24,10 @@ function quitTeardown(): string {
 }
 
 describe('the quit teardown in main.ts', () => {
-  test('snapshots every owned engine before the first stop, and ends the survivors after the engines are down', () => {
+  // hc-1102: the snapshot and the sweep moved into every owned engine's stop (localBackendLifecycle,
+  // sweepOnStop; order pinned in local-backend-lifecycle.test.ts, wiring in apex-engine-stop-wiring.test.ts).
+  // The quit stops every engine through that lifecycle and waits for those stops, sweeps included.
+  test('stops every owned engine through the lifecycle and waits for it, with no sweep of its own', () => {
     const teardown = quitTeardown()
 
     const at = (needle: string) => {
@@ -35,19 +38,16 @@ describe('the quit teardown in main.ts', () => {
       return index
     }
 
-    const snapshot = at('= snapshotEngineChildren(localBackendLifecycle.ownedChildren())')
+    const shutdown = at('const localShutdown = localBackendLifecycle.shutdown()')
+    const firstStop = Math.min(at('stopBackendChild(primary)'), at('stopAllPoolBackends()'))
 
-    const firstStop = Math.min(
-      at('localBackendLifecycle.shutdown()'),
-      at('stopBackendChild(primary)'),
-      at('stopAllPoolBackends()')
+    assert.ok(shutdown < firstStop, 'the lifecycle’s shutdown is the first stop')
+    assert.match(teardown, /await waitForTeardown\(\[localShutdown, /)
+    assert.doesNotMatch(
+      teardown,
+      /snapshotEngineChildren|endEngineChildren/,
+      'one sweep per stop, not a second one here'
     )
-
-    const engines = at('await waitForTeardown([')
-    const sweep = at('await endEngineChildren(engineChildren, rememberLog)')
-
-    assert.ok(snapshot < firstStop, 'the snapshot runs after an engine was already told to stop')
-    assert.ok(engines < sweep, 'the sweep runs before the engines are down')
   })
 
   test('the ledger freezes on the local engines’ quit signal and listens to the windows’ reports', () => {

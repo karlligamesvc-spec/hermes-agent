@@ -103,7 +103,7 @@ import {
 } from './apex-daemon'
 import { ensureApexDesktopSouls } from './apex-default-soul'
 import { clientConfigForRenderer } from './apex-desktop-features'
-import { endEngineChildren, snapshotEngineChildren } from './apex-engine-children'
+import { stopEndingChildren, sweepEngineOnStop } from './apex-engine-children'
 import {
   buildFeishuBackendEnv,
   feishuCredentialsUrl,
@@ -1795,6 +1795,7 @@ const localBackendLifecycle = createLocalBackendLifecycle<ReturnType<typeof spaw
     }
   },
   waitForExit: child => waitForBackendExit(child),
+  sweepOnStop: child => sweepEngineOnStop(child, rememberLog), // hc-1100/hc-1102: what an engine started outside its group
   cancelSetup: () => {
     firstRunSetupGate?.resetForRetry()
     bootstrapAbortController?.abort()
@@ -4038,7 +4039,7 @@ async function stopOwnedBackend(identity) {
 const backendOwnership = createBackendOwnership({
   matchesIdentity: backendIdentityMatches,
   matchesParent: backendParentMatches,
-  stop: stopOwnedBackend,
+  stop: entry => stopEndingChildren(entry, () => processIdentityMatches(entry, REAP_PROBE_TIMEOUT_MS), () => stopOwnedBackend(entry), rememberLog), // hc-1102
   store: {
     read: () => {
       try {
@@ -12776,11 +12777,14 @@ async function evictLruPoolBackends(keep, spawnPriority?: LocalBackendSpawnPrior
     Math.max(0, keep),
     Date.now(),
     POOL_KEEPALIVE_FRESH_MS,
-    async profile => {
-      rememberLog(`Evicting idle profile backend "${profile}" (LRU cap ${poolMaxBackends()})`)
-      await stopPoolBackend(profile)
-    }
+    async profile => void (await reapIdlePoolEngine({ ...poolRetirement(profile), what: `Evicting idle profile backend "${profile}" (LRU cap ${poolMaxBackends()})` }))
   )
+}
+
+// hc-1080/hc-1102: a pooled engine is asked before the idle reaper or the LRU cap stops it; one still working (a turn, a background command) stays.
+function poolRetirement(profile: string, entry = backendPool.get(profile)) {
+  return { entry, label: profile, idleSeconds: Math.round(poolIdleMs() / 1000), log: rememberLog, stillPooled: () => backendPool.get(profile) === entry, stop: () => stopPoolBackend(profile),
+    post: (route, body) => fetchJson(`http://127.0.0.1:${entry.port}${route}`, entry.token, { method: 'POST', body, timeoutMs: 5_000 }) }
 }
 
 function startPoolIdleReaper() {
@@ -12794,9 +12798,7 @@ function startPoolIdleReaper() {
     for (const [profile, entry] of [...backendPool.entries()]) {
       if (now - (entry.lastActiveAt || 0) > poolIdleMs()) {
         // hc-1080: a live engine is asked first, so a turn running with no window open survives.
-        void reapIdlePoolEngine({ entry, label: profile, idleSeconds: Math.round(poolIdleMs() / 1000), log: rememberLog,
-          post: (route, body) => fetchJson(`http://127.0.0.1:${entry.port}${route}`, entry.token, { method: 'POST', body, timeoutMs: 5_000 }),
-          stillPooled: () => backendPool.get(profile) === entry, stop: () => stopPoolBackend(profile) })
+        void reapIdlePoolEngine(poolRetirement(profile, entry))
       }
     }
 
@@ -13200,8 +13202,7 @@ async function stopAllPoolBackends() {
 }
 
 const backendShutdown = createBackendShutdownCoordinator(async () => {
-  const engineChildren = snapshotEngineChildren(localBackendLifecycle.ownedChildren()) // hc-1100: while they are still theirs
-  const localShutdown = localBackendLifecycle.shutdown()
+  const localShutdown = localBackendLifecycle.shutdown() // hc-1100: each owned engine's stop also ends what it started (sweepOnStop)
   const primary = backendConnectionState.invalidate()
 
   stopBackendChild(primary)
@@ -13213,7 +13214,6 @@ const backendShutdown = createBackendShutdownCoordinator(async () => {
   }
 
   await waitForTeardown([localShutdown, waitForBackendExit(primary), pooledStops, stopMessagingGateway()], 7_000) // hc-1031: the IM gateway is no lifecycle child; unstopped it outlived every quit
-  await endEngineChildren(engineChildren, rememberLog) // hc-1100: a background command's own group outlived every quit
 })
 
 const quitTeardown = createQuitTeardownCoordinator(() => app.quit())

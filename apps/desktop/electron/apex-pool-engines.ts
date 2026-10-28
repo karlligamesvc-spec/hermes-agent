@@ -144,6 +144,8 @@ export interface IdleReapDeps {
   entry: PoolEngineEntry
   label: string
   idleSeconds: number
+  /** hc-1102: the log's words for this stop when it is not the idle reaper's (the LRU cap's eviction). */
+  what?: string
   post: PoolEnginePost
   /** False once the entry left the pool (stopped, evicted, respawned) during the probe. */
   stillPooled: () => boolean
@@ -163,7 +165,7 @@ export interface IdleReapDeps {
 export async function reapIdlePoolEngine(deps: IdleReapDeps): Promise<'kept' | 'skipped' | 'stopped'> {
   const { entry, label, log } = deps
   const now = deps.now ?? Date.now
-  const reaping = `Reaping idle profile backend "${label}" (idle > ${deps.idleSeconds}s)`
+  const reaping = deps.what ?? `Reaping idle profile backend "${label}" (idle > ${deps.idleSeconds}s)`
 
   if (!entry.process || !entry.port || !entry.token) {
     log(reaping)
