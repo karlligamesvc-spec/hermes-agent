@@ -59,10 +59,10 @@ const tool = (id: string, command: string, result: unknown, span: [number, numbe
 })
 
 /** M7's F4 turn as reloaded after the quit: a background render, a wait, then nothing. */
-function cutOffTurn(): ThreadMessage[] {
+function cutOffTurn(prefix = 'f4'): ThreadMessage[] {
   return [
     {
-      id: 'f4-ask',
+      id: `${prefix}-ask`,
       role: 'user',
       content: [{ type: 'text', text: '用 ffmpeg 把 qa-20min.mp4 的前 10 分钟转成 1080p H.264' }],
       attachments: [],
@@ -70,7 +70,7 @@ function cutOffTurn(): ThreadMessage[] {
       metadata: { custom: {} }
     } as ThreadMessage,
     {
-      id: 'f4-work',
+      id: `${prefix}-work`,
       role: 'assistant',
       content: [
         { type: 'text', text: '跟上一版参数完全一样，我照原参数再跑一遍，大约 17 分钟。' },
@@ -243,6 +243,17 @@ describe('single-thread product mode', () => {
     const container = await renderThread([...cutOffTurn(), ...remixLiveTurn()])
 
     expect(container.querySelector('[data-interrupted-turn]')).toBeNull()
+  })
+
+  it('an older cut-off turn above a cut-off last turn: one line, under the last', async () => {
+    const container = await renderThread([...cutOffTurn('older'), ...cutOffTurn('last')])
+    const notices = container.querySelectorAll('[data-interrupted-turn]')
+    const roots = [...container.querySelectorAll('[data-slot="aui_assistant-message-root"]')]
+
+    expect(roots).toHaveLength(2)
+    expect(notices).toHaveLength(1)
+    expect(roots[1].contains(notices[0])).toBe(true)
+    expect(settled).toEqual([])
   })
 })
 

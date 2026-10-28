@@ -68,9 +68,6 @@ export function createTurnLedger(store: TurnLedgerStore): TurnLedger {
 
   const loaded = () => (previous ??= parseLedger(store.read()))
 
-  const runningElsewhere = (id: string, window: number) =>
-    [...live].some(([other, ids]) => other !== window && ids.has(id))
-
   const persist = () => {
     const ids = new Set([...loaded(), ...kept, ...[...live.values()].flatMap(set => [...set])])
 
@@ -90,7 +87,7 @@ export function createTurnLedger(store: TurnLedgerStore): TurnLedger {
       const next = new Set(sessionIds)
 
       for (const id of live.get(window) ?? []) {
-        if (!next.has(id) && !runningElsewhere(id, window)) {
+        if (!next.has(id)) {
           loaded().delete(id)
           kept.delete(id)
         }
