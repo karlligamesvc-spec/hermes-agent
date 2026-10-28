@@ -363,7 +363,14 @@ const FOLDED_ROWS = [
   'Open folder as project…',
   'Import session',
   '配置档案',
-  '派生树'
+  '派生树',
+  '技能与工具',
+  '消息平台',
+  '排程',
+  '记忆图谱',
+  '会话',
+  '系统',
+  '重启网关'
 ]
 
 describe('⌘K', () => {
@@ -384,7 +391,7 @@ describe('⌘K', () => {
       expect(has(rows, label)).toBe(false)
     }
 
-    for (const label of ['设置', 'Keyboard shortcuts', '用量', '检查 APEX 更新', '更改主题']) {
+    for (const label of ['设置', '产物', 'Keyboard shortcuts', '用量', '检查 APEX 更新', '更改主题']) {
       expect(has(rows, label)).toBe(true)
     }
   })
@@ -411,7 +418,10 @@ const FOLDED_LABELS = [
   'New terminal',
   'Open folder as project',
   'Open profiles',
-  'Open agents'
+  'Open agents',
+  'Open skills',
+  'Open messaging',
+  'Open scheduled jobs'
 ]
 
 function renderShortcutLists(): string {
