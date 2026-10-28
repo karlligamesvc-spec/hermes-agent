@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MANAGED_PROVIDER_SLUG } from '@/lib/provider-allowlist'
@@ -16,6 +19,11 @@ import { resetScopeState, type ScopeState, seedScopeState, settingsTopHtml } fro
  * APEX on screen, another assistant on screen, and the pages pointed at a third
  * — under every combination of the single_thread and multi_bot switches and
  * the tool view.
+ *
+ * With several assistants on in product mode the row is gone (hc-1098): those
+ * pages must equal main's golden with exactly that row taken out, so the title,
+ * the shared-tier note and the tier picker stay byte for byte. Every other
+ * combination still matches its golden unchanged.
  */
 
 const hermes = vi.hoisted(() => ({
@@ -78,6 +86,18 @@ const PAGES: [string, ScopeState, boolean][] = [
   ['tier-override', 'override', true]
 ]
 
+/** Main's golden for `name`, with its one 「应用于」 row (the label and the chips, and a note under them) taken out. */
+function recordedWithoutScopeRow(name: string): string {
+  const host = globalThis.document.createElement('div')
+  host.innerHTML = readFileSync(join(__dirname, GOLDEN, `${name}.html`), 'utf8')
+  const rows = [...host.querySelectorAll('div')].filter(div => div.firstElementChild?.textContent === '应用于')
+
+  expect(rows).toHaveLength(1)
+  rows[0].remove()
+
+  return host.innerHTML
+}
+
 describe.each(MODES)('%s: the top of a settings page', (mode, singleThread, multiBot, toolView) => {
   it.each(PAGES)('%s', async (page, state, tier) => {
     setSingleThreadFlagForTest(singleThread)
@@ -85,6 +105,12 @@ describe.each(MODES)('%s: the top of a settings page', (mode, singleThread, mult
     setToolViewMode(toolView)
     seedScopeState(state)
 
-    await expect(await settingsTopHtml(tier)).toMatchFileSnapshot(`${GOLDEN}/${mode}-${page}.html`)
+    const html = await settingsTopHtml(tier)
+
+    if (mode === 'product-multi-bot') {
+      expect(html).toBe(recordedWithoutScopeRow(`${mode}-${page}`))
+    } else {
+      await expect(html).toMatchFileSnapshot(`${GOLDEN}/${mode}-${page}.html`)
+    }
   })
 })

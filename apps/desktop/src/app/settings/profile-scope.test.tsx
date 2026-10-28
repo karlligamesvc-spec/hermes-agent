@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
+
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { atom } from 'nanostores'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -22,6 +25,9 @@ vi.mock('@/store/starmap', () => ({ resetStarmapGraph: vi.fn() }))
 
 const { $activeGatewayProfile, $profiles } = await import('@/store/profile')
 const { $settingsScopeOverride } = await import('@/store/settings-scope')
+const { setSingleThreadFlagForTest } = await import('@/store/single-thread')
+const { setMultiBotFlagForTest } = await import('@/store/single-thread-bots')
+const { setToolViewMode } = await import('@/store/tool-view')
 const { SettingsProfileScope } = await import('./profile-scope')
 
 const profile = (name: string, isDefault = false): ProfileInfo =>
@@ -64,5 +70,76 @@ describe('SettingsProfileScope', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'default' }))
     expect($settingsScopeOverride.get()).toBeNull()
+  })
+})
+
+describe('hc-1098 several assistants on: the row is gone', () => {
+  const SRC = join(__dirname, '..', '..')
+
+  function sourceFiles(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+      const path = join(dir, entry.name)
+
+      if (entry.isDirectory()) {
+        return entry.name === '__identity__' ? [] : sourceFiles(path)
+      }
+
+      return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : []
+    })
+  }
+
+  function switches(singleThread: boolean, multiBot: boolean, toolView: 'product' | 'technical'): void {
+    setSingleThreadFlagForTest(singleThread)
+    setMultiBotFlagForTest(multiBot)
+    setToolViewMode(toolView)
+  }
+
+  beforeEach(() => {
+    // M7 on 0.17.66: 剪辑助手 (apex-bot-2) on screen, two more profiles on disk.
+    $profiles.set([profile('default', true), profile('apex-bot-2'), profile('apex-bot-3')])
+    $activeGatewayProfile.set('apex-bot-2')
+  })
+
+  afterEach(() => switches(false, false, 'product'))
+
+  it.each([
+    ['product mode with several assistants: no row, nothing to click', true, true, 'product', []],
+    ['developer mode keeps the chips', true, true, 'technical', ['default', 'apex-bot-2', 'apex-bot-3']],
+    [
+      'multi_bot with single_thread off keeps the chips',
+      false,
+      true,
+      'product',
+      ['default', 'apex-bot-2', 'apex-bot-3']
+    ],
+    ['product mode with one assistant keeps the chips', true, false, 'product', ['default', 'apex-bot-2', 'apex-bot-3']]
+  ] as const)('%s', (_label, singleThread, multiBot, toolView, chips) => {
+    switches(singleThread, multiBot, toolView)
+
+    const { container } = render(<SettingsProfileScope />)
+
+    expect(screen.queryAllByRole('button').map(button => button.textContent)).toEqual(chips)
+    expect(container.textContent === '').toBe(chips.length === 0)
+  })
+
+  it('goes away when several assistants turn on with the page open, and comes back in developer mode', () => {
+    switches(true, false, 'product')
+    render(<SettingsProfileScope />)
+    expect(screen.queryAllByRole('button')).toHaveLength(3)
+
+    act(() => setMultiBotFlagForTest(true))
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+
+    act(() => setToolViewMode('technical'))
+    expect(screen.queryAllByRole('button')).toHaveLength(3)
+  })
+
+  it('only this row and its store point the settings pages at a profile', () => {
+    const writers = sourceFiles(SRC)
+      .filter(path => /setSettingsScope\(|\$settingsScopeOverride\.set\(/.test(readFileSync(path, 'utf8')))
+      .map(path => relative(SRC, path))
+      .sort()
+
+    expect(writers).toEqual(['app/settings/profile-scope.tsx', 'store/settings-scope.ts'])
   })
 })
