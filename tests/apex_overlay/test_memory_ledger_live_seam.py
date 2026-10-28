@@ -259,6 +259,29 @@ def test_parse_reads_the_cloud_rendering_and_nothing_else():
     assert memory_ledger_live.parse("- [3f2a9c1d] 不在底账里的一行") is None
 
 
+@pytest.mark.parametrize(
+    "changed",
+    [
+        SEGMENTS["after"].replace("- 10-27 [ab12cd34]", "- 2026-10-27 [ab12cd34]"),  # a new date shape
+        SEGMENTS["after"].replace("- [3f2a9c1d] ", "• [3f2a9c1d] "),  # a new bullet
+        SEGMENTS["after"].replace("关于你：", "关于用户："),  # a renamed list
+    ],
+    ids=["date-shape", "bullet", "heading"],
+)
+def test_a_rendering_this_parser_does_not_know_says_nothing(root, changed):
+    """Had the cloud changed its lines, every entry would read as gone; the seam stays quiet instead."""
+    assert memory_ledger_live.parse(changed) is None
+    mirror(root, BASE)
+    memory_ledger_live.note_frozen({"session_id": "s"}, BASE)
+    assert memory_ledger_live.on_pre_llm_call(session_id="s", platform="desktop") == memory_ledger_live.LOOKUP_HINT
+    mirror(root, changed)
+    assert memory_ledger_live.on_pre_llm_call(session_id="s", platform="desktop") is None
+    mirror(root, SEGMENTS["after"])  # back to a known rendering: measured from what the session last knew
+    assert memory_ledger_live.on_pre_llm_call(session_id="s", platform="desktop") == _note(
+        (memory_ledger_live.APPEARED, [NOTED_LINE, DONE_LINE])
+    )
+
+
 # ── 3. a session a new engine restored ───────────────────────────────────────
 
 

@@ -50,6 +50,9 @@ SEGMENT_END = "【APEX 记得的 · 完】"
 _ENTRY = re.compile(r"^- (?:\d{2}-\d{2} )?\[(?P<ref>[0-9a-f]{8})\] \S")
 # 「（还有 N 条较早的没放进来，…）」: entries past the segment's budget are still in the ledger.
 _LEFT_OUT = "条较早的没放进来"
+# The two lists the cloud renders: a heading, then entries, 「（还没有）」 or the left-out line, then a blank line.
+_HEADINGS = ("关于你：", "最近发生的")
+_NONE_YET = "（还没有）"
 
 # Same set as apexnodes-next-steps' NON_INTERACTIVE_PLATFORMS: their prompt is built for each job.
 NON_INTERACTIVE_PLATFORMS = frozenset({"api_server", "cron", "webhook", "subagent"})
@@ -96,7 +99,12 @@ _sessions: OrderedDict[str, _Session] = OrderedDict()
 
 
 def parse(text: Any) -> Optional[Ledger]:
-    """The ledger segment in ``text`` (a section, a stored prompt, the mirror), or None when there is none."""
+    """The ledger segment in ``text`` (a section, a stored prompt, the mirror), or None when there is none.
+
+    Also None when a list holds a line this parser does not know or a heading is missing: had the
+    cloud changed how it writes an entry, every entry would otherwise read as gone. Saying nothing
+    is the safe side.
+    """
     if not isinstance(text, str):
         return None
     start = text.find(SEGMENT_BEGIN)
@@ -105,14 +113,24 @@ def parse(text: Any) -> Optional[Ledger]:
     end = text.find(SEGMENT_END, start)
     lines: dict[str, str] = {}
     partial = False
+    headings = 0
+    in_list = False
     for raw in text[start : end if end >= 0 else len(text)].splitlines():
         line = raw.strip()
-        match = _ENTRY.match(line)
-        if match:
-            lines.setdefault(match["ref"], line)
-        elif _LEFT_OUT in line:
-            partial = True
-    return Ledger(lines, partial)
+        if line.startswith(_HEADINGS):
+            headings += 1
+            in_list = True
+        elif not line:
+            in_list = False
+        elif in_list:
+            match = _ENTRY.match(line)
+            if match:
+                lines.setdefault(match["ref"], line)
+            elif _LEFT_OUT in line:
+                partial = True
+            elif line != _NONE_YET:
+                return None
+    return Ledger(lines, partial) if headings == len(_HEADINGS) else None
 
 
 def note(known: Ledger, now: Ledger, own: frozenset[str] = frozenset()) -> str:
