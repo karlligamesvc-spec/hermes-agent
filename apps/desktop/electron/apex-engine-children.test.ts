@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 
 import { afterEach, describe, test } from 'vitest'
 
@@ -8,11 +8,16 @@ import {
   type EngineChild,
   type EngineChildrenDeps,
   engineDescendants,
+  type EngineProcess,
   isMessagingGateway,
   nodeEngineChildrenDeps,
   parseProcessRows,
-  snapshotEngineChildren
+  snapshotEngineChildren,
+  stopEndingChildren,
+  sweepEngineOnStop
 } from './apex-engine-children'
+import { stopBackendChild, waitForBackendExit } from './backend-child'
+import { createLocalBackendLifecycle } from './local-backend-lifecycle'
 
 const AT = 'Tue Oct 28 10:01:07 2026'
 const LATER = 'Tue Oct 28 10:09:59 2026'
@@ -219,6 +224,131 @@ describe('ending them once the engines are down', () => {
   })
 })
 
+// hc-1102: a stop while the app keeps running (pool reap or eviction, a deleted assistant, a re-home,
+// an engine update, a failed start) — one engine at a time, through local-backend-lifecycle.ts.
+describe('one engine stopped while the app runs', () => {
+  const ORPHANED = TREE.replace(/^(\s*30[01]\s+)200/m, '$1    1')
+
+  test.each([
+    {
+      name: 'exited after its stop: what it started is ended',
+      before: { exitCode: null, signalCode: null },
+      after: { exitCode: null, signalCode: 'SIGTERM' },
+      listedBeforeStop: true,
+      signals: ['SIGTERM -300', 'SIGTERM -400', 'SIGTERM 500', 'SIGTERM 301', 'SIGTERM 401']
+    },
+    {
+      name: 'exited with a code of its own counts the same',
+      before: { exitCode: null, signalCode: null },
+      after: { exitCode: 1, signalCode: null },
+      listedBeforeStop: true,
+      signals: ['SIGTERM -300', 'SIGTERM -400', 'SIGTERM 500', 'SIGTERM 301', 'SIGTERM 401']
+    },
+    {
+      name: 'still running after its stop (SIGKILL included): its children stay its own',
+      before: { exitCode: null, signalCode: null },
+      after: { exitCode: null, signalCode: null },
+      listedBeforeStop: true,
+      signals: []
+    },
+    {
+      name: 'already exited when the stop came: no snapshot, its pid may be another process by now',
+      before: { exitCode: 0, signalCode: null },
+      after: { exitCode: 0, signalCode: null },
+      listedBeforeStop: false,
+      signals: []
+    }
+  ])('$name', async ({ after, before, listedBeforeStop, signals }) => {
+    const engine: EngineProcess = { pid: 200, ...before }
+    let rows = TREE
+    let listed = 0
+    const deps = fakeDeps('', () => (rows = ps([[1, 0, 1, '/sbin/launchd']])))
+
+    deps.listProcesses = () => {
+      listed += 1
+
+      return rows
+    }
+
+    const sweep = sweepEngineOnStop(engine, undefined, deps)
+
+    assert.equal(listed > 0, listedBeforeStop, 'the snapshot is taken before the stop signal')
+    Object.assign(engine, after)
+    rows = ORPHANED
+    await sweep()
+
+    assert.deepEqual(
+      deps.signals.map(({ pid, signal }) => `${signal} ${pid}`),
+      signals
+    )
+  })
+
+  test.each([
+    { name: 'the recorded pid is still that engine', same: true as boolean | undefined, ended: ['SIGTERM -300'] },
+    { name: 'the pid is gone or now another process', same: false as boolean | undefined, ended: [] },
+    { name: 'its identity cannot be read', same: undefined as boolean | undefined, ended: [] }
+  ])('an earlier Desktop’s engine: $name', async ({ ended, same }) => {
+    const order: string[] = []
+
+    let rows = ps([
+      [200, 1, 200, ENGINE],
+      [300, 200, 300, '/bin/zsh -lic ffmpeg -i a.mp4 b.mp4']
+    ])
+
+    const deps = fakeDeps('', () => (rows = ''))
+
+    deps.listProcesses = () => {
+      order.push('ps')
+
+      return rows
+    }
+
+    await stopEndingChildren(
+      { pid: 200 },
+      async () => {
+        order.push('verify')
+
+        return same
+      },
+      async () => {
+        order.push('stop')
+        rows = ps([[300, 1, 300, '/bin/zsh -lic ffmpeg -i a.mp4 b.mp4']])
+      },
+      undefined,
+      deps
+    )
+
+    assert.deepEqual(
+      deps.signals.map(({ pid, signal }) => `${signal} ${pid}`),
+      ended
+    )
+    assert.deepEqual(order.slice(0, 3), same === true ? ['verify', 'ps', 'stop'] : ['verify', 'stop'])
+  })
+
+  test('an earlier Desktop’s engine that would not stop keeps its children', async () => {
+    const deps = fakeDeps(
+      ps([
+        [200, 1, 200, ENGINE],
+        [300, 200, 300, '/bin/zsh -lic sleep 600']
+      ])
+    )
+
+    await assert.rejects(
+      stopEndingChildren(
+        { pid: 200 },
+        async () => true,
+        async () => {
+          throw new Error('Backend PID 200 did not stop cleanly.')
+        },
+        undefined,
+        deps
+      ),
+      /did not stop cleanly/
+    )
+    assert.deepEqual(deps.signals, [])
+  })
+})
+
 // The bug itself, with real processes: an "engine" starts a background shell in a
 // session of its own (what `terminal(background=true)` does), the engine's group is
 // killed the way the quit teardown kills it, and the shell lives on under pid 1.
@@ -292,5 +422,71 @@ describe.skipIf(process.platform === 'win32')('real processes', () => {
 
     assert.ok(ended.some(child => child.pid === shellPid))
     assert.ok(await until(() => !alive(shellPid) && !alive(sleeper.pid)))
+  })
+
+  /** An "engine" that starts a background shell in a session of its own and reports the shell's pid. */
+  function startEngine(): { engine: ChildProcess; shell: Promise<number> } {
+    const engineScript = [
+      "const { spawn } = require('node:child_process')",
+      "const bg = spawn('/bin/sh', ['-c', 'sleep 120 & wait'], { detached: true, stdio: 'ignore' })",
+      'process.stdout.write(String(bg.pid) + "\\n")',
+      'setInterval(() => {}, 1000)'
+    ].join('; ')
+
+    const engine = spawn(process.execPath, ['-e', engineScript], {
+      detached: true,
+      stdio: ['ignore', 'pipe', 'ignore']
+    })
+
+    started.push(engine.pid!)
+
+    const shell = new Promise<number>(resolve =>
+      engine.stdout!.once('data', chunk => resolve(Number(String(chunk).trim())))
+    ).then(pid => {
+      started.push(pid)
+
+      return pid
+    })
+
+    return { engine, shell }
+  }
+
+  // hc-1102: the stop a pool reap, an eviction, a deleted assistant or a re-home goes through —
+  // local-backend-lifecycle.ts with backend-child.ts's signals, wired as main.ts wires them — next
+  // to the same stop without the sweep (every such stop before hc-1102) and to the messaging
+  // gateway, which goes through that stop too but was never spawned by the lifecycle.
+  test('a stop while the app runs ends the background shell; without the sweep, and for the gateway, it lives on', async () => {
+    const posix = { forceKillProcessTree: () => undefined, isWindows: false }
+
+    const lifecycle = (sweep: boolean) =>
+      createLocalBackendLifecycle<ChildProcess>({
+        cancelSetup: () => undefined,
+        stopChild: child => stopBackendChild(child, posix),
+        waitForExit: child => waitForBackendExit(child, posix),
+        ...(sweep ? { sweepOnStop: (child: ChildProcess) => sweepEngineOnStop(child) } : {})
+      })
+
+    const swept = lifecycle(true)
+    const unswept = lifecycle(false)
+    const engine = startEngine()
+    const before = startEngine()
+    const gateway = startEngine()
+
+    swept.spawn(() => engine.engine)
+    unswept.spawn(() => before.engine)
+
+    const shells = await Promise.all([engine.shell, before.shell, gateway.shell])
+    const sleepsUnder = (child: ChildProcess) => snapshotEngineChildren([child]).some(found => found.name === 'sleep')
+
+    assert.ok(await until(() => [engine, before, gateway].every(({ engine: child }) => sleepsUnder(child))))
+
+    await Promise.all([swept.stop(engine.engine), unswept.stop(before.engine), swept.stop(gateway.engine)])
+
+    assert.ok(
+      await until(() => !alive(engine.engine.pid!) && !alive(before.engine.pid!) && !alive(gateway.engine.pid!))
+    )
+    assert.equal(alive(shells[0]), false, 'the swept engine’s background shell is ended with it')
+    assert.equal(alive(shells[1]), true, 'without the sweep the shell outlives its engine, as before hc-1102')
+    assert.equal(alive(shells[2]), true, 'a child the lifecycle never spawned keeps what it started')
   })
 })

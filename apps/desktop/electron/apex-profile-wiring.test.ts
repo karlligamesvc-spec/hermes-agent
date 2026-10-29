@@ -218,21 +218,20 @@ describe('pooled engines', () => {
     )
   })
 
+  // hc-1102: the reaper's deps moved into poolRetirement, which the LRU cap shares (apex-engine-stop-wiring.test.ts).
   test('the idle reaper asks the engine before it stops it', () => {
     const reaper = body('function startPoolIdleReaper(')
+    const retirement = body('function poolRetirement(')
 
-    assert.match(reaper, /void reapIdlePoolEngine\(\{ entry, label: profile,/)
+    assert.match(reaper, /void reapIdlePoolEngine\(poolRetirement\(profile, entry\)\)/)
+    assert.doesNotMatch(reaper, /stopPoolBackend\(/, 'the only stop is the one reapIdlePoolEngine decides on')
     assert.match(
-      reaper,
-      /stillPooled: \(\) => backendPool\.get\(profile\) === entry, stop: \(\) => stopPoolBackend\(profile\) \}\)/
+      retirement,
+      /stillPooled: \(\) => backendPool\.get\(profile\) === entry, stop: \(\) => stopPoolBackend\(profile\),/
     )
-    assert.equal(
-      reaper.match(/stopPoolBackend\(/g)?.length,
-      1,
-      'the only stop is the one reapIdlePoolEngine decides on'
-    )
+    assert.equal(retirement.match(/stopPoolBackend\(/g)?.length, 1)
     assert.match(
-      reaper,
+      retirement,
       /fetchJson\(`http:\/\/127\.0\.0\.1:\$\{entry\.port\}\$\{route\}`, entry\.token, \{ method: 'POST', body, timeoutMs: 5_000 \}\)/
     )
   })

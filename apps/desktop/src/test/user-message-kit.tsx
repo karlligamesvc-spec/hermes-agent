@@ -7,6 +7,9 @@
  * 「仍在发送中」).
  */
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { AssistantRuntimeProvider, ExportedMessageRepository, type ThreadMessage } from '@assistant-ui/react'
 import { act, render, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -130,4 +133,11 @@ export function bubble(root: HTMLElement): HTMLElement {
 
 export function bubbleText(root: HTMLElement): HTMLElement {
   return bubble(root).querySelector<HTMLElement>('[data-slot="aui_user-inline-text"]')!
+}
+
+/** hc-1105's rule in styles.css that lets the click-to-edit bubble's words select; empty if it is gone. */
+export function ownMessageSelectRule(): string {
+  const sheet = readFileSync(join(__dirname, '../styles.css'), 'utf8')
+
+  return /\[data-slot='aui_user-message-root'\] button\.composer-human-message,[^{]*\{[^}]*\}/.exec(sheet)?.[0] ?? ''
 }

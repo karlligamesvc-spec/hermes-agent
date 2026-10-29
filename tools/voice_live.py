@@ -131,7 +131,14 @@ def _resolve_credentials(live: dict[str, Any]) -> tuple[str, str]:
 
 def live_instructions(live: Optional[dict[str, Any]] = None) -> str:
     extra = str((live if live is not None else _live_section()).get("instructions") or "").strip()
-    return f"{LIVE_PERSONA}\n\n{extra}" if extra else LIVE_PERSONA
+    persona = LIVE_PERSONA
+    try:  # hc-1103: APEX's name in Desktop's single-thread mode (apex_overlay/apex_identity.py)
+        from apex_overlay.apex_identity import apex_live_persona
+
+        persona = apex_live_persona(LIVE_PERSONA)
+    except ImportError:  # a tree without the APEX overlay
+        pass
+    return f"{persona}\n\n{extra}" if extra else persona
 
 
 def resolve_gpt_live_status() -> dict[str, Any]:

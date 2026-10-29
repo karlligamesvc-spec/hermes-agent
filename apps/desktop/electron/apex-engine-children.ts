@@ -19,6 +19,16 @@
  * process is only signalled while its pid AND start time still match the
  * snapshot, so a recycled pid is never hit.
  *
+ * hc-1102: quitting is one of many ways an engine stops. A pool reap or
+ * eviction, a deleted assistant, a re-home, an engine update and a failed start
+ * stop engines while the app keeps running, and orphaned the same commands. All
+ * of them stop an owned engine through local-backend-lifecycle.ts `stop`, which
+ * now runs `sweepEngineOnStop` around the signal (the quit teardown included);
+ * the reap of an earlier Desktop's engine goes through `stopEndingChildren`.
+ * What may still be working is decided before any of this: a reap or an
+ * eviction only stops an engine that retired, and the engine's idle proof
+ * counts its running background commands (hermes_cli/web_server_idle_exit.py).
+ *
  * Left alone on purpose:
  * - The messaging gateway (`hermes_cli.main [--profile P] gateway …`) and
  *   everything under it: it has its own stop on quit (hc-1031).
@@ -29,7 +39,7 @@
  *
  * hc-1094 (engine-holders.ts) names what still holds the engine when an update
  * waits, and ends only APEX's own orphaned engine or gateway and what descends
- * from it. This sweep runs earlier, at quit, while the engines are still alive
+ * from it. This sweep runs earlier, at each stop, while the engine is still alive
  * and their children can be told apart by parentage; what it ends never
  * becomes one of those holders.
  */
@@ -162,7 +172,19 @@ export function engineDescendants(
   return found
 }
 
-/** The children of the given engine processes right now; [] on Windows or when `ps` fails. */
+/** What a stop knows about an engine: its pid and, for a spawned child, whether it already exited. */
+export interface EngineProcess {
+  exitCode?: null | number
+  pid?: number
+  signalCode?: null | string
+}
+
+const hasExited = (engine: EngineProcess) => engine.exitCode != null || engine.signalCode != null
+
+/**
+ * The children of the given engine processes right now; [] on Windows or when `ps` fails. An engine
+ * that already exited is skipped: its pid may be another process's by now.
+ */
 export function snapshotEngineChildren(
   engines: readonly unknown[],
   deps: EngineChildrenDeps = nodeEngineChildrenDeps()
@@ -172,7 +194,8 @@ export function snapshotEngineChildren(
   }
 
   const roots = engines
-    .map(engine => (engine as { pid?: unknown } | null | undefined)?.pid)
+    .filter(engine => engine != null && !hasExited(engine as EngineProcess))
+    .map(engine => (engine as EngineProcess).pid)
     .filter((pid): pid is number => Number.isInteger(pid) && (pid as number) > 1)
 
   if (roots.length === 0) {
@@ -224,7 +247,7 @@ export async function endEngineChildren(
   }
 
   log(
-    `[quit] ending ${survivors.length} process(es) the engines started: ${survivors.map(child => `${child.name}(${child.pid})`).join(', ')}`
+    `[engine-stop] ending ${survivors.length} process(es) the engines started: ${survivors.map(child => `${child.name}(${child.pid})`).join(', ')}`
   )
   signal(survivors, 'SIGTERM', deps)
 
@@ -239,4 +262,38 @@ export async function endEngineChildren(
   signal(stillRunning(survivors, deps), 'SIGKILL', deps)
 
   return survivors
+}
+
+/**
+ * hc-1102: one engine's stop, wherever it comes from. Call it right before the stop signal; the
+ * function it returns ends the snapshot's survivors, and only once the engine has exited: one that
+ * outlived its stop (SIGKILL included) still owns what it started.
+ */
+export function sweepEngineOnStop(
+  engine: EngineProcess,
+  log: (line: string) => void = () => undefined,
+  deps: EngineChildrenDeps = nodeEngineChildrenDeps()
+): () => Promise<EngineChild[]> {
+  const children = snapshotEngineChildren([engine], deps)
+
+  return async () => (children.length > 0 && hasExited(engine) ? endEngineChildren(children, log, deps) : [])
+}
+
+/**
+ * hc-1102: the same for an engine an earlier Desktop left behind (backend-ownership.ts), which is
+ * no child of ours and has no exit code to read. `stop` verifies and stops it; the snapshot is
+ * taken only once `isSameProcess` confirms the recorded pid still is that engine, and nothing is
+ * ended when the stop throws (the engine may still be running).
+ */
+export async function stopEndingChildren(
+  engine: { pid: number },
+  isSameProcess: () => Promise<boolean | undefined>,
+  stop: () => Promise<void>,
+  log: (line: string) => void = () => undefined,
+  deps: EngineChildrenDeps = nodeEngineChildrenDeps()
+): Promise<void> {
+  const children = (await isSameProcess()) === true ? snapshotEngineChildren([engine], deps) : []
+
+  await stop()
+  await endEngineChildren(children, log, deps)
 }

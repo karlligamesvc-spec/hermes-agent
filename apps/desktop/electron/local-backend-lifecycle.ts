@@ -20,6 +20,12 @@ interface LocalBackendLifecycleDeps<Child> {
   stopChild: (child: Child) => void
   waitForExit: (child: Child) => Promise<void>
   cancelSetup: () => void
+  /**
+   * hc-1102: called for an owned child right before it is told to stop; what it returns runs once
+   * the exit wait is over (apex-engine-children.ts `sweepEngineOnStop`). Children this lifecycle
+   * never spawned — the messaging gateway goes through the same `stop` — are not swept.
+   */
+  sweepOnStop?: (child: Child) => () => Promise<unknown>
   timeoutMs?: number
 }
 
@@ -48,8 +54,10 @@ export function createLocalBackendLifecycle<Child>(deps: LocalBackendLifecycleDe
     }
 
     const stopping = (async () => {
+      const sweep = children.has(child) ? deps.sweepOnStop?.(child) : undefined
       deps.stopChild(child)
       await deps.waitForExit(child)
+      await sweep?.()
     })()
 
     stops.set(child, stopping)

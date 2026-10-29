@@ -369,7 +369,7 @@ def test_registering_twice_or_without_a_host_reports_false():
 @pytest.mark.usefixtures("switch_on")
 def test_a_moved_upstream_line_is_reported_not_guessed(monkeypatch):
     monkeypatch.delattr(system_prompt, "HERMES_AGENT_HELP_GUIDANCE_NO_SKILLS")
-    assert desktop_version._install_help_guidance(system_prompt) is False
+    assert desktop_version.install_help_guidance(system_prompt) is False
     assert system_prompt.HERMES_AGENT_HELP_GUIDANCE == prompt_builder.HERMES_AGENT_HELP_GUIDANCE
 
 
