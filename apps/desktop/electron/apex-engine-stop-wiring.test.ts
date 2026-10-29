@@ -97,4 +97,21 @@ describe('every local engine stop in main.ts ends what the engine started', () =
     assert.doesNotMatch(evict, /stopPoolBackend\(/, 'no stop that skips the engine’s answer')
     assert.match(body('function poolRetirement('), /stop: \(\) => stopPoolBackend\(profile\)/)
   })
+
+  // hc-1106 restarts engines still on an old relay key once they retire, asking the same fence
+  // (apex-engine-relay-key.ts), so a running background command makes it wait; the stop itself
+  // goes through the lifecycle like any other. The messaging gateway restarts without a sweep.
+  test('the stale relay key restart stops the primary and pooled engines through the swept stops', () => {
+    const holders = code.slice(
+      code.indexOf('const staleRelayKeys = new StaleRelayKeyRestarts('),
+      code.indexOf('function restartEnginesOnStaleRelayKey(')
+    )
+
+    assert.match(holders, /\.\.\.poolKeyHolders\(backendPool\.entries\(\), \{ stop: stopPoolBackend,/)
+    assert.match(body('async function stopPoolBackend('), /await poolStopper\.stop\(profile\)/)
+    assert.match(holders, /restart: \(\) => teardownPrimaryBackendAndWait\(\{ soft: true \}\)\.then\(/)
+    assert.match(body('async function teardownPrimaryBackendAndWait('), /resetHermesConnection\(\{ soft \}\)/)
+    assert.match(body('function resetHermesConnection('), /\n\s+stopBackendChild\(hermesProcess\)\n/)
+    assert.match(holders, /\{ restart: restartMessagingGateway \}/)
+  })
 })
