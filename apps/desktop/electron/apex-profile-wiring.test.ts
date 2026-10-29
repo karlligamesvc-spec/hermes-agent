@@ -66,7 +66,7 @@ function spawnEnv(fnBody: string, marker: string): string[] {
 }
 
 describe('every APEX config.yaml writer covers the managed profiles', () => {
-  test('the relay-key sync writes the root first, then each managed profile, then restarts stale pooled engines', () => {
+  test('the relay-key sync writes the root first, then each managed profile, then restarts engines on the old key', () => {
     const sync = body('function syncManagedRelayKeyToConfig(')
     const rootWrite = sync.indexOf('const result = persistRelayKeyInHome(root, managed, reason, rememberLog)')
 
@@ -74,10 +74,10 @@ describe('every APEX config.yaml writer covers the managed profiles', () => {
       'profiles.forEach(home => persistRelayKeyInHome(home, managed, reason, rememberLog))'
     )
 
-    const restart = sync.indexOf('void restartPoolEnginesOnStaleRelayKey(reason)')
+    const restart = sync.indexOf('void restartEnginesOnStaleRelayKey(reason)')
 
     assert.match(sync, /const \[root, \.\.\.profiles\] = apexConfigHomes\(managed\)/)
-    assert.ok(rootWrite > 0 && profileWrites > rootWrite && restart > profileWrites, 'root → profiles → pooled engines')
+    assert.ok(rootWrite > 0 && profileWrites > rootWrite && restart > profileWrites, 'root → profiles → running engines')
     assert.match(sync, /return result\n\}/, 'the root result is what callers gate on')
     assert.doesNotMatch(
       sync,
@@ -91,17 +91,12 @@ describe('every APEX config.yaml writer covers the managed profiles', () => {
     const sync = reload.indexOf('syncManagedRelayKeyToConfig(reason)')
 
     assert.ok(sync > 0 && sync < reload.indexOf('teardownPrimaryBackendAndWait'), 'sync first')
-    assert.ok(sync < reload.indexOf('if (!backendConnectionState.getProcess())'), 'also when no primary is live')
+    assert.ok(sync < reload.indexOf('if (!backendConnectionState.getProcess() ||'), 'also when no primary is live')
   })
 
-  test('the stale-key restart covers exactly the managed homes and goes through the pool stopper', () => {
-    const restart = body('async function restartPoolEnginesOnStaleRelayKey(')
-
-    assert.match(
-      restart,
-      /poolKeysOnStaleRelayKey\(backendPool\.entries\(\), apexConfigHomes\(managed\)\.map\(home => home\.profile\), managed\.key\)/
-    )
-    assert.match(restart, /await Promise\.all\(stale\.map\(key => stopPoolBackend\(key\)\)\)/)
+  // hc-1106 moved the stale-key restart to apex-engine-relay-key.ts; its wiring guard covers the pool too.
+  test('the stale-key restart goes through the pool stopper', () => {
+    assert.match(code, /\.\.\.poolKeyHolders\(backendPool\.entries\(\), \{ stop: stopPoolBackend, stillPooled: \(key, entry\) => backendPool\.get\(key\) === entry,/)
   })
 
   test('the product-block guard runs over apexConfigHomes and nothing heals the root alone', () => {
@@ -129,7 +124,7 @@ describe('every APEX config.yaml writer covers the managed profiles', () => {
 
     assert.match(
       registration.slice(0, registration.indexOf('})\n') + 3),
-      /^registerProfileConfigIpc\(ipcMain, \{ root: HERMES_HOME, homes: managed => apexConfigHomes\(managed\), context: productBlocksContext,\n\s+afterHeal: reason => restartPoolEnginesOnStaleRelayKey\(reason\), log: rememberLog \}\)\n$/m,
+      /^registerProfileConfigIpc\(ipcMain, \{ root: HERMES_HOME, homes: managed => apexConfigHomes\(managed\), context: productBlocksContext,\n\s+afterHeal: reason => restartEnginesOnStaleRelayKey\(reason\), log: rememberLog \}\)\n$/m,
       'registered at module scope, so the handler is live from startup'
     )
 
@@ -223,21 +218,20 @@ describe('pooled engines', () => {
     )
   })
 
+  // hc-1102: the reaper's deps moved into poolRetirement, which the LRU cap shares (apex-engine-stop-wiring.test.ts).
   test('the idle reaper asks the engine before it stops it', () => {
     const reaper = body('function startPoolIdleReaper(')
+    const retirement = body('function poolRetirement(')
 
-    assert.match(reaper, /void reapIdlePoolEngine\(\{ entry, label: profile,/)
+    assert.match(reaper, /void reapIdlePoolEngine\(poolRetirement\(profile, entry\)\)/)
+    assert.doesNotMatch(reaper, /stopPoolBackend\(/, 'the only stop is the one reapIdlePoolEngine decides on')
     assert.match(
-      reaper,
-      /stillPooled: \(\) => backendPool\.get\(profile\) === entry, stop: \(\) => stopPoolBackend\(profile\) \}\)/
+      retirement,
+      /stillPooled: \(\) => backendPool\.get\(profile\) === entry, stop: \(\) => stopPoolBackend\(profile\),/
     )
-    assert.equal(
-      reaper.match(/stopPoolBackend\(/g)?.length,
-      1,
-      'the only stop is the one reapIdlePoolEngine decides on'
-    )
+    assert.equal(retirement.match(/stopPoolBackend\(/g)?.length, 1)
     assert.match(
-      reaper,
+      retirement,
       /fetchJson\(`http:\/\/127\.0\.0\.1:\$\{entry\.port\}\$\{route\}`, entry\.token, \{ method: 'POST', body, timeoutMs: 5_000 \}\)/
     )
   })

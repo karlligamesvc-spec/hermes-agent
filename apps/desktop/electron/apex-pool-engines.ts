@@ -10,10 +10,11 @@
  *    config.yaml once per session, so rewriting the key on disk is not enough —
  *    the same reason main reloads the primary engine after a rotation
  *    (reloadBackendForRelayKey). Each pooled child is stamped with the key it
- *    was spawned under; after any key sync, the children of managed profiles
- *    spawned under another key are stopped, and the renderer's reconnect
- *    respawns them on the new one. A child already on the current key (say,
- *    one respawned between two syncs) is left alone.
+ *    was spawned under; after any key sync, the children spawned under another
+ *    key are stopped once idle, and the renderer's reconnect respawns them on
+ *    the new one (apex-engine-relay-key.ts, hc-1106, which covers the primary
+ *    engine and the messaging gateway the same way). A child already on the
+ *    current key (say, one respawned between two syncs) is left alone.
  *
  * 2. Idle reaping asks the engine first. The reaper only sees `lastActiveAt`,
  *    which the renderer bumps every minute while it holds a socket to that
@@ -51,29 +52,6 @@ export interface PoolEngineEntry {
 export function stampPoolEngine(entry: PoolEngineEntry, profile: string, relayKey: string | undefined): void {
   entry.apexProfile = profile
   entry.apexRelayKey = relayKey ? maskRelayKey(relayKey) : ''
-}
-
-/**
- * Pool keys whose local child serves one of `profiles` (the managed homes) but
- * was spawned under a relay key other than `relayKey`. Remote descriptors
- * (no child) and unstamped entries are never picked.
- */
-export function poolKeysOnStaleRelayKey(
-  entries: Iterable<[string, PoolEngineEntry]>,
-  profiles: Iterable<string>,
-  relayKey: string | undefined
-): string[] {
-  if (!relayKey) {
-    return []
-  }
-
-  const managed = new Set(profiles)
-  const current = maskRelayKey(relayKey)
-
-  return [...entries]
-    .filter(([, entry]) => Boolean(entry.process) && entry.apexProfile !== undefined && managed.has(entry.apexProfile))
-    .filter(([, entry]) => entry.apexRelayKey !== current)
-    .map(([key]) => key)
 }
 
 export interface RetirementVerdict {
@@ -144,6 +122,8 @@ export interface IdleReapDeps {
   entry: PoolEngineEntry
   label: string
   idleSeconds: number
+  /** hc-1102: the log's words for this stop when it is not the idle reaper's (the LRU cap's eviction). */
+  what?: string
   post: PoolEnginePost
   /** False once the entry left the pool (stopped, evicted, respawned) during the probe. */
   stillPooled: () => boolean
@@ -163,7 +143,7 @@ export interface IdleReapDeps {
 export async function reapIdlePoolEngine(deps: IdleReapDeps): Promise<'kept' | 'skipped' | 'stopped'> {
   const { entry, label, log } = deps
   const now = deps.now ?? Date.now
-  const reaping = `Reaping idle profile backend "${label}" (idle > ${deps.idleSeconds}s)`
+  const reaping = deps.what ?? `Reaping idle profile backend "${label}" (idle > ${deps.idleSeconds}s)`
 
   if (!entry.process || !entry.port || !entry.token) {
     log(reaping)
