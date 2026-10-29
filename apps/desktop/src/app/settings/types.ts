@@ -9,11 +9,13 @@ export type SettingsView =
   | 'billing'
   | 'connections'
   | 'gateway'
+  | 'im'
   | 'keybinds'
   | 'keys'
   | 'notifications'
   | 'providers'
   | 'sessions'
+  | 'usage'
   | 'vault'
   | `config:${string}`
 export type EnvPatch = Partial<Pick<EnvVarInfo, 'is_set' | 'redacted_value'>>

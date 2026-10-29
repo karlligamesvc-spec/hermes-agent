@@ -49,3 +49,22 @@ describe.each([
     )
   })
 })
+
+describe('hc-1109: what 个性化 holds', () => {
+  it.each([
+    ['switch-off', true],
+    ['developer', true],
+    ['product', false]
+  ] as const)('%s: 关于 at the foot → %s; the 记得什么 ledger lives under 记忆', async (mode, about) => {
+    seedAccount('tier')
+    setToolViewMode(mode === 'developer' ? 'technical' : 'product')
+    setSingleThreadFlagForTest(mode !== 'switch-off')
+
+    const html = await pageHtml(<PersonalizationSettings />)
+
+    expect(html.includes('about-body')).toBe(about)
+    expect(html).not.toContain('data-memory-ledger-settings')
+    expect(html).toContain('creator-profile')
+    expect(html).toContain('soul-editor-')
+  })
+})

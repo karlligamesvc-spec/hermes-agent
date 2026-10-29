@@ -2,176 +2,176 @@
   "/settings": {
     "location": "/settings",
     "page": "personalization-view",
-    "rail": "*config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=config:personalization": {
     "location": "/settings?tab=config:personalization",
     "page": "personalization-view",
-    "rail": "*config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=config:model": {
     "location": "/settings?tab=config:model",
-    "page": "config-model",
-    "rail": "config:personalization *config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=config:chat": {
     "location": "/settings?tab=config:chat",
-    "page": "config-chat",
-    "rail": "config:personalization config:model *config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=config:appearance": {
     "location": "/settings?tab=config:appearance",
     "page": "appearance-view",
-    "rail": "config:personalization config:model config:chat *config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "rail": "config:personalization config:memory config:voice notifications *config:appearance im usage about"
   },
   "/settings?tab=config:workspace": {
     "location": "/settings?tab=config:workspace",
-    "page": "config-workspace",
-    "rail": "config:personalization config:model config:chat config:appearance *config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=config:safety": {
     "location": "/settings?tab=config:safety",
-    "page": "config-safety",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace *config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=config:browser": {
     "location": "/settings?tab=config:browser",
-    "page": "config-browser",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety *config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=config:memory": {
     "location": "/settings?tab=config:memory",
-    "page": "config-memory",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault *config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "page": "它记得什么电脑上和微信、飞书里的助手记得的是同一份。每条都能改、删、加。删掉就是真删：从下一段对话起它就不知道了，正在聊的这一段里它可能还记得。这个账号还没有记忆底账；登录后再打开这一页。",
+    "rail": "config:personalization *config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=config:voice": {
     "location": "/settings?tab=config:voice",
     "page": "config-voice",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory *config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "rail": "config:personalization config:memory *config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=config:advanced": {
     "location": "/settings?tab=config:advanced",
-    "page": "config-advanced",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice *config:advanced notifications providers gateway keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=config:nothing": {
     "location": "/settings?tab=config:nothing",
     "page": "personalization-view",
-    "rail": "*config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=providers": {
     "location": "/settings?tab=providers",
-    "page": "providers-view-accounts",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications *providers *pview:accounts pview:keys pview:custom-endpoints gateway keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=providers&pview=keys": {
     "location": "/settings?tab=providers&pview=keys",
-    "page": "providers-view-keys",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications *providers pview:accounts *pview:keys pview:custom-endpoints gateway keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=providers&pview=custom-endpoints": {
     "location": "/settings?tab=providers&pview=custom-endpoints",
-    "page": "providers-view-custom-endpoints",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications *providers pview:accounts pview:keys *pview:custom-endpoints gateway keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=providers&pview=local": {
     "location": "/settings?tab=providers&pview=local",
-    "page": "providers-view-local",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications *providers pview:accounts pview:keys pview:custom-endpoints gateway keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=gateway": {
     "location": "/settings?tab=gateway",
-    "page": "gateway-view",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers *gateway keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=connections": {
-    "location": "/settings?tab=gateway",
-    "page": "gateway-view",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers *gateway keybinds keys sessions about"
+    "location": "/settings?tab=connections",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=keybinds": {
     "location": "/settings?tab=keybinds",
-    "page": "keybind-view",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway *keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=keys": {
     "location": "/settings?tab=keys",
-    "page": "keys-view-tools",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds *keys *kview:tools kview:settings sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=keys&kview=settings": {
     "location": "/settings?tab=keys&kview=settings",
-    "page": "keys-view-settings",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds *keys kview:tools *kview:settings sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=keys&key=TAVILY_API_KEY": {
     "location": "/settings?tab=keys&key=TAVILY_API_KEY",
-    "page": "keys-view-tools",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds *keys *kview:tools kview:settings sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=vault": {
     "location": "/settings?tab=vault",
-    "page": "vault-view",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser *vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=vault&kind=login&label=GitHub": {
     "location": "/settings?tab=vault&kind=login&label=GitHub",
-    "page": "vault-view",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser *vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=notifications": {
     "location": "/settings?tab=notifications",
     "page": "notifications-view",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced *notifications providers gateway keybinds keys sessions about"
+    "rail": "config:personalization config:memory config:voice *notifications config:appearance im usage about"
   },
   "/settings?tab=sessions": {
     "location": "/settings?tab=sessions",
-    "page": "sessions-view",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys *sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=sessions&session=s-archived": {
     "location": "/settings?tab=sessions&session=s-archived",
-    "page": "sessions-view",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys *sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=about": {
     "location": "/settings?tab=about",
     "page": "about-view",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions *about"
+    "rail": "config:personalization config:memory config:voice notifications config:appearance im usage *about"
   },
   "/settings?tab=billing": {
     "location": "/settings?tab=billing",
     "page": "personalization-view",
-    "rail": "*config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=im": {
     "location": "/settings?tab=im",
-    "page": "personalization-view",
-    "rail": "*config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "page": "连接微信和飞书让 AI 助手在你常用的聊天软件里替你回消息——扫一下码就能连上一个渠道。连接异常重试",
+    "rail": "config:personalization config:memory config:voice notifications config:appearance *im usage about"
   },
   "/settings?tab=usage": {
     "location": "/settings?tab=usage",
-    "page": "personalization-view",
-    "rail": "*config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "page": "用量你的套餐，和这个周期用了多少。还没读到用量。登录 APEX 账号后，这里会显示套餐和用了多少。查看使用记录",
+    "rail": "config:personalization config:memory config:voice notifications config:appearance im *usage about"
   },
   "/settings?tab=mcp": {
     "location": "/skills?tab=mcp",
     "page": "personalization-view",
-    "rail": "*config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=plugins&plugin=demo": {
     "location": "/skills?tab=plugins&plugin=demo",
     "page": "personalization-view",
-    "rail": "*config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=config:model&aux=vision": {
     "location": "/settings?tab=config:model&aux=vision",
-    "page": "config-model",
-    "rail": "config:personalization *config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications providers gateway keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   },
   "/settings?tab=config:advanced&field=agent.max_turns": {
     "location": "/settings?tab=config:advanced&field=agent.max_turns",
-    "page": "config-advanced",
-    "rail": "config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice *config:advanced notifications providers gateway keybinds keys sessions about"
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage about"
   }
 }
