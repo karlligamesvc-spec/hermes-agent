@@ -43,6 +43,8 @@ _SEAM_MODULES = (
     "user_profile_prompt",
     # hc-1016 the account's memory ledger: prompt section + apex_memory tool.
     "memory_ledger",
+    # hc-1097 a ledger change reaches every open session on its next turn.
+    "memory_ledger_live",
     # hc-1015 how APEX talks in single-thread mode.
     "single_thread_prompt",
     # hc-1082 each assistant's own name and the apex_rename tool (several assistants on).

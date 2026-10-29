@@ -60,7 +60,8 @@
   margin-left: auto;
 }
 
-[data-single-thread-chat] button.composer-human-message {
+/* Your words: [data-user-bubble] since hc-1101 (no click-to-edit); a watch window keeps its button. */
+[data-single-thread-chat] :is(button, [data-user-bubble]).composer-human-message {
   --conversation-text-font-size: 14.5px;
   --dt-line-height: 1.7;
   --human-msg-line-height: 1.7;
@@ -71,20 +72,43 @@
   color: var(--st-me-text);
 }
 
-[data-single-thread-chat] button.composer-human-message .sticky-human-clamp {
+[data-single-thread-chat] :is(button, [data-user-bubble]).composer-human-message .sticky-human-clamp {
   max-height: none;
   -webkit-mask-image: none;
   mask-image: none;
 }
 
-[data-single-thread-chat] button.composer-human-message :is(a, .ref) {
+[data-single-thread-chat] :is(button, [data-user-bubble]).composer-human-message :is(a, .ref) {
   color: inherit;
   text-decoration: underline;
 }
 
-[data-single-thread-chat] button.composer-human-message code {
+[data-single-thread-chat] :is(button, [data-user-bubble]).composer-human-message code {
   background-color: rgb(255 255 255 / 0.18);
   color: inherit;
+}
+
+/* hc-1101: what you sent can be selected and copied: the words select like any text
+   (every button is unselectable app-wide in styles.css, so this also covers a watch
+   window's button), and nothing on them asks for a click but their links. */
+[data-single-thread-chat] :is(button, [data-user-bubble]).composer-human-message,
+[data-single-thread-chat] :is(button, [data-user-bubble]).composer-human-message * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+[data-single-thread-chat] [data-user-bubble],
+[data-single-thread-chat] [data-user-bubble] .sticky-human-clamp {
+  cursor: auto;
+}
+
+[data-single-thread-chat] [data-user-bubble] a {
+  cursor: pointer;
+}
+
+[data-single-thread-chat] :is(button, [data-user-bubble]).composer-human-message ::selection {
+  background-color: rgb(255 255 255 / 0.36);
+  color: var(--st-me-text);
 }
 
 /* Pictures and files you sent line up under your bubble, on the right. */
@@ -93,19 +117,52 @@
   margin-block: 0;
 }
 
-/* The hover restore / stop icon moves beside the bubble, on its left. */
-[data-single-thread-chat] [data-slot='aui_user-message-root'] [data-slot='popover-anchor'] > div {
+/* The hover rail (复制, 改一下, then 从这条重来 or stop) moves beside the bubble, on its left.
+   In the transcript only your bubble's reaction anchor holds divs: the rail and, since
+   hc-1101, the bubble itself, which stays put. */
+[data-single-thread-chat] [data-slot='popover-anchor'] > div:not([data-user-bubble]) {
   right: calc(100% + 4px);
   bottom: 6px;
+  gap: 2px;
 }
 
 /* APEX's words: a grey bubble on the left (text parts only). What follows the words —
    用时 · 看过程, its steps, then the next-step buttons — stacks under it 10px apart. */
 
-[data-single-thread-chat] [data-slot='aui_assistant-message-content'] {
-  display: flex;
-  flex-direction: column;
+/* hc-1101: the reply is a two-column grid, so the copy / read-aloud / answer-again row can
+   sit at the right end of the 「用时 · 看过程」 line instead of taking a row of its own.
+   The words' box and the process area open up (display: contents) and the grid orders what
+   they hold: the words; 用时 · 看过程 with the row beside it; the steps, a failure card; the
+   next steps; 「记下了」. Everything but those two spans both columns. The DOM is
+   unchanged. */
+[data-single-thread-chat] [data-slot='aui_assistant-message-root'] {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: start;
   row-gap: 10px;
+}
+
+[data-single-thread-chat] [data-slot='aui_assistant-message-content'],
+[data-single-thread-chat] [data-single-thread-process] {
+  display: contents;
+}
+
+[data-single-thread-chat] [data-slot='aui_assistant-message-root'] > *,
+[data-single-thread-chat] [data-slot='aui_assistant-message-content'] > *,
+[data-single-thread-chat] [data-single-thread-process] > * {
+  grid-column: 1 / -1;
+  order: 2;
+}
+
+/* The boxes' text indent (styles.css) moves onto what they hold. */
+[data-single-thread-chat] [data-slot='aui_assistant-message-content'] > *,
+[data-single-thread-chat] [data-single-thread-process] > * {
+  max-width: calc(100% - var(--message-text-indent));
+  margin-inline-start: var(--message-text-indent);
+}
+
+[data-single-thread-chat] [data-slot='aui_assistant-message-content'] > .aui-md {
+  order: 0;
 }
 
 [data-single-thread-chat] [data-slot='aui_assistant-message-content'] > .aui-md {
@@ -113,7 +170,7 @@
   --dt-line-height: 1.7;
   --paragraph-gap: 6px;
   width: fit-content;
-  max-width: min(560px, 100%);
+  max-width: min(560px, calc(100% - var(--message-text-indent)));
   border-radius: 18px;
   background-color: var(--st-ai-bubble);
   padding: 10px 15px;
@@ -154,7 +211,7 @@
 /* Next steps: pills under the reply, the first one filled. */
 
 [data-single-thread-chat] [data-next-steps] {
-  order: 1;
+  order: 3;
   margin-top: 0;
 }
 
@@ -186,10 +243,33 @@
   color: var(--st-me-text);
 }
 
-/* The copy / read-aloud / retry row sits under the bubble it belongs to, on the left. */
+/* The copy / read-aloud / answer-again row: at the right end of the 「用时 · 看过程」 line,
+   without making that line taller (Kael: 「B 放在用时那行右边」). A reply with no such line
+   keeps it at the bottom, as before. */
 
 [data-single-thread-chat] [data-slot='aui_assistant-message-root'] > div:has(> div > [data-slot='aui_msg-actions']) {
+  order: 5;
   align-items: flex-start;
+  /* Flush under what precedes it, as it was. */
+  margin-top: -10px;
+}
+
+[data-single-thread-chat] [data-process-status] {
+  grid-column: 1;
+  order: 1;
+}
+
+[data-single-thread-chat] :has([data-process-status]) > div:has(> div > [data-slot='aui_msg-actions']) {
+  grid-column: 2;
+  order: 1;
+  align-self: center;
+  margin-block: -6px;
+}
+
+/* 「记下了」 sat flush under the words' box; the column's gap does not open above it. */
+[data-single-thread-chat] [data-memory-noted] {
+  order: 4;
+  margin-top: -10px;
 }
 
 [data-single-thread-chat] [data-slot='aui_assistant-message-root'] div:has(> [data-slot='aui_msg-actions']) {

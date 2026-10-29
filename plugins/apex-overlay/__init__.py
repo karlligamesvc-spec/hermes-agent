@@ -97,6 +97,13 @@ _CONTEXT_SEAMS = (
         "and the agent cannot write to it.",
     ),
     (
+        "memory_ledger_live",
+        "apex-overlay: hc-1097 live memory ledger seam did not register (see "
+        "prior warning). A session already open keeps the 记忆底账 of its "
+        "first turn: what another assistant or the 「它记得什么」 page noted "
+        "since does not reach it.",
+    ),
+    (
         "single_thread_prompt",
         "apex-overlay: hc-1015 single-thread prompt section did not "
         "register (see prior warning). With desktop_features.single_thread "

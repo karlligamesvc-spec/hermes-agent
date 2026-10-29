@@ -46,7 +46,6 @@ test('desktop background child processes opt into hidden Windows consoles', () =
   requireHiddenChildOptions(source, "execFileSync('reg'")
   requireHiddenChildOptions(source, 'execFileSync(pyExe')
   requireHiddenChildOptions(source, 'spawn(resolveGitBinary()')
-  requireHiddenChildOptions(source, "execFileSync('taskkill'")
   requireHiddenChildOptions(source, "spawn('curl'")
   requireHiddenChildOptions(source, 'const child = spawnOwnedBackend(backend.command, backend.args')
   requireHiddenChildOptions(source, 'hermesProcess = spawnOwnedBackend(backend.command, backend.args')
@@ -56,6 +55,15 @@ test('desktop background child processes opt into hidden Windows consoles', () =
   // guarded below.
   requireHiddenChildOptions(source, 'spawn(tarExe')
   requireHiddenChildOptions(source, "spawn(pythonExe, ['-m', 'agent.coding_agents.run_once']")
+})
+
+// hc-1100: forceKillProcessTree (the Windows quit / update tree kill) moved from main.ts into
+// backend-child.ts unchanged; its taskkill stays hidden there.
+test('the backend tree kill hides its taskkill console', () => {
+  const source = readElectronFile('backend-child.ts')
+
+  assert.match(source, /import \{ hiddenWindowsChildOptions \} from '\.\/windows-child-options'/)
+  requireHiddenChildOptions(source, "execFileSync('taskkill'")
 })
 
 test('bundle fixup/verify runner hides Windows console children', () => {
