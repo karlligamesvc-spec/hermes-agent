@@ -104,6 +104,7 @@ import {
 import { ensureApexDesktopSouls } from './apex-default-soul'
 import { clientConfigForRenderer } from './apex-desktop-features'
 import { endEngineChildren, snapshotEngineChildren } from './apex-engine-children'
+import { gatewayKeyHolder, gatewayStatePath, holdsRelayKey, poolKeyHolders, primaryKeyHolder, reconcileRelayKeyAndEngines, StaleRelayKeyRestarts, stampKeyHolderProcess } from './apex-engine-relay-key'
 import {
   buildFeishuBackendEnv,
   feishuCredentialsUrl,
@@ -143,7 +144,6 @@ import {
   MODEL_DISABLED_PROVIDERS,
   modelDisabledProvidersYaml,
   parseProvisionResponse,
-  reconcileManagedRelayKey,
   renewedTokenFromHeaders,
   resolveApexEndpoints,
   SEED_PRODUCT_DEFAULTS_BLOCK,
@@ -158,7 +158,7 @@ import { normalizeStoredPluginsState, syncPlatformPlugins } from './apex-platfor
 import { normalizeStoredManifest } from './apex-platform-skills'
 import { registerProfileSkillsSync, syncPlatformSkills } from './apex-platform-skills-sync'
 import { buildPlatformToolSpawnEnv, describePlatformToolSpawnEnv } from './apex-platform-tools'
-import { makeRoomInPool, poolAllBusyError, poolKeysOnStaleRelayKey, reapIdlePoolEngine, stampPoolEngine } from './apex-pool-engines'
+import { makeRoomInPool, poolAllBusyError, reapIdlePoolEngine, stampPoolEngine } from './apex-pool-engines'
 import { guardProductBlocksInHomes, persistRelayKeyInHome } from './apex-profile-config'
 import { registerProfileConfigIpc } from './apex-profile-config-ipc'
 import { isMultiBotActive, managedProfileHomes } from './apex-profile-homes'
@@ -13521,6 +13521,8 @@ async function runHermesStart() {
       })
     )
 
+    stampKeyHolderProcess(hermesProcess, resolveManagedConfig().key) // hc-1106: the key its env carries
+
     // Buffer stdout+stderr from the instant of spawn (#93608): an early
     // crash's traceback must survive into the claim error and the
     // before-ready exit message shown by the boot UI. rememberLog attaches
@@ -19002,13 +19004,13 @@ function syncManagedRelayKeyToConfig(reason = 'sync') {
   }
 
   // hc-1080: the root decides the result (the primary engine and every caller's
-  // gate read it); each managed profile follows, then pooled engines still on
-  // the old key restart.
+  // gate read it); each managed profile follows, then every running engine still
+  // on the old key restarts once idle (hc-1106).
   const [root, ...profiles] = apexConfigHomes(managed)
   const result = persistRelayKeyInHome(root, managed, reason, rememberLog)
 
   profiles.forEach(home => persistRelayKeyInHome(home, managed, reason, rememberLog))
-  void restartPoolEnginesOnStaleRelayKey(reason)
+  void restartEnginesOnStaleRelayKey(reason)
 
   return result
 }
@@ -19019,33 +19021,29 @@ function apexConfigHomes(managed: { baseUrl?: string } = resolveManagedConfig())
   return managedProfileHomes(HERMES_HOME, managed.baseUrl || resolveApexEndpoints(process.env).relayBaseUrl)
 }
 
-// hc-1080: a pooled engine keeps the key it was spawned with, like the primary
-// (see below). Stop the managed profiles' engines spawned under another key; the
-// renderer's reconnect respawns them on the new one (apex-pool-engines.ts).
-async function restartPoolEnginesOnStaleRelayKey(reason) {
-  const managed = resolveManagedConfig()
-  const stale = poolKeysOnStaleRelayKey(backendPool.entries(), apexConfigHomes(managed).map(home => home.profile), managed.key)
+// hc-1106: every running engine and the messaging gateway keep the key they were spawned with; after any key
+// sync the ones on another key restart once idle (apex-engine-relay-key.ts). The primary restarts in place: its
+// socket drops and the renderer's reconnect keeps the open conversation, which a connection-switch broadcast wipes.
+const staleRelayKeys = new StaleRelayKeyRestarts({ log: rememberLog, relayKey: () => resolveManagedConfig().key, holders: () => [
+  ...poolKeyHolders(backendPool.entries(), { stop: stopPoolBackend, stillPooled: (key, entry) => backendPool.get(key) === entry,
+    post: entry => (route, body) => fetchJson(`http://127.0.0.1:${entry.port}${route}`, entry.token, { method: 'POST', body, timeoutMs: 5_000 }) }),
+  ...gatewayKeyHolder(() => (messagingGatewayChildAlive() ? messagingGatewayRuntime.process : null),
+    gatewayStatePath(HERMES_HOME, messagingGatewayRuntime.profile), { restart: restartMessagingGateway }),
+  ...primaryKeyHolder(() => backendConnectionState.getProcess(), primaryProfileKey(), { restart: () => teardownPrimaryBackendAndWait({ soft: true }).then(() => ensureBackend(primaryProfileKey())),
+    post: async (route, body) => fetchJsonForBackend(await backendConnectionState.getPromise(), route, { method: 'POST', body, timeoutMs: 5_000 }) })] })
 
-  stale.forEach(key => rememberLog(`[apexnodes] restarting profile backend "${key}" for the refreshed relay key (${reason})`))
-  await Promise.all(stale.map(key => stopPoolBackend(key)))
-}
+function restartEnginesOnStaleRelayKey(reason: string) {return staleRelayKeys.run(reason)}
 
-// Make the RUNNING backend authenticate with the key we just wrote. config.yaml
-// is read when an agent is constructed, and `POST /api/model/set` is documented
-// as "applies to new sessions only" — `prompt.submit` reuses the live session's
-// already-built client, so a live process keeps 401ing on the rotated key no
-// matter what is on disk. The desktop owns the backend child, so the
-// deterministic fix is the existing SOFT re-home: tear the primary down without
-// resetting boot UI, tell the renderer to re-dial, and let the respawn read the
-// fresh config.yaml. Sessions live in state.db and are resumed, so nothing is lost.
-//
-// No-op when no backend is live (the boot self-heal usually lands here — the
-// spawn that follows already reads the corrected file).
+// Make the RUNNING backend authenticate with the key we just wrote: `POST /api/model/set` "applies to new sessions
+// only" and `prompt.submit` reuses the live session's client, so a live process keeps 401ing on a rotated key
+// whatever is on disk. The SOFT re-home tears the primary down without resetting boot UI, tells the renderer to
+// re-dial, and the respawn reads the fresh config.yaml; sessions resume from state.db. Unconditional (hc-1106's
+// stale-key restart asks the engine first). No-op when no backend is live.
 async function reloadBackendForRelayKey(reason) {
   syncManagedRelayKeyToConfig(reason) // hc-1080: managed profiles and pooled engines too
 
-  if (!backendConnectionState.getProcess()) {
-    return false
+  if (!backendConnectionState.getProcess() || (reason === 'key-rotation' && holdsRelayKey(backendConnectionState.getProcess(), resolveManagedConfig().key))) {
+    return false // hc-1106: a re-provision's sign-in completion already moved the primary onto the new key
   }
 
   try {
@@ -20820,7 +20818,7 @@ function productBlocksContext() {
 
 // hc-1080 / hc-1078: heal one just-created profile now instead of at the next guard pass.
 registerProfileConfigIpc(ipcMain, { root: HERMES_HOME, homes: managed => apexConfigHomes(managed), context: productBlocksContext,
-  afterHeal: reason => restartPoolEnginesOnStaleRelayKey(reason), log: rememberLog })
+  afterHeal: reason => restartEnginesOnStaleRelayKey(reason), log: rememberLog })
 
 // Keep the guard live while the app runs: any writer (dashboard save, the
 // runtime itself) that drops a product block gets healed within seconds. The
@@ -21346,7 +21344,7 @@ async function reconcileCurrentManagedRelay(generation: number, scope: ModelMuta
     const owner = managedAccountId(managed.accessToken) || String(generation)
     const attemptAt = lastManagedReprovisionAttemptOwner === owner ? lastManagedReprovisionAttemptAt : 0
 
-    const outcome = await reconcileManagedRelayKey({
+    const outcome = await reconcileRelayKeyAndEngines({
       enabled: true,
       isCurrent,
       storedKey: managed.key,
@@ -21383,13 +21381,13 @@ async function reconcileCurrentManagedRelay(generation: number, scope: ModelMuta
       },
       applyToBackend: reason => reloadBackendForRelayKey(reason),
       log: rememberLog
-    })
+    }, restartEnginesOnStaleRelayKey, () => resolveManagedConfig().runtimePending) // hc-1106: and engines on an older key
 
     if (!isCurrent()) {
       return { ok: false, relayUnauthorized: false, healed: false, needsSignIn: false, probeStatus: 'unknown', generation }
     }
 
-    if (outcome.probeStatus === 'ok' && resolveManagedConfig().runtimePending) {
+    if (outcome.completeRuntime) {
       const target = await desktopModelMutations.resolveTarget(scope)
       completion = await finishManagedModelRuntime(target, isCurrent)
     }
@@ -21464,7 +21462,8 @@ async function finishManagedModelRuntime(target: ResolvedModelTarget, isCurrent:
         account: managed.account, accessToken: managed.accessToken, runtimePending: false, runtimeRecoveryOptOut: false }, true)
       broadcastManagedAccountChanged()
     }
-  })
+  }).then(completed => restartEnginesOnStaleRelayKey('managed-runtime-complete') // hc-1106: before the renderer probes the runtime
+    .catch(() => undefined).then(() => completed))
 }
 
 async function provisionManagedFromAccessToken(accessToken, account = null, isCurrent = managedAuthIntent.capture(),
@@ -21743,6 +21742,7 @@ async function startMessagingGateway(profile) {
 
     messagingGatewayRuntime.process = child
     messagingGatewayRuntime.profile = profile || null
+    stampKeyHolderProcess(child, resolveManagedConfig().key) // hc-1106: its platform tools read the key from this env
     child.stdout.on('data', rememberLog)
     child.stderr.on('data', rememberLog)
     child.once('exit', (code, signal) => {
