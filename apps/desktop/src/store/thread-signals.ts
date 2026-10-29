@@ -27,7 +27,7 @@ export const $threadInCall = atom(false)
 /** Rendered by the activity line: publishes what it says, and clears it when the line goes away. */
 export function ThreadActivityPresence({ ask, text, waiting }: ThreadActivity): null {
   useEffect(() => {
-    $threadActivity.set({ ask, text, waiting })
+    $threadActivity.set(ask ? { ask, text, waiting } : { text, waiting })
   }, [ask, text, waiting])
 
   useEffect(() => () => $threadActivity.set(null), [])
