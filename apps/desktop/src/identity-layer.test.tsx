@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { WorkflowRunView } from '@/app/business-workspace/workflow-run-view'
 import { AccountPanel } from '@/app/chat/sidebar/account-panel'
+import { DesktopAuthGate } from '@/app/desktop-auth-gate'
 import { APEX_PRIMARY_NAVIGATION } from '@/app/routes'
 import { Intro } from '@/components/chat/intro'
 import { DesktopLoginScreen } from '@/components/desktop-login-screen'
@@ -15,6 +16,7 @@ import { DesktopOnboardingOverlay } from '@/components/onboarding'
 import { type I18nConfigClient, I18nProvider } from '@/i18n/context'
 import { $authState } from '@/store/auth'
 import { BUSINESS_SIDEBAR_NAV_CONTRACT, BUSINESS_WORKSPACE_FLAG_KEY } from '@/store/business-workspace'
+import { closeManagedReSignIn } from '@/store/managed-re-sign-in'
 import { $desktopOnboarding, requestManagedReSignIn, skipManagedForByok } from '@/store/onboarding'
 
 // hc-589 identity-layer guard.
@@ -415,16 +417,29 @@ describe('zero setup: a managed user is never asked to pick a provider', () => {
   it('still re-asks for sign-in when the key on disk is dead (hc-511)', async () => {
     // A dead relay key is still a key FILE, so the bridge reports signedIn=true.
     // That must not be mistaken for "the key is on its way" — the caller asked
-    // for a re-sign-in, so the sign-in panel stays up rather than a wait that
+    // for a re-sign-in, so the sign-in screen stays up rather than a wait that
     // would end by dropping the user into a chat where every send 401s.
+    // hc-1110: and it is our first-open sign-in screen, not the onboarding panel.
+    // A dead key belongs to a returning install, whose onboarding is cached done.
     freshInstall()
+    window.localStorage.setItem('hermes-desktop-onboarded-v1', '1')
+    $desktopOnboarding.set({ ...$desktopOnboarding.get(), configured: true })
     installBridge({ enabled: true, signedIn: true })
     requestManagedReSignIn('登录已失效,请重新登录')
-    renderOnboarding()
+    render(
+      <I18nProvider configClient={null} initialLocale="zh">
+        <DesktopAuthGate enabled requestGateway={notReadyGateway(true) as never} />
+        <DesktopOnboardingOverlay enabled requestGateway={notReadyGateway(true) as never} />
+      </I18nProvider>
+    )
 
-    await waitFor(() => expect(screen.getByText('登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。')).toBeTruthy())
+    await waitFor(() => expect(screen.getByRole('heading', { name: '开始使用' })).toBeTruthy())
+    expect(screen.getByText('登录已失效,请重新登录')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '登录 APEX 账户' })).toBeTruthy()
+    expect(screen.queryByText('登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。')).toBeNull()
     expect(screen.queryByText('正在准备你的 APEX 助手…')).toBeNull()
     expect(byokMarkersOnScreen()).toEqual([])
+    closeManagedReSignIn()
   })
 
   it('opens the picker only when the user asks for it by name, and keeps a way back', async () => {

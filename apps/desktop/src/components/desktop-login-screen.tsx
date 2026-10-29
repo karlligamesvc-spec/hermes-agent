@@ -4,11 +4,14 @@ import { useEffect, useMemo, useRef } from 'react'
 import { ManagedRuntimeRecovery } from '@/components/managed-runtime-recovery'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
+import { useManagedSignInCopy } from '@/i18n/managed-sign-in'
 import { Loader2 } from '@/lib/icons'
 import { markManagedUnavailable } from '@/store/auth'
+import { closeManagedReSignIn } from '@/store/managed-re-sign-in'
 import {
   $desktopOnboarding,
   $pendingDesktopLoginCode,
+  leaveReSignInForOwnKey,
   managedBrowserSignIn,
   managedDeepLinkSignIn,
   type OnboardingContext,
@@ -26,6 +29,9 @@ interface DesktopLoginScreenProps {
    *  (401 session-expired / 403 account-disabled). null on a clean first run. */
   gateNotice?: null | string
   onSignedIn?: () => void
+  /** hc-1110: asked for by a signed-in (or expired) account, so the screen sits
+   *  over the app and adds a way back to it; everything else is the first open. */
+  reSignIn?: boolean
   requestGateway: OnboardingContext['requestGateway']
 }
 
@@ -35,9 +41,15 @@ interface DesktopLoginScreenProps {
 // primary action). Both buttons drive the EXISTING managed browser
 // (loopback) OAuth flow (managedBrowserSignIn) — this does not add a second auth
 // system, it reuses the onboarding store's managed sign-in.
-export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: DesktopLoginScreenProps) {
+export function DesktopLoginScreen({
+  gateNotice,
+  onSignedIn,
+  reSignIn = false,
+  requestGateway
+}: DesktopLoginScreenProps) {
   const { t } = useI18n()
   const a = t.auth.login
+  const copy = useManagedSignInCopy()
   const { managedError, managedSubmitting, managedRuntimeRecovery } = useStore($desktopOnboarding)
   const pendingLoginCode = useStore($pendingDesktopLoginCode)
 
@@ -76,6 +88,12 @@ export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: D
   // and steps the account gate aside so the onboarding picker can mount; the
   // picker's "返回登录" brings this screen back.
   const useOwnKey = () => {
+    if (reSignIn) {
+      leaveReSignInForOwnKey()
+
+      return
+    }
+
     skipManagedForByok()
     markManagedUnavailable()
   }
@@ -93,9 +111,10 @@ export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: D
     void managedDeepLinkSignIn(pendingLoginCode, ctx)
   }, [pendingLoginCode, managedSubmitting, ctx])
 
-  // Prefer the caller's gate notice (session-expired / account-disabled); fall
-  // back to an in-flight managed error surfaced by managedBrowserSignIn.
-  const notice = gateNotice ?? (managedError || null)
+  // The latest word wins: a sign-in attempt's own error (device limit, provision
+  // outage) over the reason the screen opened with (session expired, account
+  // disabled), which used to hide it (hc-1110). A new attempt clears the error.
+  const notice = managedError || gateNotice || null
 
   return (
     <div
@@ -151,6 +170,19 @@ export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: D
         >
           {a.useOwnKey}
         </Button>
+
+        {reSignIn ? (
+          <Button
+            className="mt-1 font-medium text-(--ui-text-tertiary)"
+            disabled={managedSubmitting}
+            onClick={closeManagedReSignIn}
+            size="xs"
+            type="button"
+            variant="text"
+          >
+            {copy.back}
+          </Button>
+        ) : null}
       </div>
     </div>
   )

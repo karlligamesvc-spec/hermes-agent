@@ -21,6 +21,7 @@ import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/run
 import { markSignedIn } from '@/store/auth'
 import { setMainModelAssignment } from '@/store/cron-model-impact'
 import { ackFreeTierNotice, freeTierReadyPending, refreshFreeTierStatus, setFreeTierRoute } from '@/store/free-tier'
+import { closeManagedReSignIn, finishManagedReSignIn, openManagedReSignIn } from '@/store/managed-re-sign-in'
 import { notify, notifyError } from '@/store/notifications'
 import { guidedOnboardingActive } from '@/store/onboarding-gate'
 import type { OAuthProvider, OAuthStartResponse } from '@/types/hermes'
@@ -619,31 +620,24 @@ export function consumePendingCredentialWarning(): null | string {
 }
 
 // hc-511: a signed-in managed session lost its relay auth and can't self-heal
-// (no reusable login token, or an expired JWT). Re-open onboarding on the
-// managed sign-in panel with an explicit reason so the user re-connects, instead
-// of every send silently 401-ing. Forces the managed-first treatment
-// (managedAvailable) regardless of the cached "onboarded" flag — the same state
-// refreshOnboarding lands on for a not-yet-signed-in managed install.
-export function requestManagedReSignIn(reason = DEFAULT_ONBOARDING_REASON) {
-  cancelOnboardingFlow()
-  providersRefreshPromise = null
-  clearManagedSyncRecheck()
-  writeCachedSkipped(false)
-  writeCachedConfigured(false)
-  patch({
-    configured: false,
-    managedAvailable: true,
-    managedError: reason.trim() || null,
-    firstRunSkipped: false,
-    managedSyncing: false,
-    managedSubmitting: false,
-    requested: true,
-    manual: false,
-    localEndpoint: false,
-    needsCredential: false,
-    reason: null,
-    flow: { status: 'idle' }
-  })
+// (no reusable login token, or an expired JWT), or the user asked to sign in
+// again. hc-1110: the auth gate answers with the first-open sign-in screen over
+// the app (store/managed-re-sign-in.ts), not this store's onboarding panel; the
+// reason is the line above its buttons, and an empty reason shows none. A sign-in
+// line left over from an earlier attempt must not greet the new one.
+export function requestManagedReSignIn(reason = '') {
+  patch({ managedError: null, managedRuntimeRecovery: null })
+  openManagedReSignIn(reason)
+}
+
+// hc-1110: 「使用自己的密钥」 on that screen. The account is still signed in, so
+// there is no gate to step aside from: drop the request, stop the managed
+// runtime recovery the way skipManagedForByok does, and open the provider picker
+// Settings › 提供方 opens, whose close button leads back to where the user was.
+export function leaveReSignInForOwnKey() {
+  closeManagedReSignIn()
+  void window.hermesDesktop?.managed?.cancelPending?.().catch(() => undefined)
+  startManualOnboarding(null)
 }
 
 // Open the onboarding provider selector on demand from an already-configured
@@ -919,6 +913,7 @@ async function applyManagedSignInResult(
 
   patch({ managedSubmitting: false })
   markSignedIn()
+  finishManagedReSignIn()
   notifyReady('APEX')
   completeDesktopOnboarding()
   ctx.onCompleted?.()
