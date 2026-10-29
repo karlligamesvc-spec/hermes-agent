@@ -3,7 +3,9 @@ import { Fragment, useMemo } from 'react'
 
 import { DirectiveContent } from '@/components/assistant-ui/directive-text'
 import { referenceRe } from '@/components/assistant-ui/reference-kinds'
+import { ExternalLink } from '@/lib/external-link'
 import { cn } from '@/lib/utils'
+import { useSingleThreadMode } from '@/store/single-thread'
 
 // User messages should render the bare-minimum of markdown: backtick `code`
 // spans and ``` fenced blocks. We deliberately don't pull in the full
@@ -63,6 +65,65 @@ function inlineCodeOutsideDirectives(text: string): RegExpMatchArray[] {
 
     return !directives.some(directive => start < directive.end && end > directive.start)
   })
+}
+
+// hc-1101: a web address you typed. Stops at whitespace, quotes, brackets and
+// CJK punctuation; trailing sentence punctuation stays prose (LINK_TAIL_RE).
+const LINK_RE = /https?:\/\/[^\s<>"'`，。！？、；：（）「」『』【】《》]+/g
+const LINK_TAIL_RE = /[.,;:!?)\]}]+$/
+
+export type LinkPiece = { kind: 'link'; url: string } | { kind: 'text'; text: string }
+
+/**
+ * A plain-text run split into prose and the web addresses in it, for single-thread
+ * mode's clickable links. A reference the composer wrote (`@url:`…) stays one
+ * piece of prose, so it still chips.
+ */
+export function splitLinks(text: string): LinkPiece[] {
+  const references = Array.from(text.matchAll(referenceRe())).map(match => ({
+    start: match.index ?? 0,
+    end: (match.index ?? 0) + match[0].length
+  }))
+
+  const pieces: LinkPiece[] = []
+  let cursor = 0
+
+  for (const match of text.matchAll(LINK_RE)) {
+    const start = match.index ?? 0
+    const url = match[0].replace(LINK_TAIL_RE, '')
+    const end = start + url.length
+
+    if (references.some(reference => start < reference.end && end > reference.start)) {
+      continue
+    }
+
+    if (start > cursor) {
+      pieces.push({ kind: 'text', text: text.slice(cursor, start) })
+    }
+
+    pieces.push({ kind: 'link', url })
+    cursor = end
+  }
+
+  if (cursor < text.length) {
+    pieces.push({ kind: 'text', text: text.slice(cursor) })
+  }
+
+  return pieces
+}
+
+const LinkedText: FC<{ text: string }> = ({ text }) => {
+  const pieces = useMemo(() => splitLinks(text), [text])
+
+  return pieces.map((piece, index) =>
+    piece.kind === 'link' ? (
+      <ExternalLink data-slot="aui_user-link" href={piece.url} key={`link-${index}`}>
+        {piece.url}
+      </ExternalLink>
+    ) : (
+      <DirectiveContent key={`text-${index}`} text={piece.text} />
+    )
+  )
 }
 
 function splitFences(text: string): TopSegment[] {
@@ -148,6 +209,8 @@ export const UserMessageText: FC<UserMessageTextProps> = ({ className, text }) =
 
 const InlineSegmentView: FC<{ text: string }> = ({ text }) => {
   const nodes = useMemo(() => splitInlineCode(text), [text])
+  // hc-1101: single-thread mode's bubble is plain words (no click-to-edit), so its links can open.
+  const linked = useSingleThreadMode()
 
   return (
     // styles.css bidi hook (#44150); whitespace-pre-line makes each line its own
@@ -166,7 +229,7 @@ const InlineSegmentView: FC<{ text: string }> = ({ text }) => {
           // Pass plain-text bits through DirectiveContent so @file:/@url: chips
           // still render. DirectiveContent already preserves whitespace.
           <Fragment key={`text-${nodeIndex}`}>
-            <DirectiveContent text={node.text} />
+            {linked ? <LinkedText text={node.text} /> : <DirectiveContent text={node.text} />}
           </Fragment>
         )
       )}

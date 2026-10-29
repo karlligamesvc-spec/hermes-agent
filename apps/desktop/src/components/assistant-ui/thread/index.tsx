@@ -8,13 +8,13 @@ import { AssistantMessage } from '@/components/assistant-ui/thread/assistant-mes
 import { ThreadMessageList } from '@/components/assistant-ui/thread/list'
 import { BackgroundResumeNotice, CenteredThreadSpinner } from '@/components/assistant-ui/thread/status'
 import { SystemMessage } from '@/components/assistant-ui/thread/system-message'
+import { useThreadCopy } from '@/components/assistant-ui/thread/thread-copy'
 import { ThreadTimeline } from '@/components/assistant-ui/thread/timeline'
 import { type RestoreMessageTarget } from '@/components/assistant-ui/thread/types'
 import { UserEditComposer } from '@/components/assistant-ui/thread/user-edit-composer'
 import { Intro, type IntroProps } from '@/components/chat/intro'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { HermesGateway } from '@/hermes'
-import { useI18n } from '@/i18n'
 import { notifyError } from '@/store/notifications'
 import { useSingleThreadMode } from '@/store/single-thread'
 
@@ -70,8 +70,8 @@ export const Thread = memo(function Thread({
   sessionId = null,
   sessionKey
 }: ThreadProps) {
-  const { t } = useI18n()
-  const copy = t.assistant.thread
+  // hc-1101: the start-over confirm reads 「从这条重新开始？」 in single-thread mode.
+  const copy = useThreadCopy()
   // hc-1014: one thread, so no "branch into a new chat", and an empty thread
   // greets in the conversation instead of showing the Start page.
   const singleThread = useSingleThreadMode()
