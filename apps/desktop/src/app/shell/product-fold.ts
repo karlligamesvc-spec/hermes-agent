@@ -26,6 +26,11 @@
  * terminal (⌃`, ⌃⇧`) and Toggle logs. 产物 stays: it lists the images, files
  * and links the conversations produced.
  *
+ * hc-1109 folds Settings to eight sections (app/settings/product-settings.ts),
+ * so the ⌘K rows into the folded ones go with them: their section rows, the
+ * fields, keys and archived chats a search lists, and Keyboard shortcuts with
+ * its ⌘/ (both open 键盘快捷键).
+ *
  * 0.17.66 showed all of this in product mode, so a saved layout may already be
  * off the product default. The way back stays until it is used: 交换侧边栏位置
  * while the sessions sit right of the chat, the right edge's button while that
@@ -36,6 +41,7 @@
 import { useStore } from '@nanostores/react'
 import { computed } from 'nanostores'
 
+import { settingsRowFolded } from '@/app/settings/product-settings'
 import { $paneVisible } from '@/components/pane-shell/tree/store'
 import { $fileBrowserOpen, $panesFlipped } from '@/store/layout'
 import { $singleThreadMode } from '@/store/single-thread'
@@ -93,6 +99,7 @@ export const $productFold = computed(
 
 /** The shortcut that reaches each folded control. */
 const FOLDED_SHORTCUTS: Readonly<Record<string, keyof ProductFold>> = {
+  'keybinds.openPanel': 'devCommands',
   'layout.editMode': 'layout',
   'nav.agents': 'devCommands',
   'nav.cron': 'devCommands',
@@ -148,6 +155,7 @@ export function useFoldedShortcuts(): ReadonlySet<string> {
 
 /** Folded ⌘K rows by palette id (contributed rows as `${source}:${id}`, the way the palette keys them). */
 const FOLDED_ROWS: Readonly<Record<string, keyof ProductFold>> = {
+  'core:keybinds.panel': 'devCommands',
   'core:layout.editMode': 'layout',
   'core:layout.reset': 'layout',
   'core:logs.toggle': 'logs',
@@ -170,11 +178,14 @@ const FOLDED_ROWS: Readonly<Record<string, keyof ProductFold>> = {
   'session-import': 'devCommands'
 }
 
-/** Open folder as project and every coding project under it; the hide-only tabs' Toggle rows. */
+/** Open folder as project and every coding project under it; the hide-only tabs' Toggle rows. Plus the rows into folded Settings. */
 const FOLDED_ROW_PREFIXES = ['project-', 'core:strip-tab.']
 
 function rowControl(id: string): keyof ProductFold | undefined {
-  return FOLDED_ROWS[id] ?? (FOLDED_ROW_PREFIXES.some(prefix => id.startsWith(prefix)) ? 'devCommands' : undefined)
+  return (
+    FOLDED_ROWS[id] ??
+    (FOLDED_ROW_PREFIXES.some(prefix => id.startsWith(prefix)) || settingsRowFolded(id) ? 'devCommands' : undefined)
+  )
 }
 
 /** The palette's groups less the rows whose control is folded right now; empty groups leave too. */
