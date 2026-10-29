@@ -25,8 +25,8 @@ import { SINGLE_THREAD_ROW_CLASS } from './sidebar-row'
 
 const WECHAT_CHANNEL = 'weixin'
 
-/** True or false once known; null while the first read is pending. */
-function useWechatBound(): boolean | null {
+/** True or false once known; null while the first read is pending. Also hc-1108's WeChat message. */
+export function useWechatBound(): boolean | null {
   const [bound, setBound] = useState<boolean | null>(null)
 
   useEffect(() => {

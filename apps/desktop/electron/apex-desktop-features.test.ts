@@ -42,6 +42,14 @@ describe('hc-1014 install switches for desktop_features', () => {
     )
   })
 
+  test('hc-1108: APEXNODES_CAPABILITY_INTRO switches the first-open capability intro for one install', () => {
+    assert.deepEqual(desktopFeatureInstallSwitches({ APEXNODES_CAPABILITY_INTRO: '1' }), { capability_intro: true })
+    assert.deepEqual(desktopFeatureInstallSwitches({ APEXNODES_CAPABILITY_INTRO: '0' }), { capability_intro: false })
+    assert.deepEqual(clientConfigForRenderer(STATE, { APEXNODES_CAPABILITY_INTRO: 'on' }).installSwitches, {
+      capability_intro: true
+    })
+  })
+
   test('the renderer gets the stored payload untouched, with the switches beside it', () => {
     const answer = clientConfigForRenderer(STATE, { APEXNODES_SINGLE_THREAD: '0' })
 
