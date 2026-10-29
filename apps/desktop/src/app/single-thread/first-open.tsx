@@ -11,6 +11,10 @@
  * read them unchanged. 撤销 clears the three answers for real; the cloud keeps
  * the intake finished (its `completed_at` is never cleared), so the cards do
  * not come back.
+ *
+ * hc-1108: with `desktop_features.capability_intro` on, the screen where the
+ * third card was just answered ends with what APEX can do (capability-intro.tsx)
+ * instead of the tip.
  */
 
 import { useStore } from '@nanostores/react'
@@ -32,6 +36,7 @@ import { type SingleThreadFirstOpenCopy, useSingleThreadFirstOpenCopy } from '@/
 import { isSubmitEnter } from '@/lib/ime'
 import { cn } from '@/lib/utils'
 import { $authState } from '@/store/auth'
+import { $capabilityIntroFlag, readCapabilityIntroFlag } from '@/store/capability-intro'
 import { $creatorProfile, creatorProfileFor, loadCreatorProfile, saveCreatorProfile } from '@/store/creator-profile'
 import { useBotName, withBotName } from '@/store/single-thread-bots'
 
@@ -42,6 +47,7 @@ import {
 } from '../business-workspace/components/creator-intake-cards'
 import { CREATOR_INTAKE_COPY, type CreatorIntakeCopy } from '../business-workspace/creator-intake-copy'
 
+import { CapabilityIntro } from './capability-intro'
 import { FIRST_OPEN_BUBBLE_CLASS, FirstOpenIdeas } from './first-open-ideas'
 
 type Answers = DesktopCreatorProfile['answers']
@@ -163,10 +169,22 @@ export function FirstOpen() {
 
   useEffect(() => setFinished(null), [accountId])
 
+  // hc-1108: read the switch while the cards can still be answered here, and again once they are.
+  const answering = profile?.intake.completed === false || finished !== null
+  const introOn = useStore($capabilityIntroFlag)
+
+  useEffect(() => {
+    if (status === 'signed-in' && answering) {
+      void readCapabilityIntroFlag()
+    }
+  }, [answering, finished, status])
+
   // Still checking the sign-in counts as not known yet: the tip must not show and then give way to a card.
   const signedOut = status !== 'signed-in' && status !== 'checking'
   const noIntake = signedOut || (state.accountId === accountId && state.status === 'unavailable')
   const settled = noIntake || Boolean(profile?.intake.completed)
+  // Only where the third card was just answered: someone who answered before never hears it.
+  const intro = introOn && finished !== null
 
   const save = async (patch: DesktopCreatorProfilePatch): Promise<boolean> => {
     const saved = await saveCreatorProfile(accountId, patch)
@@ -195,9 +213,13 @@ export function FirstOpen() {
       {settled && (
         <>
           <FirstOpenIdeas />
-          <p className={FIRST_OPEN_BUBBLE_CLASS} data-first-open-tip="">
-            {copy.tip}
-          </p>
+          {intro ? (
+            <CapabilityIntro />
+          ) : (
+            <p className={FIRST_OPEN_BUBBLE_CLASS} data-first-open-tip="">
+              {copy.tip}
+            </p>
+          )}
         </>
       )}
     </>

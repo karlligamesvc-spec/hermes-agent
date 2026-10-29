@@ -6,6 +6,7 @@ import type { DesktopCreatorPlatform, DesktopCreatorProfile, DesktopCreatorProfi
 import { I18nProvider, type Locale, setRuntimeI18nLocale } from '@/i18n'
 import { $authState } from '@/store/auth'
 import { BOT_INTAKE_META_KEY, resetBotIntakeForTest } from '@/store/bot-intake'
+import { $capabilityIntroFlag, resetCapabilityIntroForTest } from '@/store/capability-intro'
 import { $creatorProfile } from '@/store/creator-profile'
 import { $mainThread, resetMainThreadForTest } from '@/store/main-thread'
 import { $activeGatewayProfile } from '@/store/profile'
@@ -426,6 +427,24 @@ describe('hc-1079: the empty thread of each assistant', () => {
     expect(answeredCards()).toHaveLength(0)
     expect(gateway.engine!.profiles.get('apex-bot-3')!.soul).not.toContain('## 分工')
     expect(gateway.engine!.profiles.get('apex-bot-2')!.soul).toContain('- 主要帮用户：剪辑出片')
+  })
+
+  it('hc-1108 (D6): an assistant the user made ends its three cards without APEX’s capability intro', async () => {
+    $capabilityIntroFlag.set(true)
+    await show('apex-bot-2')
+    renderEmptyThread()
+
+    try {
+      await pick('role', '剪辑出片')
+      await pick('style', '简短直接')
+      await pick('platform', '跟 APEX 一样：抖音和小红书都发')
+      await waitFor(() => expect(thread().querySelector('[data-bot-intake-closing]')).not.toBeNull())
+
+      expect(thread().querySelector('[data-capability-intro], [data-capability]')).toBeNull()
+      expect(text()).not.toMatch(/先说三件|粘一条试试|扫码连上/)
+    } finally {
+      resetCapabilityIntroForTest()
+    }
   })
 
   it('APEX on screen keeps its own first open', async () => {

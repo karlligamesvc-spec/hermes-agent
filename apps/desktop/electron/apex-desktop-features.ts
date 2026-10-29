@@ -8,7 +8,8 @@
  * turns hc-1014's single-thread chat on for this install, `=0` keeps it off,
  * and unset leaves the decision to the platform (APEXNODES_MULTI_BOT does the
  * same for hc-1077's several assistants, APEXNODES_MULTI_BOT_HANDOFF for
- * hc-1086's relay). The payload itself stays as the
+ * hc-1086's relay, APEXNODES_CAPABILITY_INTRO for hc-1108's first-open
+ * capability intro). The payload itself stays as the
  * platform sent it; the switches ride beside it, so every other reader of
  * `desktop_features` is unaffected.
  */
@@ -17,7 +18,8 @@
 export const DESKTOP_FEATURE_ENV: Readonly<Record<string, string>> = {
   single_thread: 'APEXNODES_SINGLE_THREAD',
   multi_bot: 'APEXNODES_MULTI_BOT',
-  multi_bot_handoff: 'APEXNODES_MULTI_BOT_HANDOFF'
+  multi_bot_handoff: 'APEXNODES_MULTI_BOT_HANDOFF',
+  capability_intro: 'APEXNODES_CAPABILITY_INTRO'
 }
 
 export interface ClientConfigStateLike {
