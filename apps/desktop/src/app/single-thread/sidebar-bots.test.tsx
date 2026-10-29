@@ -19,6 +19,7 @@ import { SidebarProvider } from '@/components/ui/sidebar'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
 import type { ChatMessage } from '@/lib/chat-messages'
 import { $authState } from '@/store/auth'
+import { clearClarifyRequest, setClarifyRequest } from '@/store/clarify'
 import {
   $mainThreadsByProfile,
   MAIN_THREAD_TITLE,
@@ -142,6 +143,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  clearClarifyRequest()
   setMultiBotFlagForTest(false)
   setSingleThreadFlagForTest(false)
   resetMainThreadForTest()
@@ -253,6 +255,14 @@ describe('hc-1077 each row follows its own assistant', () => {
   it('等你决定 for a background assistant waiting on a question', () => {
     threads({ writer: 'writer-root' })
     $sessionStates.set({ writer: session('writer-root', { busy: true, needsInput: true }) })
+    // hc-1107: the question parked for its session decides, not needsInput.
+    setClarifyRequest({
+      choices: null,
+      multiSelect: false,
+      question: '要哪个？',
+      requestId: 'q-1',
+      sessionId: 'writer'
+    })
     renderSidebar()
 
     expect(lineOf('writer')).toBe('等你决定')

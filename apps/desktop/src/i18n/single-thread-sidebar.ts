@@ -17,6 +17,10 @@ export interface SingleThreadSidebarCopy {
   search: string
   /** The assistant row's status line while it works and no step is named yet. */
   working: string
+  /** hc-1107: while it is writing its answer. */
+  replying: string
+  /** hc-1107: the latest message got no answer because the send failed. */
+  sendFailed: string
   inCall: string
   /** Screen readers: the dot beside the assistant row. */
   unread: string
@@ -40,6 +44,8 @@ export interface SingleThreadSidebarCopy {
 const en: SingleThreadSidebarCopy = {
   search: 'Search',
   working: 'Working…',
+  replying: 'Replying…',
+  sendFailed: 'Didn’t send',
   inCall: 'On a call',
   unread: 'New message',
   wechatTitle: 'Find APEX on WeChat',
@@ -56,6 +62,8 @@ const en: SingleThreadSidebarCopy = {
 const zh: SingleThreadSidebarCopy = {
   search: '搜索',
   working: '在做事…',
+  replying: '正在回…',
+  sendFailed: '发送失败',
   inCall: '通话中',
   unread: '有新消息',
   wechatTitle: '在微信里找 APEX',
@@ -72,6 +80,8 @@ const zh: SingleThreadSidebarCopy = {
 const zhHant: SingleThreadSidebarCopy = {
   search: '搜尋',
   working: '在做事…',
+  replying: '正在回…',
+  sendFailed: '傳送失敗',
   inCall: '通話中',
   unread: '有新訊息',
   wechatTitle: '在微信裡找 APEX',

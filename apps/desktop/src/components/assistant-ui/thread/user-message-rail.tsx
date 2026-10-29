@@ -16,8 +16,10 @@
  * ({@link copyableMessageText}).
  *
  * Anywhere else (switch off, developer mode) the bubble is the click-to-edit
- * button, the rail is the stop / restore button it always was, and a
- * right-click does what it always did (user-message-identity.test.tsx).
+ * button and the rail is the stop / restore button it always was
+ * (user-message-identity.test.tsx). Since hc-1105 its words select there too,
+ * and a plain right-click opens the same 「复制」, without the time
+ * (user-message-select.test.tsx).
  */
 
 import { ActionBarPrimitive } from '@assistant-ui/react'
@@ -167,12 +169,15 @@ export function UserMessageRail({ copyText, editable, onRestore, onStop, primary
   )
 }
 
-/** A plain right-click on your bubble in single-thread mode: the app menu, its time on top, its 「复制」 copying the whole message. */
+/**
+ * A plain right-click on your bubble: the app menu, its 「复制」 copying the whole
+ * message. Single-thread mode puts the time on top; since hc-1105 the switch off
+ * and developer mode get the menu too, without it (message-menu.ts).
+ */
 export function useUserBubbleCopyMenu(copyText: string): ((event: MouseEvent<HTMLElement>) => void) | undefined {
-  const singleThread = useSingleThreadMode()
   const text = copyableMessageText(copyText)
 
   const open = useCallback((event: MouseEvent<HTMLElement>) => openMessageCopyMenu(event, text), [text])
 
-  return singleThread && text ? open : undefined
+  return text ? open : undefined
 }
