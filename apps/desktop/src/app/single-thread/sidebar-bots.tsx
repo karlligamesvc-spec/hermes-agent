@@ -39,8 +39,9 @@ import { parsePoolAllBusy } from '../../../shared/apex-pool-busy'
 
 import { CurrentBotRowFrame, useBotManage } from './bot-manage'
 import { useBotRowStatus } from './bot-status'
+import { RowDot } from './row-dot'
 import { SINGLE_THREAD_ROW_CLASS } from './sidebar-row'
-import { BUSY_LINE_CLASS } from './sidebar-status'
+import { rowMood, statusLineClass } from './sidebar-status'
 
 const ACTIVE_ROW_CLASS = 'bg-(--ui-row-active-background) shadow-xs hover:bg-(--ui-row-active-background)'
 
@@ -98,7 +99,6 @@ function BotRow({
   onOpen: () => void
   viewing: boolean
 }) {
-  const copy = useSingleThreadSidebarCopy()
   const onScreen = current && viewing
   const status = useBotRowStatus(bot, { current, onScreen })
 
@@ -112,29 +112,19 @@ function BotRow({
       onClick={onOpen}
       type="button"
     >
-      <ApexAvatar
-        className="size-[2.125rem]"
-        color={bot.color}
-        mood={status.kind === 'working' ? 'working' : 'idle'}
-        shape={bot.shape}
-      />
+      <ApexAvatar className="size-[2.125rem]" color={bot.color} mood={rowMood(status.kind)} shape={bot.shape} />
       <span className="flex min-w-0 flex-1 flex-col leading-tight">
         <span className="truncate text-[0.875rem] font-semibold text-(--ui-text-primary)">{bot.name}</span>
         {status.line ? (
           <span
-            className={cn(
-              'truncate pt-0.5 text-[0.75rem] text-(--ui-text-tertiary)',
-              status.kind !== 'idle' && BUSY_LINE_CLASS
-            )}
+            className={cn('truncate pt-0.5 text-[0.75rem] text-(--ui-text-tertiary)', statusLineClass(status.kind))}
             data-single-thread-status=""
           >
             {status.line}
           </span>
         ) : null}
       </span>
-      {status.unread ? (
-        <span aria-label={copy.unread} className="size-2 shrink-0 rounded-full bg-[#6A4CEB]" role="img" />
-      ) : null}
+      <RowDot unread={status.unread} waiting={status.kind === 'waiting' ? status.line : null} />
     </button>
   )
 }

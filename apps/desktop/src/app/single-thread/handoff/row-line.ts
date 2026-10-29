@@ -3,7 +3,9 @@
  * (bot-status.ts reads it first):
  *
  * - the receiver, while the relay's turn runs: 「在帮 APEX：按这个选题写 3 个标题」;
- *   while that turn waits on the user: 「在等你决定（APEX 交来的活）」;
+ *   while that turn waits on the user: 「在等你决定（APEX 交来的活）」, or
+ *   「在等你确认（…）」 on a yes/no (hc-1107: the row's own waiting decides,
+ *   so the line ends with the face and the dot when the user answers);
  * - the receiver, quiet with a relay waiting for it: 「APEX 交来的活排着」;
  * - the sender, while it is otherwise quiet and a relay it sent is not back:
  *   「等小红书文案交回」.
@@ -31,7 +33,7 @@ const nameOf = (roster: readonly ApexBot[], profile: string, fallback?: string) 
 
 export function handoffRowLine(
   profile: string,
-  kind: ThreadPresence['kind'],
+  presence: ThreadPresence,
   records: readonly HandoffRecord[],
   roster: readonly ApexBot[],
   copy: SingleThreadHandoffCopy
@@ -41,12 +43,14 @@ export function handoffRowLine(
   if (helping) {
     const from = nameOf(roster, helping.from.profile, helping.from.name)
 
-    return helping.status === 'waiting'
-      ? copy.helpingWaiting(from)
-      : copy.helping(from, helping.ask.replace(/\s+/g, ' ').trim())
+    if (presence.kind === 'waiting') {
+      return presence.ask === 'confirm' ? copy.helpingConfirm(from) : copy.helpingWaiting(from)
+    }
+
+    return copy.helping(from, helping.ask.replace(/\s+/g, ' ').trim())
   }
 
-  if (kind !== 'idle') {
+  if (presence.kind !== 'idle') {
     return null
   }
 
@@ -61,11 +65,11 @@ export function handoffRowLine(
   return waiting ? copy.waitingFor(nameOf(roster, waiting.to)) : null
 }
 
-export function useHandoffRowLine(profile: string, kind: ThreadPresence['kind']): null | string {
+export function useHandoffRowLine(profile: string, presence: ThreadPresence): null | string {
   const on = useStore($handoffMode)
   const records = useStore($handoffs)
   const roster = useStore($botRoster)
   const copy = useSingleThreadHandoffCopy()
 
-  return on ? handoffRowLine(profile, kind, records, roster, copy) : null
+  return on ? handoffRowLine(profile, presence, records, roster, copy) : null
 }

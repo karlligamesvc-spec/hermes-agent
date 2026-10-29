@@ -15,9 +15,13 @@ import type { ThreadActivity } from '@/store/thread-signals'
 
 type ProcessCopy = Parameters<typeof statusLine>[1]
 
-/** The running turn's line, or null while the session is not working. Waiting on the user is the presence's own. */
+/**
+ * The running turn's line, or null while the session is not working. Waiting on the user is the presence's own
+ * (hc-1107: from the parked prompts, which it checks first), so a turn whose approval was just answered names
+ * its step again at once instead of waiting for `needsInput` to drop.
+ */
 export function backgroundActivity(state: ClientSessionState | null, copy: ProcessCopy): null | ThreadActivity {
-  if (!state?.busy || state.needsInput) {
+  if (!state?.busy) {
     return null
   }
 

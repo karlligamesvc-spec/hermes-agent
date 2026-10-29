@@ -106,27 +106,78 @@ describe('hc-1061 what the assistant row says', () => {
   const busy = state('t', { busy: true })
 
   it.each([
-    ['a call wins over everything', busy, { text: '正在识别语音…', waiting: true }, true, { kind: 'call' }],
-    ['the activity line waiting on the user', busy, { text: '等你决定', waiting: true }, false, { kind: 'waiting' }],
+    ['a call wins over everything', busy, { text: '正在识别语音…', waiting: true }, true, null, { kind: 'call' }],
     [
-      'a question parked on the thread while the conversation is off screen',
+      'the activity line waiting on a choice',
+      busy,
+      { text: '等你决定', waiting: true },
+      false,
+      null,
+      { ask: 'choose', kind: 'waiting' }
+    ],
+    [
+      'the activity line waiting on a yes/no',
+      busy,
+      { ask: 'confirm', text: '等你确认', waiting: true },
+      false,
+      null,
+      { ask: 'confirm', kind: 'waiting' }
+    ],
+    [
+      'a prompt parked for the thread while the conversation is off screen',
+      busy,
+      null,
+      false,
+      'confirm',
+      { ask: 'confirm', kind: 'waiting' }
+    ],
+    // hc-1107: needsInput outlives an answered approval until the next tool finishes; it no longer reads as waiting.
+    [
+      'needsInput up with nothing parked (an approval just answered)',
       state('t', { busy: true, needsInput: true }),
       null,
       false,
-      { kind: 'waiting' }
+      null,
+      { kind: 'working', replying: false, text: null }
     ],
     [
       'the step the activity line names',
       busy,
       { text: '正在识别语音…', waiting: false },
       false,
-      { kind: 'working', text: '正在识别语音…' }
+      null,
+      { kind: 'working', replying: false, text: '正在识别语音…' }
     ],
-    ['busy with the conversation off screen: no step to name', busy, null, false, { kind: 'working', text: null }],
-    ['idle: the latest reply', state('t'), null, false, { kind: 'idle', text: '换好了' }],
-    ['nothing loaded yet', null, null, false, { kind: 'idle', text: '换好了' }]
-  ] as const)('%s', (_label, session, activity, inCall, expected) => {
-    expect(presenceOf(session, activity, inCall, reply)).toEqual(expected)
+    [
+      'busy with the conversation off screen: no step to name',
+      busy,
+      null,
+      false,
+      null,
+      { kind: 'working', replying: false, text: null }
+    ],
+    [
+      'writing its answer',
+      state('t', { busy: true, messages: [say('u1', 'user', '写 3 个标题'), say('a1', 'assistant', '好，第一个：')] }),
+      null,
+      false,
+      null,
+      { kind: 'working', replying: true, text: null }
+    ],
+    [
+      'the send failed: an error and nothing else after it',
+      state('t', {
+        messages: [say('u1', 'user', '写 3 个标题'), { ...say('e1', 'assistant', ''), error: '没发出去', parts: [] }]
+      }),
+      null,
+      false,
+      null,
+      { kind: 'failed' }
+    ],
+    ['idle: the latest reply', state('t'), null, false, null, { kind: 'idle', text: '换好了' }],
+    ['nothing loaded yet', null, null, false, null, { kind: 'idle', text: '换好了' }]
+  ] as const)('%s', (_label, session, activity, inCall, waiting, expected) => {
+    expect(presenceOf(session, activity, inCall, reply, waiting)).toEqual(expected)
   })
 
   it('follows the thread’s own session state, not the session on screen', () => {

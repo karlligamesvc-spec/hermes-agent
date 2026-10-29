@@ -88,6 +88,8 @@ export interface SingleThreadHandoffCopy {
   // ── the sidebar line ──
   helping: (from: string, ask: string) => string
   helpingWaiting: (from: string) => string
+  /** hc-1107: the same while the relay's turn waits on a yes/no (an approval). */
+  helpingConfirm: (from: string) => string
   queuedFor: (from: string) => string
   waitingFor: (name: string) => string
 }
@@ -197,6 +199,7 @@ const en: SingleThreadHandoffCopy = {
 
   helping: (from, ask) => `Helping ${from}: ${ask}`,
   helpingWaiting: from => `Needs your decision (for ${from})`,
+  helpingConfirm: from => `Needs your OK (for ${from})`,
   queuedFor: from => `A job from ${from} is waiting`,
   waitingFor: name => `Waiting for ${name}`
 }
@@ -298,6 +301,7 @@ const zh: SingleThreadHandoffCopy = {
 
   helping: (from, ask) => `在帮 ${from}：${ask}`,
   helpingWaiting: from => `在等你决定（${from} 交来的活）`,
+  helpingConfirm: from => `在等你确认（${from} 交来的活）`,
   queuedFor: from => `${from} 交来的活排着`,
   waitingFor: name => `等${name}交回`
 }
@@ -399,6 +403,7 @@ const zhHant: SingleThreadHandoffCopy = {
 
   helping: (from, ask) => `在幫 ${from}：${ask}`,
   helpingWaiting: from => `在等你決定（${from} 交來的活）`,
+  helpingConfirm: from => `在等你確認（${from} 交來的活）`,
   queuedFor: from => `${from} 交來的活排著`,
   waitingFor: name => `等${name}交回`
 }

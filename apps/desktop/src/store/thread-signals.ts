@@ -8,9 +8,14 @@
 import { atom } from 'nanostores'
 import { useEffect } from 'react'
 
+/** hc-1107: what a turn waiting on the user asks of them — a choice (a question card) or a yes/no (an approval and the like). */
+export type WaitingAsk = 'choose' | 'confirm'
+
 export interface ThreadActivity {
   text: string
   waiting: boolean
+  /** hc-1107: while `waiting`, what it asks; absent, a choice. */
+  ask?: null | WaitingAsk
 }
 
 /** What the activity line shows while it is on screen; null when it is not. */
@@ -20,10 +25,10 @@ export const $threadActivity = atom<null | ThreadActivity>(null)
 export const $threadInCall = atom(false)
 
 /** Rendered by the activity line: publishes what it says, and clears it when the line goes away. */
-export function ThreadActivityPresence({ text, waiting }: ThreadActivity): null {
+export function ThreadActivityPresence({ ask, text, waiting }: ThreadActivity): null {
   useEffect(() => {
-    $threadActivity.set({ text, waiting })
-  }, [text, waiting])
+    $threadActivity.set({ ask, text, waiting })
+  }, [ask, text, waiting])
 
   useEffect(() => () => $threadActivity.set(null), [])
 
