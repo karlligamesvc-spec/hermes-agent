@@ -30,6 +30,8 @@ import { useI18n } from '@/i18n'
 import {
   type HandoffCarryCount,
   handoffDuration,
+  relayWaitingChip,
+  relayWaitingNote,
   type SingleThreadHandoffCopy,
   useSingleThreadHandoffCopy
 } from '@/i18n/single-thread-handoff'
@@ -314,8 +316,8 @@ function relayStatus(
             </Button>
           </Actions>
         ),
-        body: <p className="m-0 wrap-anywhere">{copy.waitingNote(name, record.waitingFor?.question.trim() ?? '')}</p>,
-        chip: <Chip tone="wait">{copy.waitingChip}</Chip>
+        body: <p className="m-0 wrap-anywhere">{relayWaitingNote(copy, name, record.waitingFor)}</p>,
+        chip: <Chip tone="wait">{relayWaitingChip(copy, record.waitingFor)}</Chip>
       }
     case 'returned': {
       const took = handoffDuration(

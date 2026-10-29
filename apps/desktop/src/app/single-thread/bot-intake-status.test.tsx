@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ClientSessionState } from '@/app/types'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
 import { BOT_INTAKE_META_KEY } from '@/store/bot-intake'
+import { clearClarifyRequest, setClarifyRequest } from '@/store/clarify'
 import { $mainThreadsByProfile, resetMainThreadForTest } from '@/store/main-thread'
 import { $sessionStates } from '@/store/session-states'
 import { $botLastSessions, type ApexBot, type BotProfileRow, botRosterFrom } from '@/store/single-thread-bots'
@@ -71,6 +72,7 @@ describe('hc-1079: where a row shows it', () => {
 
   afterEach(() => {
     cleanup()
+    clearClarifyRequest()
     $sessionStates.set({})
     $botLastSessions.set({})
     resetMainThreadForTest()
@@ -107,6 +109,8 @@ describe('hc-1079: where a row shows it', () => {
     $sessionStates.set({
       bot: { busy: true, messages: [], needsInput: true, storedSessionId: 'bot-root' } as unknown as ClientSessionState
     })
+    // hc-1107: waiting comes from the question parked for its session.
+    setClarifyRequest({ choices: null, multiSelect: false, question: '要哪个？', requestId: 'q-1', sessionId: 'bot' })
 
     expect(lineOf(bot('apex-bot-2', undefined))).toBe('等你决定')
   })

@@ -42,11 +42,16 @@ describe('hc-1077 what a background assistant is doing', () => {
     })
   })
 
-  it.each([
-    ['idle', { busy: false }],
-    ['waiting on the user (the row says 等你决定 itself)', { needsInput: true }]
-  ])('says nothing of its own when %s', (_label, extra) => {
-    expect(backgroundActivity(state(asChat(remixRunningTurn()), extra), processCopy())).toBeNull()
+  it('says nothing of its own when idle', () => {
+    expect(backgroundActivity(state(asChat(remixRunningTurn()), { busy: false }), processCopy())).toBeNull()
+  })
+
+  // hc-1107: needsInput outlives an answered approval until the next tool finishes; the row's waiting
+  // comes from the parked prompts (checked before this), so the step is named again at once.
+  it('names its step with needsInput still up', () => {
+    expect(backgroundActivity(state(asChat(remixRunningTurn()), { needsInput: true }), processCopy())?.text).toBe(
+      '正在识别语音…'
+    )
   })
 
   it('reads only the turn in flight, not an earlier finished one', () => {

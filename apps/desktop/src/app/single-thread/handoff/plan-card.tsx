@@ -30,7 +30,13 @@ import { ApexAvatar } from '@/components/apex-avatar'
 import { useTurnView } from '@/components/assistant-ui/process/turn-state'
 import { Button } from '@/components/ui/button'
 import { type HandoffPlanCopy, type HandoffPlanProblem, useHandoffPlanCopy } from '@/i18n/handoff-plan'
-import { handoffDuration, type SingleThreadHandoffCopy, useSingleThreadHandoffCopy } from '@/i18n/single-thread-handoff'
+import {
+  handoffDuration,
+  relayWaitingChip,
+  relayWaitingNote,
+  type SingleThreadHandoffCopy,
+  useSingleThreadHandoffCopy
+} from '@/i18n/single-thread-handoff'
 import { type HandoffPlanBlock, parseHandoffPlan } from '@/lib/handoff-plan'
 import { replyAttachments } from '@/lib/handoff-text'
 import { visibleReplyText } from '@/lib/reply-markers'
@@ -402,7 +408,7 @@ function batonView(
       return { chip: handoffCopy.runningChip, tone: 'run' }
 
     case 'waiting':
-      return { chip: handoffCopy.waitingChip, tone: 'wait' }
+      return { chip: relayWaitingChip(handoffCopy, record.waitingFor), tone: 'wait' }
 
     case 'returned':
       return { chip: handoffCopy.returnedChip(''), tone: 'done' }
@@ -546,7 +552,7 @@ function headChip({ copy, handoffCopy, state }: RunCopy & { state: RunState }): 
   }
 
   return state.waitingOnUser ? (
-    <Chip tone="wait">{handoffCopy.waitingChip}</Chip>
+    <Chip tone="wait">{relayWaitingChip(handoffCopy, state.current?.waitingFor)}</Chip>
   ) : (
     <Chip tone="run">{copy.runningChip}</Chip>
   )
@@ -582,9 +588,7 @@ function batonNote({ copy, handoffCopy, state }: RunCopy & { state: RunState }):
 
   switch (current?.status) {
     case 'waiting':
-      return (
-        <p className="m-0 wrap-anywhere">{handoffCopy.waitingNote(name, current.waitingFor?.question.trim() ?? '')}</p>
-      )
+      return <p className="m-0 wrap-anywhere">{relayWaitingNote(handoffCopy, name, current.waitingFor)}</p>
 
     case 'queued':
       return <p className={META_CLASS}>{handoffCopy.queueNote(current.queueReason, name)}</p>
