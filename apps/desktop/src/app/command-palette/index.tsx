@@ -21,7 +21,6 @@ import { KbdCombo } from '@/components/ui/kbd'
 import { getHermesConfigRecord, listAllProfileSessions } from '@/hermes'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useI18n } from '@/i18n'
-import { useModelTierCopy } from '@/i18n/model-tier'
 import {
   Activity,
   AppWindow,
@@ -94,6 +93,7 @@ import {
   STARMAP_ROUTE
 } from '../routes'
 import { isConsumerHiddenSection, MODEL_TIER_HIDDEN_CONFIG_KEYS, SECTIONS } from '../settings/constants'
+import { useSettingsSectionLabel } from '../settings/product-settings'
 import { configFieldLabel, type SettingsSearchEntry } from "../settings/settings-search"
 import { settingsSearchTargetQuery } from "../settings/settings-search"
 import { useSettingsSearchCatalog } from "../settings/use-settings-search"
@@ -683,15 +683,9 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
 
   // hc-960: an APEX account's model page is 档位, its provider pages fold
   // into 档位 › 高级, and model-picking fields stay out of ⌘K like they stay out
-  // of the settings nav.
+  // of the settings nav. hc-1109: in product mode 记忆与上下文 is just 记忆.
   const tierMode = useModelTierMode()
-  const tierCopy = useModelTierCopy()
-
-  const settingsSectionLabel = useCallback(
-    (section: (typeof SECTIONS)[number]) =>
-      tierMode && section.id === 'model' ? tierCopy.navLabel : (t.settings.sections[section.id] ?? section.label),
-    [t.settings.sections, tierCopy, tierMode]
-  )
+  const settingsSectionLabel = useSettingsSectionLabel()
 
   // Running a keepOpen row (a toggle) changes state the rows themselves report,
   // so the groups have to rebuild without the palette closing. A counter keeps

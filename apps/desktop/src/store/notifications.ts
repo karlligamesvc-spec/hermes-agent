@@ -2,6 +2,7 @@ import { atom } from 'nanostores'
 
 import { translateNow } from '@/i18n'
 import { isLocalBackendSlotWaitTimeout, requestPoolLimitsSettings } from '@/store/pool-limits'
+import { isSingleThreadMode } from '@/store/single-thread'
 
 export type NotificationKind = 'error' | 'warning' | 'info' | 'success'
 
@@ -203,12 +204,14 @@ export function notifyError(error: unknown, fallback: string): string {
   const poolSlotTimeout = isLocalBackendSlotWaitTimeout(error)
 
   return notify({
-    action: poolSlotTimeout
-      ? {
-          label: translateNow('desktop.poolSlotTimeoutOpenSettings'),
-          onClick: requestPoolLimitsSettings
-        }
-      : undefined,
+    // hc-1109: 高级 (where the pool's size lives) is a developer section in product mode.
+    action:
+      poolSlotTimeout && !isSingleThreadMode()
+        ? {
+            label: translateNow('desktop.poolSlotTimeoutOpenSettings'),
+            onClick: requestPoolLimitsSettings
+          }
+        : undefined,
     kind: 'error',
     title: fallback,
     message: poolSlotTimeout ? translateNow('desktop.poolSlotTimeoutBody') : readable.message,
