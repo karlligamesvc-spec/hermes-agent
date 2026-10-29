@@ -3,16 +3,23 @@ import { type FC, type ReactNode, useCallback, useEffect, useRef, useState } fro
 
 import { DirectiveContent } from '@/components/assistant-ui/directive-text'
 import { messageAttachmentRefs, messageContentText } from '@/components/assistant-ui/thread/content'
+import { useMessageMenuTime } from '@/components/assistant-ui/thread/message-menu'
 import { ReactionBadge, ReactionPicker } from '@/components/assistant-ui/thread/message-reactions'
+import { useThreadCopy } from '@/components/assistant-ui/thread/thread-copy'
 import { MessageTimelineTimestamp } from '@/components/assistant-ui/thread/timeline-timestamp'
 import { type RestoreMessageTarget } from '@/components/assistant-ui/thread/types'
 import { useMessageReactions } from '@/components/assistant-ui/thread/use-message-reactions'
+import {
+  UserBubbleEdit,
+  UserMessageRail,
+  useUserBubbleCopyMenu
+} from '@/components/assistant-ui/thread/user-message-rail'
+import { UserMessageSendingNote } from '@/components/assistant-ui/thread/user-message-sending'
 import { UserMessageText } from '@/components/assistant-ui/thread/user-message-text'
 import { Codicon } from '@/components/ui/codicon'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
-import { StopFilled } from '@/lib/icons'
 import { withoutHandoffHeader } from '@/lib/reply-markers'
 import { cn } from '@/lib/utils'
 import { $gateway } from '@/store/gateway'
@@ -67,11 +74,12 @@ export function StickyHumanMessageContainer({
 export const USER_BUBBLE_BASE_CLASS =
   'composer-human-message standalone-glass relative flex w-full min-w-0 max-w-full flex-col gap-1.5 overflow-y-auto rounded-xl border bg-(--dt-user-bubble) px-3 py-2 text-left [-webkit-app-region:no-drag]'
 
-export const USER_ACTION_ICON_BUTTON_CLASS =
-  'grid place-items-center rounded-md bg-transparent text-(--ui-text-secondary) transition-colors hover:bg-(--ui-control-active-background) hover:text-foreground disabled:cursor-default disabled:text-(--ui-text-quaternary) disabled:opacity-70'
-
-export const USER_ACTION_ICON_SIZE = '0.6875rem'
-export const StopGlyph = <StopFilled aria-hidden className="size-3.5 -translate-y-px" />
+// The rail's buttons live with the rail (hc-1101); the edit composer still reads them from here.
+export {
+  StopGlyph,
+  USER_ACTION_ICON_BUTTON_CLASS,
+  USER_ACTION_ICON_SIZE
+} from '@/components/assistant-ui/thread/user-message-rail'
 
 // Background-process notifications are injected into the conversation as user
 // messages (the agent must react to them, and message-role alternation forbids
@@ -268,7 +276,7 @@ export const UserMessage: FC<{
   onRequestRestoreConfirm?: (messageId: string, target: RestoreMessageTarget) => void
 }> = ({ onCancel, onRequestRestoreConfirm }) => {
   const { t } = useI18n()
-  const copy = t.assistant.thread
+  const copy = useThreadCopy()
   const messageId = useAuiState(s => s.message.id)
   const content = useAuiState(s => s.message.content)
   const messageText = withoutHandoffHeader(messageContentText(content))
@@ -312,6 +320,8 @@ export const UserMessage: FC<{
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const { enabled: reactionsEnabled, react, reactions: shownReactions } = useMessageReactions(messageId, 'user')
+  const copyMenu = useUserBubbleCopyMenu(messageText)
+  const menuTime = useMessageMenuTime()
 
   const pickEmoji = useCallback(
     (emoji: null | string) => {
@@ -461,12 +471,14 @@ export const UserMessage: FC<{
                 // link/image/selection inside the bubble still gets the app
                 // menu, and this handler's selection guard keeps ⌘C flows.
                 data-context-menu-skip=""
+                data-message-at={menuTime}
                 onContextMenu={
                   // Right-click is the desktop stand-in for iOS touch-and-hold —
                   // but only when there's nothing selected. A live highlight
                   // keeps the native Copy menu (and ⌘C) instead of the picker.
+                  // Without the picker, single-thread mode offers 「复制」 (hc-1101).
                   readOnly || !reactionsEnabled
-                    ? undefined
+                    ? copyMenu
                     : event => {
                         if (hasTextSelection()) {
                           return
@@ -503,7 +515,8 @@ export const UserMessage: FC<{
                   // turn streams; sending the edit reverts (interrupt + rewind).
                   // A live text highlight wins: finishing a drag-select must not
                   // open the editor and throw the selection away.
-                  <ActionBarPrimitive.Edit asChild>
+                  // Single-thread mode: just the words; editing is 「改一下」 in the rail (hc-1101).
+                  <UserBubbleEdit>
                     <button
                       aria-label={copy.editMessage}
                       className={bubbleClassName}
@@ -528,51 +541,20 @@ export const UserMessage: FC<{
                     >
                       {bubbleContent}
                     </button>
-                  </ActionBarPrimitive.Edit>
+                  </UserBubbleEdit>
                 )}
-                {(showStop || showRestore) && (
-                  <div className="pointer-events-none absolute right-2 bottom-2 z-10 flex items-center justify-center opacity-0 transition-opacity group-hover/user-message:opacity-100 group-focus-within/user-message:opacity-100">
-                    {showStop ? (
-                      <button
-                        aria-label={copy.stop}
-                        className={cn('pointer-events-auto size-5', USER_ACTION_ICON_BUTTON_CLASS)}
-                        onClick={event => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          void onCancel?.()
-                        }}
-                        title={copy.stop}
-                        type="button"
-                      >
-                        {StopGlyph}
-                      </button>
-                    ) : (
-                      <button
-                        aria-label={copy.restoreCheckpoint}
-                        className={cn('pointer-events-auto size-6', USER_ACTION_ICON_BUTTON_CLASS)}
-                        onClick={event => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          triggerHaptic('selection')
-                          onRequestRestoreConfirm?.(messageId, {
-                            text: messageText,
-                            userOrdinal: runtimeUserOrdinal
-                          })
-                        }}
-                        onPointerDown={event => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                        }}
-                        title={copy.restoreFromHere}
-                        type="button"
-                      >
-                        <Codicon name="discard" size="0.875rem" />
-                      </button>
-                    )}
-                  </div>
-                )}
+                <UserMessageRail
+                  copyText={messageText}
+                  editable={!readOnly}
+                  onRestore={() =>
+                    onRequestRestoreConfirm?.(messageId, { text: messageText, userOrdinal: runtimeUserOrdinal })
+                  }
+                  onStop={() => void onCancel?.()}
+                  primary={showStop ? 'stop' : showRestore ? 'restore' : null}
+                />
               </div>
             </ReactionPicker>
+            <UserMessageSendingNote />
             {/* Below the bubble, same register as the assistant action row:
                 same emoji size, same vertical padding, right-aligned to the
                 sent bubble. Overlaying the corner read badly in practice. */}
