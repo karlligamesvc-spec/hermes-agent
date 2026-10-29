@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { cleanup, fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -295,51 +295,108 @@ describe('when a message was sent, on top of its menu', () => {
 })
 
 describe('「仍在发送中」 under a send the gateway has not taken', () => {
+  // The clock stands still, so however long a render takes on a busy machine, a
+  // send never crosses the 5 seconds by itself: only the test moves the time.
+  const NOW = new Date(2026, 9, 28, 9, 30).getTime()
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   /** Two asks, `sentAfterHold` ms after (or, negative, before) a hold taken `heldFor` ms ago; the latest one running. */
+  function sends(heldFor: number, sentAfterHold: number) {
+    const heldAt = NOW - heldFor
+
+    return {
+      heldAt,
+      messages: [
+        user('u-first', '先看这条', {}, new Date(heldAt + sentAfterHold - 10)),
+        assistant('a-first'),
+        user('u-last', '标题用第 1 个', {}, new Date(heldAt + sentAfterHold)),
+        assistant('a-last', true)
+      ]
+    }
+  }
+
+  /** The same asks, with the hold already taken under `key`. */
   function asks(key: string, heldFor: number, sentAfterHold: number) {
-    const heldAt = Date.now() - heldFor
+    const { heldAt, messages } = sends(heldFor, sentAfterHold)
 
     acquireSubmitInFlight(key, heldAt)
 
-    return [
-      user('u-first', '先看这条', {}, new Date(heldAt + sentAfterHold - 10)),
-      assistant('a-first'),
-      user('u-last', '标题用第 1 个', {}, new Date(heldAt + sentAfterHold)),
-      assistant('a-last', true)
-    ]
+    return messages
   }
 
   // The hold is taken first, the bubble right after it (submit.ts). Both asks are
   // newer than the hold, so only "the latest one" keeps the note off the first.
   const sentNow = (heldFor: number) => asks('stored-1', heldFor, 20)
+  const note = () => window.document.querySelector('[data-still-sending]')
 
   it.each(['developer', 'off'] as const)('%s mode: never', async name => {
     mode(name)
     await renderThread(sentNow(STILL_SENDING_AFTER_MS + 1_000))
 
-    expect(window.document.querySelector('[data-still-sending]')).toBeNull()
+    expect(note()).toBeNull()
   })
 
-  it('single-thread mode: shows after 5 seconds, under the latest message, and goes when the gateway takes it', async () => {
+  it('single-thread mode: one millisecond short of 5 seconds, nothing yet', async () => {
     mode('single-thread')
-    await renderThread(sentNow(STILL_SENDING_AFTER_MS - 120))
+    await renderThread(sentNow(STILL_SENDING_AFTER_MS - 1))
 
-    expect(window.document.querySelector('[data-still-sending]')).toBeNull()
+    expect(note()).toBeNull()
+  })
 
-    await waitFor(() => expect(window.document.querySelector('[data-still-sending]')?.textContent).toBe('仍在发送中'))
+  it('single-thread mode: at 5 seconds, under the latest message only, and gone once the gateway takes it', async () => {
+    mode('single-thread')
+    await renderThread(sentNow(STILL_SENDING_AFTER_MS))
+
+    expect(note()?.textContent).toBe('仍在发送中')
     expect(userRoots()[1].querySelector('[data-still-sending]')).not.toBeNull()
     expect(userRoots()[0].querySelector('[data-still-sending]')).toBeNull()
 
     releaseSubmitInFlight('stored-1')
 
-    await waitFor(() => expect(window.document.querySelector('[data-still-sending]')).toBeNull())
+    await waitFor(() => expect(note()).toBeNull())
+  })
+
+  it('single-thread mode: comes in by itself the moment the 5 seconds run out', async () => {
+    mode('single-thread')
+
+    const { heldAt, messages } = sends(STILL_SENDING_AFTER_MS - 1_000, 20)
+
+    await renderThread(messages)
+
+    // The kit's render waits on real timers, so the test takes the timers over
+    // only now, and holds the send after that: the note's own timer is the
+    // test's to run.
+    vi.useRealTimers()
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(NOW)
+    act(() => {
+      acquireSubmitInFlight('stored-1', heldAt)
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(999)
+    })
+    expect(note()).toBeNull()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(note()?.textContent).toBe('仍在发送中')
   })
 
   it('single-thread mode: a hold taken after the latest message was sent is not about it', async () => {
     mode('single-thread')
     await renderThread(asks('stored-1', STILL_SENDING_AFTER_MS + 1_000, -60_000))
 
-    expect(window.document.querySelector('[data-still-sending]')).toBeNull()
+    expect(note()).toBeNull()
   })
 
   it('single-thread mode: a brand-new conversation’s send counts too', async () => {
@@ -348,7 +405,7 @@ describe('「仍在发送中」 under a send the gateway has not taken', () => {
     $activeSessionId.set(null)
     await renderThread(asks('__pending_new__', STILL_SENDING_AFTER_MS + 500, 20))
 
-    expect(window.document.querySelector('[data-still-sending]')?.textContent).toBe('仍在发送中')
+    expect(note()?.textContent).toBe('仍在发送中')
   })
 })
 

@@ -67,7 +67,7 @@ export function assistant(id: string, running = false, text = '好。'): ThreadM
 /** A picture-only message, then your latest ask and its reply. */
 export function transcript({ running = false, text = SENT, sentAt = SENT_AT } = {}): ThreadMessage[] {
   return [
-    user('u-picture', '', { attachmentRefs: ['@image:`/tmp/数据截图.png`'] }),
+    user('u-picture', '', { attachmentRefs: ['@image:`/Users/xiaoman/数据截图.png`'] }),
     assistant('a-picture'),
     user('u-last', text, {}, sentAt),
     assistant('a-last', running)
