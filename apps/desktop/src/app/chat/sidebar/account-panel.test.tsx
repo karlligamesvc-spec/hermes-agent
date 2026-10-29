@@ -3,15 +3,26 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { DesktopAuthGate } from '@/app/desktop-auth-gate'
 import { DesktopOnboardingOverlay } from '@/components/onboarding'
 import { I18nProvider } from '@/i18n'
 import { $accountTeam } from '@/store/account-team'
 import { $authState, canMountDesktopOnboarding, markSignedIn } from '@/store/auth'
+import { $managedReSignIn, closeManagedReSignIn } from '@/store/managed-re-sign-in'
 import { $notifications, clearNotifications } from '@/store/notifications'
 import { $desktopOnboarding, cancelOnboardingFlow } from '@/store/onboarding'
 
 import { AccountPanel } from './account-panel'
 
+// The auth gate re-reads main's status when it mounts; these cases seed the account themselves.
+vi.mock(import('@/store/auth'), async importOriginal => ({
+  ...(await importOriginal()),
+  refreshAuthStatus: async () => undefined
+}))
+
+const readyGateway = async (method: string) => (method === 'setup.runtime_check' ? { ok: true } : { provider_configured: true }) as never
+
+// The panel under both overlays the shell mounts, in its order (wiring.tsx).
 function ExpiredAccountWindow() {
   const auth = useStore($authState)
   const onboarding = useStore($desktopOnboarding)
@@ -19,11 +30,20 @@ function ExpiredAccountWindow() {
   return (
     <>
       <AccountPanel />
+      <DesktopAuthGate enabled requestGateway={readyGateway} />
       {canMountDesktopOnboarding(auth, onboarding.requested) && (
-        <DesktopOnboardingOverlay enabled requestGateway={async method => (method === 'setup.runtime_check' ? { ok: true } : { provider_configured: true }) as never} />
+        <DesktopOnboardingOverlay enabled requestGateway={readyGateway} />
       )}
     </>
   )
+}
+
+// hc-1110: a re-sign-in is the first-open sign-in screen, plus its way back.
+async function findFirstOpenSignIn() {
+  await screen.findByRole('heading', { name: '开始使用' })
+  expect(screen.getByRole('button', { name: '登录 APEX 账户' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: '返回' })).toBeTruthy()
+  expect(screen.queryByText('登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。')).toBeNull()
 }
 
 function CurrentPath() {
@@ -73,6 +93,7 @@ describe('expired account recovery', () => {
 
   afterEach(() => {
     cleanup()
+    closeManagedReSignIn()
     vi.restoreAllMocks()
   })
 
@@ -90,7 +111,8 @@ describe('expired account recovery', () => {
       fireEvent.click(screen.getByRole('button', { name: /登录已失效/ }))
     })
 
-    await waitFor(() => expect(screen.getByText('登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。')).toBeTruthy())
+    await findFirstOpenSignIn()
+    expect(screen.getByText('登录已过期,请重新登录')).toBeTruthy()
   })
 
   it('does not open sign-in merely because the account degraded to expired', () => {
@@ -102,7 +124,7 @@ describe('expired account recovery', () => {
       </I18nProvider>
     )
 
-    expect(screen.queryByText('登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。')).toBeNull()
+    expect(screen.queryByRole('heading', { name: '开始使用' })).toBeNull()
     expect(screen.getByRole('button', { name: /登录已失效/ })).toBeTruthy()
   })
 })
@@ -211,6 +233,7 @@ describe('account sign-out failure recovery', () => {
   afterEach(() => {
     cleanup()
     clearNotifications()
+    closeManagedReSignIn()
     vi.restoreAllMocks()
     // @ts-expect-error test bridge cleanup
     delete window.hermesDesktop
@@ -229,7 +252,7 @@ describe('account sign-out failure recovery', () => {
     expect($authState.get().status).toBe('signed-in')
     expect($authState.get().account.email).toBe('kael@apex-nodes.com')
     await act(async () => { $notifications.get()[0].action?.onClick() })
-    await screen.findByText('登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。')
+    await findFirstOpenSignIn()
   })
 
   it('permits sign-in directly and ignores an old sign-out failure after an account replacement', async () => {
@@ -240,8 +263,8 @@ describe('account sign-out failure recovery', () => {
     render(<I18nProvider configClient={null} initialLocale="zh"><MemoryRouter><ExpiredAccountWindow /></MemoryRouter></I18nProvider>)
     fireEvent.keyDown(screen.getByRole('button', { name: '打开账户菜单: Kael' }), { key: 'Enter' })
     fireEvent.click(await screen.findByRole('menuitem', { name: '重新登录' }))
-    await screen.findByText('登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。')
-    await act(async () => { cancelOnboardingFlow(); $desktopOnboarding.set({ ...$desktopOnboarding.get(), requested: false }) })
+    await findFirstOpenSignIn()
+    fireEvent.click(screen.getByRole('button', { name: '返回' }))
     fireEvent.keyDown(screen.getByRole('button', { name: '打开账户菜单: Kael' }), { key: 'Enter' })
     fireEvent.click(await screen.findByRole('menuitem', { name: '退出登录' }))
     await waitFor(() => expect(signOut).toHaveBeenCalledOnce())
@@ -252,6 +275,7 @@ describe('account sign-out failure recovery', () => {
     expect($notifications.get()).toHaveLength(0)
     expect($authState.get().account.email).toBe('new@example.invalid')
     expect($desktopOnboarding.get().requested).toBe(false)
+    expect($managedReSignIn.get()).toBeNull()
   })
 })
 

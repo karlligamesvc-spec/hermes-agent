@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { DesktopLoginScreen } from '@/components/desktop-login-screen'
 import { useI18n } from '@/i18n'
 import { $authState, handleAuthGate, refreshAuthStatus } from '@/store/auth'
+import { $managedReSignIn } from '@/store/managed-re-sign-in'
 import { reconcileRelayAuthState } from '@/store/managed-recovery'
 import type { OnboardingContext } from '@/store/onboarding'
 
@@ -27,6 +28,7 @@ interface DesktopAuthGateProps {
 export function DesktopAuthGate({ enabled, onSignedIn, requestGateway }: DesktopAuthGateProps) {
   const { t } = useI18n()
   const { enabled: managedEnabled, gateReason, loginTruth, status } = useStore($authState)
+  const reSignIn = useStore($managedReSignIn)
   const [startupReconcileDone, setStartupReconcileDone] = useState(false)
 
   // Continuous auth gate: subscribe once to the main-process broadcast so a lost
@@ -72,9 +74,21 @@ export function DesktopAuthGate({ enabled, onSignedIn, requestGateway }: Desktop
   // (the sidebar account card + model menu carry that state; a managed-only relay
   // expiry must not nuke the whole window to a full login screen) → don't gate:
   // the boot/env overlays cover the pre-ready phase, and a signed-in user goes
-  // straight to chat.
-  if (!enabled || status === 'signed-in' || status === 'expired') {
+  // straight to chat. hc-1110: until that user asks to sign in again, which
+  // shows this same screen over the app, with a way back.
+  if (!enabled) {
     return null
+  }
+
+  if (status === 'signed-in' || status === 'expired') {
+    return reSignIn && managedEnabled !== false ? (
+      <DesktopLoginScreen
+        gateNotice={reSignIn.notice}
+        onSignedIn={onSignedIn}
+        requestGateway={requestGateway}
+        reSignIn
+      />
+    ) : null
   }
 
   // Env is ready but the first login-state check hasn't resolved yet. Cover the

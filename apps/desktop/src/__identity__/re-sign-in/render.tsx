@@ -18,14 +18,14 @@ import { DesktopOnboardingOverlay } from '@/components/onboarding'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
 import type { Locale } from '@/i18n/types'
 import { $authState, canMountDesktopOnboarding, type DesktopAuthState } from '@/store/auth'
-import { $desktopOnboarding, type DesktopOnboardingState } from '@/store/onboarding'
+import { $desktopOnboarding, type DesktopOnboardingState, type OnboardingContext } from '@/store/onboarding'
 
 /** React's and Radix's generated ids count up per render in one test run; they are not what the guard is about. */
 export function normalized(html: string): string {
   return html.replace(/«r[0-9a-z]+»|:r[0-9a-z]+:|radix-[^"\s]+/g, '«id»')
 }
 
-const never = () => new Promise<never>(() => undefined)
+export const never = () => new Promise<never>(() => undefined)
 
 /** A desktop bridge that never answers: what is on screen is exactly the seeded state. */
 export function installQuietBridge(): void {
@@ -75,12 +75,12 @@ export function seed(auth: Partial<DesktopAuthState> = {}, onboarding: Partial<D
   })
 }
 
-function Providers({ children, locale = 'zh' }: { children: ReactNode; locale?: Locale }) {
+export function Providers({ children, locale = 'zh', path }: { children: ReactNode; locale?: Locale; path?: string }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
   return (
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={path ? [path] : undefined}>
         <I18nProvider configClient={null} initialLocale={locale}>
           {children}
         </I18nProvider>
@@ -89,22 +89,22 @@ function Providers({ children, locale = 'zh' }: { children: ReactNode; locale?: 
   )
 }
 
-async function settle(): Promise<void> {
+export async function settle(): Promise<void> {
   await act(async () => {
     await new Promise(resolve => setTimeout(resolve, 20))
   })
 }
 
 /** Both overlays the shell mounts for the main window, in its order and under its mount rule (wiring.tsx). */
-function Overlays() {
+export function Overlays({ requestGateway }: { requestGateway?: OnboardingContext['requestGateway'] }) {
   const auth = useStore($authState)
   const onboardingRequested = useStore($desktopOnboarding).requested
 
   return (
     <>
-      <DesktopAuthGate enabled requestGateway={vi.fn(never) as never} />
+      <DesktopAuthGate enabled requestGateway={requestGateway ?? (vi.fn(never) as never)} />
       {canMountDesktopOnboarding(auth, onboardingRequested) && (
-        <DesktopOnboardingOverlay enabled requestGateway={vi.fn(never) as never} />
+        <DesktopOnboardingOverlay enabled requestGateway={requestGateway ?? (vi.fn(never) as never)} />
       )}
     </>
   )
