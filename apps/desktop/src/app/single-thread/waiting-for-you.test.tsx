@@ -6,7 +6,7 @@
  * while it writes its answer and 「发送失败」 when the send did not go through.
  */
 
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import type { ThreadMessage } from '@assistant-ui/react'
@@ -23,6 +23,7 @@ import { stubThreadEnvironment, stubThreadViewportSize, ThreadRuntime } from '@/
 import { Thread } from '@/components/assistant-ui/thread'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
+import { relayWaitingChip, relayWaitingNote, SINGLE_THREAD_HANDOFF_COPY } from '@/i18n/single-thread-handoff'
 import type { ChatMessage } from '@/lib/chat-messages'
 import { $authState } from '@/store/auth'
 import { clearClarifyRequest, setClarifyRequest } from '@/store/clarify'
@@ -478,6 +479,32 @@ describe('the foot of the conversation (the activity line)', () => {
 
   it('nothing parked: the step, looking down at the work', async () => {
     expect(await activityLine()).toEqual({ face: 'working', shimmer: true, text: '正在识别语音…' })
+  })
+})
+
+describe('the relay cards in the sender’s thread say the same words', () => {
+  const copy = SINGLE_THREAD_HANDOFF_COPY.zh
+
+  it.each([
+    [{ kind: 'approval', question: ' 转码 ', requestId: 'a' }, '在等你确认', '带货脚本在等你确认：转码'],
+    [
+      { kind: 'clarify', question: '竖版还是横版？', requestId: 'q' },
+      '在等你决定',
+      '带货脚本在等你决定：竖版还是横版？'
+    ],
+    [null, '在等你决定', '带货脚本在等你决定。']
+  ] as const)('%o', (prompt, chip, note) => {
+    expect([relayWaitingChip(copy, prompt), relayWaitingNote(copy, '带货脚本', prompt)]).toEqual([chip, note])
+  })
+
+  it('no card reads the 「决定」 words directly (every waiting chip and note goes through the split)', () => {
+    const SRC = join(__dirname, '..', '..')
+
+    const files = (readdirSync(SRC, { recursive: true }) as string[])
+      .filter(file => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file))
+      .filter(file => /\.(waitingChip|waitingNote)\b/.test(readFileSync(join(SRC, file), 'utf8')))
+
+    expect(files).toEqual(['i18n/single-thread-handoff.ts'])
   })
 })
 
