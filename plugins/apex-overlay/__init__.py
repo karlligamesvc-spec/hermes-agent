@@ -62,6 +62,13 @@ _TOOL_SEAMS = (
         "describe everything again, and may return its private reasoning "
         "or a cut-off answer as if it were complete.",
     ),
+    (
+        "apex_identity",
+        "apex-overlay: hc-1103 APEX identity seam did not fully apply (see "
+        "prior error). Subagents may call themselves Hermes Agent by Nous "
+        "Research, a cloud assistant may say it runs on Hermes Agent, and "
+        "/version in IM may print the engine's banner instead of APEX's version.",
+    ),
 )
 
 
