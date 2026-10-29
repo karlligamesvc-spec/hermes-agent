@@ -295,7 +295,9 @@ describe('while a task runs: one activity line at the foot', () => {
       expect(bar?.closest('[hidden]')).toBeNull()
     })
 
-    expect(onScreen(activity(container)!.querySelector('[role="status"]')!)).toBe('等你决定')
+    // hc-1107: an approval is a yes/no — 「等你确认」, the face looking up at the user.
+    expect(onScreen(activity(container)!.querySelector('[role="status"]')!)).toBe('等你确认')
+    expect(activity(container)!.querySelector('[data-apex-avatar]')?.getAttribute('data-apex-avatar')).toBe('waiting')
   })
 
   it('says 「等你决定」 while a question card waits on the user', async () => {
@@ -312,8 +314,8 @@ describe('while a task runs: one activity line at the foot', () => {
     await waitFor(() => expect(activity(container)).not.toBeNull())
 
     expect(onScreen(activity(container)!.querySelector('[role="status"]')!)).toBe('等你决定')
-    // Waiting on the user, APEX looks up at them instead of down at the work.
-    expect(activity(container)!.querySelector('[data-apex-avatar]')?.getAttribute('data-apex-avatar')).toBe('idle')
+    // Waiting on the user, APEX looks up at them instead of down at the work (hc-1107's `waiting` face).
+    expect(activity(container)!.querySelector('[data-apex-avatar]')?.getAttribute('data-apex-avatar')).toBe('waiting')
   })
 
   it('tells the sidebar what it says, and stops when it goes away (hc-1061)', async () => {

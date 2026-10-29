@@ -18,6 +18,7 @@ import {
   globalShortcut,
   ipcMain,
   Menu,
+  autoUpdater as nativeAutoUpdater,
   nativeTheme,
   powerMonitor,
   powerSaveBlocker,
@@ -103,7 +104,7 @@ import {
 } from './apex-daemon'
 import { ensureApexDesktopSouls } from './apex-default-soul'
 import { clientConfigForRenderer } from './apex-desktop-features'
-import { endEngineChildren, snapshotEngineChildren } from './apex-engine-children'
+import { stopEndingChildren, sweepEngineOnStop } from './apex-engine-children'
 import { gatewayKeyHolder, gatewayStatePath, holdsRelayKey, poolKeyHolders, primaryKeyHolder, reconcileRelayKeyAndEngines, StaleRelayKeyRestarts, stampKeyHolderProcess } from './apex-engine-relay-key'
 import {
   buildFeishuBackendEnv,
@@ -162,6 +163,7 @@ import { makeRoomInPool, poolAllBusyError, reapIdlePoolEngine, stampPoolEngine }
 import { guardProductBlocksInHomes, persistRelayKeyInHome } from './apex-profile-config'
 import { registerProfileConfigIpc } from './apex-profile-config-ipc'
 import { isMultiBotActive, managedProfileHomes } from './apex-profile-homes'
+import { createQuitConfirm, ENGINE_IDLE_PATH, ENGINE_PROBE_DEADLINE_MS, localEnginesOf } from './apex-quit-confirm'
 import { fetchRelayModels, RelayTierMemo } from './apex-relay-tiers'
 import {
   checkForRuntimeUpdate,
@@ -537,7 +539,7 @@ import {
   tagRegistrySessionResponse
 } from './profile-session-routing'
 import { createQuickEntryShortcut, quickEntryWindowBounds, sanitizeQuickEntrySettings } from './quick-entry'
-import { type ActiveWork, mergeActiveWork, normalizeActiveWork, quitPromptFor } from './quit-guard'
+import { type ActiveWork, mergeActiveWork, normalizeActiveWork } from './quit-guard'
 import { backendQuitNeedsWait, createQuitTeardownCoordinator } from './quit-teardown'
 import * as remoteLifecycle from './remote-lifecycle'
 import {
@@ -1795,6 +1797,7 @@ const localBackendLifecycle = createLocalBackendLifecycle<ReturnType<typeof spaw
     }
   },
   waitForExit: child => waitForBackendExit(child),
+  sweepOnStop: child => sweepEngineOnStop(child, rememberLog), // hc-1100/hc-1102: what an engine started outside its group
   cancelSetup: () => {
     firstRunSetupGate?.resetForRetry()
     bootstrapAbortController?.abort()
@@ -3756,8 +3759,6 @@ let updateInFlight = false
 // set, window-all-closed calls app.quit() on every platform so the process
 // actually dies and the hand-off script can proceed immediately.
 let isQuittingForHandoff = false
-let quitPromptOpen = false
-let quitConfirmedWithActiveWork = false
 
 // Resolve the staged updater binary. The Tauri installer copies itself to
 // HERMES_HOME/hermes-setup.exe on a successful install (see
@@ -4038,7 +4039,7 @@ async function stopOwnedBackend(identity) {
 const backendOwnership = createBackendOwnership({
   matchesIdentity: backendIdentityMatches,
   matchesParent: backendParentMatches,
-  stop: stopOwnedBackend,
+  stop: entry => stopEndingChildren(entry, () => processIdentityMatches(entry, REAP_PROBE_TIMEOUT_MS), () => stopOwnedBackend(entry), rememberLog), // hc-1102
   store: {
     read: () => {
       try {
@@ -7363,6 +7364,7 @@ function registerPowerResumeListeners() {
       powerMonitor,
       revalidate: () => revalidateSuspectPoolAfterResume()
     })
+    quitConfirm.watchSessionEnd({ updater: nativeAutoUpdater, workspace: IS_MAC ? systemPreferences : undefined }) // hc-1104
   } catch {
     // powerMonitor is unavailable before app 'ready' on some platforms; the
     // caller registers after 'ready', so this should not normally throw.
@@ -12776,11 +12778,14 @@ async function evictLruPoolBackends(keep, spawnPriority?: LocalBackendSpawnPrior
     Math.max(0, keep),
     Date.now(),
     POOL_KEEPALIVE_FRESH_MS,
-    async profile => {
-      rememberLog(`Evicting idle profile backend "${profile}" (LRU cap ${poolMaxBackends()})`)
-      await stopPoolBackend(profile)
-    }
+    async profile => void (await reapIdlePoolEngine({ ...poolRetirement(profile), what: `Evicting idle profile backend "${profile}" (LRU cap ${poolMaxBackends()})` }))
   )
+}
+
+// hc-1080/hc-1102: a pooled engine is asked before the idle reaper or the LRU cap stops it; one still working (a turn, a background command) stays.
+function poolRetirement(profile: string, entry = backendPool.get(profile)) {
+  return { entry, label: profile, idleSeconds: Math.round(poolIdleMs() / 1000), log: rememberLog, stillPooled: () => backendPool.get(profile) === entry, stop: () => stopPoolBackend(profile),
+    post: (route, body) => fetchJson(`http://127.0.0.1:${entry.port}${route}`, entry.token, { method: 'POST', body, timeoutMs: 5_000 }) }
 }
 
 function startPoolIdleReaper() {
@@ -12794,9 +12799,7 @@ function startPoolIdleReaper() {
     for (const [profile, entry] of [...backendPool.entries()]) {
       if (now - (entry.lastActiveAt || 0) > poolIdleMs()) {
         // hc-1080: a live engine is asked first, so a turn running with no window open survives.
-        void reapIdlePoolEngine({ entry, label: profile, idleSeconds: Math.round(poolIdleMs() / 1000), log: rememberLog,
-          post: (route, body) => fetchJson(`http://127.0.0.1:${entry.port}${route}`, entry.token, { method: 'POST', body, timeoutMs: 5_000 }),
-          stillPooled: () => backendPool.get(profile) === entry, stop: () => stopPoolBackend(profile) })
+        void reapIdlePoolEngine(poolRetirement(profile, entry))
       }
     }
 
@@ -13200,8 +13203,7 @@ async function stopAllPoolBackends() {
 }
 
 const backendShutdown = createBackendShutdownCoordinator(async () => {
-  const engineChildren = snapshotEngineChildren(localBackendLifecycle.ownedChildren()) // hc-1100: while they are still theirs
-  const localShutdown = localBackendLifecycle.shutdown()
+  const localShutdown = localBackendLifecycle.shutdown() // hc-1100: each owned engine's stop also ends what it started (sweepOnStop)
   const primary = backendConnectionState.invalidate()
 
   stopBackendChild(primary)
@@ -13213,7 +13215,6 @@ const backendShutdown = createBackendShutdownCoordinator(async () => {
   }
 
   await waitForTeardown([localShutdown, waitForBackendExit(primary), pooledStops, stopMessagingGateway()], 7_000) // hc-1031: the IM gateway is no lifecycle child; unstopped it outlived every quit
-  await endEngineChildren(engineChildren, rememberLog) // hc-1100: a background command's own group outlived every quit
 })
 
 const quitTeardown = createQuitTeardownCoordinator(() => app.quit())
@@ -24561,55 +24562,26 @@ function configureSpellChecker() {
   }
 }
 
-// Ask before a quit kills a turn in flight. True when the quit was intercepted
-// and the confirmation is on screen; "Quit Anyway" re-enters before-quit with
-// the latch set and falls straight through to the teardown below.
-function heldQuitForActiveWork(event: Electron.Event): boolean {
-  if (SKIP_QUIT_CONFIRM || quitConfirmedWithActiveWork || quitPromptOpen) {
-    return false
-  }
-
-  const prompt = quitPromptFor(mergeActiveWork(activeWorkByWebContents.values()), isQuittingForHandoff)
-  const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
-
-  if (!prompt || !parent || parent.isDestroyed()) {
-    return false
-  }
-
-  event.preventDefault()
-  quitPromptOpen = true
-
-  void dialog
-    .showMessageBox(parent, {
-      buttons: ['Keep Running', 'Quit Anyway'],
-      cancelId: 0,
-      defaultId: 0,
-      detail: prompt.detail,
-      message: prompt.message,
-      type: 'question'
-    })
-    .then(({ response }) => {
-      quitPromptOpen = false
-
-      if (response === 1) {
-        quitConfirmedWithActiveWork = true
-        app.quit()
-      }
-    })
-    .catch(() => {
-      // A dialog we can't show must not become a quit we can't perform.
-      quitPromptOpen = false
-      quitConfirmedWithActiveWork = true
-      app.quit()
-    })
-
-  return true
-}
+// Ask before a quit kills a turn in flight: from the windows' reports, or, on macOS with no window open, from the
+// local engines (hc-1104, apex-quit-confirm.ts). "Quit Anyway" re-enters before-quit and falls through to the teardown.
+const quitConfirm = createQuitConfirm({
+  isMac: IS_MAC,
+  skip: () => SKIP_QUIT_CONFIRM || isQuittingForHandoff,
+  windowWork: () => ({ reporters: activeWorkByWebContents.size, work: mergeActiveWork(activeWorkByWebContents.values()) }),
+  parent: () => BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0],
+  engines: () => localEnginesOf({ connection: backendConnectionState.getPendingPromise() ? null : backendConnectionState.getPromise(),
+    owned: backendConnectionState.getProcess() !== null }, backendPool.values()),
+  probe: engine => fetchJson(`${engine.baseUrl}${ENGINE_IDLE_PATH}`, engine.token, { timeoutMs: ENGINE_PROBE_DEADLINE_MS }),
+  showMessageBox: (parent, options) => (parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options)),
+  focusApp: () => app.focus({ steal: true }),
+  quit: () => app.quit(),
+  log: rememberLog
+})
 
 app.on('before-quit', event => {
   // Runs ahead of every teardown below, so "Keep Running" leaves the app
   // exactly as it was.
-  if (heldQuitForActiveWork(event)) {
+  if (quitConfirm.hold(event)) {
     return
   }
 

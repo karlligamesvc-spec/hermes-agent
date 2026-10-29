@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, test, vi } from 'vitest'
 
 import { parsePoolAllBusy } from '../shared/apex-pool-busy'
 
-import { makeRoomInPool, poolAllBusyError, type PoolEngineEntry } from './apex-pool-engines'
+import { makeRoomInPool, poolAllBusyError, type PoolEngineEntry, reapIdlePoolEngine } from './apex-pool-engines'
 import { BackendDialClaims } from './backend-dial-claim'
 import { evictPoolEntries } from './pool-eviction'
 import {
@@ -58,6 +58,17 @@ function pool(running: Array<[string, Engine]>, { multiBot = true, pingedAgoMs =
     entry?.release?.()
   }
 
+  // An engine's /api/health/retirement: a busy one (a turn, or since hc-1102 a background command) refuses.
+  const post = (entry: PoolEngineEntry) => async (_route: string, body: Record<string, unknown>) => {
+    asked.push(`${entry.apexProfile}:${body.action}`)
+
+    return engines.get(entry.apexProfile!) === 'idle'
+      ? body.action === 'prepare'
+        ? { ok: true, idle: true, token: 'permit' }
+        : { ok: true }
+      : { ok: false, idle: false }
+  }
+
   // main.ts evictLruPoolBackends.
   async function evict(keep: number, priority?: LocalBackendSpawnPriority): Promise<unknown> {
     if (priority === 'foreground' && multiBot) {
@@ -66,15 +77,7 @@ function pool(running: Array<[string, Engine]>, { multiBot = true, pingedAgoMs =
         keep,
         log: line => log.push(line),
         stop,
-        post: entry => async (_route, body) => {
-          asked.push(`${entry.apexProfile}:${body.action}`)
-
-          return engines.get(entry.apexProfile!) === 'idle'
-            ? body.action === 'prepare'
-              ? { ok: true, idle: true, token: 'permit' }
-              : { ok: true }
-            : { ok: false, idle: false }
-        },
+        post,
         stillPooled: (key, entry) => entries.get(key) === entry
       })
 
@@ -85,9 +88,20 @@ function pool(running: Array<[string, Engine]>, { multiBot = true, pingedAgoMs =
       return made.evicted
     }
 
+    // main.ts poolRetirement: the LRU cap asks the engine first, as the idle reaper does (hc-1102).
     return evictPoolEntries(entries.entries(), keep, Date.now(), FRESH_MS, async key => {
-      log.push(`Evicting idle profile backend "${key}" (LRU cap ${LIMIT})`)
-      await stop(key)
+      const entry = entries.get(key)!
+
+      await reapIdlePoolEngine({
+        entry,
+        idleSeconds: 600,
+        label: key,
+        log: line => log.push(line),
+        post: post(entry),
+        stillPooled: () => entries.get(key) === entry,
+        stop: () => stop(key),
+        what: `Evicting idle profile backend "${key}" (LRU cap ${LIMIT})`
+      })
     })
   }
 
@@ -339,15 +353,44 @@ describe('hc-1093: what stays as it was', () => {
     assert.deepEqual(p.stopped, [])
   })
 
-  test('a background dial still evicts an engine nobody pinged for 4 minutes, upstream style', async () => {
+  test('a background dial still evicts an engine nobody pinged for 4 minutes, upstream style, once it retires', async () => {
     const p = pool(RUNNING, { pingedAgoMs: FRESH_MS + 60_000 })
     const background = settle(p.dial('fourth'))
 
     await vi.advanceTimersByTimeAsync(100)
 
     assert.deepEqual(background.outcome, { value: 'engine:fourth' })
-    assert.deepEqual(p.asked, [])
-    assert.deepEqual(p.log, ['Evicting idle profile backend "writer" (LRU cap 3)'])
+    assert.deepEqual(p.asked, ['writer:prepare', 'writer:commit'])
+    assert.deepEqual(p.stopped, ['writer'])
+    assert.deepEqual(p.log, ['Evicting idle profile backend "writer" (LRU cap 3): committed'])
+  })
+
+  // hc-1102: nobody pings an engine whose turn ended while its background render goes on; the LRU cap
+  // used to stop it blind (the render orphaned, and with hc-1102's sweep it would be cut off).
+  test('a background dial leaves a stale engine that is still working, and waits like any full pool', async () => {
+    const p = pool(
+      [
+        ['writer', 'busy'],
+        ['editor', 'idle'],
+        ['maxer', 'idle']
+      ],
+      { pingedAgoMs: FRESH_MS + 60_000 }
+    )
+
+    const background = settle(p.dial('fourth'))
+
+    await vi.advanceTimersByTimeAsync(100)
+
+    assert.deepEqual(p.asked, ['writer:prepare'])
+    assert.deepEqual(p.stopped, [])
+    assert.match(p.log[0], /^Keeping idle profile backend "writer" another 600s: the engine did not retire \(busy\)$/)
+    assert.ok(p.entries.has('writer'))
+
+    await vi.advanceTimersByTimeAsync(SLOT_WAIT_MS)
+    await background.done
+
+    assert.match(String(background.outcome.error), /timed out while waiting for a free slot\. \(background\)$/)
+    assert.deepEqual(p.stopped, [])
   })
 
   // Already right before hc-1093 (hc-1080), pinned: the click owns the dial and a background dial joins it.

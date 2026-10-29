@@ -18,6 +18,10 @@
  *   this install's cache have no conversations listed yet, and one that has
  *   them must not flash 「先问 3 个小问题」.
  * - hc-1087: a relay (接力) the row is part of names it first (handoff/row-line.ts).
+ * - hc-1107: waiting on the user — a prompt parked for any of its sessions, its
+ *   relay confirm card up, or a relay turn only the relay poll saw stop
+ *   (handoff/waiting.ts) — reads 「等你确认」 or 「等你决定」 with a lit dot, on
+ *   screen or not, and ends the moment the user answers.
  */
 
 import { useStore } from '@nanostores/react'
@@ -40,15 +44,17 @@ import {
   type ThreadReply
 } from '@/store/single-thread-presence'
 import { $threadActivity, $threadInCall } from '@/store/thread-signals'
+import { $parkedAsks, parkedAsk, threadRuntimeIds } from '@/store/waiting-for-you'
 
 import { backgroundActivity } from './bot-activity'
 import { useBotIntakeCopy } from './bot-intake-copy'
 import { botIntakeStatusLine } from './bot-intake-status'
 import { useHandoffRowLine } from './handoff/row-line'
+import { useRelayWaiting } from './handoff/waiting'
 import { useStatusLine } from './sidebar-status'
 
 export interface BotRowStatus {
-  /** idle / working / waiting / call: the face looks down while working, the line reads busy unless idle. */
+  /** idle / working / waiting / call / failed: the face looks down working, up waiting; the line reads busy unless idle or failed. */
   kind: ThreadPresence['kind']
   /** Under the name; null shows the name alone. */
   line: null | string
@@ -91,17 +97,21 @@ export function useBotRowStatus(
   const signal = useStore($threadActivity)
   const inCall = useStore($threadInCall)
   const activity = current ? signal : backgroundActivity(state, t.assistant.tool.process)
+  const relay = useRelayWaiting(bot.profile, states)
+  const asks = useStore($parkedAsks)
+  const waiting = parkedAsk(asks, [...threadRuntimeIds(states, thread), ...relay.runtimeIds]) ?? relay.ask
 
   const presence = presenceOf(
     state,
     activity,
     current && inCall,
-    reply ?? previewReply(thread, lastSessions[bot.profile])
+    reply ?? previewReply(thread, lastSessions[bot.profile]),
+    waiting
   )
 
   const line = useStatusLine(presence)
   // hc-1087: a relay this row is part of speaks first (「在帮 APEX：…」, 「等小红书文案交回」).
-  const relayLine = useHandoffRowLine(bot.profile, presence.kind)
+  const relayLine = useHandoffRowLine(bot.profile, presence)
   const intakeCopy = useBotIntakeCopy()
   // Working, waiting and in a call always have a line, so only a quiet row is left.
   const fresh = !bot.isApex && bot.revision > 0 && !line && !lastSessions[bot.profile]

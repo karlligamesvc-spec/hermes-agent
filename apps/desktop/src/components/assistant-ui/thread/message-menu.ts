@@ -10,7 +10,8 @@
  * status bar…) stays on the transcript's blank space.
  *
  * Anywhere else none of this is wired, and a right-click does what it always
- * did.
+ * did, except on your own bubble: since hc-1105 it opens the same 「复制」 there,
+ * with no time on top (no `data-message-at`).
  */
 
 import { useAuiState } from '@assistant-ui/react'

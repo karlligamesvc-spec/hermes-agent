@@ -18,6 +18,7 @@ import type { DesktopPlanUsageResult } from '@/global'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
 import type { ChatMessage } from '@/lib/chat-messages'
 import { $authState } from '@/store/auth'
+import { clearClarifyRequest, setClarifyRequest } from '@/store/clarify'
 import { $commandPaletteOpen } from '@/store/command-palette'
 import { noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
 import { $planUsage } from '@/store/plan-usage'
@@ -64,6 +65,14 @@ function renderSidebar({
 }
 
 const reply = (id: string, text: string): ChatMessage => ({ id, parts: [{ text, type: 'text' }], role: 'assistant' })
+
+const question = (sessionId: string) => ({
+  choices: ['竖版', '横版'],
+  multiSelect: false,
+  question: '要竖版还是横版？',
+  requestId: `q-${sessionId}`,
+  sessionId
+})
 
 function threadState(extra: Partial<ClientSessionState> = {}) {
   $sessionStates.set({
@@ -115,6 +124,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  clearClarifyRequest()
   setSingleThreadFlagForTest(false)
   resetMainThreadForTest()
   resetThreadPresenceForTest()
@@ -195,7 +205,8 @@ describe('hc-1061 the assistant row’s status line', () => {
 
   it.each([
     ['the activity line waits on the user', () => $threadActivity.set({ text: '等你决定', waiting: true })],
-    ['a question is parked on the thread', () => threadState({ busy: true, needsInput: true })]
+    // hc-1107: the question parked for the thread's session, not the session's needsInput flag.
+    ['a question is parked on the thread', () => setClarifyRequest(question('runtime'))]
   ])('等你决定 when %s', (_label, arrange) => {
     threadState({ busy: true })
     arrange()

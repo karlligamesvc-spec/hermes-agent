@@ -40,10 +40,11 @@ import { DesktopUpdatePill } from '../chat/sidebar/desktop-update-pill'
 import { type AppView, NEW_CHAT_ROUTE, sessionRoute } from '../routes'
 import type { SidebarNavItem } from '../types'
 
+import { RowDot } from './row-dot'
 import { SingleThreadAccountRow } from './sidebar-account'
 import { NewBotButton, SingleThreadBotRows } from './sidebar-bots'
 import { SINGLE_THREAD_ROW_CLASS } from './sidebar-row'
-import { BUSY_LINE_CLASS, useStatusLine } from './sidebar-status'
+import { rowMood, statusLineClass, useStatusLine } from './sidebar-status'
 import { SingleThreadWechatRow } from './sidebar-wechat'
 
 function contractItem(id: 'projects' | 'scheduled-runs', icon: string): SidebarNavItem {
@@ -73,7 +74,6 @@ function useViewingThread(currentView: AppView): boolean {
 
 function AssistantRow({ active, onOpen }: { active: boolean; onOpen: () => void }) {
   const chatCopy = useSingleThreadChatCopy()
-  const copy = useSingleThreadSidebarCopy()
   const presence = useStore($threadPresence)
   const line = useStatusLine(presence)
   const unread = useStore($threadUnread) && !active
@@ -89,26 +89,21 @@ function AssistantRow({ active, onOpen }: { active: boolean; onOpen: () => void 
       onClick={onOpen}
       type="button"
     >
-      <ApexAvatar className="size-[2.125rem]" mood={presence.kind === 'working' ? 'working' : 'idle'} />
+      <ApexAvatar className="size-[2.125rem]" mood={rowMood(presence.kind)} />
       <span className="flex min-w-0 flex-1 flex-col leading-tight">
         <span className="truncate text-[0.875rem] font-semibold text-(--ui-text-primary)">
           {chatCopy.assistantName}
         </span>
         {line ? (
           <span
-            className={cn(
-              'truncate pt-0.5 text-[0.75rem] text-(--ui-text-tertiary)',
-              presence.kind !== 'idle' && BUSY_LINE_CLASS
-            )}
+            className={cn('truncate pt-0.5 text-[0.75rem] text-(--ui-text-tertiary)', statusLineClass(presence.kind))}
             data-single-thread-status=""
           >
             {line}
           </span>
         ) : null}
       </span>
-      {unread ? (
-        <span aria-label={copy.unread} className="size-2 shrink-0 rounded-full bg-[#6A4CEB]" role="img" />
-      ) : null}
+      <RowDot unread={unread} waiting={presence.kind === 'waiting' ? line : null} />
     </button>
   )
 }

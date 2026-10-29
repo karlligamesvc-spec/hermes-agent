@@ -40,8 +40,8 @@ def idle_proof(turn_probe: Callable[[], bool | str | None] = busy_ledger,
                input_probe: Callable[[], Optional[int]] = pending_human_input) -> dict:
     """``{"idle": True | False | None, "reason": str | None}`` plus ``"detail"`` naming the busy ledger.
 
-    ``True`` only when no turn is in flight (session table AND cron ledger) and nothing is waiting
-    on a human. ``None`` whenever either probe is indeterminate — the caller treats it exactly like
+    ``True`` only when no turn is in flight (session table AND cron ledger), no background command
+    is running (process registry) and nothing is waiting on a human. ``None`` whenever either probe is indeterminate — the caller treats it exactly like
     busy. ``turn_probe`` may answer with a bool or with :func:`busy_ledger`'s name; the name is
     surfaced as ``detail`` so a backend that refuses to retire says which work it is protecting.
     """
