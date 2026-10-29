@@ -47,12 +47,14 @@ interface Setup {
   /** The intake was finished before this window opened. */
   answeredBefore?: boolean
   wechatBound?: boolean
+  /** Answers the WeChat binding read in place of `wechatBound`. */
+  wechatList?: () => Promise<{ channels: { channelId: string }[] }>
   clipboard?: () => Promise<string>
 }
 
 /** The bridge, recording every call by its path so a test can say exactly which ones happened. */
 function installBridge(setup: Setup) {
-  const { answeredBefore = false, clipboard, install, wechatBound = false } = setup
+  const { answeredBefore = false, clipboard, install, wechatBound = false, wechatList } = setup
   // An explicit `platform: undefined` leaves the key out; no `platform` at all means on.
   const platform = Object.hasOwn(setup, 'platform') ? setup.platform : true
   const calls: string[] = []
@@ -98,7 +100,8 @@ function installBridge(setup: Setup) {
   const bridge = {
     clientConfig: { get: async () => state.config },
     imEntry: {
-      list: async () => ({ channels: wechatBound ? [{ channelId: 'weixin' }] : [{ channelId: 'feishu' }] })
+      list:
+        wechatList ?? (async () => ({ channels: wechatBound ? [{ channelId: 'weixin' }] : [{ channelId: 'feishu' }] }))
     },
     managed: {
       creatorProfile: async (request: DesktopCreatorProfileRequest): Promise<DesktopCreatorProfileResult> => {
@@ -349,6 +352,23 @@ describe('hc-1108: who hears what APEX can do', () => {
     expect(turn('video')).not.toBeNull()
     expect(turn('wechat')).toBeNull()
     expect(tip()).toBe(SHORT_TIP)
+  })
+
+  it('nothing shows until the WeChat binding is known: the lead never says three and then two', async () => {
+    let answer: (value: { channels: { channelId: string }[] }) => void = () => {}
+    installBridge({ wechatList: () => new Promise(resolve => (answer = resolve)) })
+    renderFirstOpen()
+
+    await answerAllThree()
+    await settle()
+
+    expect(intro()).toBeNull()
+    expect(thread().querySelector('[data-capability]')).toBeNull()
+
+    await act(async () => answer({ channels: [{ channelId: 'weixin' }] }))
+
+    expect(intro()!.textContent).toBe('我能帮你做的，先说两件：')
+    expect(turn('wechat')).toBeNull()
   })
 
   it('撤销 takes the answers back, not what APEX said it can do', async () => {

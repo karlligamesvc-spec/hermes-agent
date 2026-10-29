@@ -170,14 +170,14 @@ export function FirstOpen() {
   useEffect(() => setFinished(null), [accountId])
 
   // hc-1108: read the switch while the cards can still be answered here, and again once they are.
-  const answering = profile?.intake.completed === false || finished !== null
+  const intakeOpen = profile?.intake.completed === false
   const introOn = useStore($capabilityIntroFlag)
 
   useEffect(() => {
-    if (status === 'signed-in' && answering) {
+    if (status === 'signed-in' && (intakeOpen || finished !== null)) {
       void readCapabilityIntroFlag()
     }
-  }, [answering, finished, status])
+  }, [finished, intakeOpen, status])
 
   // Still checking the sign-in counts as not known yet: the tip must not show and then give way to a card.
   const signedOut = status !== 'signed-in' && status !== 'checking'
