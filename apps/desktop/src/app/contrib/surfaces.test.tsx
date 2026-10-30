@@ -566,15 +566,26 @@ describe('hc-1123 single-thread product mode has no 项目', () => {
     await waitFor(() => expect(where()).toBe('/'))
   })
 
+  it.each(['/projects', '/projects/project-1'])('closes %s when developer mode is switched off', async path => {
+    setSingleThreadFlagForTest(true)
+    setToolViewMode('technical')
+    renderRoutes([path])
+    expect(await screen.findByText(path === '/projects' ? 'projects-view' : 'project-detail-view')).toBeTruthy()
+
+    act(() => setToolViewMode('product'))
+
+    await waitFor(() => expect(where()).toBe('/'))
+    expect(projectsOnScreen()).toBeNull()
+  })
+
   it.each(['/projects', '/projects/project-1'])(
-    'closes %s when developer mode is switched off or the switch arrives after launch',
+    'closes %s when the switch is read after a remembered route has already opened it',
     async path => {
-      setSingleThreadFlagForTest(true)
-      setToolViewMode('technical')
+      setSingleThreadFlagForTest(false)
       renderRoutes([path])
       expect(await screen.findByText(path === '/projects' ? 'projects-view' : 'project-detail-view')).toBeTruthy()
 
-      act(() => setToolViewMode('product'))
+      act(() => setSingleThreadFlagForTest(true))
 
       await waitFor(() => expect(where()).toBe('/'))
       expect(projectsOnScreen()).toBeNull()
