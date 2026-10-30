@@ -179,6 +179,8 @@ import {
 } from './apex-runtime-select'
 import { loadScenarioCatalog } from './apex-scenario-catalog'
 import { loginShellPathProbeArgs, parseLoginShellPath, resolveAugmentedPath } from './apex-shell-path'
+import { cleanUpAfterSignOut, revokePreviousAccountKey, sweepSignedOutRelayKeys } from './apex-sign-out'
+import { migrateStartupProfileIfMissing, readStoredDesktopProfile, startupProfileFor, startupProfileWritable } from './apex-startup-profile'
 import { registerTurnLedger, turnLedgerStoreIn } from './apex-turn-ledger'
 import { createDesktopVersionMirror } from './apex-version-state'
 import {
@@ -344,6 +346,7 @@ import {
   provisionDeviceBody,
   provisionKeyRevokeUrl,
   requireRevokedDeviceKey,
+  signOutFailureLine,
   signOutManagedDevice
 } from './desktop-device-key'
 import {
@@ -526,7 +529,6 @@ import {
   profileNameFromDeleteRequest,
   resolveRouteProfile
 } from './profile-delete-routing'
-import { migrateActiveProfileIfMissing as migrateActiveProfileIfMissingPure } from './profile-migration'
 import { prepareProfileRenameLifecycle, profileRenameFromRequest } from './profile-rename-routing'
 import {
   buildSidebarSessionSliceParams,
@@ -10151,21 +10153,10 @@ async function saveRegistryConnection(input: any = {}) {
 
 // Returns the desktop's chosen profile name, or null when unset. "default" is
 // a valid stored value (pins the root HERMES_HOME explicitly); null means "no
-// preference" and preserves the legacy launch (no --profile flag).
+// preference" and preserves the legacy launch (no --profile flag). hc-1115:
+// APEX's while several assistants are off (apex-startup-profile.ts).
 function readActiveDesktopProfile() {
-  try {
-    const raw = fs.readFileSync(DESKTOP_PROFILE_CONFIG_PATH, 'utf8')
-    const parsed = JSON.parse(raw)
-    const name = parsed && typeof parsed.profile === 'string' ? parsed.profile.trim() : ''
-
-    if (name && (name === 'default' || PROFILE_NAME_RE.test(name))) {
-      return name
-    }
-  } catch {
-    // Missing or malformed → no preference.
-  }
-
-  return null
+  return startupProfileFor(readStoredDesktopProfile(DESKTOP_PROFILE_CONFIG_PATH, name => PROFILE_NAME_RE.test(name)), process.env)
 }
 
 function writeActiveDesktopProfile(name) {
@@ -10173,6 +10164,10 @@ function writeActiveDesktopProfile(name) {
 
   if (value && value !== 'default' && !PROFILE_NAME_RE.test(value)) {
     throw new Error(`Invalid profile name: ${value}`)
+  }
+
+  if (!startupProfileWritable(value, process.env, rememberLog)) {
+    return readActiveDesktopProfile()
   }
 
   fs.mkdirSync(path.dirname(DESKTOP_PROFILE_CONFIG_PATH), { recursive: true })
@@ -10219,10 +10214,11 @@ function isHermesProcess(pid) {
 // The stored JSON includes _migrated:true so the renderer can optionally surface
 // a one-time notification that the profile was auto-detected.
 //
-// Decision logic lives in profile-migration.ts (pure + unit-tested). This wrapper
+// Decision logic lives in profile-migration.ts (pure + unit-tested); hc-1115 skips
+// it while several assistants are off (apex-startup-profile.ts). This wrapper
 // just wires Electron/Node fs into a MigrationDeps bag and delegates.
 function migrateActiveProfileIfMissing() {
-  migrateActiveProfileIfMissingPure(DESKTOP_PROFILE_CONFIG_PATH, {
+  migrateStartupProfileIfMissing(DESKTOP_PROFILE_CONFIG_PATH, {
     legacyActivePath: path.join(HERMES_HOME, 'active_profile'),
     hermesHome: HERMES_HOME,
     profilesRoot: path.join(HERMES_HOME, 'profiles'),
@@ -10240,7 +10236,7 @@ function migrateActiveProfileIfMissing() {
       writeFileAtomic(target, JSON.stringify(decision, null, 2))
     },
     isValidProfileName: p => PROFILE_NAME_RE.test(p)
-  })
+  }, process.env, rememberLog)
 }
 
 // Sanitize a connection config into the renderer-facing shape. With no
@@ -19001,6 +18997,8 @@ function syncManagedRelayKeyToConfig(reason = 'sync') {
   const managed = resolveManagedConfig()
 
   if (!managed.key || !managed.baseUrl) {
+    sweepSignedOutRelayKeys({ root: HERMES_HOME, managedEnabled: isManagedEnabled(process.env), key: managed.key, credentialStored: fs.existsSync(DESKTOP_MANAGED_CONFIG_PATH), baseUrls: [resolveApexEndpoints(process.env).relayBaseUrl], log: rememberLog })
+
     return { ok: false, changed: false, reason: 'signed-out', model: 'absent', entries: { matched: 0, updated: 0 } }
   }
 
@@ -19382,12 +19380,6 @@ function resolveManagedConfig() {
     runtimePending: stored.runtimePending === true,
     runtimeRecoveryOptOut: stored.runtimeRecoveryOptOut === true
   }
-}
-
-// Just the decrypted relay key (or '') — thin wrapper for call sites that only
-// need to answer "is the user signed in to managed?".
-function resolveManagedRelayCredential() {
-  return resolveManagedConfig().key
 }
 
 // Persist the provision-key result. Pass null/empty to clear. `provisioned` may
@@ -21528,8 +21520,8 @@ async function provisionManagedFromAccessToken(accessToken, account = null, isCu
 
       // Recovery can retain a confirmed transport renewal. Explicit sign-in
       // must replace the old same-account JWT with the newly authenticated one.
-      const currentToken = resolveManagedConfig().accessToken
-      const commitToken = managedProvisionCommitToken(token, currentToken, purpose)
+      const previous = resolveManagedConfig()
+      const commitToken = managedProvisionCommitToken(token, previous.accessToken, purpose)
 
       // Once minted, keep the new credential even if Runtime recovery needs a
       // retry. Keeping the already-revoked old key would strand this login.
@@ -21545,6 +21537,8 @@ async function provisionManagedFromAccessToken(accessToken, account = null, isCu
       modelMutationMetadata.markCredentialRecovery(false)
       unpersistedManagedRotation = false
       onCommitted?.(generation)
+      void revokePreviousAccountKey({ previous, nextAccessToken: token, deviceInstanceId: deviceBody.device_instance_id, log: rememberLog,
+        post: (bearer, body) => apexAuthPostJson(provisionKeyRevokeUrl(endpoints.provisionKeyUrl), { bearer, body }) }) // hc-1114
 
       return generation
     }
@@ -23378,10 +23372,9 @@ ipcMain.handle('hermes:managed:deepLinkSignIn', async (_event, payload) => {
   }
 })
 
-// signOut: revoke this install first, then forget the relay key. A network/JWT
-// failure leaves local state intact so the user can retry; silently clearing
-// while a server key stays active would be a security regression. Env-managed
-// keys are out-of-band and have no stored server session to revoke.
+// signOut: revoke this install first, then forget the relay key. A network/JWT failure leaves local state intact
+// so the user can retry; silently clearing while a server key stays active would be a security regression. Env-managed
+// keys are out-of-band and have no stored server session to revoke. hc-1114: no copy of a revoked key stays behind.
 ipcMain.handle('hermes:managed:signOut', async () => {
   const managed = resolveManagedConfig()
   const envKey = String(process.env.APEXNODES_RELAY_KEY || '').trim()
@@ -23389,7 +23382,7 @@ ipcMain.handle('hermes:managed:signOut', async () => {
   // Explicit logout stops background recovery before awaiting either fence.
   // A failed revoke/removal keeps that intent so self-heal cannot undo it.
   if (managed.accessToken && !envKey) {
-    try {deferManagedRuntimeRecovery()} catch {return { ok: false, message: 'SIGN_OUT_CLEAR_FAILED' }}
+    try {deferManagedRuntimeRecovery()} catch {rememberLog(signOutFailureLine('SIGN_OUT_CLEAR_FAILED')); return { ok: false, message: 'SIGN_OUT_CLEAR_FAILED' }}
   }
 
   const intent = managedAuthIntent.begin()
@@ -23400,8 +23393,9 @@ ipcMain.handle('hermes:managed:signOut', async () => {
   return signOutManagedDevice({
     accessToken: managed.accessToken,
     clearCredential: clearManagedRelayCredential,
+    afterClear: () => cleanUpAfterSignOut({ root: HERMES_HOME, managed, defaultRelayBaseUrl: endpoints.relayBaseUrl, restartHolders: restartEnginesOnStaleRelayKey }),
     deviceInstanceId: desktopDeviceInstanceId(),
-    envKey,
+    envKey, log: rememberLog,
     managedKey: managed.key,
     isCurrent,
     prepare: () => desktopModelMutations.fence(isCurrent),

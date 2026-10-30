@@ -2,6 +2,7 @@ import { compactNumber } from '@hermes/shared'
 import { useStore } from '@nanostores/react'
 import { type MouseEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { DesktopUpdateConfirmDialog } from '@/app/chat/sidebar/desktop-update-confirm'
 import { LogTail } from '@/components/chat/log-tail'
 import { PageLoader } from '@/components/page-loader'
 import { Button } from '@/components/ui/button'
@@ -626,16 +627,7 @@ export function CommandCenterView({ initialSection, onClose, onDeleteSession, on
         />
       )}
 
-      <ConfirmDialog
-        busyLabel={t.sidebar.desktopUpdate.installing}
-        cancelLabel={t.common.cancel}
-        confirmLabel={t.sidebar.desktopUpdate.confirmApply}
-        description={t.sidebar.desktopUpdate.confirmBody}
-        onClose={() => setDesktopUpdateConfirmOpen(false)}
-        onConfirm={() => applyDesktopUpdates()}
-        open={desktopUpdateConfirmOpen}
-        title={t.sidebar.desktopUpdate.confirmTitle}
-      />
+      <DesktopUpdateConfirmDialog apply={applyDesktopUpdates} onClose={() => setDesktopUpdateConfirmOpen(false)} open={desktopUpdateConfirmOpen} />
     </OverlayView>
   )
 }

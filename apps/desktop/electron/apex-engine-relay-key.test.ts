@@ -211,12 +211,65 @@ describe('the primary engine follows a re-login', () => {
     assert.equal(apex.restarts, 0)
   })
 
-  test('signed out: there is no key to move to, nothing restarts', async () => {
+  // hc-1114: the server revoked the key; a process that keeps it still holds a credential on this computer.
+  test('signed out: a primary still on the revoked key restarts once idle, onto none', async () => {
     const apex = primary('default', OLD_KEY)
-    const { restarts } = restarter(apex.holders, () => null)
+    apex.store(null)
+    const { log, restarts } = restarter(apex.holders, () => null)
 
-    assert.deepEqual(await restarts.run('sign-out'), { restarted: [], waiting: [] })
-    assert.deepEqual(apex.engine.actions, [])
+    assert.deepEqual(await restarts.run('sign-out'), { restarted: ['primary backend "default"'], waiting: [] })
+    assert.deepEqual(apex.engine.actions, ['prepare', 'commit'], 'asked through the retirement fence first')
+    assert.deepEqual(
+      apex.holders().map(holder => holder.stamp),
+      [''],
+      'its successor holds no key'
+    )
+    assert.deepEqual(log, [
+      '[apexnodes] restarting primary backend "default" so it no longer holds the revoked relay key (sign-out; committed)'
+    ])
+
+    assert.deepEqual(
+      await restarts.run('sign-out'),
+      { restarted: [], waiting: [] },
+      'a primary on no key is left alone'
+    )
+    assert.equal(apex.restarts, 1)
+  })
+
+  test('signed out during a turn: the primary keeps the turn and restarts when it ends', async () => {
+    const apex = primary('apex-bot-2', OLD_KEY, { busy: true })
+    apex.store(null)
+    const { log, restarts, timers } = restarter(apex.holders, () => '')
+
+    assert.deepEqual((await restarts.run('sign-out')).waiting, ['primary backend "apex-bot-2"'])
+    assert.equal(apex.restarts, 0)
+    assert.ok(log[0].includes('still holds the previous relay key; restarting it once idle (busy'), log[0])
+
+    apex.state.busy = false
+    timers.shift()?.()
+    await restarts.run('settle', true)
+    assert.equal(apex.restarts, 1)
+  })
+
+  test('a wait that began before the sign-out goes on after it', async () => {
+    const apex = primary('default', OLD_KEY, { busy: true })
+    let stored: null | string = NEW_KEY
+    apex.store(NEW_KEY)
+    const { restarts, timers } = restarter(apex.holders, () => stored)
+
+    assert.deepEqual((await restarts.run('managed-runtime-complete')).waiting, ['primary backend "default"'])
+
+    stored = null
+    apex.store(null)
+    apex.state.busy = false
+    timers.shift()?.()
+    await restarts.run('settle', true)
+
+    assert.equal(apex.restarts, 1)
+    assert.deepEqual(
+      apex.holders().map(holder => holder.stamp),
+      ['']
+    )
   })
 
   // A fresh install launches signed out; its first sign-in and a later re-login happen in the same run.
@@ -370,6 +423,31 @@ describe('pooled engines (hc-1080) restart once idle, every local one', () => {
     assert.deepEqual(result.waiting, [])
   })
 
+  test('signed out (hc-1114): every pooled engine on a key stops; one spawned signed out stays', async () => {
+    const pool = new Map<string, PoolEngineEntry>([
+      ['writer', pooled('writer', OLD_KEY)],
+      ['default', pooled('default', undefined)]
+    ])
+
+    const stopped: string[] = []
+
+    const { restarts } = restarter(
+      () =>
+        poolKeyHolders(pool.entries(), {
+          post: () => fencedEngine({ busy: false }).post,
+          stillPooled: (key, entry) => pool.get(key) === entry,
+          stop: async key => {
+            stopped.push(key)
+            pool.delete(key)
+          }
+        }),
+      () => null
+    )
+
+    assert.deepEqual((await restarts.run('sign-out')).restarted, ['profile backend "writer"'])
+    assert.deepEqual(stopped, ['writer'])
+  })
+
   test('a busy pooled engine keeps its turn; one the reaper is asking waits too', async () => {
     const busy = pooled('writer', OLD_KEY)
     const reaping = pooled('editor', OLD_KEY, { apexRetiring: true })
@@ -443,6 +521,29 @@ describe('the messaging gateway', () => {
       gatewayKeyHolder(() => child, '/unused', { restart: async () => assert.fail('never restarted') }),
       []
     )
+  })
+
+  test('signed out (hc-1114): a gateway spawned with a key restarts once idle, onto none', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hc1114-gateway-'))
+    directories.push(root)
+    const statePath = gatewayStatePath(root, null)
+    fs.writeFileSync(statePath, JSON.stringify({ gateway_state: 'running', active_agents: 0 }))
+    const slot: { process: null | object } = { process: { pid: 5150 } }
+    stampKeyHolderProcess(slot.process, OLD_KEY)
+
+    const { restarts } = restarter(
+      () =>
+        gatewayKeyHolder(() => slot.process, statePath, {
+          restart: async () => {
+            slot.process = { pid: 5151 }
+            stampKeyHolderProcess(slot.process, null)
+          }
+        }),
+      () => null
+    )
+
+    assert.deepEqual((await restarts.run('sign-out')).restarted, ['messaging gateway'])
+    assert.deepEqual((await restarts.run('sign-out')).restarted, [], 'its successor holds no key')
   })
 
   test('reads the state of the profile it serves', () => {
