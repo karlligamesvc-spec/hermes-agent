@@ -640,8 +640,15 @@ LOG_EVENTS = (
     ("exit", re.compile(r'Hermes backend for profile "(?P<profile>[^"]+)" exited \((?P<code>[^)]*)\)')),
     # hc-1080（fork #500）起每个托管 profile 各记一行：「[apexnodes] profile <名字> config.yaml relay key …」
     ("relay_key", re.compile(r"\[apexnodes\] (?:profile (?P<profile>\S+) )?config\.yaml relay key (?P<what>refreshed|write FAILED)")),
-    # 换了 key 之后谁被重启：池里的引擎各一行；主引擎只有走 reloadBackendForRelayKey 才有那一行（问题 9）
-    ("key_restart", re.compile(r'\[apexnodes\] restarting profile backend "(?P<profile>[^"]+)" for the refreshed relay key')),
+    # 换了 key 之后谁被重启。hc-1106（fork #527，0.17.68）起主引擎、池引擎、消息网关都走这一行；
+    # 之前主引擎只有走 reloadBackendForRelayKey 才有那一行（问题 9）
+    ("key_restart", re.compile(r'\[apexnodes\] restarting (?:(?:primary|profile) backend "(?P<profile>[^"]+)"|messaging gateway) '
+                               r"for the refreshed relay key")),
+    ("key_wait", re.compile(r'\[apexnodes\] (?:(?:primary|profile) backend "(?P<profile>[^"]+)"|messaging gateway) '
+                            r"still holds the previous relay key")),
+    # 没登录时起的引擎不重启，只记一下；问题 15 就出在这条路上
+    ("key_adopt", re.compile(r'\[apexnodes\] (?:(?:primary|profile) backend "(?P<profile>[^"]+)"|messaging gateway) '
+                             r"was started signed out")),
     ("key_reload_primary", re.compile(r"\[apexnodes\] reloading the local backend so it picks up the refreshed relay key")),
     ("http_401", re.compile(r"\b401\b")),
 )
@@ -820,6 +827,11 @@ def memory_rows(events: list[dict], engines: list[dict]) -> list[dict]:
     return rows
 
 
+def _key_holder(event: dict) -> str:
+    """换 key 那几行说的是谁：带名字的是那个助手的引擎；reloadBackendForRelayKey 那行是主引擎，不带名字的是消息网关。"""
+    return event.get("profile") or ("主引擎" if event.get("event") == "key_reload_primary" else "消息网关")
+
+
 def build_report(events: list[dict]) -> dict:
     engines = [engine_row(e, events) for e in events if e["kind"] == "proc_new" and e.get("proc_kind") == "engine"]
     mem = [e for e in events if e["kind"] == "mem"]
@@ -834,8 +846,10 @@ def build_report(events: list[dict]) -> dict:
         "http_401": sum(1 for e in events if e.get("event") == "http_401" or e.get("also_401")),
         "relay_key": [{"iso": e["iso"], "what": e.get("what"), "profile": e.get("profile") or "default"}
                       for e in events if e.get("event") == "relay_key"],
-        "key_restarts": [{"iso": e["iso"], "profile": e.get("profile") or "主引擎"}
+        "key_restarts": [{"iso": e["iso"], "profile": _key_holder(e)}
                          for e in events if e.get("event") in ("key_restart", "key_reload_primary")],
+        "key_waits": [{"iso": e["iso"], "profile": _key_holder(e)} for e in events if e.get("event") == "key_wait"],
+        "key_adopts": [{"iso": e["iso"], "profile": _key_holder(e)} for e in events if e.get("event") == "key_adopt"],
         "bot_switch": [{"iso": e["iso"], "detail": e.get("detail")} for e in events if e.get("event") == "bot_switch"],
         "peak_all_rss_mb": round(max((e["all_rss"] for e in mem), default=0) / 2**20),
         "peak_engines": max((len(e["engines"]) for e in mem), default=0),
@@ -860,6 +874,8 @@ def render_report(report: dict) -> str:
     out += ["", "## 其他", "", f"- 含 401 的日志行：{report['http_401']}"]
     out += [f"- {k['iso']} {k['profile']} 的中转 key {k['what']}" for k in report["relay_key"]]
     out += [f"- {k['iso']} 为新 key 重启 {k['profile']}" for k in report["key_restarts"]]
+    out += [f"- {k['iso']} {k['profile']} 还拿着旧 key，等它闲下来再重启" for k in report["key_waits"]]
+    out += [f"- {k['iso']} {k['profile']} 是没登录时起的，没重启" for k in report["key_adopts"]]
     out += [f"- {b['iso']} 切换诊断 [multi-bot] {b['detail']}" for b in report["bot_switch"]]
     out += [f"- 标记 {m['iso']} {m['label']}" for m in report["marks"]]
     return "\n".join(out) + "\n"

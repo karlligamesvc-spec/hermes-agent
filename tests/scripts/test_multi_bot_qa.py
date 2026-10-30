@@ -365,6 +365,7 @@ def test_tokens_sums_every_assistant(home: Path, capsys) -> None:
 _MAIN = "apps/desktop/electron/main.ts"
 _POOL = "apps/desktop/electron/apex-pool-engines.ts"
 _PROFILE_CONFIG = "apps/desktop/electron/apex-profile-config.ts"
+_KEY_HOLDERS = "apps/desktop/electron/apex-engine-relay-key.ts"
 _BOT_SWITCH = "apps/desktop/src/store/bot-switch-log.ts"
 _RENDERER_LOG = "apps/desktop/electron/renderer-log.ts"
 _SWITCH_LINE = ("[renderer console:main] [multi-bot] switch default → apex-bot-5 still waiting after 15003 ms "
@@ -386,10 +387,10 @@ LOG_CONTRACT = [
     ("evict_room", [(_POOL, 'Evicting profile backend "${key}" to make room for another assistant (${verdict.reason})')],
      'Evicting profile backend "apex-bot-2" to make room for another assistant (committed)'),
     ("reap", [(_MAIN, 'Reaping idle profile backend "${profile}" (idle >'),
-              (_POOL, 'const reaping = `Reaping idle profile backend "${label}" (idle >')],
+              (_POOL, 'Reaping idle profile backend "${label}" (idle >')],
      'Reaping idle profile backend "apex-bot-2" (idle > 600s): committed'),
     ("reap", [(_MAIN, 'Reaping idle profile backend "${profile}" (idle >'),
-              (_POOL, 'const reaping = `Reaping idle profile backend "${label}" (idle >')],
+              (_POOL, 'Reaping idle profile backend "${label}" (idle >')],
      'Reaping idle profile backend "apex-bot-2" (idle > 600s)'),
     ("reap_kept", [(_POOL, 'Keeping idle profile backend "${label}" another ${deps.idleSeconds}s: '
                            "the engine did not retire (${verdict.reason})")],
@@ -407,8 +408,19 @@ LOG_CONTRACT = [
     ("relay_key", [(_MAIN, "[apexnodes] config.yaml relay key write FAILED (${reason})"),
                    (_PROFILE_CONFIG, "`[apexnodes] ${subject} relay key write FAILED (${reason})")],
      "[apexnodes] config.yaml relay key write FAILED (sign-in): unreadable"),
-    ("key_restart", [(_MAIN, '[apexnodes] restarting profile backend "${key}" for the refreshed relay key (${reason})')],
-     '[apexnodes] restarting profile backend "apex-bot-2" for the refreshed relay key (managed-runtime-complete)'),
+    # hc-1106 moved these to one module; the holder labels are pinned next to them
+    ("key_restart", [(_KEY_HOLDERS, "`[apexnodes] restarting ${holder.label} for the refreshed relay key (${reason}; ${verdict.reason})`")],
+     '[apexnodes] restarting primary backend "apex-bot-2" for the refreshed relay key (managed-runtime-complete; committed)'),
+    ("key_restart", [(_KEY_HOLDERS, 'label: `primary backend "${profile}"`')],
+     '[apexnodes] restarting primary backend "default" for the refreshed relay key (sign-in; idle)'),
+    ("key_restart", [(_KEY_HOLDERS, 'label: `profile backend "${key}"`')],
+     '[apexnodes] restarting profile backend "apex-bot-3" for the refreshed relay key (sign-in; committed)'),
+    ("key_restart", [(_KEY_HOLDERS, "label: 'messaging gateway'")],
+     "[apexnodes] restarting messaging gateway for the refreshed relay key (sign-in; idle)"),
+    ("key_wait", [(_KEY_HOLDERS, "`[apexnodes] ${holder.label} still holds the previous relay key; restarting it once idle (${verdict.reason}; ${reason})`")],
+     '[apexnodes] primary backend "apex-bot-2" still holds the previous relay key; restarting it once idle (turn-running; sign-in)'),
+    ("key_adopt", [(_KEY_HOLDERS, "`[apexnodes] ${holder.label} was started signed out; its new sessions take the relay key from config.yaml (${reason})`")],
+     '[apexnodes] primary backend "default" was started signed out; its new sessions take the relay key from config.yaml (managed-runtime-complete)'),
     ("key_reload_primary", [(_MAIN, "[apexnodes] reloading the local backend so it picks up the refreshed relay key (${reason})")],
      "[apexnodes] reloading the local backend so it picks up the refreshed relay key (sign-in)…"),
     # hc-1099: the renderer writes the line, main's console capture puts it in desktop.log; both halves are pinned
@@ -500,6 +512,21 @@ def test_report_times_cold_starts_and_slot_waits() -> None:
     assert "| apex-bot-5 | 14 | 15.0 | 22.0 | READY |" in qa.render_report(report)
 
 
+@pytest.mark.parametrize(("line", "event", "holder"), [
+    ('[apexnodes] restarting primary backend "apex-bot-2" for the refreshed relay key (sign-in; committed)', "key_restart", "apex-bot-2"),
+    ('[apexnodes] restarting profile backend "apex-bot-3" for the refreshed relay key (sign-in; committed)', "key_restart", "apex-bot-3"),
+    ("[apexnodes] restarting messaging gateway for the refreshed relay key (sign-in; idle)", "key_restart", "消息网关"),
+    ('[apexnodes] primary backend "default" still holds the previous relay key; restarting it once idle (x; y)', "key_wait", "default"),
+    ('[apexnodes] primary backend "default" was started signed out; its new sessions take the relay key from config.yaml (x)', "key_adopt", "default"),
+    ("[apexnodes] reloading the local backend so it picks up the refreshed relay key (sign-in)…", "key_reload_primary", "主引擎"),
+])
+def test_key_holder_lines_name_the_engine(line: str, event: str, holder: str) -> None:
+    parsed = qa.parse_log_line(f"[2026-10-30T16:07:27.047Z] [hermes] {line}")
+
+    assert parsed["event"] == event
+    assert qa._key_holder(parsed) == holder
+
+
 def test_report_lists_key_restarts_switch_diagnostics_and_every_401() -> None:
     detail = "switch default → apex-bot-2 failed after 812 ms: HTTP 401 Unauthorized"
     events = [
@@ -518,6 +545,19 @@ def test_report_lists_key_restarts_switch_diagnostics_and_every_401() -> None:
     assert f"- {qa.iso(10.1)} 为新 key 重启 主引擎" in text
     assert f"- {qa.iso(20.0)} 切换诊断 [multi-bot] {detail}" in text
     assert "- 含 401 的日志行：2" in text
+
+
+def test_report_says_which_engines_waited_or_were_not_restarted() -> None:
+    report = qa.build_report([
+        _ev(30.0, "log", event="key_wait", profile="apex-bot-2", text="[apexnodes] primary backend"),
+        _ev(31.0, "log", event="key_adopt", profile="default", text="[apexnodes] primary backend"),
+        _ev(32.0, "log", event="key_restart", text="[apexnodes] restarting messaging gateway"),
+    ])
+    text = qa.render_report(report)
+
+    assert report["key_restarts"] == [{"iso": qa.iso(32.0), "profile": "消息网关"}]
+    assert f"- {qa.iso(30.0)} apex-bot-2 还拿着旧 key，等它闲下来再重启" in text
+    assert f"- {qa.iso(31.0)} default 是没登录时起的，没重启" in text
 
 
 @pytest.mark.parametrize(("argv", "expected"), [
