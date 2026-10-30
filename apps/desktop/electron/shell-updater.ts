@@ -225,7 +225,8 @@ function createShellUpdater(options) {
           })
         }, installRetryMs)
         retryInstall.unref?.()
-        return { ok: true, deferred: true }
+        // hc-1117: with the state, so the renderer's next read of its store cannot predate this deferral.
+        return { ok: true, deferred: true, state: { ...state } }
       }
       if (disposed) {prepared?.release(); prepared = undefined; return { ok: false, error: 'disposed' }}
       clearTimeout(retryInstall)

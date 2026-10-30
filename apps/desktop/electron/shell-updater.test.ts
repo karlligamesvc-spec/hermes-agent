@@ -99,7 +99,8 @@ test('requested shell install waits for busy engine owners and automatically ins
   try {
     h.autoUpdater.emit('update-downloaded', { version: '0.17.57' })
     const results = await Promise.all([h.ipcMain.invoke('hermes:shell-update:install'), h.ipcMain.invoke('hermes:shell-update:install')])
-    assert.deepEqual(results, [{ ok: true, deferred: true }, { ok: true, deferred: true }])
+    assert.partialDeepStrictEqual(results, [{ ok: true, deferred: true }, { ok: true, deferred: true }])
+    assert.equal(results[0].state.deferred, true, 'hc-1117: the answer carries the deferral, whichever reaches the renderer first')
     assert.equal(h.autoUpdater.autoInstallOnAppQuit, false, 'normal quit cannot bypass process preflight')
     assert.equal(preflights, 1)
     assert.deepEqual(h.autoUpdater.installCalls, [])
@@ -161,7 +162,7 @@ test('a deferred install never hands off a different version downloaded meanwhil
 
   try {
     h.autoUpdater.emit('update-downloaded', { version: '0.17.57' })
-    assert.deepEqual(await h.ipcMain.invoke('hermes:shell-update:install'), { ok: true, deferred: true })
+    assert.partialDeepStrictEqual(await h.ipcMain.invoke('hermes:shell-update:install'), { ok: true, deferred: true })
     h.autoUpdater.emit('update-downloaded', { version: '0.17.58' })
     busy = false
     await waitUntil(() => h.updater.getState().phase === 'error')
@@ -182,7 +183,7 @@ test('a deferred install logs what it waits for once per reason and tells the re
   const deferrals = () => h.logs.filter(line => line.startsWith('[shell-update] install deferred'))
   try {
     h.autoUpdater.emit('update-downloaded', { version: '0.17.62' })
-    assert.deepEqual(await h.ipcMain.invoke('hermes:shell-update:install'), { ok: true, deferred: true })
+    assert.partialDeepStrictEqual(await h.ipcMain.invoke('hermes:shell-update:install'), { ok: true, deferred: true })
     assert.equal(h.updater.getState().deferredReason, 'engine_holders')
     assert.equal(h.broadcasts.at(-1).payload.deferredReason, 'engine_holders')
     await waitUntil(() => preflights >= 3)
@@ -211,15 +212,29 @@ test('hc-1094: a wait on classified holders tells the renderer who they are, and
 
   try {
     h.autoUpdater.emit('update-downloaded', { version: '0.17.67' })
-    assert.deepEqual(await h.ipcMain.invoke('hermes:shell-update:install'), { ok: true, deferred: true })
+    assert.partialDeepStrictEqual(await h.ipcMain.invoke('hermes:shell-update:install'), { ok: true, deferred: true })
     assert.deepEqual(h.broadcasts.at(-1).payload.deferredHolders, [
       { pid: 1347, kind: 'leftover_gateway', name: 'hermes', created: 7.5, endable: true },
       { pid: 2001, kind: 'terminal_hermes', name: 'hermes', created: 8.5, endable: false }
     ])
-    assert.ok(h.logs.includes('[shell-update] install deferred (version=0.17.67): engine_holders: Waiting for engine workers: 1347, 2001 [1347 python3.11 (/e/venv/bin/python) leftover_gateway endable; 2001 python3.11 (/e/venv/bin/python) terminal_hermes]'))
+    assert.ok(h.logs.includes('[shell-update] install deferred (version=0.17.67): engine_holders: Waiting for engine workers: 1347, 2001 [1347 python3.11 (/e/venv/bin/python) leftover_gateway endable argv=[/e/venv/bin/python -m hermes_cli.main gateway run --replace]; 2001 python3.11 (/e/venv/bin/python) terminal_hermes]'))
     busy = null
     await waitUntil(() => h.autoUpdater.installCalls.length === 1)
     assert.equal(h.updater.getState().deferredHolders, null, 'installing names no holders')
+  } finally { h.updater.dispose() }
+})
+
+test('hc-1117: the answer to a deferred install carries the same state the event pushes', async () => {
+  const holders = { 1347: { name: 'python3.14', ppid: 1, exe: '/e/venv/bin/python', argv: ['/e/venv/bin/python', 'render.py'], created: 7.5, kind: 'leftover_child', endable: true } }
+  const busy = Object.assign(new RuntimeUpdateBusy('Waiting for engine workers: 1347', 'engine_holders'), { idleProof: { holders } })
+  const h = harness({ beforeInstall: async () => {throw busy}, installRetryMs: 10_000 })
+
+  try {
+    h.autoUpdater.emit('update-downloaded', { version: '0.17.69' })
+    const answer = await h.ipcMain.invoke('hermes:shell-update:install')
+
+    assert.deepEqual(answer.state, h.broadcasts.at(-1).payload)
+    assert.deepEqual(answer.state.deferredHolders, [{ pid: 1347, kind: 'leftover_child', name: 'python3.14', created: 7.5, endable: true }])
   } finally { h.updater.dispose() }
 })
 

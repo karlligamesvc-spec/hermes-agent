@@ -487,7 +487,7 @@ declare global {
       shellUpdate?: {
         getState: () => Promise<DesktopShellUpdateState>
         check: () => Promise<{ ok: boolean; error?: string; state: DesktopShellUpdateState }>
-        install: () => Promise<{ ok: boolean; error?: string; deferred?: boolean }>
+        install: () => Promise<{ ok: boolean; error?: string; deferred?: boolean; state?: DesktopShellUpdateState }>
         endLeftovers?: (
           holders: { pid: number; created: number }[]
         ) => Promise<{ ok: boolean; error?: string; ended?: Record<string, string> }>
@@ -2490,7 +2490,7 @@ export interface DesktopRuntimeVersion {
 }
 
 export interface DesktopEngineKeptBack {
-  reason: 'newer-or-unknown' | 'upgrade-failed'
+  reason: 'busy' | 'newer-or-unknown' | 'upgrade-failed'
   /** The engine this app ships (calver+fork label). */
   bundledVersion: string
 }
@@ -2566,9 +2566,9 @@ export type DesktopShellUpdateDeferralReason =
 
 /**
  * hc-1094: one process holding the engine (electron/engine-holders.ts). Only `endable` holders
- * (APEX's own leftover gateway or engine and what belongs to them) may be ended from the UI.
+ * (APEX's own leftover gateway, engine or background command and what belongs to them) may be ended.
  */
-export type DesktopEngineHolderKind = 'apex_running' | 'leftover_engine' | 'leftover_gateway' | 'other' | 'terminal_hermes'
+export type DesktopEngineHolderKind = 'apex_running' | 'leftover_child' | 'leftover_engine' | 'leftover_gateway' | 'other' | 'terminal_hermes'
 
 export interface DesktopEngineHolder {
   pid: number
