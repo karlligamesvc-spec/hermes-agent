@@ -1,5 +1,5 @@
 ## Mid-turn user steering
-Mid-turn, the user can steer you: Hermes delivers their message as a standalone user message right after the latest tool results, wrapped exactly as:
+Mid-turn, the user can steer you: APEX delivers their message as a standalone user message right after the latest tool results, wrapped exactly as:
 [OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]
 <their message>
 [/OUT-OF-BAND USER MESSAGE]
