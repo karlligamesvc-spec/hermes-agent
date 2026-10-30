@@ -351,6 +351,18 @@ def test_the_inline_table_is_what_runs_them_with_the_switch_on(home, monkeypatch
     assert "error" in json.loads(registry.dispatch(chatcut.CONNECT_TOOL, {}))
 
 
+@pytest.fixture
+def clip(tmp_path):
+    path = tmp_path / "口播 take1.mp4"
+    path.write_bytes(b"fake-video-bytes" * 4096)
+    return path
+
+
+def _import(agent, *paths):
+    args = {"project_id": "p-1", "timeline_id": "t-1", "paths": [str(path) for path in paths]}
+    return json.loads(chatcut_import.import_files(agent, args, None))
+
+
 # ---------------------------------------------------------------------------
 # Connecting
 # ---------------------------------------------------------------------------
@@ -378,6 +390,22 @@ def test_without_a_card_it_refuses_and_opens_nothing(service, browser):
     assert "error" in result
     assert browser.opened == []
     assert service.clients == {}
+
+
+def test_each_card_gets_its_own_clarify_row_that_opens_and_closes(service, browser, clip):
+    """Found in the UI walk: without this the upload card landed on the connect card's row, already answered."""
+    events: list[tuple] = []
+    agent = _Agent(chatcut.copy("connect_yes"))
+    agent.tool_start_callback = lambda row, name, args: events.append(("start", row, name))
+    agent.tool_complete_callback = lambda row, name, args, result: events.append(("done", row, name))
+
+    assert json.loads(chatcut.connect(agent, {}, None))["status"] == "connected"
+    agent.answer = chatcut.copy("upload_yes")
+    assert _import(agent, clip)["status"] == "imported"
+
+    assert [event[0] for event in events] == ["start", "done", "start", "done"]
+    assert {event[2] for event in events} == {"clarify"}
+    assert events[0][1] == events[1][1] != events[2][1] == events[3][1]
 
 
 def test_connect_signs_in_under_apexs_name_and_admits_only_the_allowlist(service, browser, home):
@@ -544,18 +572,6 @@ def test_removing_another_server_keeps_its_tokens(service, browser, home):
 # ---------------------------------------------------------------------------
 # Importing
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def clip(tmp_path):
-    path = tmp_path / "口播 take1.mp4"
-    path.write_bytes(b"fake-video-bytes" * 4096)
-    return path
-
-
-def _import(agent, *paths):
-    args = {"project_id": "p-1", "timeline_id": "t-1", "paths": [str(path) for path in paths]}
-    return json.loads(chatcut_import.import_files(agent, args, None))
 
 
 def test_import_before_connecting_is_refused(service, browser, clip):

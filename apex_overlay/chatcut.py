@@ -35,6 +35,7 @@ import logging
 import os
 import threading
 import time
+import uuid
 import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
@@ -117,7 +118,7 @@ _COPY = {
         "connect_yes": "连接 ChatCut",
         "connect_no": "先不用",
         "upload_question": (
-            "要把 {files} 传到 ChatCut 吗？ChatCut 是第三方服务，服务器在美国：声音马上上传，用来转写成文字；"
+            "要把{files}传到 ChatCut 吗？ChatCut 是第三方服务，服务器在美国：声音马上上传，用来转写成文字；"
             "原视频在云端处理时才上传。用的是你自己的 ChatCut 账号和额度。之后导入不再询问，断开 ChatCut 后会重新询问。"
         ),
         "upload_yes": "同意上传",
@@ -440,7 +441,16 @@ def ask_on_card(agent: Any, question: str, yes: str, no: str) -> Optional[str]:
     if callback is None:
         return None
     # recommended: false: no option is the right one here, so none is marked.
-    raw = clarify_tool([{"question": question, "choices": [yes, no], "recommended": False}], callback=callback)
+    questions = [{"question": question, "choices": [yes, no], "recommended": False}]
+    # The transcript draws a card on a `clarify` row and closes it on that row's completion. Called from inside
+    # this tool nothing else opens or closes one: a second card would land on the first card's row, already answered.
+    row_id, row_args = f"apex-chatcut-card-{uuid.uuid4().hex}", {"questions": questions}
+    started, finished = getattr(agent, "tool_start_callback", None), getattr(agent, "tool_complete_callback", None)
+    if started is not None:
+        started(row_id, "clarify", row_args)
+    raw = clarify_tool(questions, callback=callback)
+    if finished is not None:
+        finished(row_id, "clarify", row_args, raw)
     try:
         response = json.loads(raw)["responses"][0]
     except (KeyError, IndexError, TypeError, ValueError):
