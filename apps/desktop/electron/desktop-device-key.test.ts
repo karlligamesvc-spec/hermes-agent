@@ -8,6 +8,7 @@ import {
   provisionKeyRevokeUrl,
   requireRevokedDeviceKey,
   revokeDeviceBody,
+  signOutFailureLine,
   signOutManagedDevice
 } from './desktop-device-key'
 
@@ -260,6 +261,13 @@ describe('the sign-out line and the clean-up after it (hc-1114)', () => {
     assert.deepEqual(await run, { ok: true })
     assert.equal(log.length, 1)
     assert.ok(log[0].endsWith('; local clean-up failed (EIO)'), log[0])
+  })
+
+  test('the line for a failure before the revoke reads like every other failure', () => {
+    assert.equal(
+      signOutFailureLine('SIGN_OUT_CLEAR_FAILED'),
+      '[managed] sign-out failed (SIGN_OUT_CLEAR_FAILED); the local credential stays so it can be retried'
+    )
   })
 
   test('no line carries the key or the login token', async () => {

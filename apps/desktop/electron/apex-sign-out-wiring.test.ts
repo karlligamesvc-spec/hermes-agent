@@ -47,6 +47,14 @@ describe('the sign-out', () => {
     assert.match(handler, /\n\s+envKey, log: rememberLog,\n/)
   })
 
+  // It returns before signOutManagedDevice, so it has to log for itself.
+  test('the failure before the revoke still leaves its line in desktop.log', () => {
+    assert.match(
+      handler,
+      /try \{deferManagedRuntimeRecovery\(\)\} catch \{rememberLog\(signOutFailureLine\('SIGN_OUT_CLEAR_FAILED'\)\); return \{ ok: false, message: 'SIGN_OUT_CLEAR_FAILED' \}\}/
+    )
+  })
+
   test('is the only caller of signOutManagedDevice', () => {
     assert.equal([...code.matchAll(/\bsignOutManagedDevice\(/g)].length, 1)
   })

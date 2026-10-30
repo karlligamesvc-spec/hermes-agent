@@ -345,6 +345,7 @@ import {
   provisionDeviceBody,
   provisionKeyRevokeUrl,
   requireRevokedDeviceKey,
+  signOutFailureLine,
   signOutManagedDevice
 } from './desktop-device-key'
 import {
@@ -23387,7 +23388,7 @@ ipcMain.handle('hermes:managed:signOut', async () => {
   // Explicit logout stops background recovery before awaiting either fence.
   // A failed revoke/removal keeps that intent so self-heal cannot undo it.
   if (managed.accessToken && !envKey) {
-    try {deferManagedRuntimeRecovery()} catch {return { ok: false, message: 'SIGN_OUT_CLEAR_FAILED' }}
+    try {deferManagedRuntimeRecovery()} catch {rememberLog(signOutFailureLine('SIGN_OUT_CLEAR_FAILED')); return { ok: false, message: 'SIGN_OUT_CLEAR_FAILED' }}
   }
 
   const intent = managedAuthIntent.begin()

@@ -64,6 +64,11 @@ function signOutFailureReason(error: any, secrets: Array<null | string | undefin
   return reason.slice(0, 120)
 }
 
+/** The desktop.log line for a sign-out that did not finish. */
+function signOutFailureLine(reason: string): string {
+  return `[managed] sign-out failed (${reason}); the local credential stays so it can be retried`
+}
+
 interface SignOutManagedDeviceInput {
   accessToken: string | null
   clearCredential: () => void
@@ -99,7 +104,7 @@ async function signOutManagedDevice(input: SignOutManagedDeviceInput) {
 
   if (!result.ok) {
     const reason = revokeError ? signOutFailureReason(revokeError, [input.managedKey, input.accessToken]) : result.message
-    input.log?.(`[managed] sign-out failed (${reason}); the local credential stays so it can be retried`)
+    input.log?.(signOutFailureLine(reason))
 
     return result
   }
@@ -167,6 +172,7 @@ export {
   provisionKeyRevokeUrl,
   requireRevokedDeviceKey,
   revokeDeviceBody,
+  signOutFailureLine,
   signOutFailureReason,
   signOutManagedDevice
 }
