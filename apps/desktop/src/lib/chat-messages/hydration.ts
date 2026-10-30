@@ -4,6 +4,7 @@ import { extractImageRefs } from '@/lib/embedded-images'
 import { dedupeGeneratedImageEchoesInParts } from '@/lib/generated-images'
 import type { MessageReaction, SessionMessage } from '@/types/hermes'
 
+import { FAILED_TURN_DISPLAY_KIND, failedTurnDisplayText } from './failed-turn'
 import { assistantTextPart, chatMessageText, dedupeRepeatedTextInParts, reasoningPart, textPart } from './parts'
 import {
   applyStoredToolResult,
@@ -225,6 +226,10 @@ function timelineDisplayContent(message: SessionMessage, content: string): strin
 
   if (message.display_kind === 'process_complete') {
     return timelineDisplayText(message.display_metadata) ?? 'background process finished'
+  }
+
+  if (message.display_kind === FAILED_TURN_DISPLAY_KIND) {
+    return failedTurnDisplayText(content)
   }
 
   return content
