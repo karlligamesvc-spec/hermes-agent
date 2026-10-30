@@ -4,7 +4,8 @@ import {
   evaluateRuntimeReadiness,
   fetchRuntimeReadinessSignals,
   interpretRuntimeReadiness,
-  runtimeReadinessDisplay
+  runtimeReadinessDisplay,
+  waitForRuntimeReadiness
 } from './runtime-readiness'
 
 describe('interpretRuntimeReadiness', () => {
@@ -136,5 +137,61 @@ describe('runtimeReadinessDisplay', () => {
         source: 'setup_status'
       })
     ).toBe('needs_setup')
+  })
+})
+
+// hc-1121: the primary restarts for a new relay key, and the socket is down for a moment.
+describe('waitForRuntimeReadiness', () => {
+  const answers = (ok: boolean, downFor: number) => {
+    let calls = 0
+
+    const request = (async (method: string) => {
+      if (method === 'setup.runtime_check') {
+        calls += 1
+      }
+
+      if (calls <= downFor) {
+        throw new Error('Hermes gateway is not connected')
+      }
+
+      return method === 'setup.status' ? { provider_configured: true } : { ok }
+    }) as never
+
+    return { calls: () => calls, request }
+  }
+
+  it('waits out a gateway that is not there yet', async () => {
+    const engine = answers(true, 3)
+
+    const result = await waitForRuntimeReadiness(engine.request, { unknownReady: false }, { retryMs: 1, timeoutMs: 5_000 })
+
+    expect(result).toMatchObject({ ready: true, source: 'runtime_check' })
+    expect(engine.calls()).toBe(4)
+  })
+
+  it('takes the engine at its word: an answer that says not ready is not asked again', async () => {
+    const engine = answers(false, 0)
+
+    const result = await waitForRuntimeReadiness(engine.request, { unknownReady: false }, { retryMs: 1, timeoutMs: 5_000 })
+
+    expect(result).toMatchObject({ ready: false, source: 'runtime_check' })
+    expect(engine.calls()).toBe(1)
+  })
+
+  it('gives up when the time runs out, still reporting that nothing answered', async () => {
+    const engine = answers(true, Number.POSITIVE_INFINITY)
+
+    const result = await waitForRuntimeReadiness(engine.request, { unknownReady: false }, { retryMs: 1, timeoutMs: 20 })
+
+    expect(result).toMatchObject({ ready: false, source: 'fallback' })
+    expect(engine.calls()).toBeGreaterThan(1)
+  })
+
+  it('stops asking once nobody wants the answer', async () => {
+    const engine = answers(true, Number.POSITIVE_INFINITY)
+
+    await waitForRuntimeReadiness(engine.request, { unknownReady: false }, { isCurrent: () => false, retryMs: 1, timeoutMs: 5_000 })
+
+    expect(engine.calls()).toBe(1)
   })
 })

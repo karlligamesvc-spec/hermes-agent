@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getApiRequestConnection, getApiRequestProfile, setApiRequestConnection, setApiRequestProfile } from '@/api/client'
 import { I18nProvider } from '@/i18n/context'
@@ -202,4 +202,90 @@ it.each([
     expect(onCompleted).not.toHaveBeenCalled()
     expect($desktopOnboarding.get().managedError).toBeTruthy()
   }
+})
+
+// hc-1121 (M7, 0.17.68): main reports success just as the primary restarts for the new key, so the
+// login screen's check found no socket and told the user the relay was unreachable.
+describe.each(['email', 'browser', 'deep link'])('a %s sign-in while the engine restarts', kind => {
+  const signInWith = (context: { onCompleted: () => void; requestGateway: never }) =>
+    kind === 'email'
+      ? managedSignIn('fixture@example.invalid', 'fixture-password', context)
+      : kind === 'browser'
+        ? managedBrowserSignIn('apex', context)
+        : managedDeepLinkSignIn('fixture-code', context)
+
+  function bridge() {
+    const native = vi.fn(async () => ({ ok: true, hasRelayKey: true, assignment: { scope: 'main', provider: 'custom',
+      model: 'fixture-model', base_url: 'http://fixture.invalid/v1', api_key: 'fixture-key' } }))
+
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: {
+      managed: { signIn: native, browserSignIn: native, deepLinkSignIn: native,
+        status: async () => ({ enabled: true, signedIn: true, accountId: 'fixture-account', email: 'fixture@example.invalid' }) },
+      api: vi.fn(async () => ({ ok: true }))
+    } })
+  }
+
+  it('waits for the engine and finishes, with no error', async () => {
+    bridge()
+    let attempts = 0
+
+    const requestGateway = vi.fn(async (method: string) => {
+      if (method === 'setup.runtime_check') {
+        attempts += 1
+      }
+
+      if (attempts < 3 || method === 'reload.env') {
+        throw new Error('Hermes gateway is not connected')
+      }
+
+      return method === 'setup.status' ? { provider_configured: true } : { ok: true }
+    })
+
+    const onCompleted = vi.fn()
+
+    await signInWith({ requestGateway: requestGateway as never, onCompleted })
+
+    expect(attempts).toBe(3)
+    expect($desktopOnboarding.get()).toMatchObject({ managedError: null, managedSubmitting: false })
+    expect(onCompleted).toHaveBeenCalledOnce()
+  })
+
+  it('an engine that never answers: says so, keeps the screen, and does not blame the relay', async () => {
+    bridge()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    vi.useFakeTimers()
+
+    try {
+      const onCompleted = vi.fn()
+
+      const requestGateway = vi.fn(async () => {
+        throw new Error('Hermes gateway is not connected')
+      })
+
+      const done = signInWith({ requestGateway: requestGateway as never, onCompleted })
+
+      await vi.advanceTimersByTimeAsync(21_000)
+      await done
+
+      const { managedError, managedSubmitting } = $desktopOnboarding.get()
+
+      expect(managedSubmitting).toBe(false)
+      expect(managedError).toBe('登录成功,但这台电脑上的引擎还没准备好,请稍后重试')
+      expect(onCompleted).not.toHaveBeenCalled()
+      expect(error).toHaveBeenCalledWith('[managed] signed in, but the local engine is not ready (fallback)')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('an engine that answers not ready is not waited for, and the line says the same', async () => {
+    bridge()
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const requestGateway = vi.fn(async (method: string) => (method === 'setup.status' ? { provider_configured: true } : { ok: false }))
+
+    await signInWith({ requestGateway: requestGateway as never, onCompleted: vi.fn() })
+
+    expect($desktopOnboarding.get().managedError).toBe('登录成功,但这台电脑上的引擎还没准备好,请稍后重试')
+    expect(requestGateway.mock.calls.filter(([method]) => method === 'setup.runtime_check')).toHaveLength(1)
+  })
 })

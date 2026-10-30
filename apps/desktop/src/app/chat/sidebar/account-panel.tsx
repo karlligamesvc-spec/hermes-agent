@@ -131,8 +131,8 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
       }
     } finally {
       setSigningOut(false)
-
-      if (isCurrent()) {setOpen(false)}
+      // Always: this row stays mounted behind the login screen, and an open menu would be back after the next sign-in.
+      setOpen(false)
     }
   }
 

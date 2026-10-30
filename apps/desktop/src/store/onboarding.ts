@@ -17,7 +17,7 @@ import { setModelAssignment } from "@/hermes"
 import { translateNow } from '@/i18n'
 import { managedSignInCopyNow } from '@/i18n/managed-sign-in'
 import { isProviderSetupErrorMessage } from "@/lib/provider-setup-errors"
-import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
+import { evaluateRuntimeReadiness, type RuntimeReadinessResult, waitForRuntimeReadiness } from '@/lib/runtime-readiness'
 import { markSignedIn } from '@/store/auth'
 import { setMainModelAssignment } from '@/store/cron-model-impact'
 import { ackFreeTierNotice, freeTierReadyPending, refreshFreeTierStatus, setFreeTierRoute } from '@/store/free-tier'
@@ -825,8 +825,9 @@ const MANAGED_COPY = {
   loginFailed: '登录失败,请检查邮箱或密码',
   // Bridge absent (web dashboard / dev preview) — managed sign-in is desktop-only.
   desktopOnly: '托管登录仅在桌面应用中可用',
-  // Signed in, but the local runtime couldn't reach the relay after applying it.
-  relayUnreachable: '登录成功,但运行时无法连接 APEX 中转服务,请重试',
+  // Signed in, but the engine on this computer never answered, or answered that
+  // it is not ready. setup.runtime_check is a local check: it never calls the relay.
+  engineNotReady: '登录成功,但这台电脑上的引擎还没准备好,请稍后重试',
   // Browser flow could not be started / was cancelled.
   browserFailed: '浏览器登录未完成,请重试',
   // Signed in, but the platform returned no relay key (provision-key not
@@ -861,6 +862,12 @@ function managedErrorCopy(message: string | undefined): string {
   // electron message verbatim, so a raw status/JSON body can't reach the user.
   return MANAGED_COPY.loginFailed
 }
+
+// hc-1121: a sign-in that changes the relay key restarts the primary engine, and
+// the renderer's socket comes back just after the main process reports success.
+// Long enough for a slow machine; main already waited for the engine to listen.
+const SIGN_IN_ENGINE_WAIT_MS = 20_000
+const SIGN_IN_ENGINE_RETRY_MS = 250
 
 // Shared tail for every managed sign-in path (email/password, Google, APEX):
 // given a successful electron result, either degrade to BYOK (no relay key yet),
@@ -901,12 +908,17 @@ async function applyManagedSignInResult(
 
   if (!isCurrent()) {return}
 
-  const runtime = await checkRuntime(ctx)
+  const runtime = await waitForRuntimeReadiness(
+    ctx.requestGateway,
+    { defaultReason: DEFAULT_ONBOARDING_REASON, unknownReady: false },
+    { isCurrent, retryMs: SIGN_IN_ENGINE_RETRY_MS, timeoutMs: SIGN_IN_ENGINE_WAIT_MS }
+  )
 
   if (!isCurrent()) {return}
 
   if (!runtime.ready) {
-    patch({ managedSubmitting: false, managedError: MANAGED_COPY.relayUnreachable })
+    console.error(`[managed] signed in, but the local engine is not ready (${runtime.source})`)
+    patch({ managedSubmitting: false, managedError: MANAGED_COPY.engineNotReady })
 
     return
   }
