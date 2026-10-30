@@ -6,7 +6,10 @@
  *    FAILED_TURN_NOTICE / PARTIAL_FAILED_TURN_NOTICE), seen when the
  *    conversation is opened again;
  *  - the body of the error card under a failed reply, which otherwise prints
- *    the engine's failure text (/model, /retry, `hermes setup`, Hermes).
+ *    the engine's failure text (/model, /retry, `hermes setup`, Hermes);
+ *  - the timeline rows the engine writes (a model or personality switch, a
+ *    resumed turn, background work that ended), English labels or the
+ *    engine's own English line ("Background Process Finished: ffmpeg …").
  *
  * Kept beside the main catalogs instead of inside them: those files are past
  * the code-health size cap. Each locale is a whole typed object, so a missing
@@ -28,6 +31,14 @@ export interface SingleThreadUpstreamCopy {
   errorBody: Record<'generic' | ErrorSurfaceLayer, string>
   /** Before the service's own words, when the failure carries them. */
   serviceSaid: string
+  /** Timeline rows. Background work says "ended", never "finished": the engine's own row may say it failed. */
+  timeline: {
+    modelSwitch: string
+    autoContinue: string
+    personalitySwitch: string
+    backgroundTasks: (count: number | undefined) => string
+    backgroundProcess: string
+  }
 }
 
 const zh: SingleThreadUpstreamCopy = {
@@ -44,7 +55,14 @@ const zh: SingleThreadUpstreamCopy = {
     runtime: 'APEX 在这台电脑上的引擎出了问题，你的消息还没有得到回答。一直这样的话，退出 APEX 再重新打开。',
     disk: '磁盘空间不够，这一轮没法继续。腾出一些空间后再试。'
   },
-  serviceSaid: '服务方说：'
+  serviceSaid: '服务方说：',
+  timeline: {
+    modelSwitch: '换了模型',
+    autoContinue: '接着做上次被打断的那一轮',
+    personalitySwitch: '换了人格',
+    backgroundTasks: count => (count === undefined ? '后台任务结束了' : `${count} 个后台任务结束了`),
+    backgroundProcess: '后台进程结束了'
+  }
 }
 
 const zhHant: SingleThreadUpstreamCopy = {
@@ -61,7 +79,14 @@ const zhHant: SingleThreadUpstreamCopy = {
     runtime: 'APEX 在這台電腦上的引擎出了問題，你的訊息還沒有得到回答。一直這樣的話，結束 APEX 再重新開啟。',
     disk: '磁碟空間不夠，這一輪沒辦法繼續。騰出一些空間後再試。'
   },
-  serviceSaid: '服務方說：'
+  serviceSaid: '服務方說：',
+  timeline: {
+    modelSwitch: '換了模型',
+    autoContinue: '接著做上次被打斷的那一輪',
+    personalitySwitch: '換了人格',
+    backgroundTasks: count => (count === undefined ? '後台任務結束了' : `${count} 個後台任務結束了`),
+    backgroundProcess: '後台程序結束了'
+  }
 }
 
 const en: SingleThreadUpstreamCopy = {
@@ -80,7 +105,15 @@ const en: SingleThreadUpstreamCopy = {
       "APEX's engine on this computer ran into a problem; your message hasn't been answered. If it keeps happening, quit APEX and open it again.",
     disk: "There isn't enough disk space to continue. Free some space, then try again."
   },
-  serviceSaid: 'The service said: '
+  serviceSaid: 'The service said: ',
+  timeline: {
+    modelSwitch: 'Model changed',
+    autoContinue: 'Picked up the turn that was cut off',
+    personalitySwitch: 'Personality changed',
+    backgroundTasks: count =>
+      count === undefined ? 'Background tasks ended' : `${count} background task${count === 1 ? '' : 's'} ended`,
+    backgroundProcess: 'A background process ended'
+  }
 }
 
 export const SINGLE_THREAD_UPSTREAM_COPY: Readonly<Record<Locale, SingleThreadUpstreamCopy>> = {
