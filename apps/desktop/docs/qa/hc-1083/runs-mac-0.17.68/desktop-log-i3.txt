@@ -1,0 +1,135 @@
+[2026-10-30T08:46:49.773Z] [hermes] [pool-limits] no saved file and no env overrides; using defaults
+[2026-10-30T08:46:49.778Z] [hermes] [client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)
+[2026-10-30T08:46:49.778Z] [hermes] [client-config] APEX_HYPIHUB_ACTIVE=1 (desktop_features.hypihub_apex)
+[2026-10-30T08:46:49.821Z] [hermes] [soul] default: APEX default in place
+[2026-10-30T08:46:50.060Z] [hermes] [platform-skills] no login JWT on hand; skipping (boot)
+[2026-10-30T08:46:50.066Z] [hermes] [shell-update] enabled: feed=https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-arm64
+[2026-10-30T08:46:51.154Z] [hermes] [client-config] v7 unchanged (boot)
+[2026-10-30T08:46:52.473Z] [hermes] [backend] `serve` supported for Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T08:46:52.473Z] [hermes] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T08:46:52.476Z] [hermes] [platform-tools] no managed credential — 平台工具(图片/视频生成、OCR、转写)将报「未登录」
+[2026-10-30T08:46:54.872Z] [hermes] HERMES_BACKEND_READY port=59367
+[2026-10-30T08:47:15.899Z] [hermes] [deeplink] delivered open/
+[2026-10-30T08:47:17.181Z] [hermes] [apexnodes] primary backend "default" was started signed out; its new sessions take the relay key from config.yaml (managed-runtime-complete)
+[2026-10-30T08:47:17.223Z] [hermes] [client-config] v7 unchanged (sign-in)
+[2026-10-30T08:47:18.945Z] [hermes] [platform-skills] installed 63 skill(s) under <test-dir>/home/hermes/skills/apexnodes
+[2026-10-30T08:47:18.945Z] [hermes] [platform-skills] installed 63 skill(s) manifest=9f173c2755b2 (sign-in)
+[2026-10-30T08:47:50.161Z] [hermes] [shell-update] Checking for update
+[2026-10-30T08:47:51.685Z] [hermes] [shell-update] Update for version 0.17.68 is not available (latest version: 0.17.68, downgrade is disallowed).
+[2026-10-30T14:46:50.253Z] [hermes] [shell-update] Checking for update
+[2026-10-30T14:46:53.075Z] [hermes] [shell-update] Update for version 0.17.68 is not available (latest version: 0.17.68, downgrade is disallowed).
+[2026-10-30T14:57:09.072Z] [hermes] Ignoring stale Hermes backend exit (SIGTERM)
+[2026-10-30T14:58:30.885Z] [hermes] [pool-limits] no saved file and no env overrides; using defaults
+[2026-10-30T14:58:30.888Z] [hermes] [client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)
+[2026-10-30T14:58:30.888Z] [hermes] [client-config] APEX_HYPIHUB_ACTIVE=1 (desktop_features.hypihub_apex)
+[2026-10-30T14:58:30.921Z] [hermes] [soul] default: APEX default in place
+[2026-10-30T14:58:31.166Z] [hermes] [platform-skills] no login JWT on hand; skipping (boot)
+[2026-10-30T14:58:31.172Z] [hermes] [shell-update] enabled: feed=https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-arm64
+[2026-10-30T14:58:32.490Z] [hermes] [client-config] v7 unchanged (boot)
+[2026-10-30T14:58:33.667Z] [hermes] [backend] `serve` supported for Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T14:58:33.668Z] [hermes] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T14:58:33.671Z] [hermes] [platform-tools] no managed credential — 平台工具(图片/视频生成、OCR、转写)将报「未登录」
+[2026-10-30T14:58:36.200Z] [hermes] HERMES_BACKEND_READY port=52450
+[2026-10-30T14:59:31.260Z] [hermes] [shell-update] Checking for update
+[2026-10-30T14:59:35.328Z] [hermes] [shell-update] Update for version 0.17.68 is not available (latest version: 0.17.68, downgrade is disallowed).
+[2026-10-30T15:19:29.345Z] [hermes] [deeplink] delivered open/
+[2026-10-30T15:19:30.770Z] [hermes] [apexnodes] primary backend "default" was started signed out; its new sessions take the relay key from config.yaml (managed-runtime-complete)
+[2026-10-30T15:19:31.007Z] [hermes] [client-config] v7 unchanged (sign-in)
+[2026-10-30T15:19:31.157Z] [hermes] [platform-skills] manifest 9f173c2755b2 unchanged (sign-in)
+[2026-10-30T15:20:18.410Z] [hermes] ⚠️  Attempt 1/3, not retryable failed: HTTP 401: 当前 APEX 凭据无效或已失效。请在正在使用的 APEX 客户端重新登录或修复连接，然后重试。
+[2026-10-30T15:20:18.410Z] [hermes] ❌ custom rejected the request and retrying won't help: HTTP 401: 当前 APEX 凭据无效或已失效。请在正在使用的 APEX 客户端重新登录或修复连接，然后重试。
+[2026-10-30T15:20:18.411Z] [hermes] 💡 Your API key was rejected by the provider. Check:
+[2026-10-30T15:20:18.411Z] [hermes]       • Is the key valid? Run: hermes setup
+[2026-10-30T15:20:18.411Z] [hermes] • Does your account have access to apex-flash?
+[2026-10-30T15:21:07.370Z] [hermes] ⚠️  Attempt 1/3, not retryable failed: HTTP 401: 当前 APEX 凭据无效或已失效。请在正在使用的 APEX 客户端重新登录或修复连接，然后重试。
+[2026-10-30T15:21:07.370Z] [hermes] ❌ custom rejected the request and retrying won't help: HTTP 401: 当前 APEX 凭据无效或已失效。请在正在使用的 APEX 客户端重新登录或修复连接，然后重试。
+[2026-10-30T15:21:07.370Z] [hermes] 💡 Your API key was rejected by the provider. Check:
+[2026-10-30T15:21:07.370Z] [hermes]       • Is the key valid? Run: hermes setup
+[2026-10-30T15:21:07.371Z] [hermes] • Does your account have access to apex-flash?
+[2026-10-30T15:21:36.189Z] [hermes] Ignoring stale Hermes backend exit (SIGTERM)
+[2026-10-30T15:21:39.976Z] [hermes] [pool-limits] no saved file and no env overrides; using defaults
+[2026-10-30T15:21:39.979Z] [hermes] [client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)
+[2026-10-30T15:21:39.979Z] [hermes] [client-config] APEX_HYPIHUB_ACTIVE=1 (desktop_features.hypihub_apex)
+[2026-10-30T15:21:40.013Z] [hermes] [soul] default: APEX default in place
+[2026-10-30T15:21:40.229Z] [hermes] [shell-update] enabled: feed=https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-arm64
+[2026-10-30T15:21:41.683Z] [hermes] [client-config] v7 unchanged (boot)
+[2026-10-30T15:21:42.233Z] [hermes] [platform-skills] manifest 9f173c2755b2 unchanged (boot)
+[2026-10-30T15:21:42.373Z] [hermes] [backend] `serve` supported for Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T15:21:42.373Z] [hermes] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T15:21:42.376Z] [hermes] [platform-tools] credential injected; gateway=https://api.apex-nodes.com legacy=https://api.apex-nodes.com/api/v1
+[2026-10-30T15:21:44.817Z] [hermes] HERMES_BACKEND_READY port=56916
+[2026-10-30T15:22:40.295Z] [hermes] [shell-update] Checking for update
+[2026-10-30T15:22:41.756Z] [hermes] [shell-update] Update for version 0.17.68 is not available (latest version: 0.17.68, downgrade is disallowed).
+[2026-10-30T16:07:27.047Z] [hermes] [apexnodes] restarting primary backend "default" for the refreshed relay key (managed-runtime-complete; committed)
+[2026-10-30T16:07:27.585Z] [hermes] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T16:07:27.585Z] [hermes] [platform-tools] credential injected; gateway=https://api.apex-nodes.com legacy=https://api.apex-nodes.com/api/v1
+[2026-10-30T16:07:27.587Z] [hermes] Ignoring stale Hermes backend exit (SIGTERM)
+[2026-10-30T16:07:29.699Z] [hermes] HERMES_BACKEND_READY port=64761
+[2026-10-30T16:07:30.371Z] [hermes] [platform-skills] manifest 9f173c2755b2 unchanged (sign-in)
+[2026-10-30T16:07:31.906Z] [hermes] [client-config] v7 unchanged (sign-in)
+[2026-10-30T16:09:31.658Z] [hermes] Ignoring stale Hermes backend exit (SIGTERM)
+[2026-10-30T16:09:35.476Z] [hermes] [pool-limits] no saved file and no env overrides; using defaults
+[2026-10-30T16:09:35.479Z] [hermes] [client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)
+[2026-10-30T16:09:35.479Z] [hermes] [client-config] APEX_HYPIHUB_ACTIVE=1 (desktop_features.hypihub_apex)
+[2026-10-30T16:09:35.479Z] [hermes] [client-config] APEX_MULTI_BOT_ACTIVE=1 (desktop_features.multi_bot)
+[2026-10-30T16:09:35.512Z] [hermes] [soul] default: APEX default in place
+[2026-10-30T16:09:35.707Z] [hermes] [shell-update] enabled: feed=https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-arm64
+[2026-10-30T16:09:36.978Z] [hermes] [client-config] v7 unchanged (boot)
+[2026-10-30T16:09:37.622Z] [hermes] [backend] `serve` supported for Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T16:09:37.622Z] [hermes] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T16:09:37.625Z] [hermes] [platform-tools] credential injected; gateway=https://api.apex-nodes.com legacy=https://api.apex-nodes.com/api/v1
+[2026-10-30T16:09:37.980Z] [hermes] [platform-skills] manifest 9f173c2755b2 unchanged (boot)
+[2026-10-30T16:09:39.756Z] [hermes] HERMES_BACKEND_READY port=65265
+[2026-10-30T16:10:35.797Z] [hermes] [shell-update] Checking for update
+[2026-10-30T16:10:37.392Z] [hermes] [shell-update] Update for version 0.17.68 is not available (latest version: 0.17.68, downgrade is disallowed).
+[2026-10-30T16:15:04.905Z] [hermes] [platform-skills] copied manifest=9f173c2755b2 into 1 profile(s): apex-bot-2
+[2026-10-30T16:15:05.481Z] [hermes] Starting Hermes backend for profile "apex-bot-2" via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T16:15:05.481Z] [hermes] [platform-tools] credential injected; gateway=https://api.apex-nodes.com legacy=https://api.apex-nodes.com/api/v1
+[2026-10-30T16:15:07.559Z] [hermes] HERMES_BACKEND_READY port=49825
+[2026-10-30T16:15:19.709Z] [hermes] Hermes backend for profile "apex-bot-2" exited (SIGTERM)
+[2026-10-30T16:15:19.739Z] [hermes] Ignoring stale Hermes backend exit (SIGTERM)
+[2026-10-30T16:15:25.438Z] [hermes] [pool-limits] no saved file and no env overrides; using defaults
+[2026-10-30T16:15:25.440Z] [hermes] [client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)
+[2026-10-30T16:15:25.440Z] [hermes] [client-config] APEX_HYPIHUB_ACTIVE=1 (desktop_features.hypihub_apex)
+[2026-10-30T16:15:25.440Z] [hermes] [client-config] APEX_MULTI_BOT_ACTIVE=1 (desktop_features.multi_bot)
+[2026-10-30T16:15:25.477Z] [hermes] [soul] default: APEX default in place; profiles: 1 unchanged
+[2026-10-30T16:15:25.670Z] [hermes] [shell-update] enabled: feed=https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-arm64
+[2026-10-30T16:15:26.531Z] [hermes] [client-config] v7 unchanged (boot)
+[2026-10-30T16:15:27.576Z] [hermes] [backend] `serve` supported for Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T16:15:27.576Z] [hermes] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T16:15:27.579Z] [hermes] [platform-tools] credential injected; gateway=https://api.apex-nodes.com legacy=https://api.apex-nodes.com/api/v1
+[2026-10-30T16:15:28.009Z] [hermes] [platform-skills] manifest 9f173c2755b2 unchanged (boot)
+[2026-10-30T16:15:29.665Z] [hermes] HERMES_BACKEND_READY port=49931
+[2026-10-30T16:16:10.423Z] [hermes] Ignoring stale Hermes backend exit (SIGTERM)
+[2026-10-30T16:16:14.344Z] [hermes] [pool-limits] no saved file and no env overrides; using defaults
+[2026-10-30T16:16:14.347Z] [hermes] [client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)
+[2026-10-30T16:16:14.347Z] [hermes] [client-config] APEX_HYPIHUB_ACTIVE=1 (desktop_features.hypihub_apex)
+[2026-10-30T16:16:14.347Z] [hermes] [client-config] APEX_MULTI_BOT_ACTIVE=1 (desktop_features.multi_bot)
+[2026-10-30T16:16:14.380Z] [hermes] [soul] default: APEX default in place; profiles: 1 unchanged
+[2026-10-30T16:16:14.574Z] [hermes] [shell-update] enabled: feed=https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-arm64
+[2026-10-30T16:16:15.446Z] [hermes] [client-config] v7 unchanged (boot)
+[2026-10-30T16:16:16.743Z] [hermes] [platform-skills] manifest 9f173c2755b2 unchanged (boot)
+[2026-10-30T16:16:16.938Z] [hermes] [backend] `serve` supported for Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T16:16:16.938Z] [hermes] Starting Hermes backend for profile "default" via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T16:16:16.939Z] [hermes] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T16:16:16.942Z] [hermes] [platform-tools] credential injected; gateway=https://api.apex-nodes.com legacy=https://api.apex-nodes.com/api/v1
+[2026-10-30T16:16:16.943Z] [hermes] [platform-tools] credential injected; gateway=https://api.apex-nodes.com legacy=https://api.apex-nodes.com/api/v1
+[2026-10-30T16:16:19.138Z] [hermes] HERMES_BACKEND_READY port=50062
+[2026-10-30T16:16:19.143Z] [hermes] HERMES_BACKEND_READY port=50063
+[2026-10-30T16:17:14.637Z] [hermes] [shell-update] Checking for update
+[2026-10-30T16:17:16.227Z] [hermes] [shell-update] Update for version 0.17.68 is not available (latest version: 0.17.68, downgrade is disallowed).
+[2026-10-30T16:27:15.597Z] [hermes] Reaping idle profile backend "default" (idle > 600s): committed
+[2026-10-30T16:27:15.838Z] [hermes] Hermes backend for profile "default" exited (SIGTERM)
+[2026-10-30T17:02:17.949Z] [hermes] [config-guard] restored missing block(s): managed-key(model custom_providers[0]) (managed-runtime-complete)
+[2026-10-30T17:02:17.973Z] [hermes] [apexnodes] restarting primary backend "apex-bot-2" for the refreshed relay key (managed-runtime-complete; committed)
+[2026-10-30T17:02:18.482Z] [hermes] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T17:02:18.482Z] [hermes] [platform-tools] credential injected; gateway=https://api.apex-nodes.com legacy=https://api.apex-nodes.com/api/v1
+[2026-10-30T17:02:18.484Z] [hermes] Ignoring stale Hermes backend exit (SIGTERM)
+[2026-10-30T17:02:20.684Z] [hermes] HERMES_BACKEND_READY port=57848
+[2026-10-30T17:02:21.291Z] [hermes] Starting Hermes backend for profile "default" via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-30T17:02:21.291Z] [hermes] [platform-tools] credential injected; gateway=https://api.apex-nodes.com legacy=https://api.apex-nodes.com/api/v1
+[2026-10-30T17:02:21.293Z] [hermes] [platform-skills] manifest 9f173c2755b2 unchanged (sign-in)
+[2026-10-30T17:02:21.415Z] [hermes] [client-config] v7 unchanged (sign-in)
+[2026-10-30T17:02:23.565Z] [hermes] HERMES_BACKEND_READY port=57868
+[2026-10-30T17:11:08.403Z] [hermes] Ignoring stale Hermes backend exit (SIGTERM)
+[2026-10-30T17:11:08.429Z] [hermes] Hermes backend for profile "default" exited (SIGTERM)
