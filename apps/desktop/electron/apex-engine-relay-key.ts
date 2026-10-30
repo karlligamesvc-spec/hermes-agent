@@ -37,15 +37,18 @@
  * arrives between that read and the stop is cut off; the window is the few
  * milliseconds of a file read.
  *
- * A process spawned signed out carries no key in its env; its platform tools
- * read config.yaml, which is always current. The messaging gateway then holds
- * nothing that can go stale: it builds each turn's LLM client from config.yaml
- * and rebuilds a cached agent when the key changes (gateway/run_agent_cache.py).
- * The primary engine does not: the sessions it builds after the first sign-in
- * keep that key. So the first key it sees is adopted as its stamp (no restart;
- * nothing it built holds an older relay key), and the next change restarts it.
- * Pooled engines keep hc-1080's rule: one spawned signed out restarts after
- * sign-in.
+ * An engine spawned signed out is on another key too, so it restarts once idle
+ * after the first sign-in (hc-1120). It has built a session by then: the renderer
+ * resumes the open conversation at boot, and a resume builds the agent as soon as
+ * the history is loaded (tui_gateway/server.py), with the `no-key-required`
+ * placeholder when config.yaml holds no key, or with whatever key a sign-out on
+ * an older version left there. A session keeps that client, so every turn after
+ * the sign-in is a 401 until the process goes. The restart also gives it the env
+ * it could not have before (`SEARXNG_*`, `TOOLS_GATEWAY_KEY`).
+ *
+ * Only the messaging gateway spawned signed out is left alone: it builds each
+ * turn's LLM client from config.yaml and rebuilds a cached agent when the key
+ * changes (gateway/run_agent_cache.py), so nothing in it can go stale.
  *
  * Electron-free, like its siblings: unit-tested with `vitest --project electron`.
  */
@@ -66,10 +69,8 @@ import { maskRelayKey } from './apex-relay-key-anchors'
 export interface RelayKeyHolder {
   /** For the log line, e.g. `primary backend "apex-bot-2"`. */
   label: string
-  /** maskRelayKey() of the key it holds; '' when it was spawned signed out and holds none yet. */
+  /** maskRelayKey() of the key it holds; '' when it was spawned signed out. */
   stamp: string
-  /** Take `stamp` as the key it holds from now on, instead of restarting ('' stamps only). */
-  adopt?: (stamp: string) => void
   /** May it stop now without cutting off a turn? */
   retire: () => Promise<RetirementVerdict>
   /** False once it was stopped or replaced while it was asked; its successor reads the fresh key. */
@@ -87,7 +88,7 @@ export function stampKeyHolderProcess(child: null | object | undefined, relayKey
   }
 }
 
-/** True when `child` was stamped with `relayKey` (or adopted it): its env and sessions hold that key. */
+/** True when `child` was stamped with `relayKey`: its env and sessions hold that key. */
 export function holdsRelayKey(child: null | object | undefined, relayKey: null | string | undefined): boolean {
   return Boolean(child && relayKey) && processStamps.get(child as object) === maskRelayKey(String(relayKey))
 }
@@ -103,7 +104,7 @@ function stampedProcess(live: LiveChild) {
     return null
   }
 
-  return { stamp, current: () => live() === child, adopt: (next: string) => processStamps.set(child, next) }
+  return { stamp, current: () => live() === child }
 }
 
 /** The primary engine, when it was stamped at spawn. `live` returns the primary's process. */
@@ -122,7 +123,6 @@ export function primaryKeyHolder(
     {
       label: `primary backend "${profile}"`,
       stamp: held.stamp,
-      adopt: held.adopt,
       retire: () => askPoolEngineToRetire(deps.post, held.current),
       current: held.current,
       restart: deps.restart
@@ -277,15 +277,6 @@ export class StaleRelayKeyRestarts {
     const current = key ? maskRelayKey(key) : ''
 
     for (const holder of this.deps.holders().filter(candidate => candidate.stamp !== current)) {
-      if (!holder.stamp && holder.adopt) {
-        holder.adopt(current)
-        this.deps.log(
-          `[apexnodes] ${holder.label} was started signed out; its new sessions take the relay key from config.yaml (${reason})`
-        )
-
-        continue
-      }
-
       const verdict = await holder.retire()
 
       if (!holder.current()) {
