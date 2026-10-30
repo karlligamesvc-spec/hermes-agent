@@ -35,6 +35,8 @@
  *     server drops that section and hashes that variant separately. hc-1089:
  *     `next-steps-handoff` says it also draws the 「交给」 option, so the section keeps
  *     the line that asks for it (a build sending only `next-steps` gets it without).
+ *     hc-1122: `chatcut` is added only while that switch is on: the server keeps the
+ *     ChatCut skill out of every other manifest, so with it off the skill never arrives.
  *   401 → expired/absent JWT; treated as "nothing to sync" (installed set stands),
  *     and main's apex-cloud-login.ts asks the user to sign in again (hc-1073).
  *
@@ -65,6 +67,7 @@ function trimTrailingSlash(value) {
 // `next-steps-handoff` (hc-1089): the block's 「交给」 option, drawn as 「交给 X」 when the relay is
 // on and left out otherwise; a build without it gets the section minus that one rule line.
 const PLATFORM_SKILLS_CAPS = 'next-steps,next-steps-handoff'
+const CHATCUT_ACTIVE_ENV = 'APEX_CHATCUT_ACTIVE'
 
 /**
  * Build the platform-skills URL for an apiBase, optionally advertising the
@@ -72,14 +75,17 @@ const PLATFORM_SKILLS_CAPS = 'next-steps,next-steps-handoff'
  *
  * @param {string} apiBase e.g. https://api.apex-nodes.com
  * @param {string} [knownHash] included as &known_hash=<h> when a non-empty string
+ * @param {NodeJS.ProcessEnv} [env] the settled launch env (main settles it before any sync)
  * @returns {string}
  */
-function platformSkillsUrl(apiBase, knownHash?) {
+function platformSkillsUrl(apiBase, knownHash?, env: Record<string, string | undefined> = process.env) {
   const base = trimTrailingSlash(apiBase)
   const known = typeof knownHash === 'string' ? knownHash.trim() : ''
   const query = known ? `&known_hash=${encodeURIComponent(known)}` : ''
 
-  return `${base}${PLATFORM_SKILLS_PATH}?caps=${PLATFORM_SKILLS_CAPS}${query}`
+  const caps = env[CHATCUT_ACTIVE_ENV] === '1' ? `${PLATFORM_SKILLS_CAPS},chatcut` : PLATFORM_SKILLS_CAPS
+
+  return `${base}${PLATFORM_SKILLS_PATH}?caps=${caps}${query}`
 }
 
 /**

@@ -10,16 +10,19 @@ import { useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
+import { useChatcutCopy } from '@/i18n/chatcut'
 import { useSettingsProductCopy } from '@/i18n/settings-product'
 import { formatUsedPercent, useSingleThreadSidebarCopy } from '@/i18n/single-thread-sidebar'
-import { BarChart3, Brain, MessageCircle } from '@/lib/icons'
+import { BarChart3, Brain, MessageCircle, Video } from '@/lib/icons'
 import { $authState } from '@/store/auth'
+import { readChatcutFlag } from '@/store/chatcut'
 import { $planUsage, planUsageFor, planUsageOwner, refreshPlanUsage } from '@/store/plan-usage'
 
 import { ImEntryView } from '../im-entry'
 import type { OverlayNavGroup } from '../overlays/overlay-split-layout'
 import { PROFILE_STATS_ROUTE } from '../routes'
 
+import { ChatcutSettings } from './chatcut-settings'
 import { MemoryLedgerSettings } from './memory-ledger-settings'
 import { ListRow, SectionHeading, SettingsContent } from './primitives'
 import { $productSettingsViews } from './product-settings'
@@ -33,6 +36,12 @@ export function useProductSettingsRail(
 ): OverlayNavGroup[] {
   const views = useStore($productSettingsViews)
   const copy = useSettingsProductCopy()
+  const chatcutCopy = useChatcutCopy()
+
+  // A local disk read through main: the rail picks ChatCut up once the switch says so.
+  useEffect(() => {
+    void readChatcutFlag()
+  }, [])
 
   return useMemo(() => {
     if (!views) {
@@ -53,6 +62,7 @@ export function useProductSettingsRail(
 
     const productOnly: Partial<Record<string, OverlayNavGroup>> = {
       'config:memory': memory && { ...memory, label: copy.memory },
+      chatcut: own('chatcut', Video, chatcutCopy.title),
       im: own('im', MessageCircle, copy.im),
       usage: own('usage', BarChart3, copy.usage)
     }
@@ -63,7 +73,7 @@ export function useProductSettingsRail(
 
       return group ? [{ ...group, gapBefore: false }] : []
     })
-  }, [activeView, copy, groups, select, views])
+  }, [activeView, chatcutCopy.title, copy, groups, select, views])
 }
 
 /** The page for a product-only tab (and 记忆, the ledger here); null for every other tab. */
@@ -71,6 +81,9 @@ export function productSettingsPage(view: string): ReactNode {
   switch (view) {
     case 'config:memory':
       return <ProductMemorySettings />
+
+    case 'chatcut':
+      return <ChatcutSettings />
 
     case 'im':
       return <ProductImSettings />

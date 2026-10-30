@@ -150,6 +150,13 @@ _CONTEXT_SEAMS = (
         "explained to the user.",
     ),
     (
+        "chatcut",
+        "apex-overlay: hc-1122 ChatCut seam did not fully apply (see prior "
+        "warning). With desktop_features.chatcut on, the assistant cannot "
+        "connect ChatCut or import local files into it, and a connection left "
+        "from before the switch went off may stay.",
+    ),
+    (
         "desktop_version",
         "apex-overlay: hc-1095 Desktop version seam did not fully apply (see "
         "prior warning). Asked which version it is, APEX may look up the "
