@@ -43,6 +43,7 @@ describe('quickComposerReducer', () => {
     expect(initialQuickComposerState).toEqual({
       connected: false,
       draft: '',
+      failure: null,
       sessions: [],
       submitting: false,
       target: QUICK_TARGET_CURRENT,
@@ -212,5 +213,51 @@ describe('quickComposerReducer', () => {
 
     expect(first.sent).toEqual([{ target: QUICK_TARGET_CURRENT, text: 'one' }])
     expect(second.sent).toEqual([{ target: QUICK_TARGET_CURRENT, text: 'two' }])
+  })
+})
+
+describe('hc-1113 the quick window names an assistant and gets a line back when it did not land', () => {
+  const editor = { name: '剪辑助手', profile: 'apex-bot-2' }
+  const apex = { name: 'APEX', profile: 'default' }
+  const several = (assistant: { name: string; profile: string }): QuickComposerEvent => ({ ...connect, assistant })
+
+  it('the line carries the assistant the window named, so it goes there and not wherever the app is by then', () => {
+    const { sent } = run([several(editor), { draft: '标题写 3 个', type: 'edit' }, { type: 'submit' }])
+
+    expect(sent).toEqual([{ assistant: editor, target: QUICK_TARGET_CURRENT, text: '标题写 3 个' }])
+  })
+
+  it('follows the latest push: a switch on screen renames the window', () => {
+    const { sent, state } = run([several(editor), several(apex), { draft: 'hi', type: 'edit' }, { type: 'submit' }])
+
+    expect(state.assistant).toEqual(apex)
+    expect(sent[0].assistant).toEqual(apex)
+  })
+
+  it('a push naming none (one assistant) drops the name, so the window falls back to localStorage', () => {
+    const { sent, state } = run([several(editor), connect, { draft: 'hi', type: 'edit' }, { type: 'submit' }])
+
+    expect(state.assistant).toBeUndefined()
+    expect(sent).toEqual([{ target: QUICK_TARGET_CURRENT, text: 'hi' }])
+  })
+
+  it('a failed line comes back into the input, shown, with why; the next send clears the why', () => {
+    const failure = { name: '剪辑助手', reason: 'busy' as const, text: '标题写 3 个' }
+    const afterSend = run([several(editor), { draft: '标题写 3 个', type: 'edit' }, { type: 'submit' }]).state
+    const back = run([{ type: 'shown' }, { failure, type: 'failed' }], afterSend).state
+
+    expect(back).toMatchObject({ draft: '标题写 3 个', failure, submitting: false, visible: true })
+
+    const resent = run([{ type: 'submit' }], back)
+
+    expect(resent.sent).toEqual([{ assistant: editor, target: QUICK_TARGET_CURRENT, text: '标题写 3 个' }])
+    expect(resent.state.failure).toBeNull()
+  })
+
+  it('Escape after a failure drops the line and the why, as any dismiss does', () => {
+    const failure = { name: null, reason: 'no-window' as const, text: 'x' }
+    const { state } = run([connect, { failure, type: 'failed' }, { type: 'dismiss' }])
+
+    expect(state).toMatchObject({ draft: '', failure: null, visible: false })
   })
 })
