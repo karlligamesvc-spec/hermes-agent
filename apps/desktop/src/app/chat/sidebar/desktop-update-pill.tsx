@@ -2,7 +2,6 @@ import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { DesktopShellUpdateState } from '@/global'
 import { useI18n } from '@/i18n'
 import { useDesktopUpdateCopy } from '@/i18n/desktop-update'
@@ -11,8 +10,10 @@ import { CheckCircle2, Download, Loader2 } from '@/lib/icons'
 import { $desktopUpdateProgress, applyDesktopUpdates } from '@/store/desktop-update'
 import { $runtimeUpdateCheck, checkRuntimeUpdate } from '@/store/runtime-update'
 import { $shellUpdate, initShellUpdateSubscription } from '@/store/shell-update'
+import { $runtimeUpdateWait, desktopUpdateWait } from '@/store/update-wait'
 
-import { EngineHoldersNote, shellUpdateHolders } from './engine-holders-note'
+import { DesktopUpdateConfirmDialog } from './desktop-update-confirm'
+import { EngineHoldersNote, waitHolders } from './engine-holders-note'
 
 const INITIAL_CHECK_DELAY_MS = 30_000
 const RECHECK_INTERVAL_MS = 12 * 60 * 60 * 1000
@@ -49,8 +50,10 @@ async function runSilentRuntimeCheck(): Promise<void> {
 /** hc-1030: while a requested install waits for idle, say what it waits for. */
 function DesktopUpdateDeferredNote({ shell }: { shell: DesktopShellUpdateState | null }) {
   const copy = useDesktopUpdateCopy()
+  // hc-1117: an engine switch that waits says so here too, like the app install.
+  const wait = desktopUpdateWait(shell, useStore($runtimeUpdateWait))
   // hc-1094: engine holders the gate named are said by kind, and APEX's own leftovers can be ended.
-  const holders = shellUpdateHolders(shell)
+  const holders = waitHolders(wait)
 
   if (holders) {
     return (
@@ -63,13 +66,13 @@ function DesktopUpdateDeferredNote({ shell }: { shell: DesktopShellUpdateState |
     )
   }
 
-  if (!shell?.deferred) {
+  if (!wait) {
     return null
   }
 
   return (
     <span className="p5-update-pill-deferred" data-testid="desktop-update-deferred">
-      {copy.deferred[shell.deferredReason ?? 'active_work']}
+      {copy.deferred[wait.reason]}
     </span>
   )
 }
@@ -180,16 +183,7 @@ export function DesktopUpdatePill() {
         </Button>
       </div>
 
-      <ConfirmDialog
-        busyLabel={copy.installing}
-        cancelLabel={t.common.cancel}
-        confirmLabel={copy.confirmApply}
-        description={copy.confirmBody}
-        onClose={() => setConfirmOpen(false)}
-        onConfirm={() => applyDesktopUpdates()}
-        open={confirmOpen}
-        title={copy.confirmTitle}
-      />
+      <DesktopUpdateConfirmDialog apply={applyDesktopUpdates} onClose={() => setConfirmOpen(false)} open={confirmOpen} />
     </>
   )
 }

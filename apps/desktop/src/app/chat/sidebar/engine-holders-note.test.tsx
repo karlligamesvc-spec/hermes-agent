@@ -72,6 +72,8 @@ const GATEWAY_WORKER: DesktopEngineHolder = {
 
 const ENGINE: DesktopEngineHolder = { pid: 1500, kind: 'leftover_engine', name: 'hermes', created: 3.5, endable: true }
 
+const CHILD: DesktopEngineHolder = { pid: 1600, kind: 'leftover_child', name: 'python3.14', created: 4.5, endable: true }
+
 const TERMINAL: DesktopEngineHolder = {
   pid: 2001,
   kind: 'terminal_hermes',
@@ -139,6 +141,11 @@ describe('the update pill', () => {
       [TERMINAL],
       '终端里运行的 hermes 在用 APEX 引擎，它退出后自动安装更新。在运行 hermes 的终端里按 Ctrl+C 退出它。'
     ],
+    [
+      'a background command an earlier APEX left',
+      [CHILD],
+      'APEX 之前留下的后台进程在用 APEX 引擎，它退出后自动安装更新。这是 APEX 之前没关干净留下的，可以直接结束。'
+    ],
     ['another program', [OTHER], '其他程序（Code Helper）在用 APEX 引擎，它退出后自动安装更新。'],
     ['a program the scan could not inspect', [UNKNOWN], '其他程序在用 APEX 引擎，它退出后自动安装更新。'],
     [
@@ -192,6 +199,23 @@ describe('the update pill', () => {
     expect(vi.mocked(applyDesktopUpdates).mock.invocationCallOrder[0]).toBeGreaterThan(
       endLeftovers.mock.invocationCallOrder[0]!
     )
+  })
+
+  it('hc-1117: says ending a background command may lose its work, and ends it by PID and start time', async () => {
+    $shellUpdate.set(waiting([CHILD]))
+    inLocale('zh', <DesktopUpdatePill />)
+
+    fireEvent.click(screen.getByTestId('engine-holders-end'))
+    expect(screen.getByRole('dialog').textContent).toContain(
+      '将结束：APEX 之前留下的后台进程（进程 1600）。APEX 会先请它们自己退出，10 秒内没退出就强制结束，然后安装更新并重启。如果它还在做之前没做完的事（比如渲染视频），结束后要重新做。'
+    )
+    expect(screen.getByRole('dialog').textContent).not.toContain('消息渠道')
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '结束并安装' }))
+    })
+    await waitFor(() => expect(applyDesktopUpdates).toHaveBeenCalledTimes(1))
+    expect(endLeftovers).toHaveBeenCalledExactlyOnceWith([{ pid: 1600, created: 4.5 }])
   })
 
   it.each([

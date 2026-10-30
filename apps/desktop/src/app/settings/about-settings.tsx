@@ -1,19 +1,15 @@
 import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
 
+import { DesktopUpdateConfirmDialog } from '@/app/chat/sidebar/desktop-update-confirm'
 import { ShellUpdateHoldersNote } from '@/app/chat/sidebar/engine-holders-note'
 import { Button } from '@/components/ui/button'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useI18n } from '@/i18n'
 import { describeDesktopUpdateError, desktopUpdateCopyNow } from '@/i18n/desktop-update'
 import { formatEngineDisplayVersion } from '@/lib/engine-display'
 import { AlertTriangle, Cpu, Loader2, RefreshCw, Sparkles } from '@/lib/icons'
 import { cn } from '@/lib/utils'
-import {
-  $desktopUpdateProgress,
-  applyDesktopUpdates,
-  checkDesktopUpdates
-} from '@/store/desktop-update'
+import { $desktopUpdateProgress, applyDesktopUpdates, checkDesktopUpdates } from '@/store/desktop-update'
 import {
   $runtimeUpdateApplying,
   $runtimeUpdateCheck,
@@ -227,17 +223,7 @@ export function EngineUpdateSection({ dialogLayer }: { dialogLayer?: number } = 
         </div>
       </div>
 
-      <ConfirmDialog
-        busyLabel={updateCopy.installing}
-        cancelLabel={t.common.cancel}
-        confirmLabel={updateCopy.confirmApply}
-        description={updateCopy.confirmBody}
-        layer={dialogLayer}
-        onClose={() => setConfirmOpen(false)}
-        onConfirm={() => applyDesktopUpdates()}
-        open={confirmOpen}
-        title={updateCopy.confirmTitle}
-      />
+      <DesktopUpdateConfirmDialog apply={applyDesktopUpdates} layer={dialogLayer} onClose={() => setConfirmOpen(false)} open={confirmOpen} />
     </div>
   )
 }

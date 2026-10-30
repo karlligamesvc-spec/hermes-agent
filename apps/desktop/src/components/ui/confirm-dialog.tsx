@@ -18,7 +18,8 @@ interface ConfirmDialogProps {
   open: boolean
   onClose: () => void
   // Does the work. Throw to surface an inline error and keep the dialog open.
-  onConfirm: () => Promise<void> | void
+  // Resolve to 'handled' when the caller took over what follows: no done beat, no timed close.
+  onConfirm: () => Promise<'handled' | void> | void
   title: ReactNode
   description?: ReactNode
   confirmLabel?: string
@@ -115,7 +116,12 @@ export function ConfirmDialog({
     setStatus('saving')
 
     try {
-      await onConfirm()
+      if ((await onConfirm()) === 'handled') {
+        setStatus('idle')
+
+        return
+      }
+
       setStatus('done')
       closeTimerRef.current = window.setTimeout(() => {
         closeTimerRef.current = null
