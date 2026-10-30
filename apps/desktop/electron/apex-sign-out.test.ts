@@ -203,6 +203,17 @@ describe('every home', () => {
     ])
   })
 
+  // The writer only knows the registered anchors; what it wrote is judged by the auditor, which does not.
+  test('a file the writer changed but an unregistered holder still keeps is named, not passed', () => {
+    const root = tempRoot()
+    put(root, 'config.yaml', seeded(KEY) + `auxiliary:\n  vision:\n    base_url: ${RELAY}\n    api_key: "${ROTATED}"\n`)
+
+    const report = scrubRelayKeyFromHomes(root, TARGET)
+
+    assert.deepEqual(filesHolding(root, KEY), [])
+    assert.deepEqual(report, { scrubbed: [], failed: ['config.yaml (auxiliary.vision)'] })
+  })
+
   test('a file it cannot write is named, without the key', () => {
     const root = tempRoot()
     signedInTree(root)

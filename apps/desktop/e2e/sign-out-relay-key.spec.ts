@@ -93,8 +93,10 @@ async function withAccountServer(name: string, body: (ctx: Fixture) => Promise<v
 
   const keys: Fixture['keys'] = []
   const revokes: Fixture['revokes'] = []
+
   const tokenFor = (account: string) =>
     `local.${Buffer.from(JSON.stringify({ sub: account })).toString('base64url')}.so`
+
   const accountOf = (auth: string | undefined) =>
     Object.values(ACCOUNTS).find(id => auth === `Bearer ${tokenFor(id)}`) || ''
 
@@ -226,7 +228,27 @@ async function withAccountServer(name: string, body: (ctx: Fixture) => Promise<v
         await composer.waitFor({ state: 'visible', timeout: 90_000 })
         await composer.click()
         await composer.type(text, { delay: 10 })
-        await page.keyboard.press('Enter')
+
+        // Enter pressed while the renderer re-dials a restarted engine is not sent (relogin-relay-key.spec.ts).
+        const unsent = () => composer.evaluate(el => ((el as HTMLTextAreaElement).value ?? el.textContent ?? '').trim())
+
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          await page.keyboard.press('Enter')
+
+          if (
+            await expect
+              .poll(unsent, { timeout: 5_000 })
+              .toBe('')
+              .then(
+                () => true,
+                () => false
+              )
+          ) {
+            return
+          }
+        }
+
+        throw new Error(`the composer never sent "${text}"`)
       },
       replied: text =>
         page.waitForFunction(
@@ -264,10 +286,15 @@ test('signing out revokes the key, leaves no copy on disk or in a running proces
     async ({ page, sandbox, keys, revokes, signIn, send, replied, desktopLog }) => {
       expect(await signIn('alice@example.invalid')).toMatchObject({ ok: true })
       await page.reload()
+      // Sign in again: the primary restarts on the new key (hc-1106), so its env carries it too.
+      expect(await signIn('alice@example.invalid')).toMatchObject({ ok: true })
+      await expect
+        .poll(desktopLog, { timeout: 60_000 })
+        .toContain('restarting primary backend "default" for the refreshed relay key')
       // A turn, so the engine has built a session on the key (and backed config.yaml up).
       await send('sign-out probe one')
       await replied('sign-out probe one')
-      const key = keys[0].key
+      const key = keys[1].key
 
       // A second assistant: its home holds its own copy of config.yaml.
       const assistant = path.join(sandbox.hermesHome, 'profiles', 'apex-bot-2')
@@ -279,6 +306,7 @@ test('signing out revokes the key, leaves no copy on disk or in a running proces
       expect(before).toContain('hermes-home/config.yaml')
       expect(before).toContain('hermes-home/profiles/apex-bot-2/config.yaml')
       expect(before.some(file => file.startsWith('hermes-home/backups/config/config.yaml.good.'))).toBe(true)
+      expect(processesHolding(key).length).toBeGreaterThan(0)
 
       allowErrorBanners()
       await page.getByRole('button', { name: /^打开账户菜单/ }).click()
@@ -289,7 +317,7 @@ test('signing out revokes the key, leaves no copy on disk or in a running proces
       expect(revokes[0].bearerAccount).toBe(ACCOUNTS['alice@example.invalid'])
       expect(revokes[0].body.legacy_key_hash).toBe(crypto.createHash('sha256').update(key).digest('hex'))
       expect(JSON.stringify(revokes[0].body)).not.toContain(key)
-      expect(keys[0].status).toBe('revoked')
+      expect(keys.map(entry => entry.status)).toEqual(['rotated', 'revoked'])
 
       await expect
         .poll(desktopLog, { timeout: 30_000 })
