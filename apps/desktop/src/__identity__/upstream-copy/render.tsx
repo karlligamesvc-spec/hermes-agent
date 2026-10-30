@@ -1,10 +1,10 @@
 /**
  * hc-1116 identity harness for the engine's failure wording on screen: a
  * thread whose replies failed live (the error card prints the engine's
- * English), and a transcript the engine closed with its failed-turn rows
- * (what a reopened conversation shows). Uses only APIs fork main already has
- * before hc-1116, so the same file records the goldens there and checks them
- * on the branch.
+ * English), a transcript the engine closed with its failed-turn rows, and
+ * the engine's timeline rows (both are what a reopened conversation shows).
+ * Uses only APIs fork main already has before hc-1116, so the same file
+ * records the goldens there and checks them on the branch.
  *
  * The caller sets the switches (single_thread, tool view); this file only
  * returns the normalized HTML and the hydrated rows.
@@ -93,4 +93,45 @@ export const FAILED_TURN_HISTORY: SessionMessage[] = [
 
 export function failedTurnHistoryJson(): string {
   return JSON.stringify(toChatMessages(FAILED_TURN_HISTORY), null, 2) + '\n'
+}
+
+/** The engine's timeline rows: a model switch, a crash-recovery resume, a personality switch, background work. */
+export const TIMELINE_HISTORY: SessionMessage[] = [
+  { content: '换成 Pro 档', role: 'user', timestamp: seconds(12) },
+  {
+    content: 'Model switched to deepseek-v4-pro.',
+    display_kind: 'model_switch',
+    role: 'assistant',
+    timestamp: seconds(12, 1)
+  },
+  {
+    content: '[System note: Your previous turn was interrupted mid-run. Pick it up where it stopped.]',
+    display_kind: 'auto_continue',
+    role: 'user',
+    timestamp: seconds(12, 2)
+  },
+  {
+    content: 'Personality: creative',
+    display_kind: 'personality_switch',
+    role: 'assistant',
+    timestamp: seconds(12, 3)
+  },
+  {
+    content: '[ASYNC DELEGATION BATCH COMPLETE]\n--- ✓ TASK 1/2: 写标题  (status=completed) ---\n三个标题\n',
+    display_kind: 'async_delegation_complete',
+    display_metadata: { display_text: 'Completed: 写标题', task_count: 2 },
+    role: 'user',
+    timestamp: seconds(12, 4)
+  },
+  {
+    content: '[IMPORTANT: Background process proc_1 finished (exit 0).]',
+    display_kind: 'process_complete',
+    display_metadata: { display_text: 'Background Process Finished: ffmpeg -i in.mp4 out.mp4' },
+    role: 'user',
+    timestamp: seconds(12, 5)
+  }
+] as SessionMessage[]
+
+export function timelineHistoryJson(): string {
+  return JSON.stringify(toChatMessages(TIMELINE_HISTORY), null, 2) + '\n'
 }

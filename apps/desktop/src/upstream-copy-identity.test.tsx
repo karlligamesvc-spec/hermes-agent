@@ -12,14 +12,15 @@ import { setToolViewMode } from '@/store/tool-view'
 
 import { seedShellState } from './__identity__/single-thread-shell/render'
 import { restoreRecordingTimeZone } from './__identity__/single-thread-shell/time-zone'
-import { failedRepliesHtml, failedTurnHistoryJson } from './__identity__/upstream-copy/render'
+import { failedRepliesHtml, failedTurnHistoryJson, timelineHistoryJson } from './__identity__/upstream-copy/render'
 
 /**
  * hc-1116 identity guard (hard rule 11) for the engine's failure wording.
  *
  * The goldens under `__identity__/upstream-copy/` were recorded on fork main
  * before hc-1116, with the same harness (render.tsx): replies that failed live
- * (the error card) and a transcript closed by the engine's failed-turn rows.
+ * (the error card), a transcript closed by the engine's failed-turn rows, and
+ * the engine's timeline rows (model switch, resume, background work).
  *
  * - single_thread off, and single_thread on in developer mode: byte-identical.
  * - single-thread product mode: the change, pinned by
@@ -58,5 +59,9 @@ describe.each([
 
   it('a reopened transcript keeps the engine’s failed-turn rows', async () => {
     await expect(failedTurnHistoryJson()).toMatchFileSnapshot(`${GOLDEN}/${prefix}-failed-turn-history.json`)
+  })
+
+  it('a reopened transcript keeps the engine’s timeline rows', async () => {
+    await expect(timelineHistoryJson()).toMatchFileSnapshot(`${GOLDEN}/${prefix}-timeline-history.json`)
   })
 })
