@@ -179,6 +179,7 @@ import {
 } from './apex-runtime-select'
 import { loadScenarioCatalog } from './apex-scenario-catalog'
 import { loginShellPathProbeArgs, parseLoginShellPath, resolveAugmentedPath } from './apex-shell-path'
+import { cleanUpAfterSignOut, revokePreviousAccountKey, sweepSignedOutRelayKeys } from './apex-sign-out'
 import { migrateStartupProfileIfMissing, readStoredDesktopProfile, startupProfileFor, startupProfileWritable } from './apex-startup-profile'
 import { registerTurnLedger, turnLedgerStoreIn } from './apex-turn-ledger'
 import { createDesktopVersionMirror } from './apex-version-state'
@@ -345,6 +346,7 @@ import {
   provisionDeviceBody,
   provisionKeyRevokeUrl,
   requireRevokedDeviceKey,
+  signOutFailureLine,
   signOutManagedDevice
 } from './desktop-device-key'
 import {
@@ -18995,6 +18997,8 @@ function syncManagedRelayKeyToConfig(reason = 'sync') {
   const managed = resolveManagedConfig()
 
   if (!managed.key || !managed.baseUrl) {
+    sweepSignedOutRelayKeys({ root: HERMES_HOME, managedEnabled: isManagedEnabled(process.env), key: managed.key, credentialStored: fs.existsSync(DESKTOP_MANAGED_CONFIG_PATH), baseUrls: [resolveApexEndpoints(process.env).relayBaseUrl], log: rememberLog })
+
     return { ok: false, changed: false, reason: 'signed-out', model: 'absent', entries: { matched: 0, updated: 0 } }
   }
 
@@ -19376,12 +19380,6 @@ function resolveManagedConfig() {
     runtimePending: stored.runtimePending === true,
     runtimeRecoveryOptOut: stored.runtimeRecoveryOptOut === true
   }
-}
-
-// Just the decrypted relay key (or '') — thin wrapper for call sites that only
-// need to answer "is the user signed in to managed?".
-function resolveManagedRelayCredential() {
-  return resolveManagedConfig().key
 }
 
 // Persist the provision-key result. Pass null/empty to clear. `provisioned` may
@@ -21522,8 +21520,8 @@ async function provisionManagedFromAccessToken(accessToken, account = null, isCu
 
       // Recovery can retain a confirmed transport renewal. Explicit sign-in
       // must replace the old same-account JWT with the newly authenticated one.
-      const currentToken = resolveManagedConfig().accessToken
-      const commitToken = managedProvisionCommitToken(token, currentToken, purpose)
+      const previous = resolveManagedConfig()
+      const commitToken = managedProvisionCommitToken(token, previous.accessToken, purpose)
 
       // Once minted, keep the new credential even if Runtime recovery needs a
       // retry. Keeping the already-revoked old key would strand this login.
@@ -21539,6 +21537,8 @@ async function provisionManagedFromAccessToken(accessToken, account = null, isCu
       modelMutationMetadata.markCredentialRecovery(false)
       unpersistedManagedRotation = false
       onCommitted?.(generation)
+      void revokePreviousAccountKey({ previous, nextAccessToken: token, deviceInstanceId: deviceBody.device_instance_id, log: rememberLog,
+        post: (bearer, body) => apexAuthPostJson(provisionKeyRevokeUrl(endpoints.provisionKeyUrl), { bearer, body }) }) // hc-1114
 
       return generation
     }
@@ -23372,10 +23372,9 @@ ipcMain.handle('hermes:managed:deepLinkSignIn', async (_event, payload) => {
   }
 })
 
-// signOut: revoke this install first, then forget the relay key. A network/JWT
-// failure leaves local state intact so the user can retry; silently clearing
-// while a server key stays active would be a security regression. Env-managed
-// keys are out-of-band and have no stored server session to revoke.
+// signOut: revoke this install first, then forget the relay key. A network/JWT failure leaves local state intact
+// so the user can retry; silently clearing while a server key stays active would be a security regression. Env-managed
+// keys are out-of-band and have no stored server session to revoke. hc-1114: no copy of a revoked key stays behind.
 ipcMain.handle('hermes:managed:signOut', async () => {
   const managed = resolveManagedConfig()
   const envKey = String(process.env.APEXNODES_RELAY_KEY || '').trim()
@@ -23383,7 +23382,7 @@ ipcMain.handle('hermes:managed:signOut', async () => {
   // Explicit logout stops background recovery before awaiting either fence.
   // A failed revoke/removal keeps that intent so self-heal cannot undo it.
   if (managed.accessToken && !envKey) {
-    try {deferManagedRuntimeRecovery()} catch {return { ok: false, message: 'SIGN_OUT_CLEAR_FAILED' }}
+    try {deferManagedRuntimeRecovery()} catch {rememberLog(signOutFailureLine('SIGN_OUT_CLEAR_FAILED')); return { ok: false, message: 'SIGN_OUT_CLEAR_FAILED' }}
   }
 
   const intent = managedAuthIntent.begin()
@@ -23394,8 +23393,9 @@ ipcMain.handle('hermes:managed:signOut', async () => {
   return signOutManagedDevice({
     accessToken: managed.accessToken,
     clearCredential: clearManagedRelayCredential,
+    afterClear: () => cleanUpAfterSignOut({ root: HERMES_HOME, managed, defaultRelayBaseUrl: endpoints.relayBaseUrl, restartHolders: restartEnginesOnStaleRelayKey }),
     deviceInstanceId: desktopDeviceInstanceId(),
-    envKey,
+    envKey, log: rememberLog,
     managedKey: managed.key,
     isCurrent,
     prepare: () => desktopModelMutations.fence(isCurrent),

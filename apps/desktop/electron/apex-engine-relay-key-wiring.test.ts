@@ -98,7 +98,9 @@ describe('the stale-key restart covers every holder', () => {
       // The 401 self-heal, when the relay accepts the stored key.
       'reconcileCurrentManagedRelay',
       // The sign-in completion waits for it.
-      'finishManagedModelRuntime'
+      'finishManagedModelRuntime',
+      // hc-1114: the sign-out handler's clean-up, onto no key (apex-sign-out-wiring.test.ts).
+      '(module scope)'
     ])
     assert.equal(code.match(/void restartEnginesOnStaleRelayKey\(reason\)/g)?.length, 1)
   })
