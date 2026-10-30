@@ -10,14 +10,20 @@
  * waiting, and the kept-back engine notice after a busy switch. hc-1094 only
  * changes what a wait on engine holders says when the gate names them; that
  * state is not recorded here, so a diff here means another state moved.
+ *
+ * hc-1117 adds states and pins them in their own goldens (`*-holders-*`,
+ * `*-wait-*`, `*-engine-waiting-*`, `zh-kept-back-busy`), recorded on its branch.
+ * It changes none of the goldens above.
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { EngineUpdateSection } from '@/app/settings/about-settings'
-import type { DesktopRuntimeUpdateCheck, DesktopRuntimeVersion, DesktopShellUpdateState } from '@/global'
+import type { DesktopEngineHolder, DesktopRuntimeUpdateCheck, DesktopRuntimeVersion, DesktopShellUpdateState } from '@/global'
 import { I18nProvider } from '@/i18n'
+import { applyDesktopUpdates } from '@/store/desktop-update'
 import { $shellUpdate } from '@/store/shell-update'
+import { $runtimeUpdateWait } from '@/store/update-wait'
 import { $desktopVersion } from '@/store/updates'
 
 import { DesktopUpdatePill } from './app/chat/sidebar/desktop-update-pill'
@@ -90,6 +96,7 @@ function inLocale(locale: 'en' | 'zh', node: React.ReactNode) {
 
 beforeEach(() => {
   $shellUpdate.set(null)
+  $runtimeUpdateWait.set(null)
   $runtimeUpdateCheck.set(null)
   $runtimeVersion.set(null)
   $desktopVersion.set({ appVersion: '0.17.66' } as never)
@@ -179,5 +186,75 @@ describe('About update section (zh)', () => {
     await expect(normalized(screen.getByTestId('engine-kept-back-banner').outerHTML)).toMatchFileSnapshot(
       `${GOLDEN}/zh-kept-back-deferred.html`
     )
+  })
+})
+
+describe.each(['zh', 'en'] as const)('hc-1117: what a named wait looks like (%s)', locale => {
+  const CHILD = { pid: 4242, kind: 'leftover_child', name: 'python3.14', created: 7.5, endable: true } as const
+  const OTHER = { pid: 3001, kind: 'other', name: 'python3.14', created: 1.5, endable: false } as const
+  const TERMINAL = { pid: 2001, kind: 'terminal_hermes', name: 'hermes', created: 8.5, endable: false } as const
+  const RUNNING = { pid: 2002, kind: 'apex_running', name: 'python3.14', created: 8.5, endable: false } as const
+
+  const held = (holders: DesktopEngineHolder[]): DesktopShellUpdateState => ({ ...SHELL_READY, deferred: true, deferredReason: 'engine_holders', deferredHolders: holders })
+
+  const waitDialog = async (name: string, state: DesktopShellUpdateState) => {
+    $shellUpdate.set(SHELL_READY)
+    vi.mocked(applyDesktopUpdates).mockImplementationOnce(async () => {
+      $shellUpdate.set(state)
+
+      return true
+    })
+    inLocale(locale, <DesktopUpdatePill />)
+    fireEvent.click(screen.getByRole('button'))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: locale === 'zh' ? '安装更新' : 'Install update' }))
+    })
+
+    await expect(normalized(screen.getByRole('dialog').outerHTML)).toMatchFileSnapshot(`${GOLDEN}/${locale}-wait-${name}.html`)
+  }
+
+  it('the card, and the confirmation to end a leftover', async () => {
+    $shellUpdate.set(held([CHILD]))
+    const view = inLocale(locale, <DesktopUpdatePill />)
+
+    await expect(normalized(view.container.innerHTML)).toMatchFileSnapshot(`${GOLDEN}/${locale}-pill-holders-leftover_child.html`)
+    fireEvent.click(screen.getByTestId('engine-holders-end'))
+    await expect(normalized(screen.getByRole('dialog').outerHTML)).toMatchFileSnapshot(`${GOLDEN}/${locale}-pill-holders-leftover_child-confirm.html`)
+  })
+
+  it.each<[string, DesktopEngineHolder[]]>([
+    ['leftover_child', [CHILD]],
+    ['other', [OTHER]],
+    ['terminal_hermes', [TERMINAL]],
+    ['apex_running', [RUNNING]]
+  ])('the answer to a confirmed install held by %s', async (name, holders) => {
+    await waitDialog(name, held(holders))
+  })
+
+  it.each(REASONS)('the answer to a confirmed install waiting on %s', async reason => {
+    await waitDialog(`reason-${reason}`, { ...SHELL_READY, deferred: true, deferredReason: reason })
+  })
+
+  it('an engine update that waits, on the card', async () => {
+    $runtimeUpdateCheck.set(RUNTIME_UPDATE)
+    $runtimeUpdateWait.set({ reason: 'active_work', holders: null })
+    const view = inLocale(locale, <DesktopUpdatePill />)
+
+    await expect(normalized(view.container.innerHTML)).toMatchFileSnapshot(`${GOLDEN}/${locale}-pill-engine-waiting-active_work.html`)
+    cleanup()
+
+    $runtimeUpdateWait.set({ reason: 'engine_holders', holders: [CHILD] })
+    const held = inLocale(locale, <DesktopUpdatePill />)
+
+    await expect(normalized(held.container.innerHTML)).toMatchFileSnapshot(`${GOLDEN}/${locale}-pill-engine-waiting-leftover_child.html`)
+  })
+})
+
+describe('hc-1117: the kept-back notice while a boot install waits (zh)', () => {
+  it('says the engine is in use and what to click', async () => {
+    $runtimeVersion.set({ ok: true, version: null, commit: null, branch: null, key: null, keptBack: { reason: 'busy', bundledVersion: 'v2026.10.28-fork.aa8e554e' } })
+    inLocale('zh', <EngineUpdateSection />)
+
+    await expect(normalized(screen.getByTestId('engine-kept-back-banner').outerHTML)).toMatchFileSnapshot(`${GOLDEN}/zh-kept-back-busy.html`)
   })
 })

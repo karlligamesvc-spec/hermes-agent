@@ -10,11 +10,19 @@
  * started. Everything else is only named, never ended: a hermes command under a shell is the
  * user's terminal, a descendant of this Desktop is its own work, anything else is another program
  * by its process name.
+ *
+ * hc-1117: a background command the engine started and then lost is such a leftover too. It runs
+ * the engine's own interpreter or a bundled tool (`venv/`, `.runtime/`), is no hermes command, and
+ * its parent is gone, or only shells stand between it and the missing parent: the engine runs
+ * these as `<shell> -lic "set +m; <command>"`, and bash or a pipeline keeps that shell alive. What
+ * else it runs does not matter.
  */
 
 import { runtimeUpdateBusyReason } from './runtime-update-busy'
 
-export type EngineHolderKind = 'apex_running' | 'leftover_engine' | 'leftover_gateway' | 'other' | 'terminal_hermes'
+type LeftoverKind = 'leftover_child' | 'leftover_engine' | 'leftover_gateway'
+
+export type EngineHolderKind = 'apex_running' | 'other' | 'terminal_hermes' | LeftoverKind
 
 /** One holder as the idle scan reports it (argv already redacted). */
 export interface EngineHolderDetail {
@@ -28,6 +36,8 @@ export interface EngineHolderDetail {
   parent?: null | number
   /** The executable (or argv[0]) lies inside the scanned engine. */
   engineExe?: boolean
+  /** The executable (or argv[0]) is the engine's own: in its `venv/` or `.runtime/`. */
+  engineRuntime?: boolean
   /** Nearest ancestors first, up to four. */
   ancestors?: { pid: number; name: string }[]
 }
@@ -64,6 +74,17 @@ const DESKTOP_COMMANDS: [kind: 'leftover_engine' | 'leftover_gateway', words: st
 // one of these between itself and the command, so the app itself need not be listed.
 const SHELLS = new Set(['bash', 'cmd', 'csh', 'dash', 'elvish', 'fish', 'ksh', 'login', 'nu', 'powershell', 'pwsh', 'screen', 'sh', 'sshd', 'tcsh', 'tmux', 'xonsh', 'zsh'])
 
+// What the engine's background commands run under. No window opens these directly and none is a
+// multiplexer or login wrapper, so with no parent left there is no terminal behind them either.
+const COMMAND_SHELLS = new Set(['bash', 'csh', 'dash', 'fish', 'ksh', 'sh', 'tcsh', 'zsh'])
+
+// How many ancestors the scan reports for a holder (packaged-runtime.ts).
+const SCANNED_ANCESTORS = 4
+
+// How much of a holder's command line the deferral log keeps.
+const LOGGED_ARGS = 8
+const LOGGED_ARG_CHARS = 80
+
 /** Which Desktop spawn this exact command line is, if any. */
 function desktopCommand(argv: string[]): 'leftover_engine' | 'leftover_gateway' | null {
   if (argv[1] !== '-m' || argv[2] !== 'hermes_cli.main') {
@@ -86,8 +107,12 @@ function runsHermes(argv: string[]): boolean {
   )
 }
 
+function bareName(name: string): string {
+  return name.replace(/^-/, '').replace(/\.exe$/i, '').toLowerCase()
+}
+
 function underShell(detail: EngineHolderDetail): boolean {
-  return (detail.ancestors ?? []).some(({ name }) => SHELLS.has(name.replace(/^-/, '').replace(/\.exe$/i, '').toLowerCase()))
+  return (detail.ancestors ?? []).some(({ name }) => SHELLS.has(bareName(name)))
 }
 
 /** The parent is gone: a null parent everywhere, or launchd/init adopting the orphan on POSIX. */
@@ -95,11 +120,40 @@ function orphaned(detail: EngineHolderDetail, platform: NodeJS.Platform): boolea
   return detail.parent === null || (platform !== 'win32' && detail.parent === 1)
 }
 
-/** A leftover Desktop spawn by itself, before parents are followed. */
-function leftoverRoot(detail: EngineHolderDetail, platform: NodeJS.Platform): 'leftover_engine' | 'leftover_gateway' | null {
+/** Only command shells stand between this process and its missing parent. */
+function detachedUnderShells(detail: EngineHolderDetail, platform: NodeJS.Platform): boolean {
+  // On macOS the kernel (pid 0) is listed above launchd.
+  const ancestors = (detail.ancestors ?? []).filter(ancestor => ancestor.pid !== 0)
+  const adopted = platform !== 'win32' && ancestors.at(-1)?.pid === 1
+  const shells = adopted ? ancestors.slice(0, -1) : ancestors
+  const reachedTheTop = platform === 'win32' ? ancestors.length < SCANNED_ANCESTORS : adopted
+
+  return reachedTheTop && shells.length > 0 && shells.every(({ name }) => COMMAND_SHELLS.has(bareName(name)))
+}
+
+/** Nobody owns this process any more: no parent, or nothing but command shells up to the missing one. */
+function detached(detail: EngineHolderDetail, platform: NodeJS.Platform): boolean {
+  return orphaned(detail, platform) || detachedUnderShells(detail, platform)
+}
+
+/** A leftover by itself, before parents are followed. */
+function leftoverRoot(detail: EngineHolderDetail, platform: NodeJS.Platform): LeftoverKind | null {
+  if (!Number.isFinite(detail.created)) {
+    return null
+  }
+
   const command = desktopCommand(detail.argv)
 
-  return command && detail.engineExe === true && Number.isFinite(detail.created) && orphaned(detail, platform) ? command : null
+  if (command) {
+    return detail.engineExe === true && orphaned(detail, platform) ? command : null
+  }
+
+  return detail.engineRuntime === true && !runsHermes(detail.argv) && detached(detail, platform) ? 'leftover_child' : null
+}
+
+/** The holders above this one, nearest first. */
+function holdersAbove(detail: EngineHolderDetail, holders: Record<number, EngineHolderDetail | undefined>): number[] {
+  return [detail.parent, ...(detail.ancestors ?? []).map(ancestor => ancestor.pid)].filter((pid): pid is number => typeof pid === 'number' && pid in holders)
 }
 
 /**
@@ -112,9 +166,25 @@ export function classifyEngineHolders(
 ): Record<number, EngineHolderClass> {
   const result: Record<number, EngineHolderClass> = {}
 
+  // A command shell a leftover child runs under may hold the engine too, by its working directory.
+  // It goes with that child, and so does whatever else runs under it (`command | tee log`).
+  const wrappers = new Map<number, number>()
+
+  for (const [key, detail] of Object.entries(holders)) {
+    if (detail && leftoverRoot(detail, context.platform) === 'leftover_child') {
+      for (const { pid } of detail.ancestors ?? []) {
+        const shell = holders[pid]
+
+        if (shell && !wrappers.has(pid) && COMMAND_SHELLS.has(bareName(shell.name)) && Number.isFinite(shell.created)) {
+          wrappers.set(pid, Number(key))
+        }
+      }
+    }
+  }
+
   // A holder belongs to the leftover it descends from through other holders (the redirector's
   // worker, a tool the leftover started). The walk stops at a holder already seen (a PID cycle).
-  const leftoverOf = (pid: number, seen: Set<number>): { kind: 'leftover_engine' | 'leftover_gateway'; pid: number } | null => {
+  const leftoverOf = (pid: number, seen: Set<number>): { kind: LeftoverKind; pid: number } | null => {
     const detail = holders[pid]
 
     if (!detail || seen.has(pid)) {
@@ -128,9 +198,25 @@ export function classifyEngineHolders(
       return { kind: own, pid }
     }
 
-    return typeof detail.parent === 'number' && detail.parent in holders && Number.isFinite(detail.created)
-      ? leftoverOf(detail.parent, seen)
-      : null
+    const wrapped = wrappers.get(pid)
+
+    if (wrapped !== undefined) {
+      return { kind: 'leftover_child', pid: wrapped }
+    }
+
+    if (!Number.isFinite(detail.created)) {
+      return null
+    }
+
+    for (const above of holdersAbove(detail, holders)) {
+      const found = leftoverOf(above, seen)
+
+      if (found) {
+        return found
+      }
+    }
+
+    return null
   }
 
   for (const key of Object.keys(holders)) {
@@ -163,15 +249,40 @@ function idleProofHolders(error: unknown): Record<string, ClassifiedHolder | und
   return (error as { idleProof?: { holders?: Record<string, ClassifiedHolder | undefined> } } | null)?.idleProof?.holders ?? {}
 }
 
+/** A path as the log says it: no user name. */
+function withoutHome(text: string): string {
+  return text.replace(/(?:[A-Za-z]:\\Users\\|\/(?:Users|home)\/)[^\\/\s]+/g, '~')
+}
+
 /**
- * hc-1030's one-line deferral reason, with each holder's kind (hc-1094): `<reason>: <message>
- * [<pid> <name> (<exe>) <kind>[ endable][ of <leftover pid>]; ...]`.
+ * hc-1117: what a holder runs, for the log, so a stuck machine needs no `ps`. Only for what runs on
+ * the engine or belongs to a leftover: any other program's command line and a command the user
+ * typed in a terminal are none of this log's business. The scan already masked named secrets
+ * (argv-redaction.ts); this also drops home directories and whatever looks like a bare token, and
+ * keeps only the start of it.
+ */
+function loggedArgv(detail: ClassifiedHolder): string {
+  const engineRun = detail.engineExe === true && detail.kind !== 'terminal_hermes'
+
+  if (!(engineRun || detail.kind?.startsWith('leftover_')) || !detail.argv?.length) {
+    return ''
+  }
+
+  return ` argv=[${detail.argv
+    .slice(0, LOGGED_ARGS)
+    .map(arg => withoutHome(arg).replace(/[\w-]{32,}/g, '[REDACTED]').slice(0, LOGGED_ARG_CHARS))
+    .join(' ')}]`
+}
+
+/**
+ * hc-1030's one-line deferral reason, with each holder's kind (hc-1094) and what it runs (hc-1117):
+ * `<reason>: <message> [<pid> <name> (<exe>) <kind>[ endable][ of <leftover pid>][ argv=[...]]; ...]`.
  */
 export function describeRuntimeUpdateBusy(error: unknown): string {
   const holders = Object.entries(idleProofHolders(error)).map(([pid, detail]) => {
     const kind = detail?.kind ? ` ${detail.kind}${detail.endable ? ' endable' : ''}${detail.leftover ? ` of ${detail.leftover}` : ''}` : ''
 
-    return `${pid} ${detail?.name || '?'}${detail?.exe ? ` (${detail.exe})` : ''}${kind}`
+    return `${pid} ${detail?.name || '?'}${detail?.exe ? ` (${withoutHome(detail.exe)})` : ''}${kind}${detail ? loggedArgv(detail) : ''}`
   })
 
   return `${runtimeUpdateBusyReason(error)}: ${(error as Error | null)?.message || 'busy'}${holders.length ? ` [${holders.join('; ')}]` : ''}`

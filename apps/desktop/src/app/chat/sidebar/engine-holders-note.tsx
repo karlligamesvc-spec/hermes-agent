@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -6,13 +7,14 @@ import type { DesktopEngineHolder, DesktopShellUpdateState } from '@/global'
 import { type DesktopUpdateCopy, type EngineHoldersThen, useDesktopUpdateCopy } from '@/i18n/desktop-update'
 import { applyDesktopUpdates } from '@/store/desktop-update'
 import { endEngineLeftovers } from '@/store/shell-update'
+import { $runtimeUpdateWait, desktopUpdateWait, type DesktopUpdateWait } from '@/store/update-wait'
 
 function holderName(copy: DesktopUpdateCopy, holder: DesktopEngineHolder): string {
   return holder.kind === 'other' ? copy.holders.names.other(holder.name) : copy.holders.names[holder.kind]
 }
 
 /** Each name once, in the order the gate reported its holders, with the PIDs it covers. */
-function namedGroups(copy: DesktopUpdateCopy, holders: DesktopEngineHolder[]): Map<string, number[]> {
+export function namedGroups(copy: DesktopUpdateCopy, holders: DesktopEngineHolder[]): Map<string, number[]> {
   const groups = new Map<string, number[]>()
 
   for (const holder of holders) {
@@ -24,12 +26,29 @@ function namedGroups(copy: DesktopUpdateCopy, holders: DesktopEngineHolder[]): M
 }
 
 /** Ending helps only when every holder is APEX's own leftover with a known start time. */
-function allEndable(holders: DesktopEngineHolder[]): boolean {
+export function allEndable(holders: DesktopEngineHolder[]): boolean {
   return holders.length > 0 && holders.every(holder => holder.endable && holder.created !== null)
 }
 
 function endedCleanly(result: { ended?: Record<string, string>; ok: boolean }): boolean {
   return result.ok && !Object.values(result.ended ?? {}).some(outcome => outcome === 'denied' || outcome === 'survived')
+}
+
+/** Ends the holders the user saw; throws what to tell the user when one would not end. */
+export async function endHolders(copy: DesktopUpdateCopy, holders: DesktopEngineHolder[]): Promise<void> {
+  if (!endedCleanly(await endEngineLeftovers(holders))) {
+    throw new Error(copy.holders.endFailed)
+  }
+}
+
+/** What ending these holders costs, beyond the holders themselves. */
+export function endNotes(copy: DesktopUpdateCopy, holders: DesktopEngineHolder[]): string {
+  const notes = [
+    holders.some(holder => holder.kind === 'leftover_gateway') && copy.holders.gatewayNote,
+    holders.some(holder => holder.kind === 'leftover_child') && copy.holders.childNote
+  ]
+
+  return notes.map(note => (note ? `${copy.holders.gap}${note}` : '')).join('')
 }
 
 /**
@@ -65,15 +84,8 @@ export function EngineHoldersNote({
 
   const listed = copy.holders.join([...groups].map(([name, pids]) => copy.holders.withPids(name, pids)))
 
-  const gatewayNote = holders.some(holder => holder.kind === 'leftover_gateway')
-    ? `${copy.holders.gap}${copy.holders.gatewayNote}`
-    : ''
-
   const onConfirm = async () => {
-    if (!endedCleanly(await endEngineLeftovers(holders))) {
-      throw new Error(copy.holders.endFailed)
-    }
-
+    await endHolders(copy, holders)
     await onEnded()
   }
 
@@ -102,7 +114,7 @@ export function EngineHoldersNote({
           <ConfirmDialog
             busyLabel={copy.holders.ending}
             confirmLabel={copy.holders.endAction[then]}
-            description={`${copy.holders.confirmBody(listed, then)}${gatewayNote}`}
+            description={`${copy.holders.confirmBody(listed, then)}${endNotes(copy, holders)}`}
             layer={layer}
             onClose={() => setConfirmOpen(false)}
             onConfirm={onConfirm}
@@ -115,11 +127,9 @@ export function EngineHoldersNote({
   )
 }
 
-/** The holders a requested app install waits on, when the gate named them; null otherwise. */
-export function shellUpdateHolders(shell: DesktopShellUpdateState | null): DesktopEngineHolder[] | null {
-  return shell?.deferred && shell.deferredReason === 'engine_holders' && shell.deferredHolders?.length
-    ? shell.deferredHolders
-    : null
+/** The holders a requested update waits on, when the gate named them; null otherwise. */
+export function waitHolders(wait: DesktopUpdateWait | null): DesktopEngineHolder[] | null {
+  return wait?.reason === 'engine_holders' && wait.holders?.length ? wait.holders : null
 }
 
 /**
@@ -127,7 +137,7 @@ export function shellUpdateHolders(shell: DesktopShellUpdateState | null): Deskt
  * hc-1094; the sidebar entry says those.
  */
 export function ShellUpdateHoldersNote({ layer, shell }: { layer?: number; shell: DesktopShellUpdateState | null }) {
-  const holders = shellUpdateHolders(shell)
+  const holders = waitHolders(desktopUpdateWait(shell, useStore($runtimeUpdateWait)))
 
   if (!holders) {
     return null

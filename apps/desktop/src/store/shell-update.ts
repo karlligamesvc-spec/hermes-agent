@@ -72,7 +72,7 @@ export async function checkShellUpdate(): Promise<DesktopShellUpdateState | null
  * 触发 quitAndInstall。成功路径上应用直接退出重装,promise 通常没有然后;
  * 失败(极少)时抛错,由胶囊回退成可再点的状态。
  */
-export async function installShellUpdate(): Promise<{ deferred?: boolean }> {
+export async function installShellUpdate(): Promise<{ deferred?: boolean; state?: DesktopShellUpdateState }> {
   const bridge = window.hermesDesktop?.shellUpdate
 
   if (!bridge) {
@@ -84,6 +84,12 @@ export async function installShellUpdate(): Promise<{ deferred?: boolean }> {
   if (!result.ok) {
     throw new Error(result.error || 'install_failed')
   }
+
+  // hc-1117: the answer carries the deferral, so whoever reads the store next knows what it waits for.
+  if (result.state) {
+    $shellUpdate.set(result.state)
+  }
+
   return result
 }
 

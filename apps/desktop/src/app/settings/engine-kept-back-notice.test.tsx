@@ -27,7 +27,7 @@ import { EngineKeptBackNotice } from './engine-kept-back-notice'
 const zh = ENGINE_KEPT_BACK_COPY.zh
 const reload = vi.fn()
 
-function keptBack(reason: 'newer-or-unknown' | 'upgrade-failed') {
+function keptBack(reason: 'busy' | 'newer-or-unknown' | 'upgrade-failed') {
   $runtimeVersion.set({ ok: true, version: null, commit: null, branch: null, key: null, keptBack: { reason, bundledVersion: 'v2026.10.23-fork.a2e1a4b5' } })
 }
 
@@ -60,7 +60,7 @@ describe('EngineKeptBackNotice (hc-1033)', () => {
     expect(screen.queryByTestId('engine-kept-back-banner')).toBeNull()
   })
 
-  it.each(['newer-or-unknown', 'upgrade-failed'] as const)('names the shipped engine and the fix when %s', reason => {
+  it.each(['busy', 'newer-or-unknown', 'upgrade-failed'] as const)('names the shipped engine and the fix when %s', reason => {
     keptBack(reason)
     renderZh()
 
