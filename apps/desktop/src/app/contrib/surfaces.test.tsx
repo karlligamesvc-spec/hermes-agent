@@ -551,6 +551,21 @@ describe('hc-1123 single-thread product mode has no 项目', () => {
     }
   )
 
+  it('turns a signed-out project drawer over a page that stays back too: its own gate, not the page under it', async () => {
+    setSingleThreadFlagForTest(true)
+    $authState.set({ ...originalAuth, enabled: true, status: 'signed-out' })
+    render(
+      <MemoryRouter initialEntries={['/deliverables', openedFrom('/deliverables', '/projects/project-1')]} initialIndex={1}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <LocationProbe />
+          <ChatRoutesSurface actions={{ getGateway: () => null } as unknown as WiringActions} />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(where()).toBe('/'))
+  })
+
   it.each(['/projects', '/projects/project-1'])(
     'closes %s when developer mode is switched off or the switch arrives after launch',
     async path => {

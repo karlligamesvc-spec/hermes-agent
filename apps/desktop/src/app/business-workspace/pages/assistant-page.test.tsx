@@ -131,6 +131,14 @@ describe('hc-1123 product mode: 连接助手 stops pointing at project pages', (
     expect(screen.getByRole('heading', { name: '最近交付' })).toBeTruthy()
   })
 
+  it('a run listed beside a project with no summary sends nobody to the project page', () => {
+    seed([row('p-running', 'Campaign run', 'run-1', 'running', 'none'), { id: 'legacy', name: 'Older server' }])
+    render(<AssistantWorkspaceView />)
+
+    expect(screen.getByText('Campaign run')).toBeTruthy()
+    expect(screen.queryByText('部分项目没有运行摘要，请到项目页查看。')).toBeNull()
+  })
+
   it('a project needing attention with no run to open is not a row at all', () => {
     seed([row('p-odd', 'No run yet', null, null, 'review')])
     render(<AssistantWorkspaceView />)
