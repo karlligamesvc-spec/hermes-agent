@@ -269,3 +269,76 @@ test('a child spawned before claim remains owned after the routing entry disappe
     }
   }
 })
+
+// hc-1102: every way an owned engine stops ends what it started outside its group, the way quitting
+// does (apex-engine-children.ts sweepEngineOnStop): a direct stop (pool reap or eviction, a deleted
+// assistant, a re-home, a failed start), the engine update's drain, and the quit itself.
+interface Engine {
+  kind: string
+}
+
+type Lifecycle = ReturnType<typeof createLocalBackendLifecycle<Engine>>
+
+test.each<[string, (lifecycle: Lifecycle, engine: Engine) => Promise<unknown>]>([
+  ['a direct stop', (lifecycle, engine) => lifecycle.stop(engine)],
+  ['the update drain', lifecycle => lifecycle.fenceForUpdate().drain()],
+  ['the quit', lifecycle => lifecycle.shutdown()]
+])('%s sweeps an owned engine: snapshot before its signal, end after its exit', async (_name, run) => {
+  const events: string[] = []
+  const exit = deferred()
+
+  const lifecycle = createLocalBackendLifecycle<Engine>({
+    stopChild: engine => events.push(`stop ${engine.kind}`),
+    waitForExit: async engine => {
+      await exit.promise
+      events.push(`exited ${engine.kind}`)
+    },
+    cancelSetup: () => {},
+    sweepOnStop: engine => {
+      events.push(`snapshot ${engine.kind}`)
+
+      return async () => {
+        events.push(`end ${engine.kind}`)
+      }
+    }
+  })
+
+  const engine = lifecycle.spawn(() => ({ kind: 'engine' }))
+  const stopping = run(lifecycle, engine)
+
+  await Promise.resolve()
+  assert.deepEqual(events, ['snapshot engine', 'stop engine'])
+  exit.resolve()
+  await stopping
+  assert.deepEqual(events, ['snapshot engine', 'stop engine', 'exited engine', 'end engine'])
+})
+
+test('a stop of a child the lifecycle never spawned (the messaging gateway) or already released sweeps nothing', async () => {
+  const sweepOnStop = vi.fn(() => async () => {})
+  const stopChild = vi.fn()
+  const lifecycle = createLocalBackendLifecycle<Engine>({ stopChild, waitForExit: async () => {}, cancelSetup: () => {}, sweepOnStop })
+  const gateway = { kind: 'gateway' }
+  const exited = lifecycle.spawn(() => ({ kind: 'exited engine' }))
+
+  lifecycle.release(exited)
+  await lifecycle.stop(gateway)
+  await lifecycle.stop(exited)
+
+  assert.deepEqual(stopChild.mock.calls, [[gateway], [exited]])
+  assert.equal(sweepOnStop.mock.calls.length, 0)
+})
+
+test('a stop joined by the quit sweeps once', async () => {
+  const exit = deferred()
+  const ended = vi.fn()
+  const sweepOnStop = vi.fn(() => async () => ended())
+  const lifecycle = createLocalBackendLifecycle<Engine>({ stopChild: () => {}, waitForExit: () => exit.promise, cancelSetup: () => {}, sweepOnStop })
+  const engine = lifecycle.spawn(() => ({ kind: 'engine' }))
+  const stopping = lifecycle.stop(engine)
+  const quitting = lifecycle.shutdown()
+
+  exit.resolve()
+  await Promise.all([stopping, quitting])
+  assert.equal(sweepOnStop.mock.calls.length, 1)
+  assert.equal(ended.mock.calls.length, 1)
+})

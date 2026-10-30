@@ -15,6 +15,12 @@
  * its own profile's thread (`$mainThreadsByProfile`), and remembers its own
  * last seen reply ({@link markBotReplySeen}); the two signals above belong to
  * the conversation on screen, so only the assistant on screen reads them.
+ *
+ * hc-1107 「等你确认」: waiting on the user comes from the prompts parked for the
+ * thread's sessions (waiting-for-you.ts), not the session's `needsInput`, so it
+ * ends the moment the user answers; it says what it asks (a choice, or a
+ * yes/no). Two more states read from the session: writing its answer
+ * (「正在回…」) and a send that failed with nothing after it (「发送失败」).
  */
 
 import { atom, computed } from 'nanostores'
@@ -25,13 +31,15 @@ import { visibleReplyText } from '@/lib/reply-markers'
 
 import { $mainThread, $mainThreadsByProfile, type MainThreadState } from './main-thread'
 import { $sessionStates } from './session-states'
-import { $threadActivity, $threadInCall, type ThreadActivity } from './thread-signals'
+import { $threadActivity, $threadInCall, type ThreadActivity, type WaitingAsk } from './thread-signals'
+import { $parkedAsks, parkedAsk, threadRuntimeIds } from './waiting-for-you'
 
 export type ThreadPresence =
   | { kind: 'call' }
+  | { kind: 'failed' }
   | { kind: 'idle'; text: null | string }
-  | { kind: 'waiting' }
-  | { kind: 'working'; text: null | string }
+  | { kind: 'waiting'; ask: WaitingAsk }
+  | { kind: 'working'; replying: boolean; text: null | string }
 
 export interface ThreadReply {
   id: string
@@ -84,22 +92,53 @@ export function latestReply(messages: readonly ChatMessage[]): null | ThreadRepl
   return null
 }
 
+/** hc-1107: the turn is writing its answer — the newest part since the user's message is text with words in it. */
+export function replyingNow(state: ClientSessionState | null): boolean {
+  const messages = state?.busy ? state.messages : []
+  const asked = messages.findLastIndex(message => message.role === 'user')
+  const tail = asked >= 0 ? messages.slice(asked + 1).at(-1) : undefined
+  const part = tail?.role === 'assistant' && !tail.hidden ? tail.parts.at(-1) : undefined
+
+  return part?.type === 'text' && visibleReplyText(part.text).trim().length > 0
+}
+
+/** hc-1107: the latest message got no answer because the send failed — after it, an error and nothing else. */
+export function sendFailed(state: ClientSessionState | null): boolean {
+  const messages = state && !state.busy ? state.messages : []
+  const after = messages.slice(messages.findLastIndex(message => message.role === 'user') + 1)
+  const answer = after.filter(message => message.role === 'assistant' && !message.hidden)
+
+  return (
+    after.length < messages.length &&
+    answer.some(message => message.error) &&
+    answer.every(message => message.parts.length === 0)
+  )
+}
+
 export function presenceOf(
   state: ClientSessionState | null,
   activity: null | ThreadActivity,
   inCall: boolean,
-  reply: null | ThreadReply
+  reply: null | ThreadReply,
+  waiting: null | WaitingAsk = null
 ): ThreadPresence {
   if (inCall) {
     return { kind: 'call' }
   }
 
-  if (activity?.waiting || state?.needsInput) {
-    return { kind: 'waiting' }
+  // The activity line's own wait covers a thread whose stored id is not known yet.
+  const ask = waiting ?? (activity?.waiting ? activity.ask || 'choose' : null)
+
+  if (ask) {
+    return { ask, kind: 'waiting' }
   }
 
   if (activity || state?.busy) {
-    return { kind: 'working', text: activity?.text || null }
+    return { kind: 'working', replying: replyingNow(state), text: activity?.text || null }
+  }
+
+  if (sendFailed(state)) {
+    return { kind: 'failed' }
   }
 
   return { kind: 'idle', text: reply?.line ?? null }
@@ -109,8 +148,13 @@ export const $mainThreadState = computed([$sessionStates, $mainThread], mainThre
 
 export const $threadLatestReply = computed($mainThreadState, state => latestReply(state?.messages ?? []))
 
+/** hc-1107: what the one thread waits on the user for, from the prompts parked for its sessions. */
+export const $threadWaiting = computed([$parkedAsks, $sessionStates, $mainThread], (asks, states, thread) =>
+  parkedAsk(asks, threadRuntimeIds(states, thread))
+)
+
 export const $threadPresence = computed(
-  [$mainThreadState, $threadActivity, $threadInCall, $threadLatestReply],
+  [$mainThreadState, $threadActivity, $threadInCall, $threadLatestReply, $threadWaiting],
   presenceOf
 )
 

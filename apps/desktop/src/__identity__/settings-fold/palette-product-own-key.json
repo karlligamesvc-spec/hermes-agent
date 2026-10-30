@@ -1,0 +1,132 @@
+{
+  "root: key": [
+    {
+      "heading": "设置",
+      "rows": [
+        "API 密钥"
+      ]
+    },
+    {
+      "heading": "设置字段",
+      "rows": [
+        "语音: 语音快捷键"
+      ]
+    }
+  ],
+  "root: 记忆": [
+    {
+      "heading": "设置",
+      "rows": [
+        "记忆"
+      ]
+    }
+  ],
+  "root: 网关": [],
+  "root: 时区": [],
+  "root: 归档": [],
+  "root: 旧对话": [],
+  "root: 语音": [
+    {
+      "heading": "设置",
+      "rows": [
+        "语音"
+      ]
+    },
+    {
+      "heading": "设置字段",
+      "rows": [
+        "语音: 文字转语音提供方",
+        "语音: 语音转文字",
+        "语音: 回显转写文本",
+        "语音: 语音转文字提供方",
+        "语音: 朗读回复",
+        "语音: Edge 语音",
+        "语音: OpenAI TTS 模型",
+        "语音: OpenAI 语音",
+        "语音: ElevenLabs 语音",
+        "语音: ElevenLabs 模型",
+        "语音: xAI (Grok) 语音",
+        "语音: xAI 语言",
+        "语音: 播放速度",
+        "语音: 自动语音标签",
+        "语音: 流式延迟优化",
+        "语音: 采样率",
+        "语音: 比特率",
+        "语音: MiniMax TTS 模型",
+        "语音: MiniMax 语音",
+        "语音: Mistral TTS 模型",
+        "语音: Mistral 语音",
+        "语音: Gemini TTS 模型",
+        "语音: Gemini 语音",
+        "语音: NeuTTS 模型",
+        "语音: NeuTTS 设备",
+        "语音: KittenTTS 模型",
+        "语音: KittenTTS 语音",
+        "语音: Piper 语音",
+        "语音: DeepInfra TTS 模型",
+        "语音: DeepInfra 语音",
+        "语音: 本地转写模型",
+        "语音: 转写语言",
+        "语音: OpenAI STT 模型",
+        "语音: Groq STT 模型",
+        "语音: Mistral STT 模型",
+        "语音: ElevenLabs STT 模型",
+        "语音: ElevenLabs 语言",
+        "语音: 标记音频事件",
+        "语音: 说话人区分",
+        "语音: 语音快捷键",
+        "语音: 最长录音时长",
+        "语音: Client Direct"
+      ]
+    }
+  ],
+  "root: 快捷键": [
+    {
+      "heading": "设置字段",
+      "rows": [
+        "语音: 语音快捷键"
+      ]
+    }
+  ],
+  "root: 设置": [
+    {
+      "heading": "前往",
+      "rows": [
+        "设置Ctrl,"
+      ]
+    }
+  ],
+  "settings page: ": [
+    {
+      "heading": "设置",
+      "rows": [
+        "个性化",
+        "模型",
+        "外观",
+        "记忆",
+        "语音",
+        "账号",
+        "API 密钥",
+        "关于"
+      ]
+    }
+  ],
+  "settings page: key": [
+    {
+      "heading": "设置",
+      "rows": [
+        "API 密钥"
+      ]
+    }
+  ],
+  "settings page: 记忆": [
+    {
+      "heading": "设置",
+      "rows": [
+        "记忆"
+      ]
+    }
+  ],
+  "settings page: 时区": [],
+  "settings page: 高级": []
+}

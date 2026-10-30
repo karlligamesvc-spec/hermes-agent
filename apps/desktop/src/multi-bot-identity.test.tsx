@@ -65,6 +65,9 @@ import { restoreRecordingTimeZone } from './__identity__/single-thread-shell/tim
  *   v2 ⑥ and ⑨) and the header pill, recorded new here (`multi-bot-*`).
  *   hc-1078 re-recorded the two sidebars for the 「···」 it puts on the row on
  *   screen; that row's own button and every other row are unchanged.
+ * - hc-1107 re-recorded `product-approval-inline.html` (product mode only): an
+ *   approval's activity line reads 「等你确认」 and the face looks up (eyes at
+ *   y 5.5, `data-apex-avatar="waiting"`); the developer golden is unchanged.
  * - K6: APEX is always the first row, always the purple circle, and can never
  *   be deleted or restyled, whatever its profile.yaml says.
  */

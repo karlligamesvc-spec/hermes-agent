@@ -7,6 +7,7 @@ import { Tip } from '@/components/ui/tooltip'
 import { getHermesConfigDefaults, getHermesConfigRecord, saveHermesConfig } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { useModelTierCopy } from '@/i18n/model-tier'
+import { useSettingsProductCopy } from '@/i18n/settings-product'
 import { triggerHaptic } from '@/lib/haptics'
 import {
   Archive,
@@ -46,6 +47,8 @@ import { KEYS_VIEWS, KeysSettings, type KeysView } from './keys-settings'
 import { movedSettingsTabRedirect } from './moved-tabs'
 import { NotificationsSettings } from './notifications-settings'
 import { PersonalizationSettings } from './personalization-settings'
+import { $productSettingsViews } from './product-settings'
+import { productSettingsPage, useProductSettingsRail } from './product-settings-pages'
 import { PROVIDER_VIEWS, ProvidersSettings, type ProviderView } from './providers-settings'
 import { SessionsSettings } from './sessions-settings'
 import { SettingsSurfaceHeader } from './settings-multi-bot'
@@ -69,6 +72,9 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
 
 export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: SettingsPageProps) {
   const scopeProfile = useStore($settingsScopeProfile)
+  // hc-1109: product mode keeps eight tabs; any other `?tab=` lands on 个性化.
+  const productViews = useStore($productSettingsViews)
+  const productCopy = useSettingsProductCopy()
   const activeConnectionId = useStore($activeConnectionId)
   // hc-960: an APEX account gets 档位 for the model page, and the provider
   // group (accounts, API keys, custom endpoints, local models) folds into 档位 ›
@@ -92,7 +98,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
 
   const [activeView, setActiveView] = useRouteEnumParam(
     'tab',
-    SETTINGS_VIEWS,
+    productViews ?? SETTINGS_VIEWS,
     'config:personalization' as SettingsViewId
   )
 
@@ -311,6 +317,8 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     [activeView, keysView, providerView, t, tierCopy, tierMode, setActiveView, openProviderView, openKeysView]
   )
 
+  const rail = useProductSettingsRail(navGroups, activeView, setActiveView)
+
   const navFooter = (
     <>
       <Tip label={t.settings.exportConfig}>
@@ -391,19 +399,21 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       onClose={onClose}
     >
       <OverlaySplitLayout className="p5-settings">
-        <OverlayNav footer={navFooter} groups={navGroups} />
+        <OverlayNav footer={productViews ? undefined : navFooter} groups={rail} />
 
         <OverlayMain className="px-0 pb-0 pt-0">
           <SettingsSurfaceHeader
             className="max-[53rem]:pt-3"
-            description={t.settings.description}
+            description={productViews ? productCopy.description : t.settings.description}
             title={t.settings.title}
             titleId="settings-surface-title"
           />
           <span className="sr-only" id="settings-surface-description">
-            {t.settings.description}
+            {productViews ? productCopy.description : t.settings.description}
           </span>
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{activeSettingsContent}</div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {(productViews && productSettingsPage(activeView)) || activeSettingsContent}
+          </div>
         </OverlayMain>
       </OverlaySplitLayout>
     </OverlayView>

@@ -21,7 +21,9 @@ export {
  * from 「APEX 极简助手原型 v2」, which Kael chose over the app icon there (N1,
  * 2026-10-26). It is drawn here, on the prototype's 28×28 grid: a disc and two
  * eyes, no image file, nothing from upstream. Idle it blinks, working it looks
- * down, talking it breathes; reduced motion keeps only the pose.
+ * down, talking it breathes; reduced motion keeps only the pose. hc-1107:
+ * waiting on the user (an approval, a choice) it looks up at them and gives a
+ * small double hop every few seconds.
  *
  * hc-1077 (several assistants, prototype v2 ⑥–⑨): the same figure in another
  * shape and colour is another assistant's face. Only those two change; the
@@ -35,7 +37,7 @@ export {
  * BrandMark, the app icon. `src/apex-avatar-identity.test.tsx` holds both.
  */
 
-export type ApexAvatarMood = 'idle' | 'talking' | 'working'
+export type ApexAvatarMood = 'idle' | 'talking' | 'waiting' | 'working'
 
 /** The circle is a `<circle>`, so APEX's drawing stays exactly what it was. */
 const SHAPE_PATHS: Record<Exclude<ApexAvatarShape, 'circle'>, string> = {
@@ -50,9 +52,13 @@ const SHAPE_PATHS: Record<Exclude<ApexAvatarShape, 'circle'>, string> = {
 /** Where the eyes sit in each shape (the prototype's grid). */
 const EYE_TOP: Record<ApexAvatarShape, number> = { circle: 8, cloud: 10, drop: 13, hexagon: 8, pill: 9, squircle: 8 }
 
-/** Working, the eyes drop and shorten: it is looking down at the task. */
+/** Working, the eyes drop and shorten: it is looking down at the task. Waiting, they rise: it is looking at you. */
 function eyesFor(shape: ApexAvatarShape, mood: ApexAvatarMood): { height: number; y: number } {
-  return mood === 'working' ? { height: 5, y: EYE_TOP[shape] + 4 } : { height: 7.4, y: EYE_TOP[shape] }
+  if (mood === 'working') {
+    return { height: 5, y: EYE_TOP[shape] + 4 }
+  }
+
+  return { height: 7.4, y: mood === 'waiting' ? EYE_TOP[shape] - 2.5 : EYE_TOP[shape] }
 }
 
 export function ApexAvatar({

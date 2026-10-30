@@ -62,6 +62,13 @@ _TOOL_SEAMS = (
         "describe everything again, and may return its private reasoning "
         "or a cut-off answer as if it were complete.",
     ),
+    (
+        "apex_identity",
+        "apex-overlay: hc-1103 APEX identity seam did not fully apply (see "
+        "prior error). Subagents may call themselves Hermes Agent by Nous "
+        "Research, a cloud assistant may say it runs on Hermes Agent, and "
+        "/version in IM may print the engine's banner instead of APEX's version.",
+    ),
 )
 
 
@@ -88,6 +95,13 @@ _CONTEXT_SEAMS = (
         "apex-overlay: hc-1016 memory ledger seam did not register (see prior "
         "warning). New local sessions will not carry the account's 记忆底账 "
         "and the agent cannot write to it.",
+    ),
+    (
+        "memory_ledger_live",
+        "apex-overlay: hc-1097 live memory ledger seam did not register (see "
+        "prior warning). A session already open keeps the 记忆底账 of its "
+        "first turn: what another assistant or the 「它记得什么」 page noted "
+        "since does not reach it.",
     ),
     (
         "single_thread_prompt",

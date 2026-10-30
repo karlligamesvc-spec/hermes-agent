@@ -8,7 +8,12 @@
  * than an English fallback; zh, zh-hant and en are complete, ja and ar read en.
  */
 
-import type { HandoffCancelReason, HandoffFailureKind, HandoffQueueReason } from '@/store/single-thread-handoff'
+import type {
+  HandoffCancelReason,
+  HandoffFailureKind,
+  HandoffPrompt,
+  HandoffQueueReason
+} from '@/store/single-thread-handoff'
 import type { StartHandoffRefusal } from '@/store/single-thread-handoff'
 
 import { useI18n } from './context'
@@ -64,6 +69,9 @@ export interface SingleThreadHandoffCopy {
   queueNote: (reason: HandoffQueueReason | null, name: string) => string
   carried: (count: HandoffCarryCount) => string
   waitingNote: (name: string, question: string) => string
+  /** hc-1107: the chip and the note while the relay's turn waits on a yes/no (an approval) rather than a choice. */
+  confirmChip: string
+  confirmNote: (name: string, question: string) => string
   failure: (kind: HandoffFailureKind, name: string) => string
   stoppedNote: string
   cancelled: (reason: HandoffCancelReason, name: string) => string
@@ -88,6 +96,8 @@ export interface SingleThreadHandoffCopy {
   // ── the sidebar line ──
   helping: (from: string, ask: string) => string
   helpingWaiting: (from: string) => string
+  /** hc-1107: the same while the relay's turn waits on a yes/no (an approval). */
+  helpingConfirm: (from: string) => string
   queuedFor: (from: string) => string
   waitingFor: (name: string) => string
 }
@@ -168,6 +178,8 @@ const en: SingleThreadHandoffCopy = {
   },
   waitingNote: (name, question) =>
     question ? `${name} needs your decision: ${question}` : `${name} needs your decision.`,
+  confirmChip: 'Needs your OK',
+  confirmNote: (name, question) => (question ? `${name} needs your OK: ${question}` : `${name} needs your OK.`),
   failure: (kind, name) =>
     ({
       interrupted: 'It was cut off: the app closed before it finished.',
@@ -197,6 +209,7 @@ const en: SingleThreadHandoffCopy = {
 
   helping: (from, ask) => `Helping ${from}: ${ask}`,
   helpingWaiting: from => `Needs your decision (for ${from})`,
+  helpingConfirm: from => `Needs your OK (for ${from})`,
   queuedFor: from => `A job from ${from} is waiting`,
   waitingFor: name => `Waiting for ${name}`
 }
@@ -268,6 +281,8 @@ const zh: SingleThreadHandoffCopy = {
     return `带过去的：${parts.length ? `${parts.join('、')}和你这句话` : '你这句话'}。`
   },
   waitingNote: (name, question) => (question ? `${name}在等你决定：${question}` : `${name}在等你决定。`),
+  confirmChip: '在等你确认',
+  confirmNote: (name, question) => (question ? `${name}在等你确认：${question}` : `${name}在等你确认。`),
   failure: (kind, name) =>
     ({
       interrupted: '被打断了：App 关掉时它还没做完。',
@@ -298,6 +313,7 @@ const zh: SingleThreadHandoffCopy = {
 
   helping: (from, ask) => `在帮 ${from}：${ask}`,
   helpingWaiting: from => `在等你决定（${from} 交来的活）`,
+  helpingConfirm: from => `在等你确认（${from} 交来的活）`,
   queuedFor: from => `${from} 交来的活排着`,
   waitingFor: name => `等${name}交回`
 }
@@ -369,6 +385,8 @@ const zhHant: SingleThreadHandoffCopy = {
     return `帶過去的：${parts.length ? `${parts.join('、')}和你這句話` : '你這句話'}。`
   },
   waitingNote: (name, question) => (question ? `${name}在等你決定：${question}` : `${name}在等你決定。`),
+  confirmChip: '在等你確認',
+  confirmNote: (name, question) => (question ? `${name}在等你確認：${question}` : `${name}在等你確認。`),
   failure: (kind, name) =>
     ({
       interrupted: '被打斷了：App 關掉時它還沒做完。',
@@ -399,6 +417,7 @@ const zhHant: SingleThreadHandoffCopy = {
 
   helping: (from, ask) => `在幫 ${from}：${ask}`,
   helpingWaiting: from => `在等你決定（${from} 交來的活）`,
+  helpingConfirm: from => `在等你確認（${from} 交來的活）`,
   queuedFor: from => `${from} 交來的活排著`,
   waitingFor: name => `等${name}交回`
 }
@@ -418,6 +437,22 @@ export function useSingleThreadHandoffCopy(): SingleThreadHandoffCopy {
 /** For code outside React (the composer's `@` list source). */
 export function singleThreadHandoffCopyNow(): SingleThreadHandoffCopy {
   return SINGLE_THREAD_HANDOFF_COPY[getRuntimeI18nLocale()]
+}
+
+/** hc-1107: a relay card's chip while its turn waits on the user — 「在等你确认」 on an approval, else 「在等你决定」. */
+export function relayWaitingChip(copy: SingleThreadHandoffCopy, prompt: HandoffPrompt | null | undefined): string {
+  return prompt?.kind === 'approval' ? copy.confirmChip : copy.waitingChip
+}
+
+/** hc-1107: the card's line under it — 「带货脚本在等你确认：转码」. */
+export function relayWaitingNote(
+  copy: SingleThreadHandoffCopy,
+  name: string,
+  prompt: HandoffPrompt | null | undefined
+): string {
+  const question = prompt?.question.trim() ?? ''
+
+  return prompt?.kind === 'approval' ? copy.confirmNote(name, question) : copy.waitingNote(name, question)
 }
 
 /** 「48 秒」 / 「6 分 10 秒」; '' for no duration. */

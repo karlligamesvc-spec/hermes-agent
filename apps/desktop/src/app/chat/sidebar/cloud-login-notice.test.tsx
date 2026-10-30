@@ -17,6 +17,7 @@ import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
 import { $authState, type AuthStatus } from '@/store/auth'
 import { $cloudLoginRejected, resetCloudLoginForTests } from '@/store/cloud-login'
 import { resetMainThreadForTest } from '@/store/main-thread'
+import { $managedReSignIn, closeManagedReSignIn } from '@/store/managed-re-sign-in'
 import { $desktopOnboarding, cancelOnboardingFlow } from '@/store/onboarding'
 import { $planUsage } from '@/store/plan-usage'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
@@ -120,6 +121,7 @@ describe('the classic account panel', () => {
     expect(card(container)!.compareDocumentPosition(row!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  // hc-1110: the sign-in it opens is the auth gate's first-open screen, with the reason as its notice.
   it('a click opens the managed sign-in with the reason, and leaves the row alone', async () => {
     stubBridge(async () => rejected(true))
     const { container } = renderPanel()
@@ -127,8 +129,10 @@ describe('the classic account panel', () => {
 
     fireEvent.click(card(container)!)
 
-    expect($desktopOnboarding.get()).toMatchObject({ managedAvailable: true, managedError: REASON, requested: true })
+    expect($managedReSignIn.get()).toEqual({ notice: REASON })
+    expect($desktopOnboarding.get()).toMatchObject({ managedError: null, requested: false })
     expect(container.querySelector('[data-apex-account-trigger]')).not.toBeNull()
+    closeManagedReSignIn()
   })
 
   it('with the login accepted the panel renders exactly as without the bridge', async () => {

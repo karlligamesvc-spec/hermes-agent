@@ -1,19 +1,23 @@
 'use client'
 
 import { useAuiState } from '@assistant-ui/react'
-import type { FC } from 'react'
+import { useStore } from '@nanostores/react'
+import { type FC, useMemo } from 'react'
 
+import { useSessionView } from '@/app/chat/session-view'
 import { ApexAvatar } from '@/components/apex-avatar'
 import { useStatusHint, useThreadSessionStatus } from '@/components/assistant-ui/thread/status'
 import { SCAFFOLD_GLYPH_CLASS, SCAFFOLD_META_CLASS } from '@/components/chat/scaffold-row'
 import { useI18n } from '@/i18n'
-import { useSingleThreadCopy } from '@/i18n/single-thread'
+import { useSingleThreadCopy, waitingLine } from '@/i18n/single-thread'
 import { cn } from '@/lib/utils'
 import { useSingleThreadMode } from '@/store/single-thread'
 import { useBotLook, useBotName, withBotName } from '@/store/single-thread-bots'
 import { ThreadActivityPresence } from '@/store/thread-signals'
+import { sessionWaitingAsk, type WaitingAsk } from '@/store/waiting-for-you'
 
 import { CreatorTipSlot } from './creator-tip'
+import { InterruptedTurnNotice } from './interrupted-turn'
 import { plainStageLine } from './plain-steps'
 import {
   FailureCard,
@@ -37,7 +41,8 @@ import { turnBounds, useTurnView } from './turn-state'
  * result. While the turn runs, its work is one activity line at the foot of the
  * conversation, the way Grok Bot and Muse show it: APEX's avatar, looking down
  * at the work (hc-1064), and what it is doing now (「正在识别语音… 第 2 步」),
- * 「等你决定」 while a question or an approval waits. Once it is done the answer
+ * 「等你决定」 while a question waits and 「等你确认」 while an approval does,
+ * the avatar then looking up at the user (hc-1107). Once it is done the answer
  * stands alone, with 「用时 2 分 10 秒 · 看过程」 under it opening the same
  * plain-language steps and sources as the process block. Thoughts are not
  * shown.
@@ -53,11 +58,20 @@ const ACTIVITY_CLASS = cn(
   'flex min-w-0 max-w-full items-center gap-2 self-start text-(--conversation-scaffold-text)'
 )
 
+/** hc-1107: what the turn on screen waits on the user for — a yes/no or a choice — or null while it does not. */
+function useWaitingAsk(awaitingInput: boolean): null | WaitingAsk {
+  const runtimeId = useStore(useSessionView().$runtimeId)
+  const ask = useStore(useMemo(() => sessionWaitingAsk(runtimeId), [runtimeId]))
+
+  return ask ?? (awaitingInput ? 'choose' : null)
+}
+
 /** The activity line, in place of the tail's loading and activity rows. */
 export const SingleThreadActivityLine: FC = () => {
   const { t } = useI18n()
   const copy = useSingleThreadCopy()
   const { awaitingInput, busy, compacting } = useThreadSessionStatus()
+  const ask = useWaitingAsk(awaitingInput)
   // Only compaction is named: a provider's wait frame and a drafting tool's
   // verb come from the engine in its own words, which is the mechanism this
   // mode keeps out of sight.
@@ -78,17 +92,15 @@ export const SingleThreadActivityLine: FC = () => {
   const stepLine = line?.state === 'running' ? line : null
   const current = process && process.current !== null ? process.steps[process.current] : null
 
-  const text = awaitingInput
-    ? copy.waitingForYou
-    : compactingHint || (stepLine ? stepLine.text : processCopy.status.thinking)
+  const text = ask ? waitingLine(copy, ask) : compactingHint || (stepLine ? stepLine.text : processCopy.status.thinking)
 
-  const meta = awaitingInput || compactingHint || !stepLine ? [] : stepLine.meta
+  const meta = ask || compactingHint || !stepLine ? [] : stepLine.meta
 
   return (
     <div className="grid min-w-0 max-w-full gap-1" data-conversation-scaffold="" data-single-thread-activity="">
       <div aria-label={label} aria-live="polite" className={ACTIVITY_CLASS} role="status">
-        <ApexAvatar className="size-[1.375rem]" mood={awaitingInput ? 'idle' : 'working'} {...look} />
-        <span className={cn('min-w-0 truncate', !awaitingInput && 'shimmer')}>{text}</span>
+        <ApexAvatar className="size-[1.375rem]" mood={ask ? 'waiting' : 'working'} {...look} />
+        <span className={cn('min-w-0 truncate', !ask && 'shimmer')}>{text}</span>
         {meta.map(item => (
           <span className={cn(SCAFFOLD_META_CLASS, 'text-[length:var(--conversation-caption-font-size)]')} key={item}>
             {item}
@@ -109,7 +121,7 @@ export const SingleThreadActivityLine: FC = () => {
           turnKey={view.key}
         />
       )}
-      <ThreadActivityPresence text={text} waiting={awaitingInput} />
+      <ThreadActivityPresence ask={ask} text={text} waiting={ask !== null} />
     </div>
   )
 }
@@ -140,7 +152,12 @@ export const SingleThreadProcessFooter: FC = () => {
     return Boolean(bounds) && state.thread.messages[bounds!.end]?.id === state.message.id
   })
 
-  return on && turnEnd ? <TurnProcessFooter /> : null
+  return on && turnEnd ? (
+    <>
+      <TurnProcessFooter />
+      <InterruptedTurnNotice />
+    </>
+  ) : null
 }
 
 function TurnProcessFooter() {

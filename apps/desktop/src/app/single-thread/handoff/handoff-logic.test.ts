@@ -26,6 +26,7 @@ import {
 } from '@/store/single-thread-bots'
 import { type HandoffRecord, resetHandoffsForTest, setMultiBotHandoffFlagForTest } from '@/store/single-thread-handoff'
 import { $handoffProposal, confirmHandoffProposal, dismissHandoffProposal } from '@/store/single-thread-handoff-confirm'
+import type { ThreadPresence } from '@/store/single-thread-presence'
 import { setToolViewMode } from '@/store/tool-view'
 
 import { handoffCandidates, handoffRoleLine } from './composer-at'
@@ -441,6 +442,10 @@ describe('parseHandoffRequest: a hand-over read back (cases `request`)', () => {
 
 describe('handoffRowLine: the sidebar line', () => {
   const copy = SINGLE_THREAD_HANDOFF_COPY.zh
+  const IDLE: ThreadPresence = { kind: 'idle', text: null }
+  const WORKING: ThreadPresence = { kind: 'working', replying: false, text: null }
+  const CHOOSING: ThreadPresence = { ask: 'choose', kind: 'waiting' }
+  const CONFIRMING: ThreadPresence = { ask: 'confirm', kind: 'waiting' }
 
   it('the receiver helps, then waits on the user; the sender waits for it while quiet', () => {
     relayOn()
@@ -452,16 +457,28 @@ describe('handoffRowLine: the sidebar line', () => {
       record('r1', { status: 'waiting', waitingFor: { kind: 'clarify', question: '?', requestId: 'q' } })
     ]
 
-    expect(handoffRowLine('writer', 'working', running, roster, copy)).toBe('在帮 APEX：按这个选题写 3 个标题')
-    expect(handoffRowLine('writer', 'waiting', waiting, roster, copy)).toBe('在等你决定（APEX 交来的活）')
-    expect(handoffRowLine('default', 'idle', running, roster, copy)).toBe('等小红书文案交回')
-    expect(handoffRowLine('default', 'working', running, roster, copy)).toBeNull()
-    expect(handoffRowLine('cutter', 'idle', running, roster, copy)).toBeNull()
-    expect(handoffRowLine('writer', 'idle', [record('q', { status: 'queued' })], roster, copy)).toBe(
-      'APEX 交来的活排着'
-    )
-    expect(handoffRowLine('writer', 'working', [record('q', { status: 'queued' })], roster, copy)).toBeNull()
-    expect(handoffRowLine('default', 'idle', [record('r1', { status: 'returned' })], roster, copy)).toBeNull()
+    expect(handoffRowLine('writer', WORKING, running, roster, copy)).toBe('在帮 APEX：按这个选题写 3 个标题')
+    expect(handoffRowLine('writer', CHOOSING, waiting, roster, copy)).toBe('在等你决定（APEX 交来的活）')
+    expect(handoffRowLine('default', IDLE, running, roster, copy)).toBe('等小红书文案交回')
+    expect(handoffRowLine('default', WORKING, running, roster, copy)).toBeNull()
+    expect(handoffRowLine('cutter', IDLE, running, roster, copy)).toBeNull()
+    expect(handoffRowLine('writer', IDLE, [record('q', { status: 'queued' })], roster, copy)).toBe('APEX 交来的活排着')
+    expect(handoffRowLine('writer', WORKING, [record('q', { status: 'queued' })], roster, copy)).toBeNull()
+    expect(handoffRowLine('default', IDLE, [record('r1', { status: 'returned' })], roster, copy)).toBeNull()
+  })
+
+  // hc-1107: the row's own waiting decides — a yes/no reads 「确认」, and an answered prompt ends the line at once.
+  it('a yes/no reads 「在等你确认」; once answered the line is 「在帮」 again before the relay poll catches up', () => {
+    relayOn()
+
+    const roster = $botRoster.get()
+
+    const polled = [
+      record('r1', { status: 'waiting', waitingFor: { kind: 'approval', question: '?', requestId: 'a' } })
+    ]
+
+    expect(handoffRowLine('writer', CONFIRMING, polled, roster, copy)).toBe('在等你确认（APEX 交来的活）')
+    expect(handoffRowLine('writer', WORKING, polled, roster, copy)).toBe('在帮 APEX：按这个选题写 3 个标题')
   })
 })
 

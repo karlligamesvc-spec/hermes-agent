@@ -370,7 +370,9 @@ const FOLDED_ROWS = [
   '记忆图谱',
   '会话',
   '系统',
-  '重启网关'
+  '重启网关',
+  // hc-1109: it opens Settings › 键盘快捷键, a developer section in product mode.
+  'Keyboard shortcuts'
 ]
 
 describe('⌘K', () => {
@@ -391,7 +393,7 @@ describe('⌘K', () => {
       expect(has(rows, label)).toBe(false)
     }
 
-    for (const label of ['设置', '产物', 'Keyboard shortcuts', '用量', '检查 APEX 更新', '更改主题']) {
+    for (const label of ['设置', '产物', '用量', '检查 APEX 更新', '更改主题']) {
       expect(has(rows, label)).toBe(true)
     }
   })

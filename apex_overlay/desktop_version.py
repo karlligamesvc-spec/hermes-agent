@@ -221,8 +221,9 @@ def on_pre_llm_call(session_id: str = "", platform: str = "", **_: Any) -> Optio
     return note_text(state)
 
 
-def _install_help_guidance(module: Any) -> bool:
-    missing = [name for name in _HELP_ATTRS if not isinstance(getattr(module, name, None), str)]
+def install_help_guidance(module: Any) -> bool:
+    """Both help-line variants become APEX's; apex_identity.py does the same in a cloud container (hc-1103)."""
+    missing =[name for name in _HELP_ATTRS if not isinstance(getattr(module, name, None), str)]
     if missing:
         logger.error("apex-overlay: %s has no %s; the engine's own help line stays", _HELP_MODULE, ", ".join(missing))
         return False
@@ -254,4 +255,4 @@ def apply(ctx: Any) -> bool:
         return False
     register_hook("pre_llm_call", on_pre_llm_call)
     # Never imported here: plugin discovery may run while agent.system_prompt is still importing.
-    return post_import.when_imported(_HELP_MODULE, _install_help_guidance)
+    return post_import.when_imported(_HELP_MODULE, install_help_guidance)

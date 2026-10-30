@@ -7,6 +7,7 @@ import { useI18n } from '@/i18n'
 import { FileText, Sparkles } from '@/lib/icons'
 import { notifyError } from '@/store/notifications'
 import { $activeProfile } from '@/store/profile'
+import { useSingleThreadMode } from '@/store/single-thread'
 import type { HermesConfigRecord } from '@/types/hermes'
 
 import { AboutSettingsBody } from './about-settings'
@@ -14,7 +15,6 @@ import { CONTROL_TEXT, EMPTY_SELECT_VALUE, FIELD_DESCRIPTIONS, FIELD_LABELS } fr
 import { CreatorProfileSettings } from './creator-profile-settings'
 import { fieldCopyForSchemaKey } from './field-copy'
 import { enumOptionsFor, getNested, prettyName, setNested } from './helpers'
-import { MemoryLedgerSettings } from './memory-ledger-settings'
 import { ListRow, SectionHeading, SettingsContent } from './primitives'
 import { SoulEditor } from './soul-editor'
 
@@ -27,7 +27,8 @@ const PERSONALITY_KEY = 'display.personality'
 // moved here from the old 个人资料 entry (which now opens the profile stats
 // page) — it edits the ACTIVE profile's SOUL.md through the same profile API.
 // Below: the former 关于 content (version, app updates, engine updates,
-// uninstall) via AboutSettingsBody.
+// uninstall) via AboutSettingsBody. hc-1109: product mode leaves that to its
+// 关于 section and shows the 它记得什么 ledger under 记忆.
 export function PersonalizationSettings({ onConfigSaved }: { onConfigSaved?: () => void }) {
   const { t } = useI18n()
   const copy = t.settings.personalization
@@ -35,6 +36,7 @@ export function PersonalizationSettings({ onConfigSaved }: { onConfigSaved?: () 
   // embedded SOUL editor edits that profile; other profiles keep theirs
   // editable from the 配置档案 manager.
   const activeProfile = useStore($activeProfile)
+  const productMode = useSingleThreadMode()
 
   const [config, setConfig] = useState<HermesConfigRecord | null>(null)
 
@@ -80,7 +82,6 @@ export function PersonalizationSettings({ onConfigSaved }: { onConfigSaved?: () 
   return (
     <SettingsContent>
       <CreatorProfileSettings />
-      <MemoryLedgerSettings />
 
       <div className="mt-6">
         <SectionHeading icon={Sparkles} title={copy.personalityTitle} />
@@ -121,9 +122,11 @@ export function PersonalizationSettings({ onConfigSaved }: { onConfigSaved?: () 
 
       {/* 关于 content lives here now (item: About merged into 个性化); it keeps
           its own headings (updates / engine / uninstall). */}
-      <div className="mt-6">
-        <AboutSettingsBody />
-      </div>
+      {!productMode && (
+        <div className="mt-6">
+          <AboutSettingsBody />
+        </div>
+      )}
     </SettingsContent>
   )
 }
