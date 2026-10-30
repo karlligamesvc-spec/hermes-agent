@@ -69,6 +69,12 @@ _TOOL_SEAMS = (
         "Research, a cloud assistant may say it runs on Hermes Agent, and "
         "/version in IM may print the engine's banner instead of APEX's version.",
     ),
+    (
+        "upstream_copy",
+        "apex-overlay: hc-1116 upstream wording seam did not fully apply (see "
+        "prior error). A new assistant's first reply may point to /help, and IM "
+        "notices may name Hermes or tell the user to run hermes commands.",
+    ),
 )
 
 
