@@ -66,8 +66,28 @@ describe('desktop update copy (hc-1030)', () => {
   })
 })
 
+describe('the answer to a confirmed install that waits (hc-1117)', () => {
+  it.each(['zh', 'zh-hant'] as const)('%s says all of it in Chinese', locale => {
+    const copy = DESKTOP_UPDATE_COPY[locale]
+    const lines = [copy.wait.title, copy.wait.close, copy.wait.closeProgram, copy.wait.ownWork, copy.holders.childNote, ...Object.values(copy.wait.next)]
+
+    expect(lines.filter(line => !/[一-鿿]/.test(line))).toEqual([])
+    expect(Object.keys(copy.wait.next).sort()).toEqual(Object.keys(copy.deferred).sort())
+  })
+
+  it('leaves the zh sentences hc-1095 compares word for word alone', () => {
+    expect(zh.deferred).toEqual({
+      active_work: '有任务在进行，做完后自动安装更新。',
+      activity_unknown: '正在确认 APEX 是否空闲，确认后自动安装更新。',
+      engine_holders: '有别的程序在用 APEX 引擎，它退出后自动安装更新。',
+      gateway_busy: '消息渠道还在回复消息，回复完自动安装更新。',
+      previous_worker: '上次的 APEX 引擎进程还在退出，退出后自动安装更新。'
+    })
+  })
+})
+
 describe('engine holder copy (hc-1094)', () => {
-  const KINDS = ['apex_running', 'leftover_engine', 'leftover_gateway', 'terminal_hermes'] as const
+  const KINDS = ['apex_running', 'leftover_child', 'leftover_engine', 'leftover_gateway', 'terminal_hermes'] as const
 
   it.each(['zh', 'zh-hant'] as const)('%s says every holder line in Chinese', locale => {
     const copy = DESKTOP_UPDATE_COPY[locale].holders

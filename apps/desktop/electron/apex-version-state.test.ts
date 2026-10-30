@@ -224,7 +224,7 @@ test('the real updater: an install put off for a busy gateway, then the error af
 
   try {
     w.autoUpdater.emit('update-downloaded', { version: '0.17.66' })
-    assert.deepEqual(await w.install(), { deferred: true, ok: true })
+    assert.partialDeepStrictEqual(await w.install(), { deferred: true, ok: true })
     assert.deepEqual(readState().update, { reason: 'gateway_busy', status: 'deferred', version: '0.17.66' })
     w.autoUpdater.emit('error', new Error('net::ERR_INTERNET_DISCONNECTED'))
     assert.deepEqual(readState().update, { reason: null, status: 'error', version: null })

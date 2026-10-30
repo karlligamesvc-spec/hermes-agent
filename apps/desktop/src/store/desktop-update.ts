@@ -10,6 +10,7 @@ import type {
 
 import { $runtimeUpdateCheck, applyRuntimeUpdate, checkRuntimeUpdate, loadRuntimeVersion } from './runtime-update'
 import { $shellUpdate, checkShellUpdate, initShellUpdateSubscription, installShellUpdate } from './shell-update'
+import { $runtimeUpdateWait } from './update-wait'
 
 export type DesktopUpdateStage = 'check' | 'restart' | 'runtime' | 'shell'
 
@@ -55,9 +56,12 @@ async function deferRuntimeUpdate(reload: () => void): Promise<void> {
   }, 30_000)
 }
 
-async function installShellWhenIdle(): Promise<void> {
+/** True when the install waits for idle instead of starting. */
+async function installShellWhenIdle(): Promise<boolean> {
   const result = await installShellUpdate()
   if (result.deferred) {setProgress({ active: false, currentStage: null, error: null })}
+
+  return Boolean(result.deferred)
 }
 
 export async function queueDeferredRuntimeUpdate(runtime: DesktopRuntimeUpdateCheck | null, options: {
@@ -281,7 +285,11 @@ export async function checkDesktopUpdates(): Promise<{
   return { runtime, shell }
 }
 
-export async function applyDesktopUpdates(options: { reload?: () => void } = {}): Promise<void> {
+/**
+ * Resolves to true when the update waits (`desktopUpdateWait` says for what) instead of going
+ * ahead, so whoever asked can tell the user; false when it went ahead.
+ */
+export async function applyDesktopUpdates(options: { reload?: () => void } = {}): Promise<boolean> {
   initDesktopUpdateProgressSubscription()
   const reload = options.reload ?? (() => window.location.reload())
   const runtime = $runtimeUpdateCheck.get()
@@ -325,9 +333,8 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
       requirePlanSaved(result)
 
       setProgress({ currentStage: 'restart' })
-      await installShellWhenIdle()
 
-      return
+      return await installShellWhenIdle()
     }
 
     let runtimeReloadRequired = false
@@ -337,7 +344,8 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
       const result = await applyRuntimeUpdate()
       if (result.deferred) {
         await queueDeferredRuntimeUpdate(runtime, { reload, targetShellVersion: needsShell ? shell?.version : null })
-        return
+
+        return true
       }
 
       runtimeReloadRequired = Boolean(result.reloadRequired)
@@ -361,21 +369,22 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
 
       requirePlanSaved(result)
 
-      await installShellWhenIdle()
-
-      return
+      return await installShellWhenIdle()
     }
 
     if (runtimeReloadRequired) {
       reload()
 
-      return
+      return false
     }
 
     setProgress({ active: false, completedStages: stages, currentStage: null })
+
+    return false
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
 
+    $runtimeUpdateWait.set(null)
     await transitionPlanSafely({
       lastError: message,
       phase: 'failed'
@@ -545,6 +554,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
 
+      $runtimeUpdateWait.set(null)
       await transitionPlanSafely({ lastError: message, phase: 'failed' })
       setProgress({
         active: false,
@@ -561,6 +571,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
 
 export function dismissDesktopUpdateError(): void {
   clearTimeout(deferredRetry)
+  $runtimeUpdateWait.set(null)
   $desktopUpdateProgress.set(EMPTY_PROGRESS)
 }
 

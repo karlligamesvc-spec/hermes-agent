@@ -5,6 +5,7 @@ import path from 'node:path'
 
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
+import { describeRuntimeUpdateBusy } from './engine-holders'
 import { assertPackagedRuntimeIdle } from './packaged-runtime'
 import { isRuntimeUpdateBusy } from './runtime-update-busy'
 
@@ -71,6 +72,23 @@ test('a busy proof names each holder without the secrets in its argv', async () 
     }
   })
   expect(JSON.stringify(failure.idleProof)).not.toContain('fixture-secret')
+})
+
+test('hc-1117: the deferral log says what an engine process runs, with the secret the scan masked', async () => {
+  const python = path.join(activeRoot, 'venv', 'bin', 'python')
+
+  probe.report.pid = 900
+  probe.report.stdout = JSON.stringify({
+    holders: [900, 4242],
+    details: { 4242: { name: 'python3.14', ppid: 1, parent: 1, exe: python, engineExe: true, engineRuntime: true, created: 1.5, argv: [python, 'mcp_server.py', '--api-key', 'fixture-secret'], ancestors: [{ pid: 1, name: 'launchd' }] } },
+    workerPid: 901
+  })
+
+  const line = describeRuntimeUpdateBusy(await assertPackagedRuntimeIdle(activeRoot, activeRoot).catch(error => error))
+
+  expect(line).toContain('leftover_child endable')
+  expect(line).toContain('mcp_server.py --api-key [REDACTED]]')
+  expect(line).not.toContain('fixture-secret')
 })
 
 test('hc-1094: the busy proof sorts each holder into what the user is told and what APEX may end', async () => {

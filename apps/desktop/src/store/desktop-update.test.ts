@@ -22,6 +22,7 @@ import {
 } from './desktop-update'
 import { $runtimeUpdateCheck } from './runtime-update'
 import { $shellUpdate } from './shell-update'
+import { $runtimeUpdateWait } from './update-wait'
 
 const RUNTIME_UPDATE: DesktopRuntimeUpdateCheck = {
   current: { key: 'old', version: 'v2026.7.1' },
@@ -195,6 +196,110 @@ describe('desktop update orchestration', () => {
 
     expect(install).toHaveBeenCalledTimes(1)
     expect($desktopUpdateProgress.get()).toMatchObject({ active: false, currentStage: null, error: null })
+  })
+
+  describe('hc-1117: telling the caller the update waits, and for what', () => {
+    const CHILD = { pid: 4242, kind: 'leftover_child', name: 'python3.14', created: 7.5, endable: true } as const
+    const updateCenter = { setShellOnly: vi.fn(async () => ({ ok: true })), setRuntimeAfterShell: vi.fn(async () => ({ ok: true })), transitionPlan: vi.fn(async () => ({ ok: true })) }
+
+    beforeEach(() => $runtimeUpdateWait.set(null))
+
+    it('a deferred app install answers true, and the store holds the wait even before its event arrives', async () => {
+      $shellUpdate.set(SHELL_UPDATE)
+      const state = { ...SHELL_UPDATE, deferred: true, deferredReason: 'engine_holders', deferredHolders: [CHILD] }
+
+      window.hermesDesktop = {
+        shellUpdate: { install: vi.fn(async () => ({ ok: true, deferred: true, state })) },
+        updateCenter
+      } as unknown as typeof window.hermesDesktop
+
+      await expect(applyDesktopUpdates({ reload: vi.fn() })).resolves.toBe(true)
+      expect($shellUpdate.get()).toEqual(state)
+    })
+
+    it('an app install that goes ahead answers false', async () => {
+      $shellUpdate.set(SHELL_UPDATE)
+      window.hermesDesktop = { shellUpdate: { install: vi.fn(async () => ({ ok: true })) }, updateCenter } as unknown as typeof window.hermesDesktop
+
+      await expect(applyDesktopUpdates({ reload: vi.fn() })).resolves.toBe(false)
+      expect($shellUpdate.get()).toEqual(SHELL_UPDATE)
+    })
+
+    it('a shell required first answers what its install does', async () => {
+      $shellUpdate.set(SHELL_UPDATE)
+      $runtimeUpdateCheck.set({ ...RUNTIME_UPDATE, updateAvailable: false, desktopUpgradeRequired: { minDesktopVersion: '0.18.0', currentDesktopVersion: '0.17.14' } })
+      window.hermesDesktop = { shellUpdate: { install: vi.fn(async () => ({ ok: true, deferred: true })) }, updateCenter } as unknown as typeof window.hermesDesktop
+
+      await expect(applyDesktopUpdates({ reload: vi.fn() })).resolves.toBe(true)
+    })
+
+    it('a deferred engine switch answers true and keeps what the gate named', async () => {
+      vi.useFakeTimers()
+      $runtimeUpdateCheck.set(RUNTIME_UPDATE)
+      window.hermesDesktop = {
+        runtime: { applyUpdate: async () => ({ ok: true, applied: false, deferred: true, reason: 'engine_holders', holders: [CHILD] }) },
+        updateCenter
+      } as unknown as typeof window.hermesDesktop
+
+      await expect(applyDesktopUpdates({ reload: vi.fn() })).resolves.toBe(true)
+      expect($runtimeUpdateWait.get()).toEqual({ reason: 'engine_holders', holders: [CHILD] })
+    })
+
+    it('a deferred engine switch that names nothing still reads as a wait', async () => {
+      vi.useFakeTimers()
+      $runtimeUpdateCheck.set(RUNTIME_UPDATE)
+      window.hermesDesktop = {
+        runtime: { applyUpdate: async () => ({ ok: true, applied: false, deferred: true }) },
+        updateCenter
+      } as unknown as typeof window.hermesDesktop
+
+      await applyDesktopUpdates({ reload: vi.fn() })
+      expect($runtimeUpdateWait.get()).toEqual({ reason: 'active_work', holders: null })
+    })
+
+    it('an engine switch that goes ahead ends the wait and answers false', async () => {
+      $runtimeUpdateCheck.set(RUNTIME_UPDATE)
+      $runtimeUpdateWait.set({ reason: 'engine_holders', holders: [CHILD] })
+      const reload = vi.fn()
+
+      window.hermesDesktop = {
+        runtime: { applyUpdate: async () => ({ ok: true, applied: true, reloadRequired: true }) },
+        updateCenter
+      } as unknown as typeof window.hermesDesktop
+
+      await expect(applyDesktopUpdates({ reload })).resolves.toBe(false)
+      expect($runtimeUpdateWait.get()).toBeNull()
+      expect(reload).toHaveBeenCalledTimes(1)
+    })
+
+    it('a failed update ends the wait', async () => {
+      $runtimeUpdateCheck.set(RUNTIME_UPDATE)
+      $runtimeUpdateWait.set({ reason: 'engine_holders', holders: [CHILD] })
+      window.hermesDesktop = {
+        runtime: { applyUpdate: async () => { throw new Error('bridge gone') } },
+        updateCenter
+      } as unknown as typeof window.hermesDesktop
+
+      await expect(applyDesktopUpdates({ reload: vi.fn() })).rejects.toThrow('bridge gone')
+      expect($runtimeUpdateWait.get()).toBeNull()
+    })
+
+    it('a failed automatic resume ends the wait', async () => {
+      $runtimeUpdateWait.set({ reason: 'engine_holders', holders: [CHILD] })
+      window.hermesDesktop = {
+        getVersion: vi.fn(async () => { throw new Error('bridge gone') }),
+        updateCenter: { ...updateCenter, getPlan: vi.fn(async () => updatePlan()) }
+      } as unknown as typeof window.hermesDesktop
+
+      await resumeDesktopUpdatePlan({ reload: vi.fn() })
+      expect($runtimeUpdateWait.get()).toBeNull()
+    })
+
+    it('dismissing the update ends the wait', () => {
+      $runtimeUpdateWait.set({ reason: 'gateway_busy', holders: null })
+      dismissDesktopUpdateError()
+      expect($runtimeUpdateWait.get()).toBeNull()
+    })
   })
 
   it('resuming a plan whose downloaded shell is not running yet asks for that shell again', async () => {
