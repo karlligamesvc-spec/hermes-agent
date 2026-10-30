@@ -15,10 +15,11 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Loader } from '@/components/ui/loader'
 import { Textarea } from '@/components/ui/textarea'
 import { useI18n } from '@/i18n'
+import { useSingleThreadMode } from '@/store/single-thread'
 
 import { NEW_CHAT_ROUTE, projectDetailRoute, PROJECTS_ROUTE, routeDrawerNavigationState } from '../../routes'
 import { createWorkflowDefinition } from '../api/adapters'
-import type { WorkflowProject } from '../api/types'
+import type { WorkflowDefinition, WorkflowProject } from '../api/types'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { ProjectCreateDialog } from '../components/project-create-dialog'
 import { ProjectLibraryNavigation } from '../components/project-library-navigation'
@@ -36,6 +37,86 @@ import {
   businessWorkflowStarters,
   videoWorkflowStarters
 } from '../view-model/workflow-starters'
+
+/** The project this page is adding to, if any. hc-1123: product mode has no project to add to or go back to. */
+function useTargetProjectId(search: string, businessProjectId: unknown): string {
+  const productMode = useSingleThreadMode()
+  const routeProjectId = new URLSearchParams(search).get('projectId')?.trim() ?? ''
+
+  if (productMode) {return ''}
+
+  return routeProjectId || (typeof businessProjectId === 'string' ? businessProjectId.trim() : '')
+}
+
+/** hc-1123: 项目 is not in product mode, so what opens a project or adds to one is not either. */
+function TemplateProjectActions({
+  onJoinCurrent,
+  onJoinExisting,
+  onNew
+}: {
+  onJoinCurrent?: () => void
+  onJoinExisting: () => void
+  onNew: () => void
+}) {
+  const { t } = useI18n()
+  const c = t.businessWorkspace.workflows
+  const productMode = useSingleThreadMode()
+
+  if (productMode) {return null}
+
+  return (
+    <>
+      {onJoinCurrent && <Button onClick={onJoinCurrent} size="sm" variant="outline">{c.joinCurrentProject}</Button>}
+      <Button onClick={onJoinExisting} size="sm" variant="outline">{c.joinExistingProject}</Button>
+      <Button onClick={onNew} size="sm">{c.newProjectAndJoin}</Button>
+    </>
+  )
+}
+
+function SavedWorkflowRow({ workflow }: { workflow: WorkflowDefinition }) {
+  const { t } = useI18n()
+  const c = t.businessWorkspace.workflows
+  const location = useLocation()
+  const navigate = useNavigate()
+  const productMode = useSingleThreadMode()
+
+  const content = (
+    <>
+      <span className="min-w-0">
+        <strong className="block truncate text-sm font-medium">{workflow.name}</strong>
+        <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+          {workflow.description || workflow.slug}
+        </span>
+      </span>
+      <span className="flex shrink-0 items-center gap-2 text-xs font-normal text-(--ui-text-tertiary)">
+        {workflow.version ? <span>{c.version(workflow.version)}</span> : null}
+        {t.businessWorkspace.projects.lifecycle(workflow.status)}
+        {!productMode && <Codicon name="arrow-right" size="0.75rem" />}
+      </span>
+    </>
+  )
+
+  return productMode ? (
+    <div
+      className="flex min-h-16 w-full items-center justify-between gap-4 border-b border-(--ui-stroke-tertiary) px-4 py-3 text-left last:border-b-0"
+      data-saved-workflow-row=""
+    >
+      {content}
+    </div>
+  ) : (
+    <Button
+      className="flex min-h-16 w-full items-center justify-between gap-4 rounded-none border-b border-(--ui-stroke-tertiary) px-4 py-3 text-left last:border-b-0"
+      onClick={() =>
+        navigate(projectDetailRoute(workflow.projectId), {
+          state: routeDrawerNavigationState(location)
+        })
+      }
+      variant="ghost"
+    >
+      {content}
+    </Button>
+  )
+}
 
 export function WorkflowsView() {
   const { t } = useI18n()
@@ -63,11 +144,7 @@ export function WorkflowsView() {
 
   const startSelection = launchContext?.businessStartSelection === true
 
-  const routeProjectId = new URLSearchParams(location.search).get('projectId')?.trim() ?? ''
-
-  const targetProjectId =
-    routeProjectId ||
-    (typeof launchContext?.businessProjectId === 'string' ? launchContext.businessProjectId.trim() : '')
+  const targetProjectId = useTargetProjectId(location.search, launchContext?.businessProjectId)
 
   const project = useWorkflowProject(targetProjectId || undefined)
   const projectItem = project.mode === 'ready' && project.item.id === targetProjectId ? project.item : null
@@ -369,22 +446,20 @@ export function WorkflowsView() {
                 } })
               }} size="sm">{c.use}</Button>
             ) : (
-              <>
-                {targetProjectId && (
-                  <Button onClick={() => {
-                    setSelectedProjectId(targetProjectId)
-                    setTemplateOpen(false)
-                  }} size="sm" variant="outline">{c.joinCurrentProject}</Button>
-                )}
-                <Button onClick={() => {
+              <TemplateProjectActions
+                onJoinCurrent={targetProjectId ? () => {
+                  setSelectedProjectId(targetProjectId)
+                  setTemplateOpen(false)
+                } : undefined}
+                onJoinExisting={() => {
                   setTemplateOpen(false)
                   setProjectPickerOpen(true)
-                }} size="sm" variant="outline">{c.joinExistingProject}</Button>
-                <Button onClick={() => {
+                }}
+                onNew={() => {
                   setTemplateOpen(false)
                   setProjectCreateOpen(true)
-                }} size="sm">{c.newProjectAndJoin}</Button>
-              </>
+                }}
+              />
             )}
           </DialogFooter>
         </DialogContent>
@@ -444,30 +519,7 @@ export function WorkflowsView() {
           </div>
         ) : workflows.mode === 'ready' && workflows.items.length > 0 ? (
           <div className="mt-4 overflow-hidden rounded-2xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) shadow-xs">
-            {workflows.items.map(workflow => (
-              <Button
-                className="flex min-h-16 w-full items-center justify-between gap-4 rounded-none border-b border-(--ui-stroke-tertiary) px-4 py-3 text-left last:border-b-0"
-                key={workflow.id}
-                onClick={() =>
-                  navigate(projectDetailRoute(workflow.projectId), {
-                    state: routeDrawerNavigationState(location)
-                  })
-                }
-                variant="ghost"
-              >
-                <span className="min-w-0">
-                  <strong className="block truncate text-sm font-medium">{workflow.name}</strong>
-                  <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
-                    {workflow.description || workflow.slug}
-                  </span>
-                </span>
-                <span className="flex shrink-0 items-center gap-2 text-xs font-normal text-(--ui-text-tertiary)">
-                  {workflow.version ? <span>{c.version(workflow.version)}</span> : null}
-                  {t.businessWorkspace.projects.lifecycle(workflow.status)}
-                  <Codicon name="arrow-right" size="0.75rem" />
-                </span>
-              </Button>
-            ))}
+            {workflows.items.map(workflow => <SavedWorkflowRow key={workflow.id} workflow={workflow} />)}
           </div>
         ) : workflows.mode === 'ready' ? (
           <p className="mt-3 rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-4 py-5 text-xs text-muted-foreground">

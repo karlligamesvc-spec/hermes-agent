@@ -21,6 +21,7 @@ import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
 import { dismissNarrowSidebarOverlay } from '@/store/layout'
 import { notify } from '@/store/notifications'
 import { requestManagedReSignIn } from '@/store/onboarding'
+import { useSingleThreadMode } from '@/store/single-thread'
 
 import { ASSISTANT_ROUTE, CRON_ROUTE, DELIVERABLES_ROUTE, HISTORY_ROUTE, PROFILE_STATS_ROUTE, PROJECTS_ROUTE, SETTINGS_ROUTE } from '../../routes'
 import { useSingleThreadNavLabels } from '../../single-thread/nav-labels'
@@ -73,8 +74,8 @@ function initialOf(name: string): string {
 // no plan badge or phone icon. The business rail adds a menu caret. Click →
 // a popover menu with the account's team when it has one (hc-971), 个人资料, 设置,
 // 项目, 定时运行, 连接助手, 历史会话, 交付物, optional real usage, and 退出登录. These destinations share one information-architecture group
-// instead of spending permanent sidebar height on additional rows. Rendered
-// only on managed builds when signed in (the auth gate handles the signed-out
+// instead of spending permanent sidebar height on additional rows. Product mode
+// has no 项目 (hc-1123). Rendered only on managed builds when signed in (the auth gate handles the signed-out
 // case); on a managed-disabled build the panel stays hidden.
 export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), onNavigateBusiness }: {
   businessChrome?: boolean
@@ -83,6 +84,7 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
   const { t } = useI18n()
   const a = t.auth.account
   const nav = useSingleThreadNavLabels(t.sidebar.nav)
+  const productMode = useSingleThreadMode()
   const navigate = useNavigate()
   const { account, accountId, enabled, status } = useStore($authState)
   const team = teamFor(useStore($accountTeam), accountId)
@@ -209,10 +211,12 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
           <span>{a.settings}</span>
         </DropdownMenuItem>
         {businessChrome && <>
-          <DropdownMenuItem onSelect={() => { openBusinessDestination('projects', PROJECTS_ROUTE) }}>
-            <Codicon name="folder" size="0.875rem" />
-            <span>{nav.projects}</span>
-          </DropdownMenuItem>
+          {!productMode && (
+            <DropdownMenuItem onSelect={() => { openBusinessDestination('projects', PROJECTS_ROUTE) }}>
+              <Codicon name="folder" size="0.875rem" />
+              <span>{nav.projects}</span>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onSelect={() => { openBusinessDestination('scheduled-runs', CRON_ROUTE) }}>
             <Codicon name="calendar" size="0.875rem" />
             <span>{nav['scheduled-runs']}</span>

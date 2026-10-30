@@ -95,6 +95,9 @@ vi.mock('../business-workspace/pages/deliverable-detail-page', () => ({
 vi.mock('../business-workspace/pages/workflow-run-page', () => ({
   WorkflowRunView: () => <div>workflow-run-view</div>
 }))
+vi.mock('../business-workspace/pages/project-detail-page', () => ({
+  ProjectDetailView: () => <div>project-detail-view</div>
+}))
 vi.mock('../business-workspace/pages/analysis-page', () => ({
   AnalysisView: ({ onDeepBreakdown }: {
     onDeepBreakdown: (document: unknown, locale: 'en', frames: Array<{ seconds: number; dataUrl: string }>) => Promise<void>
@@ -458,5 +461,171 @@ describe('hc-1070 single-thread product mode has no 沉浸式分析', () => {
 
     expect(await screen.findByRole('button', { name: 'Prepare video' })).toBeTruthy()
     expect(screen.getByTestId('location').textContent).toBe('/analysis')
+  })
+})
+
+describe('hc-1123 single-thread product mode has no 项目', () => {
+  const projectsOnScreen = () => screen.queryByText('projects-view') ?? screen.queryByText('project-detail-view')
+  const where = () => screen.getByTestId('location').textContent
+
+  const openedFrom = (pathname: string, to: string) => ({
+    pathname: to,
+    state: routeDrawerNavigationState({ hash: '', pathname, search: '', state: null })
+  })
+
+  afterEach(() => {
+    setSingleThreadFlagForTest(false)
+    setToolViewMode('product')
+  })
+
+  it.each(['/projects', '/projects?status=active#row', '/projects/', '/PROJECTS', '/projects/project-1', '/projects/project%2Fa%20b', '/projects/a/b'])(
+    'a cold start on %s lands on the conversation',
+    async path => {
+      setSingleThreadFlagForTest(true)
+      renderRoutes([path])
+
+      await waitFor(() => expect(where()).toBe('/'))
+      expect(projectsOnScreen()).toBeNull()
+      expect(screen.queryByRole('dialog')).toBeNull()
+    }
+  )
+
+  it.each(['/projects', '/projects/project-1'])(
+    'navigating to %s later (hermes://open, a plugin notification, host.navigate) turns back too',
+    async path => {
+      setSingleThreadFlagForTest(true)
+      renderRoutes(['/chat-1'])
+
+      fireEvent.click(screen.getByRole('button', { name: `Go ${path}` }))
+
+      await waitFor(() => expect(where()).toBe('/'))
+      expect(projectsOnScreen()).toBeNull()
+    }
+  )
+
+  it('history forward onto a project page turns back', async () => {
+    setSingleThreadFlagForTest(true)
+    render(
+      <MemoryRouter initialEntries={['/chat-1', '/projects']} initialIndex={0}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <LocationProbe />
+          <ChatRoutesSurface actions={{ getGateway: () => null } as unknown as WiringActions} />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+    expect(where()).toBe('/chat-1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Forward' }))
+
+    await waitFor(() => expect(where()).toBe('/'))
+    expect(projectsOnScreen()).toBeNull()
+  })
+
+  it('a project drawer over a page that stays closes itself, and takes nobody back to a project on close', async () => {
+    setSingleThreadFlagForTest(true)
+    renderRoutes(['/deliverables', openedFrom('/deliverables', '/projects/project-1')])
+
+    await waitFor(() => expect(where()).toBe('/'))
+    expect(projectsOnScreen()).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('a deliverable opened from a project page before the switch does not put the project page under it', async () => {
+    setSingleThreadFlagForTest(true)
+    renderRoutes(['/projects', openedFrom('/projects', '/deliverables/item-1')])
+
+    await waitFor(() => expect(where()).toBe('/'))
+    expect(projectsOnScreen()).toBeNull()
+  })
+
+  it.each(['/projects', '/projects/project-1'])(
+    'turns back from %s before the sign-in gate: a signed-out window does not sit on a blank page',
+    async path => {
+      setSingleThreadFlagForTest(true)
+      renderRoutes(['/chat-1'])
+      act(() => $authState.set({ ...$authState.get(), status: 'signed-out' }))
+
+      fireEvent.click(screen.getByRole('button', { name: `Go ${path}` }))
+
+      await waitFor(() => expect(where()).toBe('/'))
+    }
+  )
+
+  it.each(['/projects', '/projects/project-1'])(
+    'closes %s when developer mode is switched off or the switch arrives after launch',
+    async path => {
+      setSingleThreadFlagForTest(true)
+      setToolViewMode('technical')
+      renderRoutes([path])
+      expect(await screen.findByText(path === '/projects' ? 'projects-view' : 'project-detail-view')).toBeTruthy()
+
+      act(() => setToolViewMode('product'))
+
+      await waitFor(() => expect(where()).toBe('/'))
+      expect(projectsOnScreen()).toBeNull()
+    }
+  )
+
+  it.each([
+    ['/cron', 'cron-view'],
+    ['/deliverables', 'deliverables-view'],
+    ['/history', 'history-view'],
+    ['/assistant', 'assistant-view'],
+    ['/workflows', 'workflows-view'],
+    ['/deliverables/item-1', 'deliverable-detail-view'],
+    ['/workflow-runs/run-1', 'workflow-run-view']
+  ])('keeps %s', async (path, view) => {
+    setSingleThreadFlagForTest(true)
+    renderRoutes([path])
+
+    expect(await screen.findByText(view)).toBeTruthy()
+    expect(where()).toBe(path)
+  })
+
+  it.each(['/settings', '/profile'])('keeps %s open as an overlay route', async path => {
+    setSingleThreadFlagForTest(true)
+    renderRoutes([path])
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+
+    expect(where()).toBe(path)
+  })
+
+  it('a deliverable opened directly closes onto 交付物, never onto a project page', async () => {
+    setSingleThreadFlagForTest(true)
+    renderRoutes(['/deliverables/item-1'])
+    await screen.findByText('deliverable-detail-view')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    await waitFor(() => expect(where()).toBe('/deliverables'))
+    expect(screen.getByText('deliverables-view')).toBeTruthy()
+  })
+
+  it('a run opened from 连接助手 keeps 连接助手 under it and closes back onto it', async () => {
+    setSingleThreadFlagForTest(true)
+    renderRoutes(['/assistant', openedFrom('/assistant', '/workflow-runs/run-1')])
+    await screen.findByText('workflow-run-view')
+    expect(screen.getByText('assistant-view')).toBeTruthy()
+    expect(screen.queryByText('workflows-view')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    await waitFor(() => expect(where()).toBe('/assistant'))
+  })
+
+  it.each([
+    ['the switch off', false, 'product'],
+    ['developer mode with the switch on', true, 'technical']
+  ] as const)('%s keeps both project routes', async (_label, flag, toolView) => {
+    setSingleThreadFlagForTest(flag)
+    setToolViewMode(toolView)
+    renderRoutes(['/projects'])
+
+    expect(await screen.findByText('projects-view')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Go /projects/project-1' }))
+    expect(await screen.findByText('project-detail-view')).toBeTruthy()
+    expect(where()).toBe('/projects/project-1')
   })
 })
