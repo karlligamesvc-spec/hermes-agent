@@ -626,6 +626,7 @@ export function consumePendingCredentialWarning(): null | string {
 // reason is the line above its buttons, and an empty reason shows none. A sign-in
 // line left over from an earlier attempt must not greet the new one.
 export function requestManagedReSignIn(reason = '') {
+  signedInAwaitingEngine = null
   patch({ managedError: null, managedRuntimeRecovery: null })
   openManagedReSignIn(reason)
 }
@@ -869,6 +870,73 @@ function managedErrorCopy(message: string | undefined): string {
 const SIGN_IN_ENGINE_WAIT_MS = 20_000
 const SIGN_IN_ENGINE_RETRY_MS = 250
 
+// hc-1121: the main process finished this sign-in, but the engine did not answer or
+// was not ready. The login is done, so trying again on the same screen only asks the
+// engine again: another sign-in would mint a new key and restart the engine once
+// more, which is what kept every retry failing. `email` is the address it signed in
+// with, null for the browser; another address on the form is a new sign-in.
+let signedInAwaitingEngine: { email: null | string } | null = null
+
+// The wait, then the end of the sign-in: the error line, or done.
+async function finishSignInOnEngine(ctx: OnboardingContext, isCurrent: () => boolean, email: null | string) {
+  const runtime = await waitForRuntimeReadiness(
+    ctx.requestGateway,
+    { defaultReason: DEFAULT_ONBOARDING_REASON, unknownReady: false },
+    { isCurrent, retryMs: SIGN_IN_ENGINE_RETRY_MS, timeoutMs: SIGN_IN_ENGINE_WAIT_MS }
+  )
+
+  if (!isCurrent()) {return}
+
+  if (!runtime.ready) {
+    console.error(`[managed] signed in, but the local engine is not ready (${runtime.source})`)
+    signedInAwaitingEngine = { email }
+    patch({ managedSubmitting: false, managedError: MANAGED_COPY.engineNotReady })
+
+    return
+  }
+
+  signedInAwaitingEngine = null
+  patch({ managedSubmitting: false })
+  markSignedIn()
+  finishManagedReSignIn()
+  notifyReady('APEX')
+  completeDesktopOnboarding()
+  ctx.onCompleted?.()
+}
+
+// True when this attempt was a retry of a finished sign-in, and has been handled.
+// The main process has to still hold that sign-in: after a sign-out there is nothing
+// to finish, and marking the account signed in would be a lie. Callers test the flag
+// first, so an ordinary sign-in captures its target without yielding.
+async function retryEngineAfterSignIn(ctx: OnboardingContext, email: null | string): Promise<boolean> {
+  const waiting = signedInAwaitingEngine
+
+  if (!waiting || (email !== null && waiting.email !== email)) {return false}
+
+  patch({ managedSubmitting: true, managedError: null, managedRuntimeRecovery: null })
+  const generation = ++flowGeneration
+  const target = { connectionId: getApiRequestConnection(), profile: getApiRequestProfile() }
+
+  const isCurrent = () => generation === flowGeneration && target.connectionId === getApiRequestConnection() &&
+    target.profile === getApiRequestProfile()
+
+  const status = await window.hermesDesktop?.managed?.status?.().catch(() => null)
+
+  if (!status?.signedIn) {
+    signedInAwaitingEngine = null
+
+    return false
+  }
+
+  try {
+    await finishSignInOnEngine(ctx, isCurrent, waiting.email)
+  } finally {
+    if (generation === flowGeneration && !isCurrent()) {patch({ managedSubmitting: false })}
+  }
+
+  return true
+}
+
 // Shared tail for every managed sign-in path (email/password, Google, APEX):
 // given a successful electron result, either degrade to BYOK (no relay key yet),
 // or apply the assignment through the SAME /api/model/set path the BYOK
@@ -876,9 +944,12 @@ const SIGN_IN_ENGINE_RETRY_MS = 250
 async function applyManagedSignInResult(
   res: { assignment?: unknown; hasRelayKey?: boolean; message?: string; ok: boolean; localRuntime?: boolean },
   ctx: OnboardingContext,
-  isCurrent: () => boolean
+  isCurrent: () => boolean,
+  email: null | string = null
 ): Promise<void> {
   if (!isCurrent()) {return}
+
+  signedInAwaitingEngine = null
 
   if (!res.ok) {
     patch({ managedSubmitting: false, managedError: managedErrorCopy(res.message), managedRuntimeRecovery:
@@ -908,27 +979,7 @@ async function applyManagedSignInResult(
 
   if (!isCurrent()) {return}
 
-  const runtime = await waitForRuntimeReadiness(
-    ctx.requestGateway,
-    { defaultReason: DEFAULT_ONBOARDING_REASON, unknownReady: false },
-    { isCurrent, retryMs: SIGN_IN_ENGINE_RETRY_MS, timeoutMs: SIGN_IN_ENGINE_WAIT_MS }
-  )
-
-  if (!isCurrent()) {return}
-
-  if (!runtime.ready) {
-    console.error(`[managed] signed in, but the local engine is not ready (${runtime.source})`)
-    patch({ managedSubmitting: false, managedError: MANAGED_COPY.engineNotReady })
-
-    return
-  }
-
-  patch({ managedSubmitting: false })
-  markSignedIn()
-  finishManagedReSignIn()
-  notifyReady('APEX')
-  completeDesktopOnboarding()
-  ctx.onCompleted?.()
+  await finishSignInOnEngine(ctx, isCurrent, email)
 }
 
 // Sign in to ApexNodes managed LLM (zero-key) with email + password. The electron
@@ -954,6 +1005,8 @@ export async function managedSignIn(email: string, password: string, ctx: Onboar
     return
   }
 
+  if (signedInAwaitingEngine && (await retryEngineAfterSignIn(ctx, trimmedEmail))) {return}
+
   patch({ managedSubmitting: true, managedError: null, managedRuntimeRecovery: null })
   const generation = ++flowGeneration
   const target = { connectionId: getApiRequestConnection(), profile: getApiRequestProfile() }
@@ -963,7 +1016,7 @@ export async function managedSignIn(email: string, password: string, ctx: Onboar
 
   try {
     const res = await bridge.signIn({ email: trimmedEmail, password, target })
-    await applyManagedSignInResult(res, ctx, isCurrent)
+    await applyManagedSignInResult(res, ctx, isCurrent, trimmedEmail)
   } catch (error) {
     // Network/IPC throw — keep it friendly and never leak a raw status body.
     void error
@@ -1029,6 +1082,8 @@ export async function managedBrowserSignIn(provider: 'apex' | 'google', ctx: Onb
     return
   }
 
+  if (signedInAwaitingEngine && (await retryEngineAfterSignIn(ctx, null))) {return}
+
   patch({ managedSubmitting: true, managedError: null, managedRuntimeRecovery: null })
   const generation = ++flowGeneration
   const target = { connectionId: getApiRequestConnection(), profile: getApiRequestProfile() }
@@ -1064,6 +1119,7 @@ export function skipManagedForByok() {
 // being on screen. The caller pairs this with returnToManagedLogin(), which puts
 // the account gate (and with it the login screen) back in front.
 export function exitByokFromLogin() {
+  signedInAwaitingEngine = null
   patch({ byokFromLogin: false, managedError: null, mode: 'oauth', localEndpoint: false, flow: { status: 'idle' } })
 }
 
@@ -1431,6 +1487,7 @@ export async function submitOnboardingCode(ctx: OnboardingContext) {
 
 export function cancelOnboardingFlow() {
   flowGeneration++
+  signedInAwaitingEngine = null
   patch({ managedSubmitting: false })
   clearPoll()
   const sessionId = sessionIdFor($desktopOnboarding.get().flow)
