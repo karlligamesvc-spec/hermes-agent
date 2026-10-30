@@ -235,7 +235,7 @@ export function bundledEnginePin(resourcesPath: string, platform: NodeJS.Platfor
 export async function packagedEngineKeptBack(prepared: Promise<PackagedRuntimeResult | null>, readRelease: () => PackagedRuntimeRelease, hermesHome: string) {
   const result = await prepared.catch(() => null)
 
-  if (result?.status !== 'preserved' || (result.reason !== 'newer-or-unknown' && result.reason !== 'upgrade-failed')) {return null}
+  if (result?.status !== 'preserved' || (result.reason !== 'newer-or-unknown' && result.reason !== 'upgrade-failed' && result.reason !== 'busy')) {return null}
 
   try {
     const release = readRelease()
@@ -357,6 +357,15 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
     ' if not value or not os.path.isabs(value): return False',
     ' candidate=os.path.normcase(os.path.abspath(value))',
     ' return any(candidate == root or candidate.startswith(root+os.sep) for root in roots)',
+    // hc-1117: the engine's own interpreter and bundled tools, as opposed to anything else under its
+    // root, in this version or another one still installed beside it (`versions/<key>/...`).
+    'runtimes=[os.path.join(root,name) for root in roots for name in ("venv",".runtime")]',
+    'versions={os.path.normcase(resolve(os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])),"versions"))) for resolve in (os.path.abspath,os.path.realpath)}',
+    'def own(value):',
+    ' if not value or not os.path.isabs(value): return False',
+    ' candidate=os.path.normcase(os.path.abspath(value))',
+    ' if any(candidate.startswith(top+os.sep) for top in runtimes): return True',
+    ' return any(candidate.startswith(top+os.sep) and candidate[len(top)+1:].split(os.sep)[1:2] in (["venv"],[".runtime"]) for top in versions)',
     'holders=[]',
     'details={}',
     'desktop=int(sys.argv[2])',
@@ -373,7 +382,7 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
     ' except psutil.AccessDenied: continue',
     ' try:',
     '  cmd=p.cmdline()',
-    '  details[str(p.pid)]={"name":p.name(),"ppid":p.ppid(),"exe":p.exe(),"argv":[arg[:160] for arg in cmd[:10]],"engineExe":under(p.exe()) or bool(cmd and under(cmd[0]))}',
+    '  details[str(p.pid)]={"name":p.name(),"ppid":p.ppid(),"exe":p.exe(),"argv":[arg[:160] for arg in cmd[:10]],"engineExe":under(p.exe()) or bool(cmd and under(cmd[0])),"engineRuntime":own(p.exe()) or bool(cmd and own(cmd[0]))}',
     ' except psutil.Error: continue',
     // hc-1094: start time, live parent and nearest ancestors, so a leftover can be told apart from a
     // process someone still runs (engine-holders.ts). Without them the holder is named, never ended.
