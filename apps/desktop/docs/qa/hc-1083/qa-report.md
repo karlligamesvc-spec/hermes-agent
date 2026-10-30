@@ -174,7 +174,7 @@
 | 13 | 低 | 多助手强制关（`APEXNODES_MULTI_BOT=0`）时主引擎仍按上次记下的助手起，APEX 改走池引擎：界面只有 APEX，却多跑一个引擎 | 10-29 b67 `--multi-bot-off` 两次启动；改 `active-profile.json` 也会在启动时被写回 | hc-1115 |
 | 14 | 低 | 生图叠字时引擎用 `uv` 装 Pillow，下载进本机用户的 uv 缓存（测试目录外） | 10-29 L3 | 记录，不改 |
 | 15 | 高（见过 1 轮，每句都复现） | 0.17.68：退出登录状态下重开 App，再登录，一发消息就 401，一直到重启 App。正文和问题 9 一样（「当前 APEX 凭据无效或已失效…」），用户重新登录过，所以更看不懂 | 10-30 x68（单助手）：重新登录 → 没登录就退出（`apex-managed.json` 已没了，`config.yaml` 还留着旧 key `sk-1…cC_f`，问题 10）→ 14:58:33Z 重开，引擎 17163 没登录时起，并恢复了原来的对话 → 15:19:29Z 登录，`config.yaml` 换成 `sk-F…nu6c`，日志「primary backend "default" was started signed out; its new sessions take the relay key from config.yaml」，引擎没重启 → 15:20:18Z 和紧接着的一句都 401（`i3-0.17.68-signout-reopen-signin-401.jpg`，`runs-mac-0.17.68/desktop-log-i3.txt`）→ 15:21:42Z 重启 App 后正常。推断（没改代码验证）：hc-1106 的 `adopt` 分支认为没登录时起的引擎手上没有 key，只盖戳不重启；但恢复的会话已经用 `config.yaml` 里留下的旧 key 建好了客户端。问题 9 里的「主引擎不重启」在这条路上还在。用菜单的「退出登录」走这条路没单独试；步骤上到达的状态相同 | 待协调会话开票。和 hc-1114（退出时清 key）有关，但不一定被它修好：要在 hc-1114 的分支上按这个步骤再走一次 |
-| 16 | 中（2/2） | 0.17.68：就地重新登录成功后，登录表单不关，还报红字「登录成功,但运行时无法连接 APEX 中转服务,请重试」。其实登录成功了，key 已换，引擎已重启，点「稍后再选择提供方」回到对话一切正常。用户看到的是登录失败 | 10-30 x68：16:07:27Z（单助手）、17:02:17Z（多助手）两次都这样（`i3-0.17.68-relogin-form-relay-unreachable.jpg`）。0.17.67 同样的路径直接回到对话，所以是 hc-1106 带来的。推断：登录完成时主引擎正在重启（约 2.5 秒），渲染端紧接着的 `checkRuntime` 没等到它（`store/onboarding.ts` `applyManagedSignInResult`）。fork main `917672ef` 上这段代码还在；hc-1110（#533）换了重新登录的界面，这条路径没在新界面上试过 | 待协调会话开票 |
+| 16 | 中（实机 2/2，本地重现 3/3） | 0.17.68：就地重新登录成功后，登录表单不关，还报红字「登录成功,但运行时无法连接 APEX 中转服务,请重试」。其实登录成功了，key 已换，引擎已重启；红字不会自己消失，重试也没用（每次重试又换一把 key、又重启引擎，同样撞上）。点「稍后再选择提供方」回到对话一切正常。用户看到的是登录失败 | x68：16:07:27Z（单助手）、17:02:17Z（多助手）两次（`i3-0.17.68-relogin-form-relay-unreachable.jpg`）。原因已本地重现并测到（第 11 节末尾）：表单的检查撞在引擎重启的断线窗口上，客户端直接报「Hermes gateway is not connected」。0.17.67 主引擎不重启，所以没有。fork main `c16f8903` 上这段代码没变 | 建议开票（修法见第 11 节） |
 
 ## 7. 工具在实跑中暴露、已修的
 
@@ -233,3 +233,20 @@
 把主引擎放到助手上的办法：`active-profile.json` 写成不带 `_migrated` 的 `{"profile": "apex-bot-2"}`。带 `_migrated` 或文件不存在时，每次启动都按各家目录 `state.db` 的活跃度重新打分（hc-1115 的记录），谁最忙主引擎就跟谁，这轮 APEX 消息最多，所以不手写就落不到助手上。
 
 和 0.17.67 对比（第 2 节 I3）：同样是主引擎跑在助手上、就地重新登录，0.17.67 上主引擎不重启、每句 401；0.17.68 上主引擎重启、正常。
+
+### 问题 16 的原因（本地重现）
+
+x68 已删，而且 desktop.log 本来就不记这个检查的结果，所以这三问是用 0.17.68 同一份代码（`69c1bed570`）在本地跑 e2e 测到的：假账号服务器、假中转，走真的「账号行 → 重新登录 → 填表提交」，记录 WebSocket 帧，并在临时构建里给 `evaluateRuntimeReadiness` 加了一行诊断（没提交）。没有付费调用，也没占设备名额。记录在 `runs-mac-0.17.68/form-repro-trace.txt`、`form-repro-key-lines.txt`；测试脚本和临时补丁在协调会话笔记 `hc-1083-form-repro.spec.ts.txt`、`hc-1083-form-repro-scratch.patch`。
+
+| 问题 | 结论 | 依据 |
+|---|---|---|
+| 红字出现时，前后有没有引擎重启 | 有，每次都是。实机上重启和登录同时发生：16:07:27.047Z 重启、16:07:29.699Z 就绪，16:07:48Z 截到红字；17:02:17.973Z 重启、17:02:20.684Z 就绪，17:02:30Z 截到红字（红字本身不写日志，所以只有截图时间）。本地同样：提交后约 350 毫秒旧连接断开，约 3.3 秒后新引擎起来，红字紧接着出现 | `desktop-log-i3.txt`、`form-repro-trace.txt` |
+| `setup.runtime_check` 是超时、断开，还是真的回了 `ok=False` | **断开，而且没发出去**。三次都是 `took 0 ms … source=fallback setupError=Hermes gateway is not connected runtimeError=Hermes gateway is not connected`，比新连接打开早约 3 毫秒。不是超时，也不是 `ok=False`：引擎没收到这次请求。整个 trace 里引擎答过的 `setup.runtime_check` 全是 `ok:true`，包括约 350 毫秒后 App 自己在新引擎上查的那次；但没人清表单上的红字。和中转无关：本地用的是假中转 | `form-repro-trace.txt` 7289、26473、38594 ms 三行 |
+| 重试能不能好 | **不能**，3/3 还是红字。每次提交都重新签发 key，主引擎的 key 又不一致，又重启，又撞上。等也不会好（15 秒后还在）。只有点「稍后再选择提供方」才能出来，之后对话正常 | 同上；每次提交都有一行 `restarting primary backend` |
+
+为什么 hc-1106 的测试没发现：`e2e/relogin-relay-key.spec.ts` 直接调 `window.hermesDesktop.managed.signIn`，不经过渲染端的 `applyManagedSignInResult` → `checkRuntime`。
+
+修法方向（供开票，这次不动代码）：
+- `applyManagedSignInResult` 在查之前等网关重新连上（有上限）；或者登录已经由主进程确认成功时，传输层失败（`source=fallback`）不算「连不上中转」。
+- 红字文案也说错了原因：这个检查不连中转。
+- 补一条走真表单的 e2e。上面的脚本可以直接改成回归测试。

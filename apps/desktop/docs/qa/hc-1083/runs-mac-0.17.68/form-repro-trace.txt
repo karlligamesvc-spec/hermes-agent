@@ -1,0 +1,64 @@
+    216 ms console.error [hc1083-probe] took 14 ms unknownReady=false ready=true source=runtime_check setupError=null runtimeError=null runtimeOk=true runtimeSaid=
+
+    481 ms ws open ws://127.0.0.1:62093/api/ws?
+    481 ms -> setup.status id=2 on 62093
+    482 ms -> setup.runtime_check id=3 on 62093
+    482 ms -> setup.status id=5 on 62093
+    482 ms -> setup.runtime_check id=6 on 62093
+    483 ms <- setup.status id=2 {"provider_configured":true,"ready":true,}
+    483 ms <- setup.runtime_check id=3 {"ok":true,"provider":"custom","model":"apex-flash",}
+    483 ms console.error [hc1083-probe] took 43 ms unknownReady=undefined ready=true source=runtime_check setupError=null runtimeError=null runtimeOk=true runtimeSaid=
+    490 ms <- setup.status id=5 {"provider_configured":true,"ready":true,}
+    527 ms <- setup.runtime_check id=6 {"ok":true,"provider":"custom","model":"apex-flash",}
+    527 ms console.error [hc1083-probe] took 88 ms unknownReady=false ready=true source=runtime_check setupError=null runtimeError=null runtimeOk=true runtimeSaid=
+   1661 ms -> session.create id=15 on 62093
+   2314 ms <- session.create id=15 {"session_id":"a80b90a5","stored_session_id":"20261030_102519_427c18","message_count":0,"messages":[],"info":{"model":"apex-flash","tools":{},"skills":{},"cwd":"<home>","branch":"","project":null,"l
+   2315 ms -> prompt.submit id=22 on 62093
+   2315 ms <- prompt.submit id=22 {"status":"streaming","turn_id":"abf9639e-6618-4cfd-831f-e992be953726","user_row_id":1}
+   3460 ms first turn answered on key 0; relay calls 10
+   3659 ms === submit 1
+   4013 ms ws close ws://127.0.0.1:62093/api/ws?
+   7289 ms console.error [hc1083-probe] took 0 ms unknownReady=false ready=false source=fallback setupError=Hermes gateway is not connected runtimeError=Hermes gateway is not connected runtimeOk=undefined runtimeSaid=
+   7292 ms ws open ws://127.0.0.1:62158/api/ws?
+   7648 ms -> setup.status id=33 on 62158
+   7648 ms -> setup.runtime_check id=34 on 62158
+   7658 ms -> session.resume id=42 on 62158
+   7677 ms === red after submit 1: true
+   8061 ms <- setup.status id=33 {"provider_configured":true,"ready":true,}
+   8081 ms <- setup.runtime_check id=34 {"ok":true,"provider":"custom","model":"apex-flash",}
+   8081 ms console.error [hc1083-probe] took 447 ms unknownReady=undefined ready=true source=runtime_check setupError=null runtimeError=null runtimeOk=true runtimeSaid=
+   8240 ms <- session.resume id=42 {"session_id":"c5db0655","resumed":"20261030_102519_427c18","message_count":2,"messages":[],"hydrating":true,"info":{"cwd":"<home>","branch":"","project":null,"model":"apex-flash","tools":{},"skills
+  22755 ms === 15 s later, red still shown: true
+  22755 ms === submit 2 (retry)
+  23170 ms ws close ws://127.0.0.1:62158/api/ws?
+  26473 ms console.error [hc1083-probe] took 0 ms unknownReady=false ready=false source=fallback setupError=Hermes gateway is not connected runtimeError=Hermes gateway is not connected runtimeOk=undefined runtimeSaid=
+  26476 ms ws open ws://127.0.0.1:62254/api/ws?
+  26840 ms -> setup.status id=60 on 62254
+  26840 ms -> setup.runtime_check id=61 on 62254
+  26849 ms -> session.resume id=69 on 62254
+  26860 ms === red after submit 2: true
+  27242 ms <- setup.status id=60 {"provider_configured":true,"ready":true,}
+  27266 ms <- setup.runtime_check id=61 {"ok":true,"provider":"custom","model":"apex-flash",}
+  27266 ms console.error [hc1083-probe] took 443 ms unknownReady=undefined ready=true source=runtime_check setupError=null runtimeError=null runtimeOk=true runtimeSaid=
+  27422 ms <- session.resume id=69 {"session_id":"688cce28","resumed":"20261030_102519_427c18","message_count":2,"messages":[],"hydrating":true,"info":{"cwd":"<home>","branch":"","project":null,"model":"apex-flash","tools":{},"skills
+  34931 ms === submit 3 (retry)
+  35324 ms ws close ws://127.0.0.1:62254/api/ws?
+  38594 ms console.error [hc1083-probe] took 0 ms unknownReady=false ready=false source=fallback setupError=Hermes gateway is not connected runtimeError=Hermes gateway is not connected runtimeOk=undefined runtimeSaid=
+  38597 ms ws open ws://127.0.0.1:62296/api/ws?
+  38945 ms -> setup.status id=85 on 62296
+  38945 ms -> setup.runtime_check id=86 on 62296
+  38955 ms -> session.resume id=94 on 62296
+  38965 ms === red after submit 3: true
+  39334 ms <- setup.status id=85 {"provider_configured":true,"ready":true,}
+  39375 ms <- setup.runtime_check id=86 {"ok":true,"provider":"custom","model":"apex-flash",}
+  39375 ms console.error [hc1083-probe] took 445 ms unknownReady=undefined ready=true source=runtime_check setupError=null runtimeError=null runtimeOk=true runtimeSaid=
+  39534 ms <- session.resume id=94 {"session_id":"a823b436","resumed":"20261030_102519_427c18","message_count":2,"messages":[],"hydrating":true,"info":{"cwd":"<home>","branch":"","project":null,"model":"apex-flash","tools":{},"skills
+  47072 ms -> setup.status id=107 on 62296
+  47072 ms -> setup.runtime_check id=108 on 62296
+  47073 ms === dismissed with 稍后再选择提供方
+  47079 ms <- setup.status id=107 {"provider_configured":true,"ready":true,}
+  47080 ms <- setup.runtime_check id=108 {"ok":true,"provider":"custom","model":"apex-flash",}
+  47080 ms console.error [hc1083-probe] took 10 ms unknownReady=false ready=true source=runtime_check setupError=null runtimeError=null runtimeOk=true runtimeSaid=
+  47369 ms -> prompt.submit id=110 on 62296
+  47385 ms <- prompt.submit id=110 {"status":"streaming","turn_id":"198913da-d8c9-4841-aede-3c4975a869ea","user_row_id":3}
+  47887 ms === second turn answered
