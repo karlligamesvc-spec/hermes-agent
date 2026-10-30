@@ -1,0 +1,43 @@
+[2026-10-29T15:46:59.528Z] [hermes] [pool-limits] loaded from <test-dir>/home/userdata/pool-limits.json: maxBackends=2, idleMs=600000
+[2026-10-29T15:46:59.531Z] [hermes] [client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)
+[2026-10-29T15:46:59.531Z] [hermes] [client-config] APEX_HYPIHUB_ACTIVE=1 (desktop_features.hypihub_apex)
+[2026-10-29T15:46:59.531Z] [hermes] [client-config] APEX_MULTI_BOT_ACTIVE=1 (desktop_features.multi_bot)
+[2026-10-29T15:46:59.573Z] [hermes] [soul] default: APEX default in place; profiles: 3 unchanged
+[2026-10-29T15:46:59.823Z] [hermes] [shell-update] enabled: feed=https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-arm64
+[2026-10-29T15:46:59.860Z] [hermes] [env] merged login-shell PATH into process.env for backend spawn
+[2026-10-29T15:47:00.863Z] [hermes] [client-config] stored platform config v7 (boot)
+[2026-10-29T15:47:01.890Z] [hermes] [platform-skills] manifest 176858b8d69b unchanged (boot)
+[2026-10-29T15:47:02.477Z] [hermes] [client-config] applied v7 (boot): no-op; preserved user preferences: timezone, agent.image_input_mode, display.show_reasoning
+[2026-10-29T15:47:02.549Z] [hermes] [backend] `serve` supported for Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-29T15:47:02.550Z] [hermes] Starting Hermes backend for profile "default" via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-29T15:47:02.551Z] [hermes] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-29T15:47:02.553Z] [hermes] [platform-tools] credential injected; gateway=https://api.apex-nodes.com legacy=https://api.apex-nodes.com/api/v1
+[2026-10-29T15:47:02.555Z] [hermes] [platform-tools] credential injected; gateway=https://api.apex-nodes.com legacy=https://api.apex-nodes.com/api/v1
+[2026-10-29T15:47:05.000Z] [hermes] HERMES_BACKEND_READY port=55031
+[2026-10-29T15:47:05.003Z] [hermes] HERMES_BACKEND_READY port=55030
+[2026-10-29T15:47:31.034Z] [hermes] [runtime-latest] resolved admin latest: version=v2026.10.13-fork.f043a490 key=f043a490e0f8895425a20a69063cf56b2d7247d2 (commit=f043a490e0f8, branch=-)
+[2026-10-29T15:47:59.832Z] [hermes] [shell-update] Checking for update
+[2026-10-29T15:48:01.144Z] [hermes] [shell-update] Update for version 0.17.67 is not available (latest version: 0.17.67, downgrade is disallowed).
+[2026-10-29T15:53:32.551Z] [hermes] [config-guard] restored missing block(s): managed-key(model custom_providers[0]) (managed-runtime-complete)
+[2026-10-29T15:53:32.552Z] [hermes] [config-guard] restored missing block(s): managed-key(model custom_providers[0]) (managed-runtime-complete; profile apex-bot-2)
+[2026-10-29T15:53:32.553Z] [hermes] [config-guard] restored missing block(s): managed-key(model custom_providers[0]) (managed-runtime-complete; profile apex-bot-4)
+[2026-10-29T15:53:32.568Z] [hermes] [apexnodes] restarting profile backend "default" for the refreshed relay key (managed-runtime-complete)
+[2026-10-29T15:53:32.674Z] [hermes] Hermes backend for profile "default" exited (SIGTERM)
+[2026-10-29T15:53:32.697Z] [hermes] [client-config] v7 unchanged (sign-in)
+[2026-10-29T15:53:32.952Z] [hermes] [platform-skills] manifest 176858b8d69b unchanged (sign-in)
+[2026-10-29T15:54:33.455Z] [hermes] ⚠️  Attempt 1/3, not retryable failed: HTTP 401: 当前 APEX 凭据无效或已失效。请在正在使用的 APEX 客户端重新登录或修复连接，然后重试。
+[2026-10-29T15:54:33.455Z] [hermes] ❌ custom rejected the request and retrying won't help: HTTP 401: 当前 APEX 凭据无效或已失效。请在正在使用的 APEX 客户端重新登录或修复连接，然后重试。
+[2026-10-29T15:54:33.456Z] [hermes] 💡 Your API key was rejected by the provider. Check:
+[2026-10-29T15:54:33.456Z] [hermes]       • Is the key valid? Run: hermes setup
+[2026-10-29T15:54:33.456Z] [hermes] • Does your account have access to apex-flash?
+[2026-10-29T15:55:50.029Z] [hermes] ⚠️  Attempt 1/3, not retryable failed: HTTP 401: 当前 APEX 凭据无效或已失效。请在正在使用的 APEX 客户端重新登录或修复连接，然后重试。
+[2026-10-29T15:55:50.030Z] [hermes] ❌ custom rejected the request and retrying won't help: HTTP 401: 当前 APEX 凭据无效或已失效。请在正在使用的 APEX 客户端重新登录或修复连接，然后重试。
+[2026-10-29T15:55:50.030Z] [hermes] 💡 Your API key was rejected by the provider. Check:
+[2026-10-29T15:55:50.030Z] [hermes] • Is the key valid? Run: hermes setup
+[2026-10-29T15:55:50.030Z] [hermes]       • Does your account have access to apex-flash?
+[2026-10-29T15:56:12.319Z] [hermes] Starting Hermes backend for profile "default" via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-29T15:56:12.319Z] [hermes] [platform-tools] credential injected; gateway=https://api.apex-nodes.com legacy=https://api.apex-nodes.com/api/v1
+[2026-10-29T15:56:14.470Z] [hermes] HERMES_BACKEND_READY port=56758
+[2026-10-29T19:05:10.387Z] [hermes] Starting Hermes backend for profile "apex-bot-2" via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>/home/hermes/hermes-agent/venv)
+[2026-10-29T19:05:10.388Z] [hermes] [platform-tools] credential injected; gateway=https://api.apex-nodes.com legacy=https://api.apex-nodes.com/api/v1
+[2026-10-29T19:05:12.668Z] [hermes] HERMES_BACKEND_READY port=54950
