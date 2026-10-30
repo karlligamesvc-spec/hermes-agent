@@ -5,7 +5,7 @@ import { getApiRequestConnection, getApiRequestProfile, setApiRequestConnection,
 import { I18nProvider } from '@/i18n/context'
 import { $authState, markSignedIn, refreshChangedAccount, signOutAccount } from '@/store/auth'
 import { $desktopUpdateProgress } from '@/store/desktop-update'
-import { $desktopOnboarding, cancelOnboardingFlow, managedBrowserSignIn, managedDeepLinkSignIn, managedSignIn } from '@/store/onboarding'
+import { $desktopOnboarding, cancelOnboardingFlow, managedBrowserSignIn, managedDeepLinkSignIn, managedSignIn, requestManagedReSignIn } from '@/store/onboarding'
 import { $runtimeUpdateCheck, $runtimeUpdateChecking, $runtimeVersion } from '@/store/runtime-update'
 import { $shellUpdate } from '@/store/shell-update'
 
@@ -287,5 +287,112 @@ describe.each(['email', 'browser', 'deep link'])('a %s sign-in while the engine 
 
     expect($desktopOnboarding.get().managedError).toBe('登录成功,但这台电脑上的引擎还没准备好,请稍后重试')
     expect(requestGateway.mock.calls.filter(([method]) => method === 'setup.runtime_check')).toHaveLength(1)
+  })
+})
+
+// hc-1121: M7's retries each minted a key and restarted the engine, and so hit the same window again.
+describe('trying again after a finished sign-in whose engine was not ready', () => {
+  const ENGINE_NOT_READY = '登录成功,但这台电脑上的引擎还没准备好,请稍后重试'
+
+  function signedInBridge(signedIn: () => boolean = () => true) {
+    const native = vi.fn(async () => ({ ok: true, hasRelayKey: true, assignment: { scope: 'main', provider: 'custom',
+      model: 'fixture-model', base_url: 'http://fixture.invalid/v1', api_key: 'fixture-key' } }))
+
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: {
+      managed: { signIn: native, browserSignIn: native, deepLinkSignIn: native,
+        status: async () => ({ enabled: true, signedIn: signedIn(), accountId: 'fixture-account', email: 'fixture@example.invalid' }) },
+      api: vi.fn(async () => ({ ok: true }))
+    } })
+
+    return native
+  }
+
+  const engine = (ok: boolean) => ({
+    onCompleted: vi.fn(),
+    requestGateway: vi.fn(async (method: string) => (method === 'setup.status' ? { provider_configured: ok } : { ok })) as never
+  })
+
+  async function signedInButEngineNotReady(signIn: (context: ReturnType<typeof engine>) => Promise<unknown>) {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    await signIn(engine(false))
+    expect($desktopOnboarding.get().managedError).toBe(ENGINE_NOT_READY)
+  }
+
+  const browser = (context: ReturnType<typeof engine>) => managedBrowserSignIn('apex', context)
+
+  it('asks the engine again, with no new sign-in, and finishes once it is ready', async () => {
+    const native = signedInBridge()
+    await signedInButEngineNotReady(browser)
+
+    const ready = engine(true)
+    await browser(ready)
+
+    expect(native).toHaveBeenCalledOnce()
+    expect($desktopOnboarding.get()).toMatchObject({ managedError: null, managedSubmitting: false })
+    expect(ready.onCompleted).toHaveBeenCalledOnce()
+  })
+
+  it('says the same thing if the engine is still not ready, still with no new sign-in', async () => {
+    const native = signedInBridge()
+    await signedInButEngineNotReady(browser)
+
+    const notYet = engine(false)
+    await browser(notYet)
+
+    expect(native).toHaveBeenCalledOnce()
+    expect($desktopOnboarding.get()).toMatchObject({ managedError: ENGINE_NOT_READY, managedSubmitting: false })
+    expect(notYet.onCompleted).not.toHaveBeenCalled()
+  })
+
+  it('a sign-out in between means there is nothing to finish: it signs in for real', async () => {
+    let signedIn = true
+    const native = signedInBridge(() => signedIn)
+    await signedInButEngineNotReady(browser)
+
+    signedIn = false
+    await browser(engine(true))
+
+    expect(native).toHaveBeenCalledTimes(2)
+  })
+
+  it('a new request for the login screen starts over', async () => {
+    const native = signedInBridge()
+    await signedInButEngineNotReady(browser)
+
+    requestManagedReSignIn('')
+    await browser(engine(true))
+
+    expect(native).toHaveBeenCalledTimes(2)
+  })
+
+  it('the form: the same address asks the engine again, another address is a new sign-in', async () => {
+    const native = signedInBridge()
+    await signedInButEngineNotReady(context => managedSignIn('fixture@example.invalid', 'fixture-password', context))
+
+    await managedSignIn('fixture@example.invalid', 'fixture-password', engine(false))
+    expect(native).toHaveBeenCalledOnce()
+
+    await managedSignIn('someone-else@example.invalid', 'fixture-password', engine(true))
+    expect(native).toHaveBeenCalledTimes(2)
+  })
+
+  it('a new sign-in that fails leaves nothing to retry', async () => {
+    const native = signedInBridge()
+    await signedInButEngineNotReady(browser)
+
+    native.mockResolvedValueOnce({ ok: false, message: 'INVALID_CREDENTIALS' } as never)
+    await managedDeepLinkSignIn('fixture-code', engine(true))
+    await browser(engine(true))
+
+    expect(native).toHaveBeenCalledTimes(3)
+  })
+
+  it('a link from the web is always a new sign-in: it carries its own login', async () => {
+    const native = signedInBridge()
+    await signedInButEngineNotReady(browser)
+
+    await managedDeepLinkSignIn('fixture-code', engine(true))
+
+    expect(native).toHaveBeenCalledTimes(2)
   })
 })
