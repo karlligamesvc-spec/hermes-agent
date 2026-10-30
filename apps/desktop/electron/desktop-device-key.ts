@@ -42,8 +42,26 @@ function provisionKeyRevokeUrl(provisionKeyUrl: string) {
 
 function requireRevokedDeviceKey(value: unknown) {
   if (!value || typeof value !== 'object' || (value as { revoked?: unknown }).revoked !== true) {
-    throw new Error('Desktop relay key was not revoked.')
+    throw Object.assign(new Error('Desktop relay key was not revoked.'), { code: 'DESKTOP_KEY_NOT_REVOKED' })
   }
+}
+
+/**
+ * A failure for a log line: the HTTP status, never a response body that could
+ * echo a credential; otherwise the error code or message with `secrets` cut out.
+ */
+function signOutFailureReason(error: any, secrets: Array<null | string | undefined> = []): string {
+  if (Number(error?.statusCode) > 0) {
+    return `HTTP ${Number(error.statusCode)}`
+  }
+
+  let reason = String(error?.code || error?.message || error || 'error')
+
+  for (const secret of secrets.map(value => String(value || '').trim()).filter(Boolean)) {
+    reason = reason.split(secret).join('…')
+  }
+
+  return reason.slice(0, 120)
 }
 
 interface SignOutManagedDeviceInput {
@@ -55,9 +73,59 @@ interface SignOutManagedDeviceInput {
   revoke: (body: { device_instance_id: string; legacy_key_hash?: string }) => Promise<void>
   isCurrent?: () => boolean
   prepare?: () => Promise<void>
+  /** hc-1114: one desktop.log line per sign-out, whatever the outcome; never the key or the login token. */
+  log?: (line: string) => void
+  /** hc-1114: once the server revoked the key and the credential is gone (apex-sign-out.ts); returns the log detail. */
+  afterClear?: () => string
 }
 
+/** Revoke, clear, then say what happened: the line hc-1083 found missing from desktop.log. */
 async function signOutManagedDevice(input: SignOutManagedDeviceInput) {
+  let revoked = false
+  let revokeError: unknown = null
+
+  const result = await revokeThenClear({
+    ...input,
+    revoke: async body => {
+      try {
+        await input.revoke(body)
+        revoked = true
+      } catch (error) {
+        revokeError = error
+        throw error
+      }
+    }
+  })
+
+  if (!result.ok) {
+    const reason = revokeError ? signOutFailureReason(revokeError, [input.managedKey, input.accessToken]) : result.message
+    input.log?.(`[managed] sign-out failed (${reason}); the local credential stays so it can be retried`)
+
+    return result
+  }
+
+  if (!revoked) {
+    input.log?.(String(input.envKey || '').trim()
+      ? '[managed] signed out: the stored credential is deleted; the relay key comes from APEXNODES_RELAY_KEY, so nothing was revoked'
+      : '[managed] signed out: no credential was stored')
+
+    return result
+  }
+
+  let detail = ''
+
+  try {
+    detail = input.afterClear?.() || ''
+  } catch (error) {
+    detail = `local clean-up failed (${signOutFailureReason(error, [input.managedKey, input.accessToken])})`
+  }
+
+  input.log?.(`[managed] signed out: the server revoked this computer's relay key and the stored credential is deleted${detail ? `; ${detail}` : ''}`)
+
+  return result
+}
+
+async function revokeThenClear(input: SignOutManagedDeviceInput) {
   const managedKey = String(input.managedKey || '').trim()
   const envKey = String(input.envKey || '').trim()
   const isCurrent = input.isCurrent || (() => true)
@@ -99,5 +167,6 @@ export {
   provisionKeyRevokeUrl,
   requireRevokedDeviceKey,
   revokeDeviceBody,
+  signOutFailureReason,
   signOutManagedDevice
 }
