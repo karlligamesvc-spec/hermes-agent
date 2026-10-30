@@ -539,6 +539,7 @@ import {
   tagRegistrySessionResponse
 } from './profile-session-routing'
 import { createQuickEntryShortcut, quickEntryWindowBounds, sanitizeQuickEntrySettings } from './quick-entry'
+import { createQuickEntryRelay } from './quick-entry-relay'
 import { type ActiveWork, mergeActiveWork, normalizeActiveWork } from './quit-guard'
 import { backendQuitNeedsWait, createQuitTeardownCoordinator } from './quit-teardown'
 import * as remoteLifecycle from './remote-lifecycle'
@@ -14846,13 +14847,21 @@ function closeHudWindow() {
 // swallowed: a chord another app already owns comes back as `error: 'taken'`.
 const QUICK_ENTRY_CONFIG_PATH = path.join(app.getPath('userData'), 'quick-entry.json')
 let quickEntryWindow = null
-let quickEntryLastState = null
+
+// hc-1113: every submitted line is answered (delivered, or back in the window with why) and logged.
+const quickEntryRelay = createQuickEntryRelay({
+  log: line => rememberLog(line),
+  primary: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null),
+  quick: () => (quickEntryWindow && !quickEntryWindow.isDestroyed() ? quickEntryWindow.webContents : null),
+  hideQuick: () => hideQuickEntryWindow(),
+  showQuick: () => showQuickEntryWindow()
+})
 
 function readQuickEntrySettings() {
   try {
     return sanitizeQuickEntrySettings(JSON.parse(fs.readFileSync(QUICK_ENTRY_CONFIG_PATH, 'utf8')))
   } catch {
-    return sanitizeQuickEntrySettings({ enabled: false })
+    return sanitizeQuickEntrySettings(null)
   }
 }
 
@@ -14933,11 +14942,7 @@ function spawnQuickEntryWindow() {
       quickEntryWindow = null
     }
   })
-  win.webContents.on('did-finish-load', () => {
-    if (!win.isDestroyed() && quickEntryLastState) {
-      win.webContents.send('hermes:quick-entry:state', quickEntryLastState)
-    }
-  })
+  win.webContents.on('did-finish-load', () => !win.isDestroyed() && quickEntryRelay.replay(win.webContents))
 
   attachRendererConsoleCapture(win, 'quick-entry', rememberLog)
   loadWindowUrl(win, quickEntryUrl(), 'Quick entry')
@@ -14974,7 +14979,7 @@ function showQuickEntryWindow() {
   repositionQuickEntryWindow(quickEntryWindow)
   quickEntryWindow.show()
   quickEntryWindow.focus()
-  quickEntryWindow.webContents.send('hermes:quick-entry:shown')
+  quickEntryRelay.shown(quickEntryWindow.webContents)
 }
 
 function hideQuickEntryWindow() {
@@ -17612,27 +17617,9 @@ ipcMain.handle('hermes:quick-entry:settings:set', async (_event, patch) => {
   return applyQuickEntrySettings(next)
 })
 
-ipcMain.on('hermes:quick-entry:submit', (_event, payload) => {
-  hideQuickEntryWindow()
-  const text = typeof payload?.text === 'string' ? payload.text.trim() : ''
-
-  if (!text || !mainWindow || mainWindow.isDestroyed()) {
-    return
-  }
-
-  mainWindow.webContents.send('hermes:quick-entry:submit', {
-    target: typeof payload?.target === 'string' && payload.target ? payload.target : 'current',
-    text
-  })
-})
-
-ipcMain.on('hermes:quick-entry:state', (_event, payload) => {
-  quickEntryLastState = payload ?? null
-
-  if (quickEntryWindow && !quickEntryWindow.isDestroyed()) {
-    quickEntryWindow.webContents.send('hermes:quick-entry:state', payload)
-  }
-})
+ipcMain.on('hermes:quick-entry:submit', (_event, payload) => quickEntryRelay.submit(payload))
+ipcMain.on('hermes:quick-entry:receipt', (_event, receipt) => quickEntryRelay.receipt(receipt))
+ipcMain.on('hermes:quick-entry:state', (_event, payload) => quickEntryRelay.state(payload))
 
 ipcMain.on('hermes:quick-entry:dismiss', () => hideQuickEntryWindow())
 
