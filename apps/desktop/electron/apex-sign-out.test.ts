@@ -241,6 +241,12 @@ describe('after a sign-out the server confirmed', () => {
       'config.yaml',
       managedModelConfigYaml({ default: MODEL, provider: 'custom', base_url: custom, api_key: KEY })
     )
+    // An older key at each endpoint: only the anchors of that endpoint can find it.
+    put(
+      root,
+      'backups/config/config.yaml.good.20261020-000000',
+      managedModelConfigYaml({ default: MODEL, provider: 'custom', base_url: custom, api_key: ROTATED })
+    )
     put(root, 'backups/config/config.yaml.good.20261001-000000', seeded(ROTATED))
     const restarts: string[] = []
 
@@ -254,7 +260,7 @@ describe('after a sign-out the server confirmed', () => {
     assert.deepEqual(filesHolding(root, KEY), [])
     assert.deepEqual(filesHolding(root, ROTATED), [])
     assert.deepEqual(restarts, ['sign-out'])
-    assert.equal(detail, 'relay key removed from 2 local file(s); engines still on it restart once idle')
+    assert.equal(detail, 'relay key removed from 3 local file(s); engines still on it restart once idle')
   })
 })
 
