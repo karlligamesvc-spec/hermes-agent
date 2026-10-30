@@ -187,6 +187,12 @@ def test_a_moved_cn_im_row_keeps_upstream_words_and_says_so(caplog):
 
 # ---- applying ---------------------------------------------------------------------------------------------------
 
+def test_the_plugin_applies_the_seam():
+    from tests.apex_overlay.conftest import run_plugin_register_with_stubbed_seams
+
+    assert "upstream_copy" in run_plugin_register_with_stubbed_seams("apex_overlay_plugin_hc1116")
+
+
 @pytest.mark.parametrize("environment", [{}, {"APEX_SINGLE_THREAD_ACTIVE": "0"}, {"HERMES_MANAGED_RUNTIME": "0"}])
 def test_off_an_apex_surface_nothing_is_registered_or_patched(monkeypatch, environment):
     for name, value in environment.items():
