@@ -1,0 +1,29 @@
+{
+  "linked": {
+    "page": "personalization-view",
+    "rail": [
+      "*config:personalization",
+      "config:memory",
+      "config:voice",
+      "notifications",
+      "config:appearance",
+      "im",
+      "usage",
+      "config:model",
+      "providers",
+      "about"
+    ]
+  },
+  "rail": [
+    "*config:personalization",
+    "config:memory",
+    "config:voice",
+    "notifications",
+    "config:appearance",
+    "im",
+    "usage",
+    "config:model",
+    "providers",
+    "about"
+  ]
+}
