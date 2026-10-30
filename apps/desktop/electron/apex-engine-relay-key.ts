@@ -23,8 +23,13 @@
  * key), how to ask whether it may stop without cutting off a turn, and how to
  * restart it. After any key sync, and when the relay accepts the stored key on
  * a 401, the holders on another key restart once idle. A busy one is asked
- * again every 30 s until it is idle, its successor runs on the new key, or the
- * user signed out.
+ * again every 30 s until it is idle or its successor runs on the new key.
+ *
+ * Signed out (hc-1114), "another key" is any key: the server has revoked it,
+ * and a process that keeps it still holds a credential on this computer. So
+ * after a sign-out every holder spawned with a key restarts once idle, onto
+ * none (a pooled engine just stops), and a wait that began before the
+ * sign-out goes on instead of ending.
  *
  * Idle means: an engine's retirement fence commits (askPoolEngineToRetire, the
  * hc-1080 reaper's check); the messaging gateway has no fence, so its
@@ -268,12 +273,8 @@ export class StaleRelayKeyRestarts {
       this.retries = 0
     }
 
-    // Signed out: there is no key to move to.
-    if (!key) {
-      return result
-    }
-
-    const current = maskRelayKey(key)
+    // Signed out: every holder still on a key moves onto none (hc-1114).
+    const current = key ? maskRelayKey(key) : ''
 
     for (const holder of this.deps.holders().filter(candidate => candidate.stamp !== current)) {
       if (!holder.stamp && holder.adopt) {
@@ -304,7 +305,11 @@ export class StaleRelayKeyRestarts {
         continue
       }
 
-      this.deps.log(`[apexnodes] restarting ${holder.label} for the refreshed relay key (${reason}; ${verdict.reason})`)
+      this.deps.log(
+        key
+          ? `[apexnodes] restarting ${holder.label} for the refreshed relay key (${reason}; ${verdict.reason})`
+          : `[apexnodes] restarting ${holder.label} so it no longer holds the revoked relay key (${reason}; ${verdict.reason})`
+      )
 
       try {
         await holder.restart()

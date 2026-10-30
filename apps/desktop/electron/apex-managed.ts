@@ -41,7 +41,7 @@
  * server stays the source of truth for routing; the local DEFAULT_* constants
  * are only a fallback for display/seed when no response is on hand. If the
  * endpoint isn't reachable (not deployed, network error),
- * `resolveManagedRelayCredential` returns '' and the desktop transparently
+ * `resolveManagedConfig().key` is '' and the desktop transparently
  * falls back to the BYOK onboarding (no regression).
  */
 
@@ -1319,7 +1319,7 @@ function isLoginStateTruthEnabled(env: any = {}) {
  * (server is the source of truth); the env/DEFAULT_* fallback is only for the
  * boot seed before we hold a response. Throws on a missing key — a managed block
  * without a credential would 401 every request, which is worse than falling back
- * to BYOK; callers gate on `resolveManagedRelayCredential` first.
+ * to BYOK; callers gate on `resolveManagedConfig().key` first.
  *
  * The written model id is `MANAGED_MODEL_DISPLAY` (the Flash tier alias,
  * env-overridable), NEVER a raw routed id — the raw `deepseek-v4-pro` collides
