@@ -165,6 +165,13 @@ export function loadMultiBotFlag(): Promise<boolean> {
   return reading
 }
 
+/** hc-1127: a config that landed after this window's read. The next read asks main again. */
+export function settleMultiBotFlagFrom(state: DesktopClientConfigState): void {
+  reading = null
+  settle(multiBotSwitchFrom(state))
+  $multiBotMax.set(multiBotMaxFrom(state.payload))
+}
+
 /** Tests only: forget the read and set the switch. */
 export function setMultiBotFlagForTest(on: boolean): void {
   reading = null

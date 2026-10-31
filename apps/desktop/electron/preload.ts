@@ -432,7 +432,15 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // config (no network). Application happens in the MAIN process pre-gateway
   // (main.cjs applyClientConfigToRuntime); the renderer no longer applies.
   clientConfig: {
-    get: () => ipcRenderer.invoke('hermes:clientConfig:get')
+    get: () => ipcRenderer.invoke('hermes:clientConfig:get'),
+    // hc-1127: a launch that started with nothing cached, when its first config
+    // lands after the window opened. Never fires on an install with a cache.
+    onArrived: callback => {
+      const listener = (_event, state) => callback(state)
+      ipcRenderer.on('hermes:clientConfig:arrived', listener)
+
+      return () => ipcRenderer.removeListener('hermes:clientConfig:arrived', listener)
+    }
   },
   // Continuous auth gate: main broadcasts when a backend call returns 401
   // (login lost) or 403 account_disabled (account abnormal). The renderer

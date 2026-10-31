@@ -109,6 +109,12 @@ export function loadMultiBotHandoffFlag(): Promise<boolean> {
   return readingFlag
 }
 
+/** hc-1127: a config that landed after this window's read. The next read asks main again. */
+export function settleMultiBotHandoffFlagFrom(state: DesktopClientConfigState): void {
+  readingFlag = null
+  settleFlag(multiBotHandoffSwitchFrom(state))
+}
+
 /** Tests only: forget the read and set the switch. */
 export function setMultiBotHandoffFlagForTest(on: boolean): void {
   readingFlag = null
