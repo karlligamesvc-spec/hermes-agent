@@ -357,6 +357,37 @@ describe('hc-1061 the account menu (twin of AccountPanel’s)', () => {
     expect(items).toEqual(expected)
   })
 
+  // hc-1121: AccountPanel stays mounted behind the login screen, so an open menu came back with the next sign-in.
+  it.each([
+    ['AccountPanel', () =>
+      render(
+        <MemoryRouter>
+          <I18nProvider configClient={null} initialLocale="zh">
+            <AccountPanel businessChrome onNavigateBusiness={noop} />
+          </I18nProvider>
+        </MemoryRouter>
+      )],
+    ['the single-thread row', () => renderSidebar()]
+  ])('%s: signing out and back in leaves the menu closed', async (_name, mount) => {
+    const signedIn = $authState.get()
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { managed: { signOut: async () => ({ ok: true }) } } })
+
+    try {
+      mount()
+      await menuItems(screen.getByRole('button', { name: '打开账户菜单: 小满' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: '退出登录' }))
+      await waitFor(() => expect($authState.get().status).toBe('signed-out'))
+
+      act(() => $authState.set(signedIn))
+
+      await screen.findByRole('button', { name: '打开账户菜单: 小满' })
+      expect(screen.queryByRole('menuitem', { name: '退出登录' })).toBeNull()
+    } finally {
+      // @ts-expect-error — remove the injected test bridge.
+      delete window.hermesDesktop
+    }
+  })
+
   it('pins the menu item by item: AccountPanel’s list with 更早的对话, nothing else (hc-1070, hc-1123)', async () => {
     const onNavigate = vi.fn()
     renderSidebar({ onNavigate })
