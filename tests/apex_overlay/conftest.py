@@ -67,6 +67,8 @@ _SEAM_MODULES = (
     "vision_answer",
     # hc-1103 APEX identity, cloud help line and /version on APEX surfaces.
     "apex_identity",
+    # hc-1116 upstream wording (first-contact /help, Hermes in notices) on APEX surfaces.
+    "upstream_copy",
 )
 
 

@@ -11,6 +11,7 @@ import { useI18n } from '@/i18n'
 import { formatBusinessDayTime } from '@/lib/time'
 
 import { deliverableDetailRoute, routeDrawerNavigationState } from '../../routes'
+import { useDeliverablesWords } from '../../single-thread/product-words'
 import type { WorkflowDeliverable } from '../api/types'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { WorkflowRefreshNotice } from '../components/workflow-refresh-notice'
@@ -45,8 +46,8 @@ function deliverableSummary(item: WorkflowDeliverable): string {
 }
 
 export function DeliverablesView() {
-  const { locale, t } = useI18n()
-  const copy = t.businessWorkspace.workflowDomain.deliverables
+  const { locale } = useI18n()
+  const copy = useDeliverablesWords()
   const location = useLocation()
   const navigate = useNavigate()
   const [filter, setFilter] = useState<DeliverableFilter>('all')

@@ -14,7 +14,7 @@ import { useQuickEntryBridge } from '@/app/contrib/hooks/use-quick-entry-bridge'
 import { QuickEntryApp } from '@/app/quick-entry/quick-entry-app'
 import { SettingsSurfaceHeader } from '@/app/settings/settings-multi-bot'
 import { paletteSessionTitle } from '@/app/single-thread/bot-names'
-import { BOT_SWITCH_WAIT_MS, holdUntilBotSwitchLands } from '@/app/single-thread/quick-entry'
+import { BOT_SWITCH_WAIT_MS, botSwitchSettled } from '@/app/single-thread/quick-entry'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
 import { QUICK_ENTRY_ASSISTANT_KEY, QUICK_ENTRY_LOCALE_KEY, rememberQuickEntryAssistant } from '@/i18n/quick-entry'
 import { $mainThread, noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
@@ -109,62 +109,99 @@ describe('hc-1077 the quick-entry window names the assistant a capture reaches',
   })
 })
 
-describe('hc-1077 a capture made while a switch is landing waits for it', () => {
-  it('goes now with one assistant, or when no switch is pending', () => {
-    const deliver = vi.fn()
+describe('hc-1113 the main window tells the quick window which assistant is on screen', () => {
+  function pushes() {
+    const pushState = vi.fn()
 
-    expect(holdUntilBotSwitchLands(deliver)).toBe(false)
+    ;(window as unknown as { hermesDesktop?: unknown }).hermesDesktop = {
+      quickEntry: { onSubmit: () => () => {}, pushState }
+    }
+
+    function Bridge() {
+      useQuickEntryBridge({ startFreshSessionDraft: vi.fn(), submitText: vi.fn() })
+
+      return null
+    }
+
+    render(
+      <I18nProvider configClient={null} initialLocale="zh">
+        <Bridge />
+      </I18nProvider>
+    )
+
+    return () => pushState.mock.calls.at(-1)?.[0] as QuickEntryStatePush
+  }
+
+  it('with one assistant the push names none, exactly as before', () => {
+    const last = pushes()
+
+    expect(Object.keys(last()).sort()).toEqual(['connected', 'sessions'])
+  })
+
+  it('several on: the push names the one on screen, and a switch pushes again with the new one', async () => {
+    severalOn()
+    noteMainThreadClaimed('default', 'apex-root')
+    const last = pushes()
+
+    expect(last().assistant).toEqual({ name: '小A', profile: 'default' })
+
+    await act(async () => $activeGatewayProfile.set('writer'))
+
+    expect(last().assistant).toEqual({ name: '小红书文案', profile: 'writer' })
+  })
+})
+
+describe('hc-1077 a capture made while a switch is landing waits for it', () => {
+  it('goes now with one assistant, or when no switch is pending', async () => {
+    await expect(botSwitchSettled(null)).resolves.toBe(true)
 
     severalOn()
     noteMainThreadClaimed('default', 'apex-root')
 
-    expect(holdUntilBotSwitchLands(deliver)).toBe(false)
-    expect(deliver).not.toHaveBeenCalled()
+    await expect(botSwitchSettled(null)).resolves.toBe(true)
   })
 
-  it('mid-switch: held until the new assistant’s thread is on hand, then delivered once', () => {
+  it('mid-switch: settles once the new assistant’s thread is on hand', async () => {
     severalOn()
     noteMainThreadClaimed('default', 'apex-root')
     $botIntent.set('writer')
 
-    const deliver = vi.fn()
-
-    expect(holdUntilBotSwitchLands(deliver)).toBe(true)
+    let landed: boolean | null = null
+    void botSwitchSettled(null).then(value => (landed = value))
 
     // The order openBot produces: the engine lands, then the intent clears.
-    act(() => {
+    await act(async () => {
       $activeGatewayProfile.set('writer')
       $botIntent.set(null)
     })
-    expect(deliver).not.toHaveBeenCalled()
+    expect(landed).toBeNull()
 
-    act(() => $mainThread.set({ ids: [], profile: 'writer', rootId: null, status: 'loading', tipId: null }))
-    expect(deliver).not.toHaveBeenCalled()
+    await act(async () => $mainThread.set({ ids: [], profile: 'writer', rootId: null, status: 'loading', tipId: null }))
+    expect(landed).toBeNull()
 
-    act(() => noteMainThreadClaimed('writer', 'writer-root'))
-    expect(deliver).toHaveBeenCalledTimes(1)
-
-    act(() => $mainThread.set({ ...$mainThread.get() }))
-    expect(deliver).toHaveBeenCalledTimes(1)
+    await act(async () => noteMainThreadClaimed('writer', 'writer-root'))
+    expect(landed).toBe(true)
   })
 
-  it('a switch that never lands still lets the capture through, after the wait', () => {
+  it('hc-1113: a switch that never lands ends the wait as not landed (it used to wait again, forever)', async () => {
     vi.useFakeTimers()
     severalOn()
     noteMainThreadClaimed('default', 'apex-root')
     $botIntent.set('writer')
 
-    const deliver = vi.fn()
+    let landed: boolean | null = null
+    void botSwitchSettled(null).then(value => (landed = value))
 
-    holdUntilBotSwitchLands(deliver)
-    vi.advanceTimersByTime(BOT_SWITCH_WAIT_MS - 1)
-    expect(deliver).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(1)
-    expect(deliver).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(BOT_SWITCH_WAIT_MS - 1)
+    expect(landed).toBeNull()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(landed).toBe(false)
   })
 
   it('the main window’s bridge holds the capture, then sends it into the new assistant’s thread', async () => {
     let capture: ((payload: unknown) => void) | null = null
+
+    const receipt = vi.fn()
 
     ;(window as unknown as { hermesDesktop?: unknown }).hermesDesktop = {
       quickEntry: {
@@ -173,7 +210,8 @@ describe('hc-1077 a capture made while a switch is landing waits for it', () => 
 
           return () => (capture = null)
         },
-        pushState: vi.fn()
+        pushState: vi.fn(),
+        receipt
       }
     }
 
@@ -194,8 +232,9 @@ describe('hc-1077 a capture made while a switch is landing waits for it', () => 
       </I18nProvider>
     )
 
-    act(() => capture?.({ target: 'current', text: '标题写 3 个' }))
+    await act(async () => capture?.({ id: 'qe-1', target: 'current', text: '标题写 3 个' }))
     expect(submitText).not.toHaveBeenCalled()
+    expect(receipt).toHaveBeenCalledWith({ id: 'qe-1', stage: 'accepted' })
 
     await act(async () => {
       $activeGatewayProfile.set('writer')
@@ -206,6 +245,7 @@ describe('hc-1077 a capture made while a switch is landing waits for it', () => 
     await act(async () => noteMainThreadClaimed('writer', 'writer-root'))
 
     expect(submitText).toHaveBeenCalledWith('标题写 3 个')
+    expect(receipt).toHaveBeenLastCalledWith({ id: 'qe-1', kind: 'current', profile: 'writer', stage: 'delivered' })
   })
 })
 

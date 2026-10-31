@@ -105,8 +105,10 @@ function initDesktopUpdateProgressSubscription(): void {
     onRuntimeProgress(runtimeProgress => {
       const progress = $desktopUpdateProgress.get()
 
-      if (progress.active && progress.currentStage === 'runtime') {
-        setProgress({ runtimeProgress })
+      // A quiet retry stays down through preflight, download and verify: they all run ahead of the
+      // busy gate (electron/apex-bundle-install.ts). `activating` is the first event past it.
+      if (progress.currentStage === 'runtime' && (progress.active || runtimeProgress.phase === 'activating')) {
+        setProgress({ active: true, runtimeProgress })
       }
     })
   }
@@ -231,6 +233,26 @@ async function plannedShellArrives(plan: DesktopUpdatePlan): Promise<boolean> {
 async function waitForShellRedownload(): Promise<void> {
   await transitionPlanSafely({ lastError: SHELL_TARGET_REDOWNLOADING, phase: 'resuming' })
   setProgress({ active: false, currentStage: null, error: null })
+}
+
+/** The running app is not the plan's shell yet: get to it. */
+async function continueToPlannedShell(plan: DesktopUpdatePlan, quiet: boolean): Promise<void> {
+  if (!plannedShellDownloaded(plan)) {
+    // hc-1030: this restart did not run the installer (a deferred install, an early
+    // quit, a failed hand-off) and the new process has not fetched the target yet.
+    // Fetch it now and let the update entry offer it again instead of failing.
+    await waitForShellRedownload()
+    void checkShellUpdate().catch(() => {})
+
+    return
+  }
+
+  // Ask for the downloaded target shell again; its install waits for idle.
+  const waits = await installShellWhenIdle()
+
+  if (quiet && !waits) {
+    setProgress({ active: true, currentStage: 'restart' })
+  }
 }
 
 /** A continuation the main process could not persist stops the update before anything restarts. */
@@ -406,6 +428,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
   const reload = options.reload ?? (() => window.location.reload())
 
   resumePromise = (async () => {
+    initDesktopUpdateProgressSubscription()
     const bridge = window.hermesDesktop?.updateCenter
     const plan = await bridge?.getPlan()
 
@@ -432,8 +455,12 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
       // requires a durable attempt record.
     }
 
+    // hc-1118: a plan that only waits for the engine retries on its own, and most rounds just find
+    // it still busy. Such a round raises the overlay only once the switch really goes ahead.
+    const quiet = Boolean(options.automatic) && plan.lastError === 'runtime_update_busy'
+
     setProgress({
-      active: true,
+      active: !quiet,
       completedStages: ['check', 'shell'],
       currentStage: 'runtime',
       error: null,
@@ -446,18 +473,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
       const runningDesktop = await window.hermesDesktop?.getVersion?.()
 
       if (!shellMeetsPlan(runningDesktop?.appVersion, plan.targetShellVersion)) {
-        if (!plannedShellDownloaded(plan)) {
-          // hc-1030: this restart did not run the installer (a deferred install, an early
-          // quit, a failed hand-off) and the new process has not fetched the target yet.
-          // Fetch it now and let the update entry offer it again instead of failing.
-          await waitForShellRedownload()
-          void checkShellUpdate().catch(() => {})
-
-          return
-        }
-
-        // Ask for the downloaded target shell again; its install waits for idle.
-        await installShellWhenIdle()
+        await continueToPlannedShell(plan, quiet)
 
         return
       }
@@ -533,7 +549,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
         if (result.reloadRequired) {
           // Legacy bootstrap activates after reloading. Retain the durable
           // plan until the next renderer verifies the actual installed tree.
-          setProgress({ currentStage: 'restart', runtimeProgress: null })
+          setProgress({ active: true, currentStage: 'restart', runtimeProgress: null })
           reload()
 
           return

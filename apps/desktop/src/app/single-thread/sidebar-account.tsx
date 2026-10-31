@@ -5,8 +5,8 @@
  *
  * AccountPanel stays as it is for every other mode (its account-menu golden is
  * pinned), so this row carries its own copy of the menu: the same destinations
- * in the same order. hc-1070: 「沉浸式分析」 is not one of them; single-thread
- * mode has no analysis workspace. sidebar.test.tsx compares the two menus item
+ * in the same order. hc-1070, hc-1123: 「沉浸式分析」 and 「项目」 are not among
+ * them; product mode has neither page. sidebar.test.tsx compares the two menus item
  * by item so they cannot drift apart. A session that is not signed in, or has expired, gets
  * AccountPanel itself: its sign-in recovery card is the one to show.
  */
@@ -41,7 +41,7 @@ import { ASSISTANT_ROUTE, DELIVERABLES_ROUTE, HISTORY_ROUTE, PROFILE_STATS_ROUTE
 
 import { useSingleThreadNavLabels } from './nav-labels'
 
-type BusinessDestination = 'projects' | 'scheduled-runs'
+type BusinessDestination = 'scheduled-runs'
 
 interface SingleThreadAccountRowProps {
   onNavigateBusiness: (id: BusinessDestination) => void
@@ -86,7 +86,7 @@ export function SingleThreadAccountRow(props: SingleThreadAccountRowProps) {
   const { status } = useStore($authState)
 
   if (status !== 'signed-in') {
-    return <AccountPanel businessChrome onNavigateBusiness={props.onNavigateBusiness} />
+    return <AccountPanel businessChrome />
   }
 
   // hc-1073: the 「登录已失效」 card AccountPanel puts above its row goes above this one too.
@@ -235,7 +235,6 @@ function SingleThreadAccountMenu({
       )}
       {item('account', a.profile, () => navigate(PROFILE_STATS_ROUTE))}
       {item('settings-gear', a.settings, () => navigate(SETTINGS_ROUTE))}
-      {item('folder', nav.projects ?? '', () => onNavigateBusiness('projects'))}
       {item('calendar', nav['scheduled-runs'] ?? '', () => onNavigateBusiness('scheduled-runs'))}
       {item('organization', nav.assistant ?? '', () => navigate(ASSISTANT_ROUTE))}
       {item('history', nav.history ?? '', () => navigate(HISTORY_ROUTE))}

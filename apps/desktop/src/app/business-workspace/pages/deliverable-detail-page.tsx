@@ -11,6 +11,7 @@ import { Loader } from '@/components/ui/loader'
 import { Textarea } from '@/components/ui/textarea'
 import { useI18n } from '@/i18n'
 import { formatBusinessDayTime } from '@/lib/time'
+import { useSingleThreadMode } from '@/store/single-thread'
 
 import { openWorkflowUserFile, reviewWorkflowDeliverable } from '../api/adapters'
 import type { WorkflowDeliverable } from '../api/types'
@@ -20,6 +21,14 @@ import { useWorkflowDeliverable } from '../hooks/use-workflow-deliverables'
 
 function deliverableSummary(item: WorkflowDeliverable): string {
   return item.payload.summary || item.payload.content || item.payload.filename || ''
+}
+
+/** hc-1123: product mode has no 项目, and its name alone says nothing the workflow and run rows don't. */
+function DeliverableProjectFact({ name }: { name: string }) {
+  const { t } = useI18n()
+  const productMode = useSingleThreadMode()
+
+  return productMode ? null : <RunFact label={t.businessWorkspace.workflowDomain.deliverables.project} value={name} />
 }
 
 export function DeliverableDetailView() {
@@ -152,7 +161,7 @@ export function DeliverableDetailView() {
         </header>
 
         <dl className="grid gap-4 border-b border-(--ui-stroke-tertiary) py-6 sm:grid-cols-2">
-          <RunFact label={copy.project} value={project.name} />
+          <DeliverableProjectFact name={project.name} />
           <RunFact label={copy.workflow} value={workflow.name} />
           <RunFact label={copy.run} value={run.id} />
           <RunFact label={copy.created} value={formatBusinessDayTime(new Date(item.createdAt), locale)} />

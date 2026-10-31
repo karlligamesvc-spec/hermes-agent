@@ -10,8 +10,8 @@
  *   reply, what it is doing, 等你决定, 通话中) and a dot for a reply not yet seen;
  * - 「在微信里找 APEX」, which opens the IM entry page;
  * - the account row: the name over 「快速 · 本月用了 18%」 (hc-1062).
- * hc-1070: there is no 「沉浸式分析」 here or in the account menu, and its
- * route turns back to the conversation (analysis-route-gate.tsx).
+ * hc-1070, hc-1123: there is no 「沉浸式分析」 or 「项目」 here or in the account
+ * menu, and their routes turn back to the conversation (product-route-gate.tsx).
  *
  * hc-1077 (several assistants, `desktop_features.multi_bot`): one row per
  * assistant, APEX first (sidebar-bots.tsx), and a round 「+」 beside search.
@@ -47,7 +47,7 @@ import { SINGLE_THREAD_ROW_CLASS } from './sidebar-row'
 import { rowMood, statusLineClass, useStatusLine } from './sidebar-status'
 import { SingleThreadWechatRow } from './sidebar-wechat'
 
-function contractItem(id: 'projects' | 'scheduled-runs', icon: string): SidebarNavItem {
+function contractItem(id: 'scheduled-runs', icon: string): SidebarNavItem {
   const item = BUSINESS_SIDEBAR_NAV_CONTRACT.find(candidate => candidate.id === id)
 
   return {
@@ -59,7 +59,6 @@ function contractItem(id: 'projects' | 'scheduled-runs', icon: string): SidebarN
 }
 
 const ACCOUNT_MENU_ITEMS = {
-  projects: contractItem('projects', 'folder'),
   'scheduled-runs': contractItem('scheduled-runs', 'calendar')
 }
 
