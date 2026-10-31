@@ -7,7 +7,8 @@
  * same rule as the composer's model pill (hc-1015, `$modelChoiceHidden`).
  * 档位, 对话, 工作区, 安全, 浏览器, 密码与登录, 高级, 网关, 键盘快捷键, 工具与密钥,
  * 已归档对话 and the rail's export / import / reset stay in 开发者模式. The switch
- * off and developer mode are untouched.
+ * off and developer mode are untouched. hc-1122: with `desktop_features.chatcut`
+ * on, ChatCut 剪辑 follows 连接微信和飞书.
  *
  * 记忆 is the 它记得什么 ledger here (it used to sit on 个性化); the engine's
  * memory and context knobs are developer settings. 个性化 drops its copy of 关于,
@@ -29,6 +30,7 @@ import { useCallback } from 'react'
 import { useI18n } from '@/i18n'
 import { useModelTierCopy } from '@/i18n/model-tier'
 import { useSettingsProductCopy } from '@/i18n/settings-product'
+import { $chatcutFlag } from '@/store/chatcut'
 import { $modelChoiceHidden } from '@/store/model-choice'
 import { useModelTierMode } from '@/store/model-tiers'
 import { $singleThreadMode } from '@/store/single-thread'
@@ -49,11 +51,25 @@ const PRODUCT_VIEWS: readonly SettingsView[] = [
 
 const OWN_KEY_VIEWS: readonly SettingsView[] = [...PRODUCT_VIEWS.slice(0, -1), 'config:model', 'providers', 'about']
 
+/** ChatCut's page, right after the other connection page. */
+function withChatcut(views: readonly SettingsView[]): readonly SettingsView[] {
+  const at = views.indexOf('im') + 1
+
+  return [...views.slice(0, at), 'chatcut', ...views.slice(at)]
+}
+
 /** The tabs product mode keeps, in rail order; null outside product mode, where every tab is as it was. */
 export const $productSettingsViews = computed(
-  [$singleThreadMode, $modelChoiceHidden],
-  (productMode, modelChoiceHidden): null | readonly SettingsView[] =>
-    productMode ? (modelChoiceHidden ? PRODUCT_VIEWS : OWN_KEY_VIEWS) : null
+  [$singleThreadMode, $modelChoiceHidden, $chatcutFlag],
+  (productMode, modelChoiceHidden, chatcut): null | readonly SettingsView[] => {
+    if (!productMode) {
+      return null
+    }
+
+    const views = modelChoiceHidden ? PRODUCT_VIEWS : OWN_KEY_VIEWS
+
+    return chatcut ? withChatcut(views) : views
+  }
 )
 
 /** Kept tabs whose product page shows none of the section's config fields: 记忆 is the ledger. */
@@ -64,6 +80,7 @@ const SETTINGS_TABS: ReadonlySet<string> = new Set([
   ...SECTIONS.map(section => `config:${section.id}`),
   'about',
   'billing',
+  'chatcut',
   'connections',
   'gateway',
   'im',

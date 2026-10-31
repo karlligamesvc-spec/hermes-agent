@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { buildTurnProcess, stepChain, type TurnPart } from '@/components/assistant-ui/process/turn-process'
 
-import { DESKTOP_ONLY_STEPS, MEMORY_FORGET_STEP, MEMORY_LIST_STEP } from './desktop-only-steps'
+import { chatcutStepKey, DESKTOP_ONLY_STEPS, MEMORY_FORGET_STEP, MEMORY_LIST_STEP } from './desktop-only-steps'
 import { enProcess } from './en-process'
 import { setRuntimeI18nLocale } from './runtime'
 import { zhHantProcess } from './zh-hant-process'
@@ -57,9 +57,47 @@ describe('hc-1063 the memory ledger step in 「看过程」', () => {
     for (const steps of Object.values(DESKTOP_ONLY_STEPS)) {
       expect(Object.keys(steps).filter(key => mirrored.has(key))).toEqual([])
       expect(Object.keys(steps).sort()).toEqual(
-        ['apex_memory', 'apex_rename', MEMORY_FORGET_STEP, MEMORY_LIST_STEP].sort()
+        [
+          'apex_memory',
+          'apex_rename',
+          'chatcut:captions',
+          'chatcut:cut',
+          'chatcut:edit',
+          'chatcut:export',
+          'chatcut:read',
+          'chatcut_connect',
+          'chatcut_import_files',
+          MEMORY_FORGET_STEP,
+          MEMORY_LIST_STEP
+        ].sort()
       )
     }
+  })
+})
+
+describe('hc-1122 ChatCut in 「看过程」', () => {
+  it.each([
+    ['mcp__chatcut__read_script', 'chatcut:read'],
+    ['mcp__chatcut__apply_script', 'chatcut:cut'],
+    ['mcp__chatcut__edit_captions', 'chatcut:captions'],
+    ['mcp__chatcut__submit_export', 'chatcut:export'],
+    ['mcp__chatcut__something_new', 'chatcut:edit'],
+    ['mcp__other__read_script', 'mcp__other__read_script'],
+    ['terminal', 'terminal']
+  ])('%s reads as %s', (tool, key) => {
+    expect(chatcutStepKey(tool)).toBe(key)
+  })
+
+  it.each(['zh', 'zh-hant', 'en'] as const)('%s: a ChatCut tool never shows its raw name', locale => {
+    setRuntimeI18nLocale(locale)
+
+    const parts: TurnPart[] = [
+      { args: {}, isError: false, result: '{}', toolCallId: 'c1', toolName: 'mcp__chatcut__apply_script', type: 'tool-call' }
+    ] as never
+    const [step] = buildTurnProcess(parts, false).steps
+
+    expect(step.copy.title).toBe(DESKTOP_ONLY_STEPS[locale]['chatcut:cut'].title)
+    expect(step.copy.title).not.toMatch(/mcp|apply_script/i)
   })
 })
 

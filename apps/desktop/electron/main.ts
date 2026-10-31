@@ -77,6 +77,7 @@ import { applyBundleUpdate as applyRuntimeBundleUpdate } from './apex-bundle-ins
 import { isVersionedRuntimeRoot } from './apex-bundle-layout'
 import * as bundleMigrate from './apex-bundle-migrate'
 import { runBundledTool } from './apex-bundle-tool'
+import { installChatcutPanel } from './apex-chatcut'
 import {
   fetchClientConfig,
   normalizeStoredClientConfig,
@@ -7852,12 +7853,10 @@ function isAudioCapturePermission(permission, details) {
   return mediaTypes.includes('audio') && !mediaTypes.includes('video')
 }
 
-// Chromium-initiated downloads (renderer anchor/blob downloads, drag-outs)
-// land here. Without a handler the OS save dialog opens with the process cwd
-// as the default directory (win-unpacked in packaged installs) and whatever
-// extensionless name the anchor carried. Route every download to the user's
-// Downloads directory and guarantee a MIME-derived extension.
+// Chromium-initiated downloads (anchor/blob, drag-outs) land here. Without a handler the OS save dialog opens with the
+// process cwd as the default directory and whatever extensionless name the anchor carried: route them to Downloads.
 function installDownloadHandling() {
+  installChatcutPanel(session, electronWebContents, () => app.getPath('downloads'), process.env, rememberLog) // hc-1122
   session.defaultSession.on('will-download', (_event, item) => {
     const suggested = item.getFilename() || 'download'
     const hasExtension = Boolean(path.extname(suggested))

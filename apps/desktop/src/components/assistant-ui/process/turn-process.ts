@@ -7,7 +7,7 @@ import {
   parseMaybeObject
 } from '@/components/assistant-ui/tool/fallback-model/format'
 import { runtimeTranslations, translateNow } from '@/i18n'
-import { desktopOnlyStepCopy, memoryStepKey } from '@/i18n/desktop-only-steps'
+import { chatcutStepKey, desktopOnlyStepCopy, memoryStepKey } from '@/i18n/desktop-only-steps'
 import type { StepCopy, StepFacts } from '@/i18n/types-process'
 import { connectorCalls } from '@/lib/connector-tools'
 import { isOnboardingEnabled } from '@/lib/onboarding-enabled'
@@ -579,7 +579,7 @@ export function stepCopyFor(toolName: string): StepCopy {
 function stepCopyKey(calls: ProcessCall[]): string {
   const toolName = calls[0].toolName
 
-  return toolName === 'apex_memory' ? memoryStepKey(calls.map(call => call.args.action)) : toolName
+  return toolName === 'apex_memory' ? memoryStepKey(calls.map(call => call.args.action)) : chatcutStepKey(toolName)
 }
 
 function stepState(calls: ProcessCall[]): { failedCalls: number; state: CallState } {

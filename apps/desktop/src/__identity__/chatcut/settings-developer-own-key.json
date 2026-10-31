@@ -1,0 +1,45 @@
+{
+  "linked": {
+    "page": "personalization-view",
+    "rail": [
+      "*config:personalization",
+      "config:model",
+      "config:chat",
+      "config:appearance",
+      "config:workspace",
+      "config:safety",
+      "config:browser",
+      "vault",
+      "config:memory",
+      "config:voice",
+      "config:advanced",
+      "notifications",
+      "providers",
+      "gateway",
+      "keybinds",
+      "keys",
+      "sessions",
+      "about"
+    ]
+  },
+  "rail": [
+    "*config:personalization",
+    "config:model",
+    "config:chat",
+    "config:appearance",
+    "config:workspace",
+    "config:safety",
+    "config:browser",
+    "vault",
+    "config:memory",
+    "config:voice",
+    "config:advanced",
+    "notifications",
+    "providers",
+    "gateway",
+    "keybinds",
+    "keys",
+    "sessions",
+    "about"
+  ]
+}

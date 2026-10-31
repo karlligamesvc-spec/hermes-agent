@@ -1315,7 +1315,7 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
 
         {/* First-open real-profile consent offer — Browser tabs only (URL
             vessels the user browses with), never file/HTML previews. */}
-        {target.kind === 'url' && tabId && <RealProfileConsentDialog tabId={tabId} />}
+        {target.kind === 'url' && tabId && <RealProfileConsentDialog tabId={tabId} url={target.url} />}
 
         <div
           className="pointer-events-auto relative min-h-0 flex-1 overflow-hidden bg-transparent"
