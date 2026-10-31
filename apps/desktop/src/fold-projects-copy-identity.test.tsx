@@ -45,6 +45,7 @@ vi.stubGlobal(
     unobserve() {}
   }
 )
+
 Element.prototype.scrollIntoView = () => {}
 
 const ISO = '2026-10-20T00:00:00Z'
@@ -114,7 +115,7 @@ beforeEach(() => {
     refresh: vi.fn(),
     state: { items: [DELIVERABLE], mode: 'ready' }
   })
-  $recentProjects.set([{ lastUsed: 1, name: 'campaign', path: '/Users/fixture/work/campaign' }])
+  $recentProjects.set([{ lastUsedAt: 1, name: 'campaign', path: '/Users/fixture/work/campaign' }])
   Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { createProjectDir, selectPaths } })
 })
 

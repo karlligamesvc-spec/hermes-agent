@@ -100,6 +100,16 @@ describe('hc-1123 product mode: 连接助手 stops pointing at project pages', (
     expect(navigate.mock.calls.filter(([path]) => String(path).startsWith('/projects'))).toEqual([])
   })
 
+  it('names the running section with no 项目 in it, rows or no rows', () => {
+    seed([row('p-running', 'Campaign run', 'run-1', 'running', 'none'), row('p-review', 'Review', 'run-2', 'waiting_review', 'review')])
+
+    const { container } = render(<AssistantWorkspaceView />)
+
+    expect(screen.getByRole('heading', { name: '正在运行' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: '当前项目运行' })).toBeNull()
+    expect(container.textContent).not.toContain('项目')
+  })
+
   it('keeps every other way out of the page', () => {
     seed([])
     render(<AssistantWorkspaceView />)

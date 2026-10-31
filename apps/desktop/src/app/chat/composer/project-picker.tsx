@@ -29,6 +29,7 @@ import {
 } from '@/store/recent-projects'
 import { $connection, $sessions, getConfiguredDefaultProjectDir } from '@/store/session'
 
+import { useFolderPickerWords } from '../../single-thread/product-words'
 import { isProjectCwd } from '../sidebar/workspace-groups'
 
 interface ProjectPickerProps {
@@ -47,7 +48,7 @@ type PickerView = 'create' | 'list'
  *  new blank folder, before the first message pins it via session.create. */
 export function ProjectPicker({ cwd, disabled, onChangeCwd }: ProjectPickerProps) {
   const { t } = useI18n()
-  const copy = t.composer.projectPicker
+  const copy = useFolderPickerWords()
   const connection = useStore($connection)
   const persisted = useStore($recentProjects)
   const sessions = useStore($sessions)

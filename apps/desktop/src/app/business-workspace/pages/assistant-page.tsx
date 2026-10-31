@@ -21,11 +21,11 @@ const COPY = {
 
 /** hc-1123: what 连接助手 says in product mode, where there are no project pages to point at. */
 const PRODUCT_COPY = {
-  zh: { description: '查看消息渠道和最近的交付成果。', emptyRecent: '还没有交付物。' },
-  'zh-hant': { description: '查看訊息渠道和最近的交付成果。', emptyRecent: '尚無交付物。' },
-  en: { description: 'See messaging channels and recent deliverables.', emptyRecent: 'No deliverables yet.' },
-  ja: { description: 'メッセージチャネルと最近の成果を確認できます。', emptyRecent: '成果はまだありません。' },
-  ar: { description: 'راجع قنوات الرسائل وآخر النتائج المسلمة.', emptyRecent: 'لا توجد نتائج بعد.' }
+  zh: { current: '正在运行', description: '查看消息渠道和最近的交付成果。', emptyRecent: '还没有交付物。' },
+  'zh-hant': { current: '正在執行', description: '查看訊息渠道和最近的交付成果。', emptyRecent: '尚無交付物。' },
+  en: { current: 'Running now', description: 'See messaging channels and recent deliverables.', emptyRecent: 'No deliverables yet.' },
+  ja: { current: '実行中', description: 'メッセージチャネルと最近の成果を確認できます。', emptyRecent: '成果はまだありません。' },
+  ar: { current: 'قيد التشغيل الآن', description: 'راجع قنوات الرسائل وآخر النتائج المسلمة.', emptyRecent: 'لا توجد نتائج بعد.' }
 } as const
 
 /**
@@ -35,9 +35,9 @@ const PRODUCT_COPY = {
  */
 function ProjectSections({ projects }: { projects: ReturnType<typeof useWorkflowProjects> }) {
   const { locale } = useI18n()
-  const c = COPY[locale]
-  const navigate = useNavigate()
   const productMode = useSingleThreadMode()
+  const c = productMode ? { ...COPY[locale], ...PRODUCT_COPY[locale] } : COPY[locale]
+  const navigate = useNavigate()
   const projectItems = projects.mode === 'ready' ? projects.items : []
 
   const running = projectItems

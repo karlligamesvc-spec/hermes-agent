@@ -464,8 +464,9 @@ describe('hc-1070 single-thread product mode has no 沉浸式分析', () => {
   })
 })
 
-describe('hc-1123 single-thread product mode has no 项目', () => {
-  const projectsOnScreen = () => screen.queryByText('projects-view') ?? screen.queryByText('project-detail-view')
+describe('hc-1123 single-thread product mode has no 项目 or 工作流', () => {
+  const projectsOnScreen = () =>
+    screen.queryByText('projects-view') ?? screen.queryByText('project-detail-view') ?? screen.queryByText('workflows-view')
   const where = () => screen.getByTestId('location').textContent
 
   const openedFrom = (pathname: string, to: string) => ({
@@ -478,7 +479,7 @@ describe('hc-1123 single-thread product mode has no 项目', () => {
     setToolViewMode('product')
   })
 
-  it.each(['/projects', '/projects?status=active#row', '/projects/', '/PROJECTS', '/projects/project-1', '/projects/project%2Fa%20b', '/projects/a/b'])(
+  it.each(['/projects', '/projects?status=active#row', '/projects/', '/PROJECTS', '/projects/project-1', '/projects/project%2Fa%20b', '/projects/a/b', '/workflows', '/workflows?projectId=project-1', '/WORKFLOWS'])(
     'a cold start on %s lands on the conversation',
     async path => {
       setSingleThreadFlagForTest(true)
@@ -490,7 +491,7 @@ describe('hc-1123 single-thread product mode has no 项目', () => {
     }
   )
 
-  it.each(['/projects', '/projects/project-1'])(
+  it.each(['/projects', '/projects/project-1', '/workflows'])(
     'navigating to %s later (hermes://open, a plugin notification, host.navigate) turns back too',
     async path => {
       setSingleThreadFlagForTest(true)
@@ -538,7 +539,7 @@ describe('hc-1123 single-thread product mode has no 项目', () => {
     expect(projectsOnScreen()).toBeNull()
   })
 
-  it.each(['/projects', '/projects/project-1'])(
+  it.each(['/projects', '/projects/project-1', '/workflows'])(
     'turns back from %s before the sign-in gate: a signed-out window does not sit on a blank page',
     async path => {
       setSingleThreadFlagForTest(true)
@@ -566,11 +567,17 @@ describe('hc-1123 single-thread product mode has no 项目', () => {
     await waitFor(() => expect(where()).toBe('/'))
   })
 
-  it.each(['/projects', '/projects/project-1'])('closes %s when developer mode is switched off', async path => {
+  const OPENED_VIEW: Record<string, string> = {
+    '/projects': 'projects-view',
+    '/projects/project-1': 'project-detail-view',
+    '/workflows': 'workflows-view'
+  }
+
+  it.each(Object.keys(OPENED_VIEW))('closes %s when developer mode is switched off', async path => {
     setSingleThreadFlagForTest(true)
     setToolViewMode('technical')
     renderRoutes([path])
-    expect(await screen.findByText(path === '/projects' ? 'projects-view' : 'project-detail-view')).toBeTruthy()
+    expect(await screen.findByText(OPENED_VIEW[path]!)).toBeTruthy()
 
     act(() => setToolViewMode('product'))
 
@@ -578,12 +585,12 @@ describe('hc-1123 single-thread product mode has no 项目', () => {
     expect(projectsOnScreen()).toBeNull()
   })
 
-  it.each(['/projects', '/projects/project-1'])(
+  it.each(Object.keys(OPENED_VIEW))(
     'closes %s when the switch is read after a remembered route has already opened it',
     async path => {
       setSingleThreadFlagForTest(false)
       renderRoutes([path])
-      expect(await screen.findByText(path === '/projects' ? 'projects-view' : 'project-detail-view')).toBeTruthy()
+      expect(await screen.findByText(OPENED_VIEW[path]!)).toBeTruthy()
 
       act(() => setSingleThreadFlagForTest(true))
 
@@ -597,7 +604,6 @@ describe('hc-1123 single-thread product mode has no 项目', () => {
     ['/deliverables', 'deliverables-view'],
     ['/history', 'history-view'],
     ['/assistant', 'assistant-view'],
-    ['/workflows', 'workflows-view'],
     ['/deliverables/item-1', 'deliverable-detail-view'],
     ['/workflow-runs/run-1', 'workflow-run-view']
   ])('keeps %s', async (path, view) => {
@@ -629,6 +635,30 @@ describe('hc-1123 single-thread product mode has no 项目', () => {
     expect(screen.getByText('deliverables-view')).toBeTruthy()
   })
 
+  it('a run drawer opened with no source (a deep link) sits on 连接助手 and closes onto it, never on 工作流', async () => {
+    setSingleThreadFlagForTest(true)
+    renderRoutes(['/workflow-runs/run-1'])
+    await screen.findByText('workflow-run-view')
+    expect(screen.getByText('assistant-view')).toBeTruthy()
+    expect(screen.queryByText('workflows-view')).toBeNull()
+    expect(where()).toBe('/workflow-runs/run-1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    await waitFor(() => expect(where()).toBe('/assistant'))
+    expect(screen.getByText('assistant-view')).toBeTruthy()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('a run opened from 工作流 before the switch does not put 工作流 back under it', async () => {
+    setSingleThreadFlagForTest(true)
+    renderRoutes(['/workflows', openedFrom('/workflows', '/workflow-runs/run-1')])
+
+    await waitFor(() => expect(where()).toBe('/'))
+    expect(projectsOnScreen()).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
   it('a run opened from 连接助手 keeps 连接助手 under it and closes back onto it', async () => {
     setSingleThreadFlagForTest(true)
     renderRoutes(['/assistant', openedFrom('/assistant', '/workflow-runs/run-1')])
@@ -644,7 +674,7 @@ describe('hc-1123 single-thread product mode has no 项目', () => {
   it.each([
     ['the switch off', false, 'product'],
     ['developer mode with the switch on', true, 'technical']
-  ] as const)('%s keeps both project routes', async (_label, flag, toolView) => {
+  ] as const)('%s keeps both project routes, 工作流 and its run drawer', async (_label, flag, toolView) => {
     setSingleThreadFlagForTest(flag)
     setToolViewMode(toolView)
     renderRoutes(['/projects'])
@@ -653,5 +683,12 @@ describe('hc-1123 single-thread product mode has no 项目', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Go /projects/project-1' }))
     expect(await screen.findByText('project-detail-view')).toBeTruthy()
     expect(where()).toBe('/projects/project-1')
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go /workflow-runs/run-1' }))
+    expect(await screen.findByText('workflows-view')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(where()).toBe('/workflows'))
   })
 })

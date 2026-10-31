@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
-import { useSingleThreadMode } from '@/store/single-thread'
 
 import { PROJECTS_ROUTE, WORKFLOWS_ROUTE } from '../../routes'
 import { PROJECT_PROTOTYPE_COPY } from '../project-prototype-copy'
@@ -13,10 +12,6 @@ export function ProjectLibraryNavigation({ active }: { active: 'projects' | 'wor
   const { locale } = useI18n()
   const copy = PROJECT_PROTOTYPE_COPY[locale]
   const navigate = useNavigate()
-  // hc-1123: product mode has no 项目 to switch to, and a tab row of one says nothing.
-  const productMode = useSingleThreadMode()
-
-  if (productMode) {return null}
 
   return <nav aria-label={copy.peers} className="apex-project-peers">
     <Button aria-current={active === 'projects' ? 'page' : undefined} onClick={() => navigate(PROJECTS_ROUTE)} variant="ghost">{copy.projects}</Button>
