@@ -78,10 +78,9 @@ import { isVersionedRuntimeRoot } from './apex-bundle-layout'
 import * as bundleMigrate from './apex-bundle-migrate'
 import { runBundledTool } from './apex-bundle-tool'
 import {
-  fetchClientConfig,
-  normalizeStoredClientConfig,
-  shouldApply as shouldApplyClientConfig
+  normalizeStoredClientConfig
 } from './apex-client-config'
+import { createClientConfigSync } from './apex-client-config-sync'
 import { registerCloudLoginHealth } from './apex-cloud-login'
 import { guardConfigYamlOnArrival } from './apex-config-arrival'
 import {
@@ -18322,7 +18321,7 @@ if (!isPrimaryInstance) {
     }
 
     ensureMainWindow(mainWindow, {
-      isReady: app.isReady(),
+      isReady: app.isReady() && !clientConfigSync.holdingFirstWindow(), // hc-1127: that window is on its way
       createWindow,
       focusWindow,
       // deep-link delivery focuses a live window after its renderer is ready.
@@ -20628,52 +20627,22 @@ function writeClientConfigState(next) {
   writeFileAtomic(DESKTOP_CLIENT_CONFIG_PATH, JSON.stringify(next, null, 2))
 }
 
-// Fetch the platform config and store it when a NEWER version arrived.
-// Non-blocking by contract (callers `void` it), bounded (~5s), and never
-// throws — any error only logs and leaves the cached state untouched.
-async function refreshClientConfigFromPlatform(reason) {
-  try {
-    const stored = readClientConfigState()
-
-    const fetched = await fetchClientConfig({
-      apiBase: apexApiBase(),
-      fetchJson: fetchPublicJson,
-      knownVersion: stored.version,
-      timeoutMs: 5_000,
-      log: msg => rememberLog(msg)
-    })
-
-    if (!fetched) {
-      return
-    } // offline / 404 no-active-config / garbage → cache stands
-
-    if (fetched.unchanged) {
-      rememberLog(`[client-config] v${fetched.version} unchanged (${reason})`)
-
-      return
+// The cached config's sync, and the launch that has none yet (hc-1127).
+const clientConfigSync = createClientConfigSync({
+  apiBase: apexApiBase,
+  applySwitches: payload => applyDesktopFeatureSwitches(process.env, payload, rememberLog),
+  broadcast: state => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {win.webContents.send('hermes:clientConfig:arrived', clientConfigForRenderer(state, process.env))}
     }
+  },
+  fetchJson: fetchPublicJson,
+  log: msg => rememberLog(msg),
+  read: readClientConfigState,
+  write: writeClientConfigState
+})
 
-    if (!shouldApplyClientConfig(fetched.version, stored.version)) {
-      rememberLog(
-        `[client-config] fetched v${fetched.version} is not newer than cached v${stored.version}; ignoring (${reason})`
-      )
-
-      return
-    }
-
-    writeClientConfigState({
-      version: fetched.version,
-      payload: fetched.payload,
-      fetchedAt: Date.now(),
-      // Preserve what the renderer already applied — the gap between version
-      // and appliedVersion is exactly what triggers the next apply pass.
-      appliedVersion: stored.appliedVersion
-    })
-    rememberLog(`[client-config] stored platform config v${fetched.version} (${reason})`)
-  } catch (error: any) {
-    rememberLog(`[client-config] refresh failed (ignored): ${error && error.message ? error.message : error}`)
-  }
-}
+const refreshClientConfigFromPlatform = clientConfigSync.refresh
 
 function readPlatformSkillsState() {
   try {
@@ -21540,6 +21509,7 @@ async function provisionManagedFromAccessToken(accessToken, account = null, isCu
     const current = () => generation === managedCredentialLifetime.current() && isCurrent()
 
     try {
+      await clientConfigSync.settleBeforeEngineRestart() // hc-1127
       const completed = await finishManagedModelRuntime(target, current)
 
       void refreshClientConfigFromPlatform('sign-in')
@@ -24374,7 +24344,7 @@ app.on('open-url', (event, url) => {
   handleDeepLink(url, 'macos-open-url')
 })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   try {
     rememberLog(`[soul] ${ensureApexDesktopSouls(HERMES_HOME)}`)
   } catch (error) {
@@ -24469,6 +24439,7 @@ app.whenReady().then(() => {
   // its worker waits for the install marker to clear, then reopens every scope
   // captured by the original transaction before removing the journal entry.
   void resumeManagedSshRecoveries()
+  await clientConfigSync.settleBeforeFirstWindow() // hc-1127: the window and the engine read the switches
   createWindow()
 
   // Platform client-config sync: non-blocking boot check (contract: every boot

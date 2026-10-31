@@ -447,13 +447,12 @@ declare global {
         get: () => Promise<DesktopAgentProxyState>
         set: (payload: { mode: DesktopAgentProxyMode; customUrl?: string }) => Promise<DesktopAgentProxyState>
       }
-      // Platform client-config sync — the cloud serves a versioned client
-      // config the main process caches at boot / after sign-in and applies to
-      // config.yaml pre-gateway (main.cjs applyClientConfigToRuntime). `get`
-      // reads the cached state from disk (no network), informational only.
-      // Optional: an older main process may not expose the bridge yet.
+      // Platform client-config sync — cached by main at boot / after sign-in and
+      // applied to config.yaml pre-gateway (applyClientConfigToRuntime). `get` reads
+      // the cached state from disk (no network). Optional for an older main process.
       clientConfig?: {
         get: () => Promise<DesktopClientConfigState>
+        onArrived?: (callback: (state: DesktopClientConfigState) => void) => () => void
       }
       // Continuous auth gate: fires when a backend call returns 401 (login lost)
       // or 403 account_disabled (account abnormal). The renderer clears auth and

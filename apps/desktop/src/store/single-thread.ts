@@ -84,6 +84,12 @@ export function loadSingleThreadFlag(): Promise<boolean> {
   return reading
 }
 
+/** hc-1127: a config that landed after this window's read. The next read asks main again. */
+export function settleSingleThreadFlagFrom(state: DesktopClientConfigState): void {
+  reading = null
+  settle(singleThreadSwitchFrom(state))
+}
+
 /** Tests only: forget the read and set the switch. */
 export function setSingleThreadFlagForTest(on: boolean): void {
   reading = null
