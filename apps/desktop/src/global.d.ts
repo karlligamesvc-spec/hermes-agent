@@ -13,7 +13,7 @@ import type {
   PetOverlayOpenRequest,
   PetOverlayStatePayload
 } from './store/pet-overlay'
-import type { QuickEntryStatePush, QuickEntryStatus, QuickEntrySubmitPayload } from './store/quick-entry'
+import type { QuickEntryDesktopApi } from './store/quick-entry'
 
 export type {
   DesktopBootstrapEvent,
@@ -180,34 +180,8 @@ declare global {
         onCursor: (callback: (point: { x: number; y: number } | null) => void) => () => void
         onGameOverlay: (callback: (state: { active: boolean; app: string }) => void) => () => void
       }
-      // Quick Entry: a global-hotkey mini composer window. Main owns the OS
-      // shortcut registration + the persisted preference (it must restore the
-      // shortcut on a cold launch without the renderer visiting Settings), so
-      // the renderer reads/writes it here and adopts the authoritative reply.
-      quickEntry: {
-        getSettings: () => Promise<QuickEntryStatus>
-        // Returns the resulting state — including `registered: false` +
-        // `error: 'taken'` when another app already owns the chord, so a failed
-        // registration surfaces in Settings instead of failing silently.
-        setSettings: (patch: { enabled?: boolean; shortcut?: string }) => Promise<QuickEntryStatus>
-        // Quick window → main: send this payload (main forwards it to the
-        // primary renderer, which routes it to the target session and submits
-        // through the normal prompt path) and hide.
-        submit: (payload: QuickEntrySubmitPayload) => void
-        // Quick window → main: hide without sending (Escape / blur).
-        dismiss: () => void
-        // Primary renderer → main → quick window: gateway connection state +
-        // the recent-session options. Main caches the latest push and replays
-        // it to a quick window spawned later.
-        pushState: (payload: QuickEntryStatePush) => void
-        // Quick window subscribes to those pushes.
-        onState: (callback: (payload: QuickEntryStatePush) => void) => () => void
-        // Primary renderer subscribes to submits captured by the quick window.
-        onSubmit: (callback: (payload: QuickEntrySubmitPayload | string) => void) => () => void
-        // Quick window subscribes to "you were just summoned" so it can reset
-        // its draft and re-focus the input on every open.
-        onShown: (callback: () => void) => () => void
-      }
+      // Quick Entry: a global-hotkey mini composer window (see store/quick-entry).
+      quickEntry: QuickEntryDesktopApi
       getBootProgress: () => Promise<DesktopBootProgress>
       getConnectionConfig: (profile?: null | string) => Promise<DesktopConnectionConfig>
       saveConnectionConfig: (payload: DesktopConnectionConfigInput) => Promise<DesktopConnectionConfig>
@@ -513,7 +487,7 @@ declare global {
       shellUpdate?: {
         getState: () => Promise<DesktopShellUpdateState>
         check: () => Promise<{ ok: boolean; error?: string; state: DesktopShellUpdateState }>
-        install: () => Promise<{ ok: boolean; error?: string; deferred?: boolean }>
+        install: () => Promise<{ ok: boolean; error?: string; deferred?: boolean; state?: DesktopShellUpdateState }>
         endLeftovers?: (
           holders: { pid: number; created: number }[]
         ) => Promise<{ ok: boolean; error?: string; ended?: Record<string, string> }>
@@ -2516,7 +2490,7 @@ export interface DesktopRuntimeVersion {
 }
 
 export interface DesktopEngineKeptBack {
-  reason: 'newer-or-unknown' | 'upgrade-failed'
+  reason: 'busy' | 'newer-or-unknown' | 'upgrade-failed'
   /** The engine this app ships (calver+fork label). */
   bundledVersion: string
 }
@@ -2592,9 +2566,9 @@ export type DesktopShellUpdateDeferralReason =
 
 /**
  * hc-1094: one process holding the engine (electron/engine-holders.ts). Only `endable` holders
- * (APEX's own leftover gateway or engine and what belongs to them) may be ended from the UI.
+ * (APEX's own leftover gateway, engine or background command and what belongs to them) may be ended.
  */
-export type DesktopEngineHolderKind = 'apex_running' | 'leftover_engine' | 'leftover_gateway' | 'other' | 'terminal_hermes'
+export type DesktopEngineHolderKind = 'apex_running' | 'leftover_child' | 'leftover_engine' | 'leftover_gateway' | 'other' | 'terminal_hermes'
 
 export interface DesktopEngineHolder {
   pid: number

@@ -131,14 +131,15 @@ test('an installer whose older-engine list is malformed does not load; a good on
   })
 })
 
-test('kept-back reports a preserved or failed upgrade, never a busy wait, the shipped engine or a provably newer one', async () => {
+test('kept-back reports a preserved, failed or busy upgrade, never the shipped engine or a provably newer one', async () => {
   const directory = home()
   const report = (result: PackagedRuntimeResult | null) => packagedEngineKeptBack(Promise.resolve(result), () => release, directory)
 
   engine(directory, { stamp: NEWER, manifestCommit: NEWER })
   assert.deepEqual(await report({ status: 'preserved', reason: 'newer-or-unknown', runtimeCommit: NEWER }), { reason: 'newer-or-unknown', bundledVersion: release.runtime_version })
   assert.deepEqual(await report({ status: 'preserved', reason: 'upgrade-failed', runtimeCommit: KEPT }), { reason: 'upgrade-failed', bundledVersion: release.runtime_version })
-  assert.equal(await report({ status: 'preserved', reason: 'busy', runtimeCommit: KEPT }), null)
+  // hc-1117: a boot install that waits on a process holding the engine retries by itself, but nothing else would say so.
+  assert.deepEqual(await report({ status: 'preserved', reason: 'busy', runtimeCommit: KEPT }), { reason: 'busy', bundledVersion: release.runtime_version })
   assert.equal(await report({ status: 'installed', runtimeCommit: SHIPPED }), null)
   assert.equal(await report({ status: 'current', runtimeCommit: SHIPPED }), null)
   assert.equal(await report(null), null)

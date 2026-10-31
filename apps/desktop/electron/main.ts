@@ -180,6 +180,7 @@ import {
 import { loadScenarioCatalog } from './apex-scenario-catalog'
 import { loginShellPathProbeArgs, parseLoginShellPath, resolveAugmentedPath } from './apex-shell-path'
 import { cleanUpAfterSignOut, revokePreviousAccountKey, sweepSignedOutRelayKeys } from './apex-sign-out'
+import { migrateStartupProfileIfMissing, readStoredDesktopProfile, startupProfileFor, startupProfileWritable } from './apex-startup-profile'
 import { registerTurnLedger, turnLedgerStoreIn } from './apex-turn-ledger'
 import { createDesktopVersionMirror } from './apex-version-state'
 import {
@@ -528,7 +529,6 @@ import {
   profileNameFromDeleteRequest,
   resolveRouteProfile
 } from './profile-delete-routing'
-import { migrateActiveProfileIfMissing as migrateActiveProfileIfMissingPure } from './profile-migration'
 import { prepareProfileRenameLifecycle, profileRenameFromRequest } from './profile-rename-routing'
 import {
   buildSidebarSessionSliceParams,
@@ -541,6 +541,7 @@ import {
   tagRegistrySessionResponse
 } from './profile-session-routing'
 import { createQuickEntryShortcut, quickEntryWindowBounds, sanitizeQuickEntrySettings } from './quick-entry'
+import { createQuickEntryRelay } from './quick-entry-relay'
 import { type ActiveWork, mergeActiveWork, normalizeActiveWork } from './quit-guard'
 import { backendQuitNeedsWait, createQuitTeardownCoordinator } from './quit-teardown'
 import * as remoteLifecycle from './remote-lifecycle'
@@ -10153,21 +10154,10 @@ async function saveRegistryConnection(input: any = {}) {
 
 // Returns the desktop's chosen profile name, or null when unset. "default" is
 // a valid stored value (pins the root HERMES_HOME explicitly); null means "no
-// preference" and preserves the legacy launch (no --profile flag).
+// preference" and preserves the legacy launch (no --profile flag). hc-1115:
+// APEX's while several assistants are off (apex-startup-profile.ts).
 function readActiveDesktopProfile() {
-  try {
-    const raw = fs.readFileSync(DESKTOP_PROFILE_CONFIG_PATH, 'utf8')
-    const parsed = JSON.parse(raw)
-    const name = parsed && typeof parsed.profile === 'string' ? parsed.profile.trim() : ''
-
-    if (name && (name === 'default' || PROFILE_NAME_RE.test(name))) {
-      return name
-    }
-  } catch {
-    // Missing or malformed → no preference.
-  }
-
-  return null
+  return startupProfileFor(readStoredDesktopProfile(DESKTOP_PROFILE_CONFIG_PATH, name => PROFILE_NAME_RE.test(name)), process.env)
 }
 
 function writeActiveDesktopProfile(name) {
@@ -10175,6 +10165,10 @@ function writeActiveDesktopProfile(name) {
 
   if (value && value !== 'default' && !PROFILE_NAME_RE.test(value)) {
     throw new Error(`Invalid profile name: ${value}`)
+  }
+
+  if (!startupProfileWritable(value, process.env, rememberLog)) {
+    return readActiveDesktopProfile()
   }
 
   fs.mkdirSync(path.dirname(DESKTOP_PROFILE_CONFIG_PATH), { recursive: true })
@@ -10221,10 +10215,11 @@ function isHermesProcess(pid) {
 // The stored JSON includes _migrated:true so the renderer can optionally surface
 // a one-time notification that the profile was auto-detected.
 //
-// Decision logic lives in profile-migration.ts (pure + unit-tested). This wrapper
+// Decision logic lives in profile-migration.ts (pure + unit-tested); hc-1115 skips
+// it while several assistants are off (apex-startup-profile.ts). This wrapper
 // just wires Electron/Node fs into a MigrationDeps bag and delegates.
 function migrateActiveProfileIfMissing() {
-  migrateActiveProfileIfMissingPure(DESKTOP_PROFILE_CONFIG_PATH, {
+  migrateStartupProfileIfMissing(DESKTOP_PROFILE_CONFIG_PATH, {
     legacyActivePath: path.join(HERMES_HOME, 'active_profile'),
     hermesHome: HERMES_HOME,
     profilesRoot: path.join(HERMES_HOME, 'profiles'),
@@ -10242,7 +10237,7 @@ function migrateActiveProfileIfMissing() {
       writeFileAtomic(target, JSON.stringify(decision, null, 2))
     },
     isValidProfileName: p => PROFILE_NAME_RE.test(p)
-  })
+  }, process.env, rememberLog)
 }
 
 // Sanitize a connection config into the renderer-facing shape. With no
@@ -14848,13 +14843,21 @@ function closeHudWindow() {
 // swallowed: a chord another app already owns comes back as `error: 'taken'`.
 const QUICK_ENTRY_CONFIG_PATH = path.join(app.getPath('userData'), 'quick-entry.json')
 let quickEntryWindow = null
-let quickEntryLastState = null
+
+// hc-1113: every submitted line is answered (delivered, or back in the window with why) and logged.
+const quickEntryRelay = createQuickEntryRelay({
+  log: line => rememberLog(line),
+  primary: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null),
+  quick: () => (quickEntryWindow && !quickEntryWindow.isDestroyed() ? quickEntryWindow.webContents : null),
+  hideQuick: () => hideQuickEntryWindow(),
+  showQuick: () => showQuickEntryWindow()
+})
 
 function readQuickEntrySettings() {
   try {
     return sanitizeQuickEntrySettings(JSON.parse(fs.readFileSync(QUICK_ENTRY_CONFIG_PATH, 'utf8')))
   } catch {
-    return sanitizeQuickEntrySettings({ enabled: false })
+    return sanitizeQuickEntrySettings(null)
   }
 }
 
@@ -14935,11 +14938,7 @@ function spawnQuickEntryWindow() {
       quickEntryWindow = null
     }
   })
-  win.webContents.on('did-finish-load', () => {
-    if (!win.isDestroyed() && quickEntryLastState) {
-      win.webContents.send('hermes:quick-entry:state', quickEntryLastState)
-    }
-  })
+  win.webContents.on('did-finish-load', () => !win.isDestroyed() && quickEntryRelay.replay(win.webContents))
 
   attachRendererConsoleCapture(win, 'quick-entry', rememberLog)
   loadWindowUrl(win, quickEntryUrl(), 'Quick entry')
@@ -14976,7 +14975,7 @@ function showQuickEntryWindow() {
   repositionQuickEntryWindow(quickEntryWindow)
   quickEntryWindow.show()
   quickEntryWindow.focus()
-  quickEntryWindow.webContents.send('hermes:quick-entry:shown')
+  quickEntryRelay.shown(quickEntryWindow.webContents)
 }
 
 function hideQuickEntryWindow() {
@@ -17614,27 +17613,9 @@ ipcMain.handle('hermes:quick-entry:settings:set', async (_event, patch) => {
   return applyQuickEntrySettings(next)
 })
 
-ipcMain.on('hermes:quick-entry:submit', (_event, payload) => {
-  hideQuickEntryWindow()
-  const text = typeof payload?.text === 'string' ? payload.text.trim() : ''
-
-  if (!text || !mainWindow || mainWindow.isDestroyed()) {
-    return
-  }
-
-  mainWindow.webContents.send('hermes:quick-entry:submit', {
-    target: typeof payload?.target === 'string' && payload.target ? payload.target : 'current',
-    text
-  })
-})
-
-ipcMain.on('hermes:quick-entry:state', (_event, payload) => {
-  quickEntryLastState = payload ?? null
-
-  if (quickEntryWindow && !quickEntryWindow.isDestroyed()) {
-    quickEntryWindow.webContents.send('hermes:quick-entry:state', payload)
-  }
-})
+ipcMain.on('hermes:quick-entry:submit', (_event, payload) => quickEntryRelay.submit(payload))
+ipcMain.on('hermes:quick-entry:receipt', (_event, receipt) => quickEntryRelay.receipt(receipt))
+ipcMain.on('hermes:quick-entry:state', (_event, payload) => quickEntryRelay.state(payload))
 
 ipcMain.on('hermes:quick-entry:dismiss', () => hideQuickEntryWindow())
 
