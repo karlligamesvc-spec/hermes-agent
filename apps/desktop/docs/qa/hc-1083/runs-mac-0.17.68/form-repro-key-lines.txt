@@ -1,0 +1,12 @@
+[2026-10-30T17:25:14.255Z] [hermes] HERMES_BACKEND_READY port=62093
+[2026-10-30T17:25:14.255Z] [hermes] Hermes backend listening on 127.0.0.1:62093
+[2026-10-30T17:25:18.391Z] [hermes] [apexnodes] primary backend "default" was started signed out; its new sessions take the relay key from config.yaml (managed-runtime-co
+[2026-10-30T17:25:22.099Z] [hermes] [apexnodes] restarting primary backend "default" for the refreshed relay key (managed-runtime-complete; committed)
+[2026-10-30T17:25:25.461Z] [hermes] HERMES_BACKEND_READY port=62158
+[2026-10-30T17:25:25.462Z] [hermes] Hermes backend listening on 127.0.0.1:62158
+[2026-10-30T17:25:41.187Z] [hermes] [apexnodes] restarting primary backend "default" for the refreshed relay key (managed-runtime-complete; committed)
+[2026-10-30T17:25:44.636Z] [hermes] HERMES_BACKEND_READY port=62254
+[2026-10-30T17:25:44.636Z] [hermes] Hermes backend listening on 127.0.0.1:62254
+[2026-10-30T17:25:53.367Z] [hermes] [apexnodes] restarting primary backend "default" for the refreshed relay key (managed-runtime-complete; committed)
+[2026-10-30T17:25:56.762Z] [hermes] HERMES_BACKEND_READY port=62296
+[2026-10-30T17:25:56.762Z] [hermes] Hermes backend listening on 127.0.0.1:62296

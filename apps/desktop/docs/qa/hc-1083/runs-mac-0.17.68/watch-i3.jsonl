@@ -1,0 +1,752 @@
+{"kind": "watch_start", "home": "<test-dir>/home/hermes", "t": 1793341070.6554072, "iso": "2026-10-30T06:17:50.655Z"}
+{"kind": "proc_new", "t": 1793341057.498066, "pid": 46542, "proc_kind": "engine", "profile": "default", "iso": "2026-10-30T06:17:37.498Z"}
+{"kind": "listen", "pid": 46542, "ports": [61825], "profile": "default", "t": 1793341070.6713972, "iso": "2026-10-30T06:17:50.671Z"}
+{"kind": "mem", "engines": {"46542": {"profile": "default", "rss": 342573056, "uss": null, "tree_rss": 342573056}}, "all_rss": 1129201664, "processes": 6, "t": 1793341070.671568, "iso": "2026-10-30T06:17:50.671Z"}
+{"kind": "mem", "engines": {"46542": {"profile": "default", "rss": 340213760, "uss": null, "tree_rss": 340213760}}, "all_rss": 1038352384, "processes": 6, "t": 1793341080.855144, "iso": "2026-10-30T06:18:00.855Z"}
+{"kind": "mem", "engines": {"46542": {"profile": "default", "rss": 303284224, "uss": null, "tree_rss": 303284224}}, "all_rss": 1013694464, "processes": 6, "t": 1793341141.953399, "iso": "2026-10-30T06:19:01.953Z"}
+{"kind": "mem", "engines": {"46542": {"profile": "default", "rss": 304218112, "uss": null, "tree_rss": 304218112}}, "all_rss": 1015513088, "processes": 6, "t": 1793341203.0318022, "iso": "2026-10-30T06:20:03.031Z"}
+{"kind": "mem", "engines": {"46542": {"profile": "default", "rss": 304218112, "uss": null, "tree_rss": 304218112}}, "all_rss": 1017774080, "processes": 6, "t": 1793341264.106494, "iso": "2026-10-30T06:21:04.106Z"}
+{"kind": "mem", "engines": {"46542": {"profile": "default", "rss": 304332800, "uss": null, "tree_rss": 304332800}}, "all_rss": 1019625472, "processes": 6, "t": 1793341320.125217, "iso": "2026-10-30T06:22:00.125Z"}
+{"kind": "proc_gone", "pid": 46542, "proc_kind": "engine", "profile": "default", "t": 1793341338.924916, "iso": "2026-10-30T06:22:18.924Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793341380.956414, "iso": "2026-10-30T06:23:00.956Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793341441.7417831, "iso": "2026-10-30T06:24:01.741Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793341502.5672479, "iso": "2026-10-30T06:25:02.567Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793341563.434758, "iso": "2026-10-30T06:26:03.434Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793341624.2665632, "iso": "2026-10-30T06:27:04.266Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793341680.0049899, "iso": "2026-10-30T06:28:00.004Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793341741.08706, "iso": "2026-10-30T06:29:01.087Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793341801.9434319, "iso": "2026-10-30T06:30:01.943Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793341862.873179, "iso": "2026-10-30T06:31:02.873Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793341924.2178571, "iso": "2026-10-30T06:32:04.217Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793341980.423423, "iso": "2026-10-30T06:33:00.423Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342041.6948218, "iso": "2026-10-30T06:34:01.694Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342102.96464, "iso": "2026-10-30T06:35:02.964Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342164.230318, "iso": "2026-10-30T06:36:04.230Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342220.41779, "iso": "2026-10-30T06:37:00.417Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342281.7480981, "iso": "2026-10-30T06:38:01.748Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342342.9931479, "iso": "2026-10-30T06:39:02.993Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342404.278872, "iso": "2026-10-30T06:40:04.278Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342460.4430668, "iso": "2026-10-30T06:41:00.443Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342521.328028, "iso": "2026-10-30T06:42:01.328Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342582.227606, "iso": "2026-10-30T06:43:02.227Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342643.115026, "iso": "2026-10-30T06:44:03.115Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342703.98318, "iso": "2026-10-30T06:45:03.983Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342764.8717241, "iso": "2026-10-30T06:46:04.871Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342821.062297, "iso": "2026-10-30T06:47:01.062Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342882.0549362, "iso": "2026-10-30T06:48:02.054Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793342942.964174, "iso": "2026-10-30T06:49:02.964Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343003.8324869, "iso": "2026-10-30T06:50:03.832Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343064.722608, "iso": "2026-10-30T06:51:04.722Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343120.521842, "iso": "2026-10-30T06:52:00.521Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343181.406396, "iso": "2026-10-30T06:53:01.406Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343242.311192, "iso": "2026-10-30T06:54:02.311Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343303.185014, "iso": "2026-10-30T06:55:03.185Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343364.070666, "iso": "2026-10-30T06:56:04.070Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343424.9315898, "iso": "2026-10-30T06:57:04.931Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343480.929892, "iso": "2026-10-30T06:58:00.929Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343542.29326, "iso": "2026-10-30T06:59:02.293Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343603.5698612, "iso": "2026-10-30T07:00:03.569Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343664.593863, "iso": "2026-10-30T07:01:04.593Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343720.554219, "iso": "2026-10-30T07:02:00.554Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343781.8516731, "iso": "2026-10-30T07:03:01.851Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343843.125937, "iso": "2026-10-30T07:04:03.125Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343904.443881, "iso": "2026-10-30T07:05:04.443Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793343960.661483, "iso": "2026-10-30T07:06:00.661Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344021.953643, "iso": "2026-10-30T07:07:01.953Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344083.2785568, "iso": "2026-10-30T07:08:03.278Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344144.5792599, "iso": "2026-10-30T07:09:04.579Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344200.770133, "iso": "2026-10-30T07:10:00.770Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344262.091218, "iso": "2026-10-30T07:11:02.091Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344323.397835, "iso": "2026-10-30T07:12:03.397Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344384.6768441, "iso": "2026-10-30T07:13:04.676Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344440.821457, "iso": "2026-10-30T07:14:00.821Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344502.148056, "iso": "2026-10-30T07:15:02.148Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344563.328541, "iso": "2026-10-30T07:16:03.328Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344624.248714, "iso": "2026-10-30T07:17:04.248Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344680.080153, "iso": "2026-10-30T07:18:00.080Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344740.923042, "iso": "2026-10-30T07:19:00.923Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344801.768241, "iso": "2026-10-30T07:20:01.768Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344862.6824949, "iso": "2026-10-30T07:21:02.682Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344923.975264, "iso": "2026-10-30T07:22:03.975Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793344980.1877382, "iso": "2026-10-30T07:23:00.187Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345041.483926, "iso": "2026-10-30T07:24:01.483Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345102.790118, "iso": "2026-10-30T07:25:02.790Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345164.112064, "iso": "2026-10-30T07:26:04.112Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345220.2669172, "iso": "2026-10-30T07:27:00.266Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345281.515829, "iso": "2026-10-30T07:28:01.515Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345342.773935, "iso": "2026-10-30T07:29:02.773Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345404.1047401, "iso": "2026-10-30T07:30:04.104Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345460.3174798, "iso": "2026-10-30T07:31:00.317Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345521.607148, "iso": "2026-10-30T07:32:01.607Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345582.8988001, "iso": "2026-10-30T07:33:02.898Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345644.11304, "iso": "2026-10-30T07:34:04.113Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345700.193963, "iso": "2026-10-30T07:35:00.193Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345761.428978, "iso": "2026-10-30T07:36:01.428Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345822.78622, "iso": "2026-10-30T07:37:02.786Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345884.101886, "iso": "2026-10-30T07:38:04.101Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793345940.1870651, "iso": "2026-10-30T07:39:00.187Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346001.441, "iso": "2026-10-30T07:40:01.441Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346062.730196, "iso": "2026-10-30T07:41:02.730Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346124.000872, "iso": "2026-10-30T07:42:04.000Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346180.089469, "iso": "2026-10-30T07:43:00.089Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346240.8562, "iso": "2026-10-30T07:44:00.856Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346301.6331031, "iso": "2026-10-30T07:45:01.633Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346362.401807, "iso": "2026-10-30T07:46:02.401Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346423.174386, "iso": "2026-10-30T07:47:03.174Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346483.861247, "iso": "2026-10-30T07:48:03.861Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346544.6398442, "iso": "2026-10-30T07:49:04.639Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346600.260743, "iso": "2026-10-30T07:50:00.260Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346660.990017, "iso": "2026-10-30T07:51:00.990Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346722.08423, "iso": "2026-10-30T07:52:02.084Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346783.191917, "iso": "2026-10-30T07:53:03.191Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346844.4296288, "iso": "2026-10-30T07:54:04.429Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346900.645086, "iso": "2026-10-30T07:55:00.645Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793346962.041461, "iso": "2026-10-30T07:56:02.041Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347023.227749, "iso": "2026-10-30T07:57:03.227Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347084.376189, "iso": "2026-10-30T07:58:04.376Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347140.502357, "iso": "2026-10-30T07:59:00.502Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347201.748747, "iso": "2026-10-30T08:00:01.748Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347262.948077, "iso": "2026-10-30T08:01:02.948Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347324.160026, "iso": "2026-10-30T08:02:04.160Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347380.3303192, "iso": "2026-10-30T08:03:00.330Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347441.541177, "iso": "2026-10-30T08:04:01.541Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347502.7188532, "iso": "2026-10-30T08:05:02.718Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347563.89589, "iso": "2026-10-30T08:06:03.895Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347625.045526, "iso": "2026-10-30T08:07:05.045Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347681.2757602, "iso": "2026-10-30T08:08:01.275Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347742.879819, "iso": "2026-10-30T08:09:02.879Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347804.189505, "iso": "2026-10-30T08:10:04.189Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347860.404042, "iso": "2026-10-30T08:11:00.404Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347921.776999, "iso": "2026-10-30T08:12:01.776Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793347983.146362, "iso": "2026-10-30T08:13:03.146Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348044.533476, "iso": "2026-10-30T08:14:04.533Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348100.7671301, "iso": "2026-10-30T08:15:00.767Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348162.10234, "iso": "2026-10-30T08:16:02.102Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348223.478736, "iso": "2026-10-30T08:17:03.478Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348284.81708, "iso": "2026-10-30T08:18:04.817Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348341.036679, "iso": "2026-10-30T08:19:01.036Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348402.400345, "iso": "2026-10-30T08:20:02.400Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348463.694816, "iso": "2026-10-30T08:21:03.694Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348525.0377128, "iso": "2026-10-30T08:22:05.037Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348581.273231, "iso": "2026-10-30T08:23:01.273Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348642.5807989, "iso": "2026-10-30T08:24:02.580Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348703.916546, "iso": "2026-10-30T08:25:03.916Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348760.188083, "iso": "2026-10-30T08:26:00.188Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348821.50945, "iso": "2026-10-30T08:27:01.509Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348882.813015, "iso": "2026-10-30T08:28:02.813Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793348944.175712, "iso": "2026-10-30T08:29:04.175Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349000.439088, "iso": "2026-10-30T08:30:00.439Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349061.725507, "iso": "2026-10-30T08:31:01.725Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349123.0276759, "iso": "2026-10-30T08:32:03.027Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349184.325983, "iso": "2026-10-30T08:33:04.325Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349240.5743349, "iso": "2026-10-30T08:34:00.574Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349301.929298, "iso": "2026-10-30T08:35:01.929Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349363.2654378, "iso": "2026-10-30T08:36:03.265Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349424.380151, "iso": "2026-10-30T08:37:04.380Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349480.193303, "iso": "2026-10-30T08:38:00.193Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349541.082838, "iso": "2026-10-30T08:39:01.082Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349602.02805, "iso": "2026-10-30T08:40:02.028Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349662.948391, "iso": "2026-10-30T08:41:02.948Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349724.13302, "iso": "2026-10-30T08:42:04.133Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349780.1195729, "iso": "2026-10-30T08:43:00.119Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349841.3069818, "iso": "2026-10-30T08:44:01.306Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349902.233849, "iso": "2026-10-30T08:45:02.233Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793349963.119144, "iso": "2026-10-30T08:46:03.119Z"}
+{"t": 1793350012.473, "kind": "log", "event": "primary_start", "text": "[boot] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tm", "iso": "2026-10-30T08:46:52.473Z"}
+{"t": 1793350012.473, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>…", "iso": "2026-10-30T08:46:52.473Z"}
+{"kind": "proc_new", "t": 1793350012.476729, "pid": 78868, "proc_kind": "engine", "profile": "default", "iso": "2026-10-30T08:46:52.476Z"}
+{"kind": "listen", "pid": 78868, "ports": [59367], "profile": "default", "t": 1793350014.830199, "iso": "2026-10-30T08:46:54.830Z"}
+{"t": 1793350014.872, "kind": "log", "event": "ready", "port": "59367", "text": "HERMES_BACKEND_READY port=59367", "iso": "2026-10-30T08:46:54.872Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 315015168, "uss": null, "tree_rss": 315015168}}, "all_rss": 1065369600, "processes": 5, "t": 1793350023.9950452, "iso": "2026-10-30T08:47:03.995Z"}
+{"kind": "mark", "label": "单助手：重新登录前，APEX（主引擎）发「回复一个字：好」", "t": 1793350076.383167, "iso": "2026-10-30T08:47:56.383Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 366968832, "uss": null, "tree_rss": 366968832}}, "all_rss": 1212039168, "processes": 5, "t": 1793350085.085391, "iso": "2026-10-30T08:48:05.085Z"}
+{"kind": "mark", "label": "单助手：请 Kael 重新登录", "t": 1793350092.5616372, "iso": "2026-10-30T08:48:12.561Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368164864, "uss": null, "tree_rss": 368164864}}, "all_rss": 1206042624, "processes": 5, "t": 1793350141.093261, "iso": "2026-10-30T08:49:01.093Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368197632, "uss": null, "tree_rss": 368197632}}, "all_rss": 1210564608, "processes": 5, "t": 1793350202.202791, "iso": "2026-10-30T08:50:02.202Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368214016, "uss": null, "tree_rss": 368214016}}, "all_rss": 1210449920, "processes": 5, "t": 1793350263.416002, "iso": "2026-10-30T08:51:03.416Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368246784, "uss": null, "tree_rss": 368246784}}, "all_rss": 1209745408, "processes": 5, "t": 1793350324.6368582, "iso": "2026-10-30T08:52:04.636Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368263168, "uss": null, "tree_rss": 368263168}}, "all_rss": 1208713216, "processes": 5, "t": 1793350380.757525, "iso": "2026-10-30T08:53:00.757Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368263168, "uss": null, "tree_rss": 368263168}}, "all_rss": 1208614912, "processes": 5, "t": 1793350442.0078368, "iso": "2026-10-30T08:54:02.007Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368263168, "uss": null, "tree_rss": 368263168}}, "all_rss": 1209384960, "processes": 5, "t": 1793350503.092743, "iso": "2026-10-30T08:55:03.092Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368263168, "uss": null, "tree_rss": 368263168}}, "all_rss": 1209352192, "processes": 5, "t": 1793350564.2748249, "iso": "2026-10-30T08:56:04.274Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368361472, "uss": null, "tree_rss": 368361472}}, "all_rss": 1208877056, "processes": 5, "t": 1793350620.3263202, "iso": "2026-10-30T08:57:00.326Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368377856, "uss": null, "tree_rss": 368377856}}, "all_rss": 1209843712, "processes": 5, "t": 1793350681.440371, "iso": "2026-10-30T08:58:01.440Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368279552, "uss": null, "tree_rss": 368279552}}, "all_rss": 1209040896, "processes": 5, "t": 1793350742.60339, "iso": "2026-10-30T08:59:02.603Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368295936, "uss": null, "tree_rss": 368295936}}, "all_rss": 1209483264, "processes": 5, "t": 1793350803.812107, "iso": "2026-10-30T09:00:03.812Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368328704, "uss": null, "tree_rss": 368328704}}, "all_rss": 1209335808, "processes": 5, "t": 1793350865.058711, "iso": "2026-10-30T09:01:05.058Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368328704, "uss": null, "tree_rss": 368328704}}, "all_rss": 1209876480, "processes": 5, "t": 1793350921.159981, "iso": "2026-10-30T09:02:01.159Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368328704, "uss": null, "tree_rss": 368328704}}, "all_rss": 1208762368, "processes": 5, "t": 1793350982.346603, "iso": "2026-10-30T09:03:02.346Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368328704, "uss": null, "tree_rss": 368328704}}, "all_rss": 1209827328, "processes": 5, "t": 1793351043.4444191, "iso": "2026-10-30T09:04:03.444Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368328704, "uss": null, "tree_rss": 368328704}}, "all_rss": 1210056704, "processes": 5, "t": 1793351104.419328, "iso": "2026-10-30T09:05:04.419Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368328704, "uss": null, "tree_rss": 368328704}}, "all_rss": 1210400768, "processes": 5, "t": 1793351160.5304809, "iso": "2026-10-30T09:06:00.530Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368328704, "uss": null, "tree_rss": 368328704}}, "all_rss": 1209729024, "processes": 5, "t": 1793351221.650155, "iso": "2026-10-30T09:07:01.650Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368345088, "uss": null, "tree_rss": 368345088}}, "all_rss": 1209909248, "processes": 5, "t": 1793351282.667878, "iso": "2026-10-30T09:08:02.667Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1210286080, "processes": 5, "t": 1793351344.01301, "iso": "2026-10-30T09:09:04.013Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368361472, "uss": null, "tree_rss": 368361472}}, "all_rss": 1210220544, "processes": 5, "t": 1793351400.603756, "iso": "2026-10-30T09:10:00.603Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368361472, "uss": null, "tree_rss": 368361472}}, "all_rss": 1209892864, "processes": 5, "t": 1793351462.230539, "iso": "2026-10-30T09:11:02.230Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368394240, "uss": null, "tree_rss": 368394240}}, "all_rss": 1210089472, "processes": 5, "t": 1793351523.774827, "iso": "2026-10-30T09:12:03.774Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368394240, "uss": null, "tree_rss": 368394240}}, "all_rss": 1210499072, "processes": 5, "t": 1793351580.194536, "iso": "2026-10-30T09:13:00.194Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368394240, "uss": null, "tree_rss": 368394240}}, "all_rss": 1210531840, "processes": 5, "t": 1793351641.568192, "iso": "2026-10-30T09:14:01.568Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368394240, "uss": null, "tree_rss": 368394240}}, "all_rss": 1210187776, "processes": 5, "t": 1793351702.777059, "iso": "2026-10-30T09:15:02.777Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368394240, "uss": null, "tree_rss": 368394240}}, "all_rss": 1210269696, "processes": 5, "t": 1793351763.869248, "iso": "2026-10-30T09:16:03.869Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368427008, "uss": null, "tree_rss": 368427008}}, "all_rss": 1210548224, "processes": 5, "t": 1793351825.004739, "iso": "2026-10-30T09:17:05.004Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368427008, "uss": null, "tree_rss": 368427008}}, "all_rss": 1210679296, "processes": 5, "t": 1793351881.134517, "iso": "2026-10-30T09:18:01.134Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368427008, "uss": null, "tree_rss": 368427008}}, "all_rss": 1209679872, "processes": 5, "t": 1793351942.0435681, "iso": "2026-10-30T09:19:02.043Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368525312, "uss": null, "tree_rss": 368525312}}, "all_rss": 1210843136, "processes": 5, "t": 1793352003.191821, "iso": "2026-10-30T09:20:03.191Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1210974208, "processes": 5, "t": 1793352064.3843231, "iso": "2026-10-30T09:21:04.384Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1210155008, "processes": 5, "t": 1793352120.66056, "iso": "2026-10-30T09:22:00.660Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1210204160, "processes": 5, "t": 1793352182.1585789, "iso": "2026-10-30T09:23:02.158Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1210220544, "processes": 5, "t": 1793352243.435051, "iso": "2026-10-30T09:24:03.435Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1211236352, "processes": 5, "t": 1793352304.774372, "iso": "2026-10-30T09:25:04.774Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1210826752, "processes": 5, "t": 1793352361.1970901, "iso": "2026-10-30T09:26:01.197Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1211809792, "processes": 5, "t": 1793352422.684931, "iso": "2026-10-30T09:27:02.684Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1211498496, "processes": 5, "t": 1793352484.135554, "iso": "2026-10-30T09:28:04.135Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1212284928, "processes": 5, "t": 1793352540.274616, "iso": "2026-10-30T09:29:00.274Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1210892288, "processes": 5, "t": 1793352601.516598, "iso": "2026-10-30T09:30:01.516Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368525312, "uss": null, "tree_rss": 368525312}}, "all_rss": 1212006400, "processes": 5, "t": 1793352663.075788, "iso": "2026-10-30T09:31:03.075Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1210859520, "processes": 5, "t": 1793352724.6650739, "iso": "2026-10-30T09:32:04.665Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1211711488, "processes": 5, "t": 1793352781.1176288, "iso": "2026-10-30T09:33:01.117Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1210793984, "processes": 5, "t": 1793352842.541943, "iso": "2026-10-30T09:34:02.541Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1211285504, "processes": 5, "t": 1793352903.5996668, "iso": "2026-10-30T09:35:03.599Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1219379200, "processes": 5, "t": 1793352964.7069519, "iso": "2026-10-30T09:36:04.706Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1217085440, "processes": 5, "t": 1793353020.758889, "iso": "2026-10-30T09:37:00.758Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368443392, "uss": null, "tree_rss": 368443392}}, "all_rss": 1216905216, "processes": 5, "t": 1793353081.952469, "iso": "2026-10-30T09:38:01.952Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1217085440, "processes": 5, "t": 1793353142.906205, "iso": "2026-10-30T09:39:02.906Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1217200128, "processes": 5, "t": 1793353203.910175, "iso": "2026-10-30T09:40:03.910Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1217101824, "processes": 5, "t": 1793353265.0152168, "iso": "2026-10-30T09:41:05.015Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368574464, "uss": null, "tree_rss": 368574464}}, "all_rss": 1215660032, "processes": 5, "t": 1793353321.467633, "iso": "2026-10-30T09:42:01.467Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1215791104, "processes": 5, "t": 1793353383.1174688, "iso": "2026-10-30T09:43:03.117Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1215184896, "processes": 5, "t": 1793353444.842475, "iso": "2026-10-30T09:44:04.842Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1216577536, "processes": 5, "t": 1793353501.3787038, "iso": "2026-10-30T09:45:01.378Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1216512000, "processes": 5, "t": 1793353562.98607, "iso": "2026-10-30T09:46:02.986Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1215709184, "processes": 5, "t": 1793353624.6143308, "iso": "2026-10-30T09:47:04.614Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1215447040, "processes": 5, "t": 1793353681.06399, "iso": "2026-10-30T09:48:01.063Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1215086592, "processes": 5, "t": 1793353742.733696, "iso": "2026-10-30T09:49:02.733Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1216036864, "processes": 5, "t": 1793353804.373494, "iso": "2026-10-30T09:50:04.373Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1215496192, "processes": 5, "t": 1793353860.865812, "iso": "2026-10-30T09:51:00.865Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1220198400, "processes": 5, "t": 1793353922.462036, "iso": "2026-10-30T09:52:02.462Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368574464, "uss": null, "tree_rss": 368574464}}, "all_rss": 1221296128, "processes": 5, "t": 1793353984.039263, "iso": "2026-10-30T09:53:04.039Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1220804608, "processes": 5, "t": 1793354040.50494, "iso": "2026-10-30T09:54:00.504Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1219805184, "processes": 5, "t": 1793354102.030396, "iso": "2026-10-30T09:55:02.030Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1219903488, "processes": 5, "t": 1793354163.647956, "iso": "2026-10-30T09:56:03.647Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1220968448, "processes": 5, "t": 1793354220.12582, "iso": "2026-10-30T09:57:00.125Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1220952064, "processes": 5, "t": 1793354281.750054, "iso": "2026-10-30T09:58:01.750Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1220673536, "processes": 5, "t": 1793354343.3850932, "iso": "2026-10-30T09:59:03.385Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1220788224, "processes": 5, "t": 1793354404.9691362, "iso": "2026-10-30T10:00:04.969Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221083136, "processes": 5, "t": 1793354461.399661, "iso": "2026-10-30T10:01:01.399Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1220640768, "processes": 5, "t": 1793354523.025764, "iso": "2026-10-30T10:02:03.025Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1219952640, "processes": 5, "t": 1793354584.688816, "iso": "2026-10-30T10:03:04.688Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368574464, "uss": null, "tree_rss": 368574464}}, "all_rss": 1220952064, "processes": 5, "t": 1793354641.182851, "iso": "2026-10-30T10:04:01.182Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221263360, "processes": 5, "t": 1793354702.7600052, "iso": "2026-10-30T10:05:02.760Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1220591616, "processes": 5, "t": 1793354764.30404, "iso": "2026-10-30T10:06:04.304Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1220689920, "processes": 5, "t": 1793354820.75475, "iso": "2026-10-30T10:07:00.754Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1220771840, "processes": 5, "t": 1793354882.3852758, "iso": "2026-10-30T10:08:02.385Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221509120, "processes": 5, "t": 1793354944.03404, "iso": "2026-10-30T10:09:04.034Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1220018176, "processes": 5, "t": 1793355000.513089, "iso": "2026-10-30T10:10:00.513Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221050368, "processes": 5, "t": 1793355062.080281, "iso": "2026-10-30T10:11:02.080Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221230592, "processes": 5, "t": 1793355123.654728, "iso": "2026-10-30T10:12:03.654Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1220804608, "processes": 5, "t": 1793355180.113673, "iso": "2026-10-30T10:13:00.113Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1220902912, "processes": 5, "t": 1793355241.7864902, "iso": "2026-10-30T10:14:01.786Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368558080, "uss": null, "tree_rss": 368558080}}, "all_rss": 1221001216, "processes": 5, "t": 1793355303.41852, "iso": "2026-10-30T10:15:03.418Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221001216, "processes": 5, "t": 1793355364.968053, "iso": "2026-10-30T10:16:04.968Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221378048, "processes": 5, "t": 1793355421.414764, "iso": "2026-10-30T10:17:01.414Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1220395008, "processes": 5, "t": 1793355482.96909, "iso": "2026-10-30T10:18:02.969Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221394432, "processes": 5, "t": 1793355544.547008, "iso": "2026-10-30T10:19:04.547Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221623808, "processes": 5, "t": 1793355601.0216992, "iso": "2026-10-30T10:20:01.021Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221607424, "processes": 5, "t": 1793355662.5717142, "iso": "2026-10-30T10:21:02.571Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221836800, "processes": 5, "t": 1793355724.113493, "iso": "2026-10-30T10:22:04.113Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1222180864, "processes": 5, "t": 1793355780.665301, "iso": "2026-10-30T10:23:00.665Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1222574080, "processes": 5, "t": 1793355842.326922, "iso": "2026-10-30T10:24:02.326Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1222983680, "processes": 5, "t": 1793355903.900306, "iso": "2026-10-30T10:25:03.900Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368558080, "uss": null, "tree_rss": 368558080}}, "all_rss": 1222868992, "processes": 5, "t": 1793355960.344673, "iso": "2026-10-30T10:26:00.344Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1222017024, "processes": 5, "t": 1793356021.9432461, "iso": "2026-10-30T10:27:01.943Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1222246400, "processes": 5, "t": 1793356083.525339, "iso": "2026-10-30T10:28:03.525Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221181440, "processes": 5, "t": 1793356145.0920908, "iso": "2026-10-30T10:29:05.092Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221672960, "processes": 5, "t": 1793356201.548903, "iso": "2026-10-30T10:30:01.548Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1220902912, "processes": 5, "t": 1793356263.227539, "iso": "2026-10-30T10:31:03.227Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1222131712, "processes": 5, "t": 1793356324.885823, "iso": "2026-10-30T10:32:04.885Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221148672, "processes": 5, "t": 1793356381.3782568, "iso": "2026-10-30T10:33:01.378Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221623808, "processes": 5, "t": 1793356443.0519319, "iso": "2026-10-30T10:34:03.051Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221738496, "processes": 5, "t": 1793356504.651336, "iso": "2026-10-30T10:35:04.651Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221722112, "processes": 5, "t": 1793356561.086533, "iso": "2026-10-30T10:36:01.086Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368558080, "uss": null, "tree_rss": 368558080}}, "all_rss": 1221787648, "processes": 5, "t": 1793356622.6448798, "iso": "2026-10-30T10:37:02.644Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221902336, "processes": 5, "t": 1793356684.269716, "iso": "2026-10-30T10:38:04.269Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1222131712, "processes": 5, "t": 1793356740.698806, "iso": "2026-10-30T10:39:00.698Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1222115328, "processes": 5, "t": 1793356802.3292532, "iso": "2026-10-30T10:40:02.329Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221804032, "processes": 5, "t": 1793356864.0253341, "iso": "2026-10-30T10:41:04.025Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221836800, "processes": 5, "t": 1793356920.523605, "iso": "2026-10-30T10:42:00.523Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1222230016, "processes": 5, "t": 1793356982.105006, "iso": "2026-10-30T10:43:02.105Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1222426624, "processes": 5, "t": 1793357043.73265, "iso": "2026-10-30T10:44:03.732Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221672960, "processes": 5, "t": 1793357100.207304, "iso": "2026-10-30T10:45:00.207Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1222066176, "processes": 5, "t": 1793357161.801978, "iso": "2026-10-30T10:46:01.801Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1222279168, "processes": 5, "t": 1793357223.4567091, "iso": "2026-10-30T10:47:03.456Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368525312, "uss": null, "tree_rss": 368525312}}, "all_rss": 1221935104, "processes": 5, "t": 1793357285.006624, "iso": "2026-10-30T10:48:05.006Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221951488, "processes": 5, "t": 1793357341.4669151, "iso": "2026-10-30T10:49:01.466Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1222983680, "processes": 5, "t": 1793357403.0353658, "iso": "2026-10-30T10:50:03.035Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1222606848, "processes": 5, "t": 1793357464.621453, "iso": "2026-10-30T10:51:04.621Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1221754880, "processes": 5, "t": 1793357521.075259, "iso": "2026-10-30T10:52:01.075Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368476160, "uss": null, "tree_rss": 368476160}}, "all_rss": 1222279168, "processes": 5, "t": 1793357582.658654, "iso": "2026-10-30T10:53:02.658Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222328320, "processes": 5, "t": 1793357644.235442, "iso": "2026-10-30T10:54:04.235Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222475776, "processes": 5, "t": 1793357700.729884, "iso": "2026-10-30T10:55:00.729Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222901760, "processes": 5, "t": 1793357762.305635, "iso": "2026-10-30T10:56:02.305Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1221722112, "processes": 5, "t": 1793357823.9507961, "iso": "2026-10-30T10:57:03.950Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1223131136, "processes": 5, "t": 1793357880.407736, "iso": "2026-10-30T10:58:00.407Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368574464, "uss": null, "tree_rss": 368574464}}, "all_rss": 1222885376, "processes": 5, "t": 1793357941.975473, "iso": "2026-10-30T10:59:01.975Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222770688, "processes": 5, "t": 1793358003.559962, "iso": "2026-10-30T11:00:03.559Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1221951488, "processes": 5, "t": 1793358065.1282291, "iso": "2026-10-30T11:01:05.128Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222623232, "processes": 5, "t": 1793358121.526579, "iso": "2026-10-30T11:02:01.526Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222819840, "processes": 5, "t": 1793358183.100279, "iso": "2026-10-30T11:03:03.100Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222705152, "processes": 5, "t": 1793358244.672361, "iso": "2026-10-30T11:04:04.672Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222492160, "processes": 5, "t": 1793358301.212049, "iso": "2026-10-30T11:05:01.212Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222148096, "processes": 5, "t": 1793358362.8770702, "iso": "2026-10-30T11:06:02.877Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222868992, "processes": 5, "t": 1793358424.5153542, "iso": "2026-10-30T11:07:04.515Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222508544, "processes": 5, "t": 1793358480.989738, "iso": "2026-10-30T11:08:00.989Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222311936, "processes": 5, "t": 1793358542.616631, "iso": "2026-10-30T11:09:02.616Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368574464, "uss": null, "tree_rss": 368574464}}, "all_rss": 1222475776, "processes": 5, "t": 1793358604.149436, "iso": "2026-10-30T11:10:04.149Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222328320, "processes": 5, "t": 1793358660.5910132, "iso": "2026-10-30T11:11:00.591Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1223180288, "processes": 5, "t": 1793358722.1984, "iso": "2026-10-30T11:12:02.198Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1221656576, "processes": 5, "t": 1793358783.782393, "iso": "2026-10-30T11:13:03.782Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222983680, "processes": 5, "t": 1793358840.315, "iso": "2026-10-30T11:14:00.315Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1223098368, "processes": 5, "t": 1793358901.8783019, "iso": "2026-10-30T11:15:01.878Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1223131136, "processes": 5, "t": 1793358963.492527, "iso": "2026-10-30T11:16:03.492Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222754304, "processes": 5, "t": 1793359020.018315, "iso": "2026-10-30T11:17:00.018Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222967296, "processes": 5, "t": 1793359081.59405, "iso": "2026-10-30T11:18:01.594Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1223196672, "processes": 5, "t": 1793359143.174088, "iso": "2026-10-30T11:19:03.174Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1222868992, "processes": 5, "t": 1793359204.7521238, "iso": "2026-10-30T11:20:04.752Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368541696, "uss": null, "tree_rss": 368541696}}, "all_rss": 1222885376, "processes": 5, "t": 1793359261.202152, "iso": "2026-10-30T11:21:01.202Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1223376896, "processes": 5, "t": 1793359322.836302, "iso": "2026-10-30T11:22:02.836Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1223065600, "processes": 5, "t": 1793359384.48649, "iso": "2026-10-30T11:23:04.486Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1223475200, "processes": 5, "t": 1793359441.007777, "iso": "2026-10-30T11:24:01.007Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368492544, "uss": null, "tree_rss": 368492544}}, "all_rss": 1223770112, "processes": 5, "t": 1793359502.6193001, "iso": "2026-10-30T11:25:02.619Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368590848, "uss": null, "tree_rss": 368590848}}, "all_rss": 1224310784, "processes": 5, "t": 1793359564.169703, "iso": "2026-10-30T11:26:04.169Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368590848, "uss": null, "tree_rss": 368590848}}, "all_rss": 1224556544, "processes": 5, "t": 1793359620.686017, "iso": "2026-10-30T11:27:00.686Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368590848, "uss": null, "tree_rss": 368590848}}, "all_rss": 1224736768, "processes": 5, "t": 1793359682.3127239, "iso": "2026-10-30T11:28:02.312Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1224130560, "processes": 5, "t": 1793359743.84351, "iso": "2026-10-30T11:29:03.843Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1223966720, "processes": 5, "t": 1793359800.2929978, "iso": "2026-10-30T11:30:00.292Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1224753152, "processes": 5, "t": 1793359861.887089, "iso": "2026-10-30T11:31:01.887Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368705536, "uss": null, "tree_rss": 368705536}}, "all_rss": 1223557120, "processes": 5, "t": 1793359923.5497751, "iso": "2026-10-30T11:32:03.549Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1223163904, "processes": 5, "t": 1793359985.121732, "iso": "2026-10-30T11:33:05.121Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1223589888, "processes": 5, "t": 1793360041.615019, "iso": "2026-10-30T11:34:01.615Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1223786496, "processes": 5, "t": 1793360103.290456, "iso": "2026-10-30T11:35:03.290Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1224097792, "processes": 5, "t": 1793360164.893085, "iso": "2026-10-30T11:36:04.893Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1224278016, "processes": 5, "t": 1793360221.330218, "iso": "2026-10-30T11:37:01.330Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1223311360, "processes": 5, "t": 1793360282.935256, "iso": "2026-10-30T11:38:02.935Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1224474624, "processes": 5, "t": 1793360344.597322, "iso": "2026-10-30T11:39:04.597Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1224228864, "processes": 5, "t": 1793360401.043288, "iso": "2026-10-30T11:40:01.043Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1224474624, "processes": 5, "t": 1793360462.661649, "iso": "2026-10-30T11:41:02.661Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1223901184, "processes": 5, "t": 1793360524.227662, "iso": "2026-10-30T11:42:04.227Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368705536, "uss": null, "tree_rss": 368705536}}, "all_rss": 1223999488, "processes": 5, "t": 1793360580.7381802, "iso": "2026-10-30T11:43:00.738Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1224196096, "processes": 5, "t": 1793360642.297754, "iso": "2026-10-30T11:44:02.297Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1223311360, "processes": 5, "t": 1793360703.859518, "iso": "2026-10-30T11:45:03.859Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1223213056, "processes": 5, "t": 1793360760.3449962, "iso": "2026-10-30T11:46:00.344Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1224851456, "processes": 5, "t": 1793360821.912868, "iso": "2026-10-30T11:47:01.912Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1224441856, "processes": 5, "t": 1793360883.468061, "iso": "2026-10-30T11:48:03.468Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1223376896, "processes": 5, "t": 1793360945.052777, "iso": "2026-10-30T11:49:05.052Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368623616, "uss": null, "tree_rss": 368623616}}, "all_rss": 1224097792, "processes": 5, "t": 1793361001.5103638, "iso": "2026-10-30T11:50:01.510Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368640000, "uss": null, "tree_rss": 368640000}}, "all_rss": 1224065024, "processes": 5, "t": 1793361063.0677109, "iso": "2026-10-30T11:51:03.067Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368640000, "uss": null, "tree_rss": 368640000}}, "all_rss": 1224507392, "processes": 5, "t": 1793361124.660474, "iso": "2026-10-30T11:52:04.660Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368640000, "uss": null, "tree_rss": 368640000}}, "all_rss": 1223819264, "processes": 5, "t": 1793361181.17771, "iso": "2026-10-30T11:53:01.177Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368754688, "uss": null, "tree_rss": 368754688}}, "all_rss": 1224261632, "processes": 5, "t": 1793361242.802927, "iso": "2026-10-30T11:54:02.802Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368672768, "uss": null, "tree_rss": 368672768}}, "all_rss": 1224966144, "processes": 5, "t": 1793361304.44386, "iso": "2026-10-30T11:55:04.443Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368672768, "uss": null, "tree_rss": 368672768}}, "all_rss": 1224196096, "processes": 5, "t": 1793361360.9072902, "iso": "2026-10-30T11:56:00.907Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368672768, "uss": null, "tree_rss": 368672768}}, "all_rss": 1224589312, "processes": 5, "t": 1793361422.553312, "iso": "2026-10-30T11:57:02.553Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368672768, "uss": null, "tree_rss": 368672768}}, "all_rss": 1223983104, "processes": 5, "t": 1793361484.135691, "iso": "2026-10-30T11:58:04.135Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368689152, "uss": null, "tree_rss": 368689152}}, "all_rss": 1224376320, "processes": 5, "t": 1793361540.563307, "iso": "2026-10-30T11:59:00.563Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368689152, "uss": null, "tree_rss": 368689152}}, "all_rss": 1223655424, "processes": 5, "t": 1793361602.120967, "iso": "2026-10-30T12:00:02.120Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368689152, "uss": null, "tree_rss": 368689152}}, "all_rss": 1224245248, "processes": 5, "t": 1793361663.69553, "iso": "2026-10-30T12:01:03.695Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368689152, "uss": null, "tree_rss": 368689152}}, "all_rss": 1224097792, "processes": 5, "t": 1793361720.1438138, "iso": "2026-10-30T12:02:00.143Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368689152, "uss": null, "tree_rss": 368689152}}, "all_rss": 1224212480, "processes": 5, "t": 1793361781.676886, "iso": "2026-10-30T12:03:01.676Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368689152, "uss": null, "tree_rss": 368689152}}, "all_rss": 1223852032, "processes": 5, "t": 1793361843.224514, "iso": "2026-10-30T12:04:03.224Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368803840, "uss": null, "tree_rss": 368803840}}, "all_rss": 1224736768, "processes": 5, "t": 1793361904.857148, "iso": "2026-10-30T12:05:04.857Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1223524352, "processes": 5, "t": 1793361961.328288, "iso": "2026-10-30T12:06:01.328Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1224540160, "processes": 5, "t": 1793362022.96501, "iso": "2026-10-30T12:07:02.965Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1224523776, "processes": 5, "t": 1793362084.5263429, "iso": "2026-10-30T12:08:04.526Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1224949760, "processes": 5, "t": 1793362140.9995892, "iso": "2026-10-30T12:09:00.999Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1224163328, "processes": 5, "t": 1793362202.629867, "iso": "2026-10-30T12:10:02.629Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1224687616, "processes": 5, "t": 1793362264.2498, "iso": "2026-10-30T12:11:04.249Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1224327168, "processes": 5, "t": 1793362320.734533, "iso": "2026-10-30T12:12:00.734Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225064448, "processes": 5, "t": 1793362382.374948, "iso": "2026-10-30T12:13:02.374Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225359360, "processes": 5, "t": 1793362443.9687948, "iso": "2026-10-30T12:14:03.968Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1224720384, "processes": 5, "t": 1793362500.3875751, "iso": "2026-10-30T12:15:00.387Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368803840, "uss": null, "tree_rss": 368803840}}, "all_rss": 1225015296, "processes": 5, "t": 1793362562.030495, "iso": "2026-10-30T12:16:02.030Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1224900608, "processes": 5, "t": 1793362623.626397, "iso": "2026-10-30T12:17:03.626Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225342976, "processes": 5, "t": 1793362680.165257, "iso": "2026-10-30T12:18:00.165Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1224081408, "processes": 5, "t": 1793362741.7525709, "iso": "2026-10-30T12:19:01.752Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225474048, "processes": 5, "t": 1793362803.35072, "iso": "2026-10-30T12:20:03.350Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225113600, "processes": 5, "t": 1793362864.961333, "iso": "2026-10-30T12:21:04.961Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225801728, "processes": 5, "t": 1793362921.486054, "iso": "2026-10-30T12:22:01.486Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225261056, "processes": 5, "t": 1793362983.064322, "iso": "2026-10-30T12:23:03.064Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225261056, "processes": 5, "t": 1793363044.6467469, "iso": "2026-10-30T12:24:04.646Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225637888, "processes": 5, "t": 1793363101.1849668, "iso": "2026-10-30T12:25:01.184Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225818112, "processes": 5, "t": 1793363162.798956, "iso": "2026-10-30T12:26:02.798Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368803840, "uss": null, "tree_rss": 368803840}}, "all_rss": 1225408512, "processes": 5, "t": 1793363224.4233332, "iso": "2026-10-30T12:27:04.423Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225244672, "processes": 5, "t": 1793363280.8934941, "iso": "2026-10-30T12:28:00.893Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225654272, "processes": 5, "t": 1793363342.490921, "iso": "2026-10-30T12:29:02.490Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225818112, "processes": 5, "t": 1793363404.0593548, "iso": "2026-10-30T12:30:04.059Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1226047488, "processes": 5, "t": 1793363460.541172, "iso": "2026-10-30T12:31:00.541Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1226309632, "processes": 5, "t": 1793363522.139593, "iso": "2026-10-30T12:32:02.139Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1226031104, "processes": 5, "t": 1793363583.6828108, "iso": "2026-10-30T12:33:03.682Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1226686464, "processes": 5, "t": 1793363640.1579251, "iso": "2026-10-30T12:34:00.157Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1226129408, "processes": 5, "t": 1793363701.7824728, "iso": "2026-10-30T12:35:01.782Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1226293248, "processes": 5, "t": 1793363763.380279, "iso": "2026-10-30T12:36:03.380Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1226276864, "processes": 5, "t": 1793363825.058717, "iso": "2026-10-30T12:37:05.058Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368820224, "uss": null, "tree_rss": 368820224}}, "all_rss": 1226358784, "processes": 5, "t": 1793363881.4735801, "iso": "2026-10-30T12:38:01.473Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1225785344, "processes": 5, "t": 1793363943.107797, "iso": "2026-10-30T12:39:03.107Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1224818688, "processes": 5, "t": 1793364004.683775, "iso": "2026-10-30T12:40:04.683Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225654272, "processes": 5, "t": 1793364061.167797, "iso": "2026-10-30T12:41:01.167Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225654272, "processes": 5, "t": 1793364122.69073, "iso": "2026-10-30T12:42:02.690Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1226063872, "processes": 5, "t": 1793364184.3272278, "iso": "2026-10-30T12:43:04.327Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1226309632, "processes": 5, "t": 1793364240.821432, "iso": "2026-10-30T12:44:00.821Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225441280, "processes": 5, "t": 1793364302.453538, "iso": "2026-10-30T12:45:02.453Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225850880, "processes": 5, "t": 1793364364.032671, "iso": "2026-10-30T12:46:04.032Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225129984, "processes": 5, "t": 1793364420.508134, "iso": "2026-10-30T12:47:00.508Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225687040, "processes": 5, "t": 1793364482.127538, "iso": "2026-10-30T12:48:02.127Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368803840, "uss": null, "tree_rss": 368803840}}, "all_rss": 1225785344, "processes": 5, "t": 1793364543.747369, "iso": "2026-10-30T12:49:03.747Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225719808, "processes": 5, "t": 1793364600.235611, "iso": "2026-10-30T12:50:00.235Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1226047488, "processes": 5, "t": 1793364661.862176, "iso": "2026-10-30T12:51:01.862Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1226047488, "processes": 5, "t": 1793364723.515681, "iso": "2026-10-30T12:52:03.515Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1225408512, "processes": 5, "t": 1793364785.118496, "iso": "2026-10-30T12:53:05.118Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1224900608, "processes": 5, "t": 1793364841.633017, "iso": "2026-10-30T12:54:01.633Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1226063872, "processes": 5, "t": 1793364903.2649212, "iso": "2026-10-30T12:55:03.264Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368721920, "uss": null, "tree_rss": 368721920}}, "all_rss": 1226227712, "processes": 5, "t": 1793364964.9064379, "iso": "2026-10-30T12:56:04.906Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1226244096, "processes": 5, "t": 1793365021.33972, "iso": "2026-10-30T12:57:01.339Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1225113600, "processes": 5, "t": 1793365082.948728, "iso": "2026-10-30T12:58:02.948Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1225752576, "processes": 5, "t": 1793365144.529427, "iso": "2026-10-30T12:59:04.529Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368820224, "uss": null, "tree_rss": 368820224}}, "all_rss": 1225588736, "processes": 5, "t": 1793365201.00117, "iso": "2026-10-30T13:00:01.001Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1226014720, "processes": 5, "t": 1793365262.57326, "iso": "2026-10-30T13:01:02.573Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1225687040, "processes": 5, "t": 1793365324.2486908, "iso": "2026-10-30T13:02:04.248Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1226113024, "processes": 5, "t": 1793365380.747958, "iso": "2026-10-30T13:03:00.747Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1226260480, "processes": 5, "t": 1793365442.336544, "iso": "2026-10-30T13:04:02.336Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1226440704, "processes": 5, "t": 1793365503.854243, "iso": "2026-10-30T13:05:03.854Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1225949184, "processes": 5, "t": 1793365560.334749, "iso": "2026-10-30T13:06:00.334Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1225293824, "processes": 5, "t": 1793365621.952638, "iso": "2026-10-30T13:07:01.952Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1225490432, "processes": 5, "t": 1793365683.483785, "iso": "2026-10-30T13:08:03.483Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1226932224, "processes": 5, "t": 1793365745.108383, "iso": "2026-10-30T13:09:05.108Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1226686464, "processes": 5, "t": 1793365801.608505, "iso": "2026-10-30T13:10:01.608Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368820224, "uss": null, "tree_rss": 368820224}}, "all_rss": 1226227712, "processes": 5, "t": 1793365863.1739771, "iso": "2026-10-30T13:11:03.173Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1226358784, "processes": 5, "t": 1793365924.761407, "iso": "2026-10-30T13:12:04.761Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1226031104, "processes": 5, "t": 1793365981.2433841, "iso": "2026-10-30T13:13:01.243Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1225932800, "processes": 5, "t": 1793366042.8519301, "iso": "2026-10-30T13:14:02.851Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1226162176, "processes": 5, "t": 1793366104.5143192, "iso": "2026-10-30T13:15:04.514Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1226309632, "processes": 5, "t": 1793366160.994872, "iso": "2026-10-30T13:16:00.994Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368738304, "uss": null, "tree_rss": 368738304}}, "all_rss": 1226866688, "processes": 5, "t": 1793366222.667256, "iso": "2026-10-30T13:17:02.667Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368754688, "uss": null, "tree_rss": 368754688}}, "all_rss": 1226571776, "processes": 5, "t": 1793366284.3311622, "iso": "2026-10-30T13:18:04.331Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1226129408, "processes": 5, "t": 1793366340.787092, "iso": "2026-10-30T13:19:00.787Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1225998336, "processes": 5, "t": 1793366402.416049, "iso": "2026-10-30T13:20:02.416Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1226506240, "processes": 5, "t": 1793366464.007039, "iso": "2026-10-30T13:21:04.007Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368869376, "uss": null, "tree_rss": 368869376}}, "all_rss": 1226817536, "processes": 5, "t": 1793366520.467222, "iso": "2026-10-30T13:22:00.467Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1225736192, "processes": 5, "t": 1793366582.0566888, "iso": "2026-10-30T13:23:02.056Z"}
+{"kind": "proc_new", "t": 1793366583.581781, "pid": 60701, "proc_kind": "engine", "profile": "default", "iso": "2026-10-30T13:23:03.581Z"}
+{"kind": "proc_gone", "pid": 60701, "proc_kind": "engine", "profile": "default", "t": 1793366584.11252, "iso": "2026-10-30T13:23:04.112Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1225736192, "processes": 5, "t": 1793366643.641453, "iso": "2026-10-30T13:24:03.641Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1225719808, "processes": 5, "t": 1793366700.158817, "iso": "2026-10-30T13:25:00.158Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1226129408, "processes": 5, "t": 1793366761.7300851, "iso": "2026-10-30T13:26:01.730Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1226080256, "processes": 5, "t": 1793366823.355402, "iso": "2026-10-30T13:27:03.355Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1225703424, "processes": 5, "t": 1793366884.988092, "iso": "2026-10-30T13:28:04.988Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1225916416, "processes": 5, "t": 1793366941.4587772, "iso": "2026-10-30T13:29:01.458Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1226047488, "processes": 5, "t": 1793367003.065175, "iso": "2026-10-30T13:30:03.065Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1226260480, "processes": 5, "t": 1793367064.6769211, "iso": "2026-10-30T13:31:04.676Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1225392128, "processes": 5, "t": 1793367121.094901, "iso": "2026-10-30T13:32:01.094Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368869376, "uss": null, "tree_rss": 368869376}}, "all_rss": 1225900032, "processes": 5, "t": 1793367182.6312819, "iso": "2026-10-30T13:33:02.631Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1225457664, "processes": 5, "t": 1793367244.2619, "iso": "2026-10-30T13:34:04.261Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1226178560, "processes": 5, "t": 1793367300.711278, "iso": "2026-10-30T13:35:00.711Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1226194944, "processes": 5, "t": 1793367362.318444, "iso": "2026-10-30T13:36:02.318Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1225768960, "processes": 5, "t": 1793367423.907656, "iso": "2026-10-30T13:37:03.907Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1225932800, "processes": 5, "t": 1793367480.433023, "iso": "2026-10-30T13:38:00.433Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1226129408, "processes": 5, "t": 1793367542.054288, "iso": "2026-10-30T13:39:02.054Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368787456, "uss": null, "tree_rss": 368787456}}, "all_rss": 1226178560, "processes": 5, "t": 1793367603.6882691, "iso": "2026-10-30T13:40:03.688Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368803840, "uss": null, "tree_rss": 368803840}}, "all_rss": 1225916416, "processes": 5, "t": 1793367660.077336, "iso": "2026-10-30T13:41:00.077Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368803840, "uss": null, "tree_rss": 368803840}}, "all_rss": 1226571776, "processes": 5, "t": 1793367721.7109299, "iso": "2026-10-30T13:42:01.710Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368820224, "uss": null, "tree_rss": 368820224}}, "all_rss": 1226178560, "processes": 5, "t": 1793367783.314529, "iso": "2026-10-30T13:43:03.314Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368934912, "uss": null, "tree_rss": 368934912}}, "all_rss": 1226489856, "processes": 5, "t": 1793367844.915141, "iso": "2026-10-30T13:44:04.915Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1227243520, "processes": 5, "t": 1793367901.388664, "iso": "2026-10-30T13:45:01.388Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1227259904, "processes": 5, "t": 1793367963.007215, "iso": "2026-10-30T13:46:03.007Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1227243520, "processes": 5, "t": 1793368024.632032, "iso": "2026-10-30T13:47:04.632Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1227259904, "processes": 5, "t": 1793368081.344525, "iso": "2026-10-30T13:48:01.344Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1227325440, "processes": 5, "t": 1793368142.9533162, "iso": "2026-10-30T13:49:02.953Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1225539584, "processes": 5, "t": 1793368204.550782, "iso": "2026-10-30T13:50:04.550Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1225998336, "processes": 5, "t": 1793368261.026859, "iso": "2026-10-30T13:51:01.026Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226735616, "processes": 5, "t": 1793368322.701712, "iso": "2026-10-30T13:52:02.701Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1227145216, "processes": 5, "t": 1793368384.209107, "iso": "2026-10-30T13:53:04.209Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226522624, "processes": 5, "t": 1793368440.705148, "iso": "2026-10-30T13:54:00.705Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368918528, "uss": null, "tree_rss": 368918528}}, "all_rss": 1226440704, "processes": 5, "t": 1793368502.2936609, "iso": "2026-10-30T13:55:02.293Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1227161600, "processes": 5, "t": 1793368563.921762, "iso": "2026-10-30T13:56:03.921Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1227358208, "processes": 5, "t": 1793368620.318042, "iso": "2026-10-30T13:57:00.318Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1227046912, "processes": 5, "t": 1793368681.9512372, "iso": "2026-10-30T13:58:01.951Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226407936, "processes": 5, "t": 1793368743.5797, "iso": "2026-10-30T13:59:03.579Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226407936, "processes": 5, "t": 1793368800.0731368, "iso": "2026-10-30T14:00:00.073Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226326016, "processes": 5, "t": 1793368861.695693, "iso": "2026-10-30T14:01:01.695Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226407936, "processes": 5, "t": 1793368923.287081, "iso": "2026-10-30T14:02:03.287Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226211328, "processes": 5, "t": 1793368984.895469, "iso": "2026-10-30T14:03:04.895Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226539008, "processes": 5, "t": 1793369041.445266, "iso": "2026-10-30T14:04:01.445Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226735616, "processes": 5, "t": 1793369103.021659, "iso": "2026-10-30T14:05:03.021Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368885760, "uss": null, "tree_rss": 368885760}}, "all_rss": 1227620352, "processes": 5, "t": 1793369164.63263, "iso": "2026-10-30T14:06:04.632Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226096640, "processes": 5, "t": 1793369221.125793, "iso": "2026-10-30T14:07:01.125Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1225932800, "processes": 5, "t": 1793369282.7311628, "iso": "2026-10-30T14:08:02.731Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226702848, "processes": 5, "t": 1793369344.306367, "iso": "2026-10-30T14:09:04.306Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226850304, "processes": 5, "t": 1793369400.795329, "iso": "2026-10-30T14:10:00.795Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1227046912, "processes": 5, "t": 1793369462.358366, "iso": "2026-10-30T14:11:02.358Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226424320, "processes": 5, "t": 1793369523.9627972, "iso": "2026-10-30T14:12:03.962Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226588160, "processes": 5, "t": 1793369580.3650408, "iso": "2026-10-30T14:13:00.365Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226768384, "processes": 5, "t": 1793369641.997754, "iso": "2026-10-30T14:14:01.997Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226964992, "processes": 5, "t": 1793369703.5626829, "iso": "2026-10-30T14:15:03.562Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1225555968, "processes": 5, "t": 1793369760.013073, "iso": "2026-10-30T14:16:00.013Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368918528, "uss": null, "tree_rss": 368918528}}, "all_rss": 1226047488, "processes": 5, "t": 1793369821.621515, "iso": "2026-10-30T14:17:01.621Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226735616, "processes": 5, "t": 1793369883.225385, "iso": "2026-10-30T14:18:03.225Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226801152, "processes": 5, "t": 1793369944.80118, "iso": "2026-10-30T14:19:04.801Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1227112448, "processes": 5, "t": 1793370001.232702, "iso": "2026-10-30T14:20:01.232Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1226473472, "processes": 5, "t": 1793370062.813079, "iso": "2026-10-30T14:21:02.813Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1227030528, "processes": 5, "t": 1793370124.44369, "iso": "2026-10-30T14:22:04.443Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1225818112, "processes": 5, "t": 1793370180.95645, "iso": "2026-10-30T14:23:00.956Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368836608, "uss": null, "tree_rss": 368836608}}, "all_rss": 1227030528, "processes": 5, "t": 1793370242.547324, "iso": "2026-10-30T14:24:02.547Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368869376, "uss": null, "tree_rss": 368869376}}, "all_rss": 1226145792, "processes": 5, "t": 1793370304.260195, "iso": "2026-10-30T14:25:04.260Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368869376, "uss": null, "tree_rss": 368869376}}, "all_rss": 1226653696, "processes": 5, "t": 1793370360.7253592, "iso": "2026-10-30T14:26:00.725Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368869376, "uss": null, "tree_rss": 368869376}}, "all_rss": 1226817536, "processes": 5, "t": 1793370422.332278, "iso": "2026-10-30T14:27:02.332Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368951296, "uss": null, "tree_rss": 368951296}}, "all_rss": 1227145216, "processes": 5, "t": 1793370483.861378, "iso": "2026-10-30T14:28:03.861Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368869376, "uss": null, "tree_rss": 368869376}}, "all_rss": 1225654272, "processes": 5, "t": 1793370540.2384892, "iso": "2026-10-30T14:29:00.238Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368869376, "uss": null, "tree_rss": 368869376}}, "all_rss": 1226293248, "processes": 5, "t": 1793370601.836192, "iso": "2026-10-30T14:30:01.836Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368869376, "uss": null, "tree_rss": 368869376}}, "all_rss": 1226784768, "processes": 5, "t": 1793370663.437561, "iso": "2026-10-30T14:31:03.437Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368869376, "uss": null, "tree_rss": 368869376}}, "all_rss": 1226932224, "processes": 5, "t": 1793370725.0780768, "iso": "2026-10-30T14:32:05.078Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368869376, "uss": null, "tree_rss": 368869376}}, "all_rss": 1226915840, "processes": 5, "t": 1793370781.57143, "iso": "2026-10-30T14:33:01.571Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368869376, "uss": null, "tree_rss": 368869376}}, "all_rss": 1225752576, "processes": 5, "t": 1793370843.197852, "iso": "2026-10-30T14:34:03.197Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368869376, "uss": null, "tree_rss": 368869376}}, "all_rss": 1226686464, "processes": 5, "t": 1793370904.829361, "iso": "2026-10-30T14:35:04.829Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368869376, "uss": null, "tree_rss": 368869376}}, "all_rss": 1226899456, "processes": 5, "t": 1793370961.304203, "iso": "2026-10-30T14:36:01.304Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368869376, "uss": null, "tree_rss": 368869376}}, "all_rss": 1226162176, "processes": 5, "t": 1793371022.99874, "iso": "2026-10-30T14:37:02.998Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368869376, "uss": null, "tree_rss": 368869376}}, "all_rss": 1226424320, "processes": 5, "t": 1793371084.5608199, "iso": "2026-10-30T14:38:04.560Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 368951296, "uss": null, "tree_rss": 368951296}}, "all_rss": 1226653696, "processes": 5, "t": 1793371141.0182002, "iso": "2026-10-30T14:39:01.018Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369082368, "uss": null, "tree_rss": 369082368}}, "all_rss": 1230209024, "processes": 5, "t": 1793371202.2318661, "iso": "2026-10-30T14:40:02.231Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369082368, "uss": null, "tree_rss": 369082368}}, "all_rss": 1229488128, "processes": 5, "t": 1793371263.251699, "iso": "2026-10-30T14:41:03.251Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369082368, "uss": null, "tree_rss": 369082368}}, "all_rss": 1229307904, "processes": 5, "t": 1793371324.44644, "iso": "2026-10-30T14:42:04.446Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369082368, "uss": null, "tree_rss": 369082368}}, "all_rss": 1230045184, "processes": 5, "t": 1793371380.556124, "iso": "2026-10-30T14:43:00.556Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369082368, "uss": null, "tree_rss": 369082368}}, "all_rss": 1229471744, "processes": 5, "t": 1793371441.747384, "iso": "2026-10-30T14:44:01.747Z"}
+{"kind": "proc_new", "t": 1793371489.118919, "pid": 2877, "proc_kind": "engine", "profile": "default", "iso": "2026-10-30T14:44:49.118Z"}
+{"kind": "proc_gone", "pid": 2877, "proc_kind": "engine", "profile": "default", "t": 1793371489.639035, "iso": "2026-10-30T14:44:49.639Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369082368, "uss": null, "tree_rss": 369082368}}, "all_rss": 1228734464, "processes": 5, "t": 1793371502.889098, "iso": "2026-10-30T14:45:02.889Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369082368, "uss": null, "tree_rss": 369082368}}, "all_rss": 1229750272, "processes": 5, "t": 1793371564.2002811, "iso": "2026-10-30T14:46:04.200Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369098752, "uss": null, "tree_rss": 369098752}}, "all_rss": 1232142336, "processes": 5, "t": 1793371620.668159, "iso": "2026-10-30T14:47:00.668Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369098752, "uss": null, "tree_rss": 369098752}}, "all_rss": 1232617472, "processes": 5, "t": 1793371682.361332, "iso": "2026-10-30T14:48:02.361Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369115136, "uss": null, "tree_rss": 369115136}}, "all_rss": 1229864960, "processes": 5, "t": 1793371744.0420868, "iso": "2026-10-30T14:49:04.042Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369295360, "uss": null, "tree_rss": 369295360}}, "all_rss": 1230503936, "processes": 5, "t": 1793371800.351058, "iso": "2026-10-30T14:50:00.351Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369197056, "uss": null, "tree_rss": 369197056}}, "all_rss": 1229864960, "processes": 5, "t": 1793371861.945118, "iso": "2026-10-30T14:51:01.945Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369197056, "uss": null, "tree_rss": 369197056}}, "all_rss": 1230487552, "processes": 5, "t": 1793371923.447016, "iso": "2026-10-30T14:52:03.447Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369197056, "uss": null, "tree_rss": 369197056}}, "all_rss": 1228718080, "processes": 5, "t": 1793371984.84076, "iso": "2026-10-30T14:53:04.840Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369197056, "uss": null, "tree_rss": 369197056}}, "all_rss": 1229225984, "processes": 5, "t": 1793372041.379466, "iso": "2026-10-30T14:54:01.379Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369197056, "uss": null, "tree_rss": 369197056}}, "all_rss": 1229881344, "processes": 5, "t": 1793372102.979445, "iso": "2026-10-30T14:55:02.979Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369197056, "uss": null, "tree_rss": 369197056}}, "all_rss": 1228996608, "processes": 5, "t": 1793372164.20289, "iso": "2026-10-30T14:56:04.202Z"}
+{"kind": "mem", "engines": {"78868": {"profile": "default", "rss": 369197056, "uss": null, "tree_rss": 369197056}}, "all_rss": 1229455360, "processes": 5, "t": 1793372225.027113, "iso": "2026-10-30T14:57:05.027Z"}
+{"kind": "proc_gone", "pid": 78868, "proc_kind": "engine", "profile": "default", "t": 1793372229.078079, "iso": "2026-10-30T14:57:09.078Z"}
+{"kind": "mem", "engines": {}, "all_rss": 0, "processes": 0, "t": 1793372280.934728, "iso": "2026-10-30T14:58:00.934Z"}
+{"t": 1793372313.668, "kind": "log", "event": "primary_start", "text": "[boot] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tm", "iso": "2026-10-30T14:58:33.668Z"}
+{"t": 1793372313.668, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>…", "iso": "2026-10-30T14:58:33.668Z"}
+{"t": 1793372316.2, "kind": "log", "event": "ready", "port": "52450", "text": "HERMES_BACKEND_READY port=52450", "iso": "2026-10-30T14:58:36.200Z"}
+{"kind": "mem", "engines": {}, "all_rss": 886063104, "processes": 5, "t": 1793372341.792447, "iso": "2026-10-30T14:59:01.792Z"}
+{"kind": "mem", "engines": {}, "all_rss": 832831488, "processes": 5, "t": 1793372402.884268, "iso": "2026-10-30T15:00:02.884Z"}
+{"kind": "mem", "engines": {}, "all_rss": 836567040, "processes": 5, "t": 1793372463.992704, "iso": "2026-10-30T15:01:03.992Z"}
+{"kind": "mem", "engines": {}, "all_rss": 837484544, "processes": 5, "t": 1793372525.0196302, "iso": "2026-10-30T15:02:05.019Z"}
+{"kind": "mem", "engines": {}, "all_rss": 837533696, "processes": 5, "t": 1793372581.0154061, "iso": "2026-10-30T15:03:01.015Z"}
+{"kind": "mem", "engines": {}, "all_rss": 837959680, "processes": 5, "t": 1793372642.4167879, "iso": "2026-10-30T15:04:02.416Z"}
+{"kind": "mem", "engines": {}, "all_rss": 836534272, "processes": 5, "t": 1793372703.995286, "iso": "2026-10-30T15:05:03.995Z"}
+{"kind": "mem", "engines": {}, "all_rss": 833912832, "processes": 5, "t": 1793372760.4678662, "iso": "2026-10-30T15:06:00.467Z"}
+{"kind": "mem", "engines": {}, "all_rss": 834453504, "processes": 5, "t": 1793372821.959019, "iso": "2026-10-30T15:07:01.959Z"}
+{"kind": "mem", "engines": {}, "all_rss": 834453504, "processes": 5, "t": 1793372883.495296, "iso": "2026-10-30T15:08:03.495Z"}
+{"kind": "mem", "engines": {}, "all_rss": 833634304, "processes": 5, "t": 1793372945.046669, "iso": "2026-10-30T15:09:05.046Z"}
+{"kind": "mem", "engines": {}, "all_rss": 833404928, "processes": 5, "t": 1793373001.46771, "iso": "2026-10-30T15:10:01.467Z"}
+{"kind": "mem", "engines": {}, "all_rss": 839974912, "processes": 5, "t": 1793373062.6548522, "iso": "2026-10-30T15:11:02.654Z"}
+{"kind": "mem", "engines": {}, "all_rss": 840482816, "processes": 5, "t": 1793373123.46535, "iso": "2026-10-30T15:12:03.465Z"}
+{"kind": "proc_new", "t": 1793373128.018055, "pid": 29473, "proc_kind": "engine", "profile": "default", "iso": "2026-10-30T15:12:08.018Z"}
+{"kind": "proc_gone", "pid": 29473, "proc_kind": "engine", "profile": "default", "t": 1793373128.533275, "iso": "2026-10-30T15:12:08.533Z"}
+{"kind": "mem", "engines": {}, "all_rss": 840761344, "processes": 5, "t": 1793373184.398613, "iso": "2026-10-30T15:13:04.398Z"}
+{"kind": "mem", "engines": {}, "all_rss": 840187904, "processes": 5, "t": 1793373240.252512, "iso": "2026-10-30T15:14:00.252Z"}
+{"kind": "mem", "engines": {}, "all_rss": 840597504, "processes": 5, "t": 1793373301.233185, "iso": "2026-10-30T15:15:01.233Z"}
+{"kind": "mem", "engines": {}, "all_rss": 839188480, "processes": 5, "t": 1793373362.616988, "iso": "2026-10-30T15:16:02.616Z"}
+{"kind": "mem", "engines": {}, "all_rss": 838434816, "processes": 5, "t": 1793373424.3371022, "iso": "2026-10-30T15:17:04.337Z"}
+{"kind": "mem", "engines": {}, "all_rss": 838647808, "processes": 5, "t": 1793373480.837538, "iso": "2026-10-30T15:18:00.837Z"}
+{"kind": "mem", "engines": {}, "all_rss": 838844416, "processes": 5, "t": 1793373542.427053, "iso": "2026-10-30T15:19:02.427Z"}
+{"kind": "mem", "engines": {}, "all_rss": 854917120, "processes": 5, "t": 1793373603.538562, "iso": "2026-10-30T15:20:03.538Z"}
+{"t": 1793373618.41, "kind": "log", "event": "http_401", "text": "⚠️  Attempt 1/3, not retryable failed: HTTP 401: 当前 APEX 凭据无效或已失效。请在正在使用的 APEX 客户端重新登录或修复连接，然后重试。", "iso": "2026-10-30T15:20:18.410Z"}
+{"t": 1793373618.41, "kind": "log", "event": "http_401", "text": "❌ custom rejected the request and retrying won't help: HTTP 401: 当前 APEX 凭据无效或已失效。请在正在使用的 APEX 客户端重新登录或修复连接，然后重试。", "iso": "2026-10-30T15:20:18.410Z"}
+{"kind": "mem", "engines": {}, "all_rss": 896548864, "processes": 5, "t": 1793373664.537292, "iso": "2026-10-30T15:21:04.537Z"}
+{"t": 1793373667.37, "kind": "log", "event": "http_401", "text": "⚠️  Attempt 1/3, not retryable failed: HTTP 401: 当前 APEX 凭据无效或已失效。请在正在使用的 APEX 客户端重新登录或修复连接，然后重试。", "iso": "2026-10-30T15:21:07.370Z"}
+{"t": 1793373667.37, "kind": "log", "event": "http_401", "text": "❌ custom rejected the request and retrying won't help: HTTP 401: 当前 APEX 凭据无效或已失效。请在正在使用的 APEX 客户端重新登录或修复连接，然后重试。", "iso": "2026-10-30T15:21:07.370Z"}
+{"t": 1793373702.373, "kind": "log", "event": "primary_start", "text": "[boot] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tm", "iso": "2026-10-30T15:21:42.373Z"}
+{"t": 1793373702.373, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>…", "iso": "2026-10-30T15:21:42.373Z"}
+{"kind": "proc_new", "t": 1793373702.376394, "pid": 45540, "proc_kind": "engine", "profile": "default", "iso": "2026-10-30T15:21:42.376Z"}
+{"t": 1793373704.817, "kind": "log", "event": "ready", "port": "56916", "text": "HERMES_BACKEND_READY port=56916", "iso": "2026-10-30T15:21:44.817Z"}
+{"kind": "listen", "pid": 45540, "ports": [56916], "profile": "default", "t": 1793373705.13986, "iso": "2026-10-30T15:21:45.139Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 372277248, "uss": null, "tree_rss": 372277248}}, "all_rss": 744947712, "processes": 3, "t": 1793373720.350535, "iso": "2026-10-30T15:22:00.350Z"}
+{"kind": "mark", "label": "单助手：重启后有活会话（K2），请 Kael 就地重新登录", "t": 1793373744.10972, "iso": "2026-10-30T15:22:24.109Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 374800384, "uss": null, "tree_rss": 374800384}}, "all_rss": 711622656, "processes": 3, "t": 1793373781.177881, "iso": "2026-10-30T15:23:01.177Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375799808, "uss": null, "tree_rss": 375799808}}, "all_rss": 712720384, "processes": 3, "t": 1793373842.176471, "iso": "2026-10-30T15:24:02.176Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375799808, "uss": null, "tree_rss": 375799808}}, "all_rss": 712704000, "processes": 3, "t": 1793373903.20341, "iso": "2026-10-30T15:25:03.203Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375799808, "uss": null, "tree_rss": 375799808}}, "all_rss": 712769536, "processes": 3, "t": 1793373964.2578812, "iso": "2026-10-30T15:26:04.257Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375799808, "uss": null, "tree_rss": 375799808}}, "all_rss": 712802304, "processes": 3, "t": 1793374020.231615, "iso": "2026-10-30T15:27:00.231Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375799808, "uss": null, "tree_rss": 375799808}}, "all_rss": 710410240, "processes": 3, "t": 1793374081.678062, "iso": "2026-10-30T15:28:01.678Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375799808, "uss": null, "tree_rss": 375799808}}, "all_rss": 710426624, "processes": 3, "t": 1793374143.210141, "iso": "2026-10-30T15:29:03.210Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375799808, "uss": null, "tree_rss": 375799808}}, "all_rss": 710459392, "processes": 3, "t": 1793374204.641561, "iso": "2026-10-30T15:30:04.641Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375717888, "uss": null, "tree_rss": 375717888}}, "all_rss": 710443008, "processes": 3, "t": 1793374261.05879, "iso": "2026-10-30T15:31:01.058Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375717888, "uss": null, "tree_rss": 375717888}}, "all_rss": 709558272, "processes": 3, "t": 1793374322.5616488, "iso": "2026-10-30T15:32:02.561Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375799808, "uss": null, "tree_rss": 375799808}}, "all_rss": 709902336, "processes": 3, "t": 1793374384.090427, "iso": "2026-10-30T15:33:04.090Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375717888, "uss": null, "tree_rss": 375717888}}, "all_rss": 710017024, "processes": 3, "t": 1793374440.424442, "iso": "2026-10-30T15:34:00.424Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 710262784, "processes": 3, "t": 1793374501.8936388, "iso": "2026-10-30T15:35:01.893Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 709689344, "processes": 3, "t": 1793374563.409076, "iso": "2026-10-30T15:36:03.409Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 709902336, "processes": 3, "t": 1793374624.898043, "iso": "2026-10-30T15:37:04.898Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 710148096, "processes": 3, "t": 1793374681.294893, "iso": "2026-10-30T15:38:01.294Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 710393856, "processes": 3, "t": 1793374742.832793, "iso": "2026-10-30T15:39:02.832Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 709804032, "processes": 3, "t": 1793374804.3550038, "iso": "2026-10-30T15:40:04.355Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 710000640, "processes": 3, "t": 1793374860.700458, "iso": "2026-10-30T15:41:00.700Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 710213632, "processes": 3, "t": 1793374922.2255201, "iso": "2026-10-30T15:42:02.225Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 710443008, "processes": 3, "t": 1793374983.742631, "iso": "2026-10-30T15:43:03.742Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375816192, "uss": null, "tree_rss": 375816192}}, "all_rss": 709984256, "processes": 3, "t": 1793375040.117256, "iso": "2026-10-30T15:44:00.117Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 710131712, "processes": 3, "t": 1793375101.608958, "iso": "2026-10-30T15:45:01.608Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 710328320, "processes": 3, "t": 1793375163.07285, "iso": "2026-10-30T15:46:03.072Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 709869568, "processes": 3, "t": 1793375224.569841, "iso": "2026-10-30T15:47:04.569Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 710082560, "processes": 3, "t": 1793375280.9218361, "iso": "2026-10-30T15:48:00.921Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 710279168, "processes": 3, "t": 1793375342.4514089, "iso": "2026-10-30T15:49:02.451Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 710524928, "processes": 3, "t": 1793375403.919327, "iso": "2026-10-30T15:50:03.919Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 709984256, "processes": 3, "t": 1793375460.304947, "iso": "2026-10-30T15:51:00.304Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 710180864, "processes": 3, "t": 1793375521.7712572, "iso": "2026-10-30T15:52:01.771Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 710393856, "processes": 3, "t": 1793375583.255112, "iso": "2026-10-30T15:53:03.255Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 710639616, "processes": 3, "t": 1793375644.6557062, "iso": "2026-10-30T15:54:04.655Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375816192, "uss": null, "tree_rss": 375816192}}, "all_rss": 710164480, "processes": 3, "t": 1793375700.65988, "iso": "2026-10-30T15:55:00.659Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375783424, "uss": null, "tree_rss": 375783424}}, "all_rss": 710885376, "processes": 3, "t": 1793375761.72881, "iso": "2026-10-30T15:56:01.728Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 711049216, "processes": 3, "t": 1793375822.850739, "iso": "2026-10-30T15:57:02.850Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 711262208, "processes": 3, "t": 1793375884.0219269, "iso": "2026-10-30T15:58:04.021Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 711671808, "processes": 3, "t": 1793375940.030126, "iso": "2026-10-30T15:59:00.030Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 711852032, "processes": 3, "t": 1793376001.115434, "iso": "2026-10-30T16:00:01.115Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 712081408, "processes": 3, "t": 1793376062.2199621, "iso": "2026-10-30T16:01:02.219Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 712310784, "processes": 3, "t": 1793376123.315677, "iso": "2026-10-30T16:02:03.315Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 711671808, "processes": 3, "t": 1793376184.584383, "iso": "2026-10-30T16:03:04.584Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 711671808, "processes": 3, "t": 1793376240.9983091, "iso": "2026-10-30T16:04:00.998Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 711671808, "processes": 3, "t": 1793376302.534504, "iso": "2026-10-30T16:05:02.534Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375816192, "uss": null, "tree_rss": 375816192}}, "all_rss": 711770112, "processes": 3, "t": 1793376364.0023758, "iso": "2026-10-30T16:06:04.002Z"}
+{"kind": "mem", "engines": {"45540": {"profile": "default", "rss": 375734272, "uss": null, "tree_rss": 375734272}}, "all_rss": 711032832, "processes": 3, "t": 1793376425.017836, "iso": "2026-10-30T16:07:05.017Z"}
+{"t": 1793376447.585, "kind": "log", "event": "primary_start", "text": "[boot] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tm", "iso": "2026-10-30T16:07:27.585Z"}
+{"t": 1793376447.585, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>…", "iso": "2026-10-30T16:07:27.585Z"}
+{"kind": "proc_new", "t": 1793376447.585641, "pid": 79273, "proc_kind": "engine", "profile": "default", "iso": "2026-10-30T16:07:27.585Z"}
+{"t": 1793376449.699, "kind": "log", "event": "ready", "port": "64761", "text": "HERMES_BACKEND_READY port=64761", "iso": "2026-10-30T16:07:29.699Z"}
+{"kind": "listen", "pid": 79273, "ports": [64761], "profile": "default", "t": 1793376449.922859, "iso": "2026-10-30T16:07:29.922Z"}
+{"kind": "mem", "engines": {"79273": {"profile": "default", "rss": 341278720, "uss": null, "tree_rss": 341278720}}, "all_rss": 698073088, "processes": 3, "t": 1793376480.900055, "iso": "2026-10-30T16:08:00.900Z"}
+{"kind": "mark", "label": "单助手：重新登录后表单报 relayUnreachable，点稍后再选择提供方", "t": 1793376513.272396, "iso": "2026-10-30T16:08:33.272Z"}
+{"kind": "mem", "engines": {"79273": {"profile": "default", "rss": 363528192, "uss": null, "tree_rss": 363528192}}, "all_rss": 718913536, "processes": 3, "t": 1793376541.840311, "iso": "2026-10-30T16:09:01.840Z"}
+{"kind": "mark", "label": "多助手：重启（平台开关）", "t": 1793376571.480172, "iso": "2026-10-30T16:09:31.480Z"}
+{"kind": "proc_gone", "pid": 79273, "proc_kind": "engine", "profile": "default", "t": 1793376571.829705, "iso": "2026-10-30T16:09:31.829Z"}
+{"t": 1793376577.622, "kind": "log", "event": "primary_start", "text": "[boot] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tm", "iso": "2026-10-30T16:09:37.622Z"}
+{"t": 1793376577.622, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>…", "iso": "2026-10-30T16:09:37.622Z"}
+{"t": 1793376579.756, "kind": "log", "event": "ready", "port": "65265", "text": "HERMES_BACKEND_READY port=65265", "iso": "2026-10-30T16:09:39.756Z"}
+{"kind": "mem", "engines": {}, "all_rss": 314687488, "processes": 1, "t": 1793376602.791782, "iso": "2026-10-30T16:10:02.791Z"}
+{"kind": "mem", "engines": {}, "all_rss": 265797632, "processes": 1, "t": 1793376663.761158, "iso": "2026-10-30T16:11:03.761Z"}
+{"kind": "mem", "engines": {}, "all_rss": 265912320, "processes": 1, "t": 1793376724.738286, "iso": "2026-10-30T16:12:04.738Z"}
+{"kind": "mem", "engines": {}, "all_rss": 265912320, "processes": 1, "t": 1793376780.6575801, "iso": "2026-10-30T16:13:00.657Z"}
+{"kind": "mem", "engines": {}, "all_rss": 265928704, "processes": 1, "t": 1793376841.7168, "iso": "2026-10-30T16:14:01.716Z"}
+{"kind": "mem", "engines": {}, "all_rss": 267681792, "processes": 1, "t": 1793376903.074008, "iso": "2026-10-30T16:15:03.074Z"}
+{"t": 1793376905.481, "kind": "log", "event": "pool_start", "profile": "apex-bot-2", "text": "Starting Hermes backend for profile \"apex-bot-2\" via Hermes at <test-dir>/home/hermes/hermes-agent ", "iso": "2026-10-30T16:15:05.481Z"}
+{"t": 1793376907.559, "kind": "log", "event": "ready", "port": "49825", "text": "HERMES_BACKEND_READY port=49825", "iso": "2026-10-30T16:15:07.559Z"}
+{"t": 1793376919.709, "kind": "log", "event": "exit", "profile": "apex-bot-2", "code": "SIGTERM", "text": "Hermes backend for profile \"apex-bot-2\" exited (SIGTERM)", "iso": "2026-10-30T16:15:19.709Z"}
+{"kind": "proc_new", "t": 1793376927.580007, "pid": 84982, "proc_kind": "engine", "profile": "default", "iso": "2026-10-30T16:15:27.580Z"}
+{"t": 1793376927.576, "kind": "log", "event": "primary_start", "text": "[boot] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tm", "iso": "2026-10-30T16:15:27.576Z"}
+{"t": 1793376927.576, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>…", "iso": "2026-10-30T16:15:27.576Z"}
+{"kind": "listen", "pid": 84982, "ports": [49931], "profile": "default", "t": 1793376929.667806, "iso": "2026-10-30T16:15:29.667Z"}
+{"t": 1793376929.665, "kind": "log", "event": "ready", "port": "49931", "text": "HERMES_BACKEND_READY port=49931", "iso": "2026-10-30T16:15:29.665Z"}
+{"kind": "mem", "engines": {"84982": {"profile": "default", "rss": 359448576, "uss": null, "tree_rss": 359448576}}, "all_rss": 359448576, "processes": 1, "t": 1793376964.490363, "iso": "2026-10-30T16:16:04.490Z"}
+{"kind": "proc_gone", "pid": 84982, "proc_kind": "engine", "profile": "default", "t": 1793376970.63038, "iso": "2026-10-30T16:16:10.630Z"}
+{"kind": "mark", "label": "多助手：active-profile.json 写成 apex-bot-2（不带 _migrated），重启", "t": 1793376972.4242492, "iso": "2026-10-30T16:16:12.424Z"}
+{"t": 1793376976.938, "kind": "log", "event": "pool_start", "profile": "default", "text": "Starting Hermes backend for profile \"default\" via Hermes at <test-dir>/home/hermes/hermes-agent (ve", "iso": "2026-10-30T16:16:16.938Z"}
+{"t": 1793376976.939, "kind": "log", "event": "primary_start", "text": "[boot] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tm", "iso": "2026-10-30T16:16:16.939Z"}
+{"t": 1793376976.939, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>…", "iso": "2026-10-30T16:16:16.939Z"}
+{"t": 1793376979.138, "kind": "log", "event": "ready", "port": "50062", "text": "HERMES_BACKEND_READY port=50062", "iso": "2026-10-30T16:16:19.138Z"}
+{"t": 1793376979.143, "kind": "log", "event": "ready", "port": "50063", "text": "HERMES_BACKEND_READY port=50063", "iso": "2026-10-30T16:16:19.143Z"}
+{"kind": "mem", "engines": {}, "all_rss": 423329792, "processes": 3, "t": 1793377020.698097, "iso": "2026-10-30T16:17:00.698Z"}
+{"kind": "proc_new", "t": 1793377033.379913, "pid": 86403, "proc_kind": "engine", "profile": "apex-bot-2", "iso": "2026-10-30T16:17:13.379Z"}
+{"kind": "proc_gone", "pid": 86403, "proc_kind": "engine", "profile": "apex-bot-2", "t": 1793377033.89426, "iso": "2026-10-30T16:17:13.894Z"}
+{"kind": "mark", "label": "多助手：选题助手（主引擎）有活会话（K3），请 Kael 就地重新登录", "t": 1793377055.097028, "iso": "2026-10-30T16:17:35.097Z"}
+{"kind": "watch_stop", "t": 1793377070.951021, "iso": "2026-10-30T16:17:50.951Z"}
+{"kind": "watch_start", "home": "<test-dir>/home/hermes", "t": 1793377116.213902, "iso": "2026-10-30T16:18:36.213Z"}
+{"kind": "proc_new", "t": 1793376976.942582, "pid": 85620, "proc_kind": "engine", "profile": "default", "iso": "2026-10-30T16:16:16.942Z"}
+{"kind": "proc_new", "t": 1793376976.944032, "pid": 85627, "proc_kind": "engine", "profile": "apex-bot-2", "iso": "2026-10-30T16:16:16.944Z"}
+{"kind": "listen", "pid": 85620, "ports": [50063], "profile": "default", "t": 1793377116.2321348, "iso": "2026-10-30T16:18:36.232Z"}
+{"kind": "listen", "pid": 85627, "ports": [50062], "profile": "apex-bot-2", "t": 1793377116.232231, "iso": "2026-10-30T16:18:36.232Z"}
+{"kind": "mem", "engines": {"85620": {"profile": "default", "rss": 292700160, "uss": null, "tree_rss": 292700160}, "85627": {"profile": "apex-bot-2", "rss": 378683392, "uss": null, "tree_rss": 378683392}}, "all_rss": 1581989888, "processes": 7, "t": 1793377116.232407, "iso": "2026-10-30T16:18:36.232Z"}
+{"kind": "mem", "engines": {"85620": {"profile": "default", "rss": 292700160, "uss": null, "tree_rss": 292700160}, "85627": {"profile": "apex-bot-2", "rss": 378683392, "uss": null, "tree_rss": 378683392}}, "all_rss": 1578319872, "processes": 7, "t": 1793377141.588236, "iso": "2026-10-30T16:19:01.588Z"}
+{"kind": "mem", "engines": {"85620": {"profile": "default", "rss": 292700160, "uss": null, "tree_rss": 292700160}, "85627": {"profile": "apex-bot-2", "rss": 378683392, "uss": null, "tree_rss": 378683392}}, "all_rss": 1578287104, "processes": 7, "t": 1793377202.207468, "iso": "2026-10-30T16:20:02.207Z"}
+{"kind": "mem", "engines": {"85620": {"profile": "default", "rss": 292700160, "uss": null, "tree_rss": 292700160}, "85627": {"profile": "apex-bot-2", "rss": 378683392, "uss": null, "tree_rss": 378683392}}, "all_rss": 1579581440, "processes": 7, "t": 1793377262.912446, "iso": "2026-10-30T16:21:02.912Z"}
+{"kind": "mem", "engines": {"85620": {"profile": "default", "rss": 292716544, "uss": null, "tree_rss": 292716544}, "85627": {"profile": "apex-bot-2", "rss": 378748928, "uss": null, "tree_rss": 378748928}}, "all_rss": 1580089344, "processes": 7, "t": 1793377323.5510411, "iso": "2026-10-30T16:22:03.551Z"}
+{"kind": "mem", "engines": {"85620": {"profile": "default", "rss": 292716544, "uss": null, "tree_rss": 292716544}, "85627": {"profile": "apex-bot-2", "rss": 378699776, "uss": null, "tree_rss": 378699776}}, "all_rss": 1579204608, "processes": 7, "t": 1793377384.129341, "iso": "2026-10-30T16:23:04.129Z"}
+{"kind": "mem", "engines": {"85620": {"profile": "default", "rss": 292716544, "uss": null, "tree_rss": 292716544}, "85627": {"profile": "apex-bot-2", "rss": 378716160, "uss": null, "tree_rss": 378716160}}, "all_rss": 1578434560, "processes": 7, "t": 1793377440.151055, "iso": "2026-10-30T16:24:00.151Z"}
+{"kind": "mem", "engines": {"85620": {"profile": "default", "rss": 292716544, "uss": null, "tree_rss": 292716544}, "85627": {"profile": "apex-bot-2", "rss": 378732544, "uss": null, "tree_rss": 378732544}}, "all_rss": 1578958848, "processes": 7, "t": 1793377501.249655, "iso": "2026-10-30T16:25:01.249Z"}
+{"kind": "mem", "engines": {"85620": {"profile": "default", "rss": 292716544, "uss": null, "tree_rss": 292716544}, "85627": {"profile": "apex-bot-2", "rss": 378732544, "uss": null, "tree_rss": 378732544}}, "all_rss": 1579417600, "processes": 7, "t": 1793377562.4609191, "iso": "2026-10-30T16:26:02.460Z"}
+{"kind": "mem", "engines": {"85620": {"profile": "default", "rss": 292716544, "uss": null, "tree_rss": 292716544}, "85627": {"profile": "apex-bot-2", "rss": 378748928, "uss": null, "tree_rss": 378748928}}, "all_rss": 1578614784, "processes": 7, "t": 1793377623.922733, "iso": "2026-10-30T16:27:03.922Z"}
+{"t": 1793377635.597, "kind": "log", "event": "reap", "profile": "default", "reason": "committed", "text": "Reaping idle profile backend \"default\" (idle > 600s): committed", "iso": "2026-10-30T16:27:15.597Z"}
+{"t": 1793377635.838, "kind": "log", "event": "exit", "profile": "default", "code": "SIGTERM", "text": "Hermes backend for profile \"default\" exited (SIGTERM)", "iso": "2026-10-30T16:27:15.838Z"}
+{"kind": "proc_gone", "pid": 85620, "proc_kind": "engine", "profile": "default", "t": 1793377636.175342, "iso": "2026-10-30T16:27:16.175Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378814464, "uss": null, "tree_rss": 378814464}}, "all_rss": 1288011776, "processes": 6, "t": 1793377680.2543738, "iso": "2026-10-30T16:28:00.254Z"}
+{"kind": "proc_new", "t": 1793377703.292996, "pid": 2891, "proc_kind": "engine", "profile": "apex-bot-2", "iso": "2026-10-30T16:28:23.292Z"}
+{"kind": "proc_gone", "pid": 2891, "proc_kind": "engine", "profile": "apex-bot-2", "t": 1793377703.8183308, "iso": "2026-10-30T16:28:23.818Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378814464, "uss": null, "tree_rss": 378814464}}, "all_rss": 1288093696, "processes": 6, "t": 1793377741.685139, "iso": "2026-10-30T16:29:01.685Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378880000, "uss": null, "tree_rss": 378880000}}, "all_rss": 1289306112, "processes": 6, "t": 1793377803.1722162, "iso": "2026-10-30T16:30:03.172Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378896384, "uss": null, "tree_rss": 378896384}}, "all_rss": 1289191424, "processes": 6, "t": 1793377864.6768482, "iso": "2026-10-30T16:31:04.676Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378830848, "uss": null, "tree_rss": 378830848}}, "all_rss": 1288699904, "processes": 6, "t": 1793377920.954823, "iso": "2026-10-30T16:32:00.954Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378863616, "uss": null, "tree_rss": 378863616}}, "all_rss": 1287716864, "processes": 6, "t": 1793377982.451498, "iso": "2026-10-30T16:33:02.451Z"}
+{"kind": "proc_new", "t": 1793378039.295913, "pid": 6204, "proc_kind": "engine", "profile": "apex-bot-2", "iso": "2026-10-30T16:33:59.295Z"}
+{"kind": "proc_gone", "pid": 6204, "proc_kind": "engine", "profile": "apex-bot-2", "t": 1793378039.818243, "iso": "2026-10-30T16:33:59.818Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378814464, "uss": null, "tree_rss": 378814464}}, "all_rss": 1287946240, "processes": 6, "t": 1793378043.9066172, "iso": "2026-10-30T16:34:03.906Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378814464, "uss": null, "tree_rss": 378814464}}, "all_rss": 1287438336, "processes": 6, "t": 1793378100.1758158, "iso": "2026-10-30T16:35:00.175Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378814464, "uss": null, "tree_rss": 378814464}}, "all_rss": 1286537216, "processes": 6, "t": 1793378161.661988, "iso": "2026-10-30T16:36:01.661Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378814464, "uss": null, "tree_rss": 378814464}}, "all_rss": 1286864896, "processes": 6, "t": 1793378223.096698, "iso": "2026-10-30T16:37:03.096Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378814464, "uss": null, "tree_rss": 378814464}}, "all_rss": 1287405568, "processes": 6, "t": 1793378284.49663, "iso": "2026-10-30T16:38:04.496Z"}
+{"kind": "proc_new", "t": 1793378296.276346, "pid": 8681, "proc_kind": "engine", "profile": "apex-bot-2", "iso": "2026-10-30T16:38:16.276Z"}
+{"kind": "proc_gone", "pid": 8681, "proc_kind": "engine", "profile": "apex-bot-2", "t": 1793378296.79732, "iso": "2026-10-30T16:38:16.797Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378814464, "uss": null, "tree_rss": 378814464}}, "all_rss": 1287503872, "processes": 6, "t": 1793378340.8427038, "iso": "2026-10-30T16:39:00.842Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378814464, "uss": null, "tree_rss": 378814464}}, "all_rss": 1287012352, "processes": 6, "t": 1793378402.368748, "iso": "2026-10-30T16:40:02.368Z"}
+{"kind": "proc_new", "t": 1793378460.213404, "pid": 10295, "proc_kind": "engine", "profile": "apex-bot-2", "iso": "2026-10-30T16:41:00.213Z"}
+{"kind": "proc_gone", "pid": 10295, "proc_kind": "engine", "profile": "apex-bot-2", "t": 1793378460.736008, "iso": "2026-10-30T16:41:00.736Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378814464, "uss": null, "tree_rss": 378814464}}, "all_rss": 1287225344, "processes": 6, "t": 1793378463.807564, "iso": "2026-10-30T16:41:03.807Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378814464, "uss": null, "tree_rss": 378814464}}, "all_rss": 1287340032, "processes": 6, "t": 1793378520.21063, "iso": "2026-10-30T16:42:00.210Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378814464, "uss": null, "tree_rss": 378814464}}, "all_rss": 1287667712, "processes": 6, "t": 1793378581.6555982, "iso": "2026-10-30T16:43:01.655Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378847232, "uss": null, "tree_rss": 378847232}}, "all_rss": 1287143424, "processes": 6, "t": 1793378643.112303, "iso": "2026-10-30T16:44:03.112Z"}
+{"kind": "proc_new", "t": 1793378660.524446, "pid": 12220, "proc_kind": "engine", "profile": "apex-bot-2", "iso": "2026-10-30T16:44:20.524Z"}
+{"kind": "proc_gone", "pid": 12220, "proc_kind": "engine", "profile": "apex-bot-2", "t": 1793378661.047437, "iso": "2026-10-30T16:44:21.047Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378814464, "uss": null, "tree_rss": 378814464}}, "all_rss": 1288159232, "processes": 6, "t": 1793378704.6146371, "iso": "2026-10-30T16:45:04.614Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378814464, "uss": null, "tree_rss": 378814464}}, "all_rss": 1287897088, "processes": 6, "t": 1793378760.9206579, "iso": "2026-10-30T16:46:00.920Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378830848, "uss": null, "tree_rss": 378830848}}, "all_rss": 1287536640, "processes": 6, "t": 1793378822.407707, "iso": "2026-10-30T16:47:02.407Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378847232, "uss": null, "tree_rss": 378847232}}, "all_rss": 1287749632, "processes": 6, "t": 1793378883.896888, "iso": "2026-10-30T16:48:03.896Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378847232, "uss": null, "tree_rss": 378847232}}, "all_rss": 1287995392, "processes": 6, "t": 1793378940.146938, "iso": "2026-10-30T16:49:00.146Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378847232, "uss": null, "tree_rss": 378847232}}, "all_rss": 1289125888, "processes": 6, "t": 1793379001.6407669, "iso": "2026-10-30T16:50:01.640Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378847232, "uss": null, "tree_rss": 378847232}}, "all_rss": 1287962624, "processes": 6, "t": 1793379063.1339982, "iso": "2026-10-30T16:51:03.133Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378880000, "uss": null, "tree_rss": 378880000}}, "all_rss": 1288093696, "processes": 6, "t": 1793379124.545877, "iso": "2026-10-30T16:52:04.545Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378880000, "uss": null, "tree_rss": 378880000}}, "all_rss": 1288355840, "processes": 6, "t": 1793379180.879701, "iso": "2026-10-30T16:53:00.879Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378880000, "uss": null, "tree_rss": 378880000}}, "all_rss": 1288585216, "processes": 6, "t": 1793379242.373612, "iso": "2026-10-30T16:54:02.373Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378929152, "uss": null, "tree_rss": 378929152}}, "all_rss": 1288126464, "processes": 6, "t": 1793379303.830383, "iso": "2026-10-30T16:55:03.830Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378880000, "uss": null, "tree_rss": 378880000}}, "all_rss": 1289125888, "processes": 6, "t": 1793379364.869473, "iso": "2026-10-30T16:56:04.869Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378880000, "uss": null, "tree_rss": 378880000}}, "all_rss": 1289322496, "processes": 6, "t": 1793379420.812978, "iso": "2026-10-30T16:57:00.812Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378912768, "uss": null, "tree_rss": 378912768}}, "all_rss": 1289650176, "processes": 6, "t": 1793379481.7956202, "iso": "2026-10-30T16:58:01.795Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378880000, "uss": null, "tree_rss": 378880000}}, "all_rss": 1289764864, "processes": 6, "t": 1793379542.827373, "iso": "2026-10-30T16:59:02.827Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378880000, "uss": null, "tree_rss": 378880000}}, "all_rss": 1289764864, "processes": 6, "t": 1793379603.82048, "iso": "2026-10-30T17:00:03.820Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378880000, "uss": null, "tree_rss": 378880000}}, "all_rss": 1289535488, "processes": 6, "t": 1793379664.808455, "iso": "2026-10-30T17:01:04.808Z"}
+{"kind": "proc_new", "t": 1793379705.995856, "pid": 22826, "proc_kind": "engine", "profile": "apex-bot-2", "iso": "2026-10-30T17:01:45.995Z"}
+{"kind": "proc_gone", "pid": 22826, "proc_kind": "engine", "profile": "apex-bot-2", "t": 1793379706.514643, "iso": "2026-10-30T17:01:46.514Z"}
+{"kind": "mem", "engines": {"85627": {"profile": "apex-bot-2", "rss": 378880000, "uss": null, "tree_rss": 378880000}}, "all_rss": 1289175040, "processes": 6, "t": 1793379720.74564, "iso": "2026-10-30T17:02:00.745Z"}
+{"t": 1793379738.482, "kind": "log", "event": "primary_start", "text": "[boot] Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: /private/tm", "iso": "2026-10-30T17:02:18.482Z"}
+{"t": 1793379738.482, "kind": "log", "event": "primary_start", "text": "Starting Hermes backend via Hermes at <test-dir>/home/hermes/hermes-agent (venv: <test-dir>…", "iso": "2026-10-30T17:02:18.482Z"}
+{"kind": "proc_new", "t": 1793379738.482534, "pid": 23162, "proc_kind": "engine", "profile": "apex-bot-2", "iso": "2026-10-30T17:02:18.482Z"}
+{"kind": "proc_gone", "pid": 85627, "proc_kind": "engine", "profile": "apex-bot-2", "t": 1793379738.4983659, "iso": "2026-10-30T17:02:18.498Z"}
+{"t": 1793379740.684, "kind": "log", "event": "ready", "port": "57848", "text": "HERMES_BACKEND_READY port=57848", "iso": "2026-10-30T17:02:20.684Z"}
+{"kind": "listen", "pid": 23162, "ports": [57848], "profile": "apex-bot-2", "t": 1793379741.024339, "iso": "2026-10-30T17:02:21.024Z"}
+{"t": 1793379741.291, "kind": "log", "event": "pool_start", "profile": "default", "text": "Starting Hermes backend for profile \"default\" via Hermes at <test-dir>/home/hermes/hermes-agent (ve", "iso": "2026-10-30T17:02:21.291Z"}
+{"kind": "proc_new", "t": 1793379741.291915, "pid": 23234, "proc_kind": "engine", "profile": "default", "iso": "2026-10-30T17:02:21.291Z"}
+{"kind": "listen", "pid": 23234, "ports": [57868], "profile": "default", "t": 1793379743.5491142, "iso": "2026-10-30T17:02:23.549Z"}
+{"t": 1793379743.565, "kind": "log", "event": "ready", "port": "57868", "text": "HERMES_BACKEND_READY port=57868", "iso": "2026-10-30T17:02:23.565Z"}
+{"kind": "mark", "label": "多助手：17:02:17Z 重新登录，主引擎重启，表单再次报 relayUnreachable；点稍后再选择提供方", "t": 1793379762.398908, "iso": "2026-10-30T17:02:42.398Z"}
+{"kind": "mem", "engines": {"23162": {"profile": "apex-bot-2", "rss": 348307456, "uss": null, "tree_rss": 348307456}, "23234": {"profile": "default", "rss": 216662016, "uss": null, "tree_rss": 216662016}}, "all_rss": 1495072768, "processes": 7, "t": 1793379781.6285708, "iso": "2026-10-30T17:03:01.628Z"}
+{"kind": "mem", "engines": {"23162": {"profile": "apex-bot-2", "rss": 371195904, "uss": null, "tree_rss": 371195904}, "23234": {"profile": "default", "rss": 348798976, "uss": null, "tree_rss": 348798976}}, "all_rss": 1661829120, "processes": 7, "t": 1793379842.5269241, "iso": "2026-10-30T17:04:02.526Z"}
+{"kind": "mem", "engines": {"23162": {"profile": "apex-bot-2", "rss": 371048448, "uss": null, "tree_rss": 371048448}, "23234": {"profile": "default", "rss": 330874880, "uss": null, "tree_rss": 330874880}}, "all_rss": 1644298240, "processes": 7, "t": 1793379903.474387, "iso": "2026-10-30T17:05:03.474Z"}
+{"kind": "mem", "engines": {"23162": {"profile": "apex-bot-2", "rss": 371113984, "uss": null, "tree_rss": 371113984}, "23234": {"profile": "default", "rss": 330874880, "uss": null, "tree_rss": 330874880}}, "all_rss": 1644953600, "processes": 7, "t": 1793379964.4957561, "iso": "2026-10-30T17:06:04.495Z"}
+{"kind": "mem", "engines": {"23162": {"profile": "apex-bot-2", "rss": 371064832, "uss": null, "tree_rss": 371064832}, "23234": {"profile": "default", "rss": 330874880, "uss": null, "tree_rss": 330874880}}, "all_rss": 1645772800, "processes": 7, "t": 1793380020.367748, "iso": "2026-10-30T17:07:00.367Z"}
+{"kind": "mem", "engines": {"23162": {"profile": "apex-bot-2", "rss": 371064832, "uss": null, "tree_rss": 371064832}, "23234": {"profile": "default", "rss": 330874880, "uss": null, "tree_rss": 330874880}}, "all_rss": 1645363200, "processes": 7, "t": 1793380081.294849, "iso": "2026-10-30T17:08:01.294Z"}
+{"kind": "proc_new", "t": 1793380140.354561, "pid": 28434, "proc_kind": "engine", "profile": "apex-bot-2", "iso": "2026-10-30T17:09:00.354Z"}
+{"kind": "proc_gone", "pid": 28434, "proc_kind": "engine", "profile": "apex-bot-2", "t": 1793380140.8812108, "iso": "2026-10-30T17:09:00.881Z"}
+{"kind": "mem", "engines": {"23162": {"profile": "apex-bot-2", "rss": 371097600, "uss": null, "tree_rss": 371097600}, "23234": {"profile": "default", "rss": 330874880, "uss": null, "tree_rss": 330874880}}, "all_rss": 1643724800, "processes": 7, "t": 1793380142.4184058, "iso": "2026-10-30T17:09:02.418Z"}
+{"kind": "mem", "engines": {"23162": {"profile": "apex-bot-2", "rss": 371097600, "uss": null, "tree_rss": 371097600}, "23234": {"profile": "default", "rss": 330891264, "uss": null, "tree_rss": 330891264}}, "all_rss": 1644199936, "processes": 7, "t": 1793380203.996227, "iso": "2026-10-30T17:10:03.996Z"}
+{"kind": "mem", "engines": {"23162": {"profile": "apex-bot-2", "rss": 371097600, "uss": null, "tree_rss": 371097600}, "23234": {"profile": "default", "rss": 363626496, "uss": null, "tree_rss": 363626496}}, "all_rss": 1682784256, "processes": 7, "t": 1793380260.042749, "iso": "2026-10-30T17:11:00.042Z"}
+{"t": 1793380268.429, "kind": "log", "event": "exit", "profile": "default", "code": "SIGTERM", "text": "Hermes backend for profile \"default\" exited (SIGTERM)", "iso": "2026-10-30T17:11:08.429Z"}
+{"kind": "proc_gone", "pid": 23234, "proc_kind": "engine", "profile": "default", "t": 1793380268.7002938, "iso": "2026-10-30T17:11:08.700Z"}
+{"kind": "proc_gone", "pid": 23162, "proc_kind": "engine", "profile": "apex-bot-2", "t": 1793380268.700415, "iso": "2026-10-30T17:11:08.700Z"}
