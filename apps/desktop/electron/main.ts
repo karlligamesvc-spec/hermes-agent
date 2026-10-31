@@ -21434,6 +21434,7 @@ async function provisionManagedFromAccessToken(accessToken, account = null, isCu
   const deviceBody = provisionDeviceBody(desktopDeviceInstanceId())
   const scope = capturedTarget || captureModelMutationScope()
 
+  await clientConfigSync.settleBeforeSignInFinishes() // hc-1127: the login screen still covers the shell
   // Provision rotates the cloud key. Finish this preflight BEFORE that
   // irreversible request, including every unknown HTTP outcome from a prior
   // Native process. A 404 is compatible only for the first, uncontended login.
@@ -21509,7 +21510,6 @@ async function provisionManagedFromAccessToken(accessToken, account = null, isCu
     const current = () => generation === managedCredentialLifetime.current() && isCurrent()
 
     try {
-      await clientConfigSync.settleBeforeEngineRestart() // hc-1127
       const completed = await finishManagedModelRuntime(target, current)
 
       void refreshClientConfigFromPlatform('sign-in')

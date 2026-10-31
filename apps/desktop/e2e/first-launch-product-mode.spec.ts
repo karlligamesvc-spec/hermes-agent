@@ -336,9 +336,12 @@ async function sayFirstSentence(page: Page) {
   const composer = await reachComposer(page)
   const line = '帮我想一条短视频选题'
 
+  await composer.click()
+  await page.keyboard.insertText(line)
+
+  // Enter does nothing while the renderer re-dials the engine restarted by sign-in; the text stays.
   for (let attempt = 0; attempt < 8; attempt += 1) {
     await composer.click()
-    await page.keyboard.insertText(line)
     await page.keyboard.press('Enter')
 
     const sent = await expect
@@ -400,7 +403,7 @@ async function expectFlippedToProductShell(ctx: Harness) {
   await expect(ctx.page().getByText(OLD_SHELL[0])).toHaveCount(0, { timeout: 15_000 })
 }
 
-/** For comparing the off path against clean main: ids, times and ports are not the product. */
+/** For comparing the off path against clean main: ids, times, ports and spinner frames are not the product. */
 async function saveNormalizedDom(ctx: Harness, label: string) {
   const target = process.env.E2E_FIRST_LAUNCH_SAVE
 
@@ -408,14 +411,34 @@ async function saveNormalizedDom(ctx: Harness, label: string) {
     return
   }
 
-  const html = await ctx.page().evaluate(() => document.body.outerHTML)
+  // Toasts come and go on a timer, so the region is left out.
+  const read = async () =>
+    (
+      await ctx.page().evaluate(() => {
+        const clone = document.body.cloneNode(true) as HTMLElement
 
-  const normalized = html
-    .replace(/«r[^»]*»|:r[0-9a-z]+:|radix-[^"\s]+|DndDescribedBy-\d+|DndLiveRegion-\d+/g, 'ID')
-    .replace(/127\.0\.0\.1:\d+/g, 'HOST')
-    .replace(/></g, '>\n<')
+        clone.querySelector('[aria-label="通知"]')?.remove()
 
-  fs.writeFileSync(path.join(target, `${test.info().title.slice(0, 12).replace(/\W+/g, '-')}-${label}.html`), normalized)
+        return clone.outerHTML
+      })
+    )
+      .replace(/«r[^»]*»|:r[0-9a-z]+:|radix-[^"\s]+|DndDescribedBy-\d+|DndLiveRegion-\d+/g, 'ID')
+      .replace(/127\.0\.0\.1:\d+/g, 'HOST')
+      .replace(/ data-placeholder="[^"]*"/g, '')
+      .replace(/<\/style>[^<]*/g, '</style>')
+      .replace(/></g, '>\n<')
+
+  // Past the restarts and the first data loads: the same page three reads in a row.
+  let html = await read()
+
+  for (let same = 0, tries = 0; same < 3 && tries < 60; tries += 1) {
+    await ctx.page().waitForTimeout(500)
+    const next = await read()
+    same = next === html ? same + 1 : 0
+    html = next
+  }
+
+  fs.writeFileSync(path.join(target, `${test.info().title.slice(0, 12).replace(/\W+/g, '-')}-${label}.html`), html)
 }
 
 test.describe('first launch of a new install (hc-1127)', () => {
@@ -456,11 +479,30 @@ test.describe('first launch of a new install (hc-1127)', () => {
     })
   })
 
+  // Soft on the first launch, so a run on clean main still reaches the part the bug report rests on:
+  // quitting and reopening is what brought product mode there.
+  test('quit and reopen: product mode, with the engine told', async () => {
+    await withFreshInstall('hc1127-reopen', { config: { delayMs: REAL_RTT_MS } }, async ctx => {
+      await expect(ctx.page().getByRole('button', { name: LOGIN })).toBeVisible({ timeout: 90_000 })
+      await signedInAndSettled(ctx)
+      await ctx.shot('1-first-launch-signed-in')
+      expect.soft(await ctx.page().getByText(OLD_SHELL[0]).count(), 'old shell on the first launch').toBe(0)
+      expect.soft(ctx.engineEnv('APEX_SINGLE_THREAD_ACTIVE'), 'engine on the first launch').toBe('1')
+
+      await ctx.relaunch()
+      await expectProductShell(ctx)
+      await ctx.shot('2-reopened')
+      expect(ctx.engineEnv('APEX_SINGLE_THREAD_ACTIVE')).toBe('1')
+      await expect.poll(async () => oldShellFrames(await ctx.frames())).toEqual([])
+    })
+  })
+
   test('platform off: the old shell on the first launch, the engine left alone, nothing flips', async () => {
     await withFreshInstall('hc1127-off', { config: { delayMs: REAL_RTT_MS, payload: PLATFORM_OFF, version: 8 } }, async ctx => {
       await expect(ctx.page().getByRole('button', { name: LOGIN })).toBeVisible({ timeout: 90_000 })
-      await ctx.shot('1-before-sign-in')
+      // Before the screenshots: taking one leaves an empty style attribute on every text field.
       await saveNormalizedDom(ctx, 'login')
+      await ctx.shot('1-before-sign-in')
 
       expect(ctx.engineEnv('APEX_SINGLE_THREAD_ACTIVE')).toBe('(unset)')
       expect(ctx.engineEnv('APEX_MULTI_BOT_ACTIVE')).toBe('(unset)')
@@ -468,8 +510,8 @@ test.describe('first launch of a new install (hc-1127)', () => {
 
       await signedInAndSettled(ctx)
       await expectOldShell(ctx)
-      await ctx.shot('2-after-sign-in')
       await saveNormalizedDom(ctx, 'signed-in')
+      await ctx.shot('2-after-sign-in')
       expect(ctx.engineEnv('APEX_SINGLE_THREAD_ACTIVE')).toBe('(unset)')
       await note(ctx)
       expect((await ctx.frames()).filter(frame => frame.product)).toEqual([])
@@ -588,6 +630,24 @@ test.describe('first launch of a new install (hc-1127)', () => {
       await reachComposer(ctx.page())
       expect(ctx.engineEnv('APEX_SINGLE_THREAD_ACTIVE')).toBe('1')
     })
+  })
+
+  test('developer mode: the old shell over a platform on, the engine still told, the page as on clean main', async () => {
+    await withFreshInstall(
+      'hc1127-developer',
+      { config: {}, seedCache: { appliedVersion: 7, fetchedAt: 1, payload: PLATFORM_ON, version: 7 } },
+      async ctx => {
+        await expect(ctx.page().getByRole('button', { name: LOGIN })).toBeVisible({ timeout: 90_000 })
+        await ctx.page().evaluate(() => localStorage.setItem('hermes.desktop.toolView.technical', 'true'))
+        await ctx.page().reload()
+
+        await signedInAndSettled(ctx)
+        await expectOldShell(ctx)
+        await saveNormalizedDom(ctx, 'signed-in')
+        await ctx.shot('1-signed-in')
+        expect(ctx.engineEnv('APEX_SINGLE_THREAD_ACTIVE')).toBe('1')
+      }
+    )
   })
 
   test('a cached install is left alone: no hold, and a newer config counts from the next launch', async () => {

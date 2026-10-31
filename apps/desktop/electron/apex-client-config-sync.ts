@@ -15,8 +15,8 @@
  * Past the wait the window opens with what it has, and the fetch keeps going. Should
  * the config land after that, the switches settle for whatever spawns next and the
  * open windows hear about it. That costs a new user nothing they can see: the login
- * screen covers the shell until sign-in, and sign-in waits once more before it restarts
- * the engine on the new key, which is what puts a late switch into the engine's env.
+ * screen covers the shell until sign-in, and sign-in waits once more before it commits
+ * the new key. The engine restarts on that key, which puts a late switch into its env.
  *
  * Electron-free, like the other apex-* helpers; main.ts supplies the transports.
  */
@@ -164,8 +164,8 @@ export function createClientConfigSync({
       holdingFirstWindow = false
     },
 
-    /** Before sign-in restarts the engine: the last point that still reaches its environment. */
-    async settleBeforeEngineRestart(): Promise<void> {
+    /** Before sign-in commits the new key: the login screen stays up, and the engine restarts on it after this. */
+    async settleBeforeSignInFinishes(): Promise<void> {
       if (read().version === 0) {
         await waitForFirstConfig('sign-in')
       }

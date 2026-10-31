@@ -173,7 +173,7 @@ describe('a launch with nothing cached', () => {
     expect(on.env[SINGLE_THREAD_ACTIVE_ENV]).toBe('1')
   })
 
-  it('sign-in waits for the config before the engine restarts, when the launch never got one', async () => {
+  it('sign-in waits for the config before it goes on, when the launch never got one', async () => {
     const respond = vi
       .fn<(url: string) => Promise<unknown>>()
       .mockRejectedValueOnce(new Error('offline at launch'))
@@ -184,10 +184,10 @@ describe('a launch with nothing cached', () => {
     await openFirstWindow(h, {})
     expect(h.env[SINGLE_THREAD_ACTIVE_ENV]).toBeUndefined()
 
-    await h.sync.settleBeforeEngineRestart()
-    h.events.push('restart engine')
+    await h.sync.settleBeforeSignInFinishes()
+    h.events.push('commit key')
 
-    expect(h.events).toEqual(['fetch', 'createWindow', 'fetch', 'store v7', 'switches', 'broadcast v7', 'restart engine'])
+    expect(h.events).toEqual(['fetch', 'createWindow', 'fetch', 'store v7', 'switches', 'broadcast v7', 'commit key'])
     expect(h.env[SINGLE_THREAD_ACTIVE_ENV]).toBe('1')
   })
 
@@ -195,15 +195,15 @@ describe('a launch with nothing cached', () => {
     let answer = (_body: unknown) => {}
     const h = harness(EMPTY, () => new Promise(resolve => (answer = resolve)))
 
-    const settling = h.sync.settleBeforeEngineRestart()
+    const settling = h.sync.settleBeforeSignInFinishes()
     await vi.advanceTimersByTimeAsync(FIRST_LAUNCH_CONFIG_WAIT_MS)
     await settling
-    h.events.push('restart engine')
+    h.events.push('commit key')
 
     answer({ version: 7, payload: ON })
     await vi.advanceTimersByTimeAsync(0)
 
-    expect(h.events).toEqual(['fetch', 'restart engine', 'store v7', 'switches', 'broadcast v7'])
+    expect(h.events).toEqual(['fetch', 'commit key', 'store v7', 'switches', 'broadcast v7'])
   })
 })
 
@@ -249,7 +249,7 @@ describe('an install with a config cached: exactly what it did before', () => {
   it('sign-in does not wait', async () => {
     const h = harness(CACHED_ON, () => new Promise(() => undefined))
 
-    await h.sync.settleBeforeEngineRestart()
+    await h.sync.settleBeforeSignInFinishes()
 
     expect(h.events).toEqual([])
   })
@@ -306,13 +306,15 @@ describe('main.ts opens the first window in that order', () => {
     expect(stripped).toMatch(/^applyDesktopFeatureSwitches\(process\.env, readClientConfigState\(\)\.payload\b/m)
   })
 
-  it('sign-in settles before it restarts the engine on the new key', () => {
-    const settle = stripped.indexOf('await clientConfigSync.settleBeforeEngineRestart()')
-    const restart = stripped.indexOf('await finishManagedModelRuntime(target, current)')
+  it('sign-in settles before it commits the new key, so the login screen is still up', () => {
+    const signIn = stripped.slice(stripped.indexOf('async function provisionManagedFromAccessToken('))
+    const settle = signIn.indexOf('await clientConfigSync.settleBeforeSignInFinishes()')
+    const commit = signIn.indexOf('await provisionManagedRelayForCurrentAccount(')
+    const restart = signIn.indexOf('await finishManagedModelRuntime(target, current)')
 
     expect(settle).toBeGreaterThan(-1)
-    expect(restart).toBeGreaterThan(settle)
-    expect(stripped.slice(settle, restart).split('\n')).toHaveLength(2)
+    expect(commit).toBeGreaterThan(settle)
+    expect(restart).toBeGreaterThan(commit)
   })
 
   it('main and preload use one channel for a late config', () => {
