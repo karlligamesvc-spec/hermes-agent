@@ -16,6 +16,7 @@ import {
   SingleThreadActivityLine,
   SingleThreadProcessFooter
 } from '@/components/assistant-ui/process/single-thread-process'
+import { AssistantErrorMessage } from '@/components/assistant-ui/thread/assistant-error-message'
 import { ChangedFilesCard } from '@/components/assistant-ui/thread/changed-files-card'
 import {
   contentHasVisibleText,
@@ -278,7 +279,7 @@ const AssistantMessageBody: FC<AssistantMessageProps & { collapsedNotice?: null 
                   </span>
                   <div className="min-w-0 flex-1">
                     <ErrorLayerLabel />
-                    <ErrorPrimitive.Message className="mt-0.5 block min-w-0 text-(--ui-text-secondary)" />
+                    <AssistantErrorMessage />
                   </div>
                   {onDismissError && (
                     <TooltipIconButton

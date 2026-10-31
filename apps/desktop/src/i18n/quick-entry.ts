@@ -39,6 +39,24 @@ export interface QuickEntryWindowCopy {
   sendTo: string
   /** A recent session with neither a title nor a preview. */
   untitled: string
+  /** hc-1113: why a line came back into the input instead of reaching the assistant. */
+  notDelivered: QuickEntryNotDeliveredCopy
+}
+
+/**
+ * The sentence under the input when a line did not land. In `busy`, `switch`
+ * and `retry`, APEX is the assistant and gets swapped for the name on screen
+ * (withBotName); in `noWindow` it is the app and stays.
+ */
+export interface QuickEntryNotDeliveredCopy {
+  /** A turn is still running there. */
+  busy: string
+  /** The main window is closed, so nothing could take it. */
+  noWindow: string
+  /** Anything else: not taken, not answered, an error. */
+  retry: string
+  /** The assistant it was typed to could not be opened. */
+  switch: string
 }
 
 export interface QuickEntrySettingsCopy {
@@ -74,7 +92,13 @@ const en: QuickEntryCopy = {
     placeholder: 'Ask APEX…',
     sendTo: 'Send to',
     targetLabel: 'Target session',
-    untitled: 'Untitled session'
+    untitled: 'Untitled session',
+    notDelivered: {
+      busy: 'APEX is still answering, so this wasn’t sent. Press Enter again once it’s done.',
+      noWindow: 'The APEX window is closed, so this wasn’t sent. Open APEX, then press Enter.',
+      retry: 'This didn’t reach APEX. Press Enter to try again.',
+      switch: 'Couldn’t open APEX, so this wasn’t sent. Press Enter to try again.'
+    }
   }
 }
 
@@ -97,7 +121,13 @@ const zh: QuickEntryCopy = {
     placeholder: '问 APEX 点什么…',
     sendTo: '发到',
     targetLabel: '发到哪个会话',
-    untitled: '无标题会话'
+    untitled: '无标题会话',
+    notDelivered: {
+      busy: 'APEX 还在回上一条，这句还没发。等它说完再按回车。',
+      noWindow: 'APEX 主窗口没开着，这句没发出去。打开 APEX 再按回车。',
+      retry: '这句没送到 APEX。再按一次回车试试。',
+      switch: '没能打开 APEX，这句还没发。再按一次回车试试。'
+    }
   }
 }
 
@@ -119,7 +149,13 @@ const zhHant: QuickEntryCopy = {
     placeholder: '問 APEX 點什麼…',
     sendTo: '傳送到',
     targetLabel: '傳送到哪個工作階段',
-    untitled: '未命名工作階段'
+    untitled: '未命名工作階段',
+    notDelivered: {
+      busy: 'APEX 還在回覆上一則，這句還沒傳出去。等它說完再送出一次。',
+      noWindow: 'APEX 主視窗沒有開著，這句沒傳出去。開啟 APEX 後再送出一次。',
+      retry: '這句沒送到 APEX。再送出一次試試。',
+      switch: '沒能開啟 APEX，這句還沒傳出去。再送出一次試試。'
+    }
   }
 }
 

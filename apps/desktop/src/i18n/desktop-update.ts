@@ -40,6 +40,18 @@ export type DesktopUpdateErrorCode =
 /** What follows ending APEX's leftovers: the update install, or the built-in engine switch. */
 export type EngineHoldersThen = 'install' | 'switch'
 
+/** hc-1117: the answer when the user confirmed an install and it still waits. */
+export interface DesktopUpdateWaitCopy {
+  title: string
+  close: string
+  /** Another program holds the engine: what to do about it. */
+  closeProgram: string
+  /** Only APEX's own running work holds the engine. */
+  ownWork: string
+  /** What the user can do, by what the install waits for. */
+  next: Record<DesktopShellUpdateDeferralReason, string>
+}
+
 /** hc-1094: a wait on engine holders that the gate named. */
 export interface EngineHoldersCopy {
   /** Each kind in a few words; `other` names the program when its name is known. */
@@ -61,6 +73,8 @@ export interface EngineHoldersCopy {
   confirmBody: (names: string, then: EngineHoldersThen) => string
   /** Added when a leftover messaging gateway is among them. */
   gatewayNote: string
+  /** Added when a leftover background command is among them. */
+  childNote: string
   ending: string
   endFailed: string
 }
@@ -69,6 +83,7 @@ export interface DesktopUpdateCopy {
   /** Sidebar line while the requested install waits, by what it waits for. */
   deferred: Record<DesktopShellUpdateDeferralReason, string>
   holders: EngineHoldersCopy
+  wait: DesktopUpdateWaitCopy
   /** `network` covers Chromium `net::ERR_*` failures; `generic` covers codes not listed. */
   errors: Record<DesktopUpdateErrorCode | 'generic' | 'network', string>
   /** The raw code under the sentence, for support. */
@@ -89,6 +104,7 @@ const en: DesktopUpdateCopy = {
   holders: {
     names: {
       apex_running: "APEX's own background process",
+      leftover_child: 'a background process an earlier APEX left running',
       leftover_engine: 'an AI engine an earlier APEX left running',
       leftover_gateway: 'the messaging gateway left from an earlier session',
       terminal_hermes: 'hermes running in a terminal',
@@ -107,8 +123,22 @@ const en: DesktopUpdateCopy = {
     confirmBody: (names, then) =>
       `To end: ${names}. APEX asks them to exit first and forces them after 10 seconds, then ${then === 'install' ? 'installs the update and restarts' : 'switches to the built-in engine'}.`,
     gatewayNote: 'Messaging channels such as WeChat and Feishu pause until APEX opens again.',
+    childNote: 'If it is still working on something, such as a video render, that work has to start over.',
     ending: 'Ending…',
     endFailed: "APEX couldn't end them. Quit APEX completely and open it again, or restart the computer."
+  },
+  wait: {
+    title: "APEX can't install yet",
+    close: 'OK',
+    closeProgram: "Close that program. If you don't know what it is, restarting the computer also works. You can keep using APEX until then.",
+    ownWork: 'It exits by itself when its work is done, so there is nothing to do.',
+    next: {
+      active_work: 'You can keep using APEX, or stop the running task first.',
+      activity_unknown: 'There is nothing to do, and you can keep using APEX.',
+      engine_holders: "Close that program. If you don't know which one it is, restarting the computer also works.",
+      gateway_busy: 'There is nothing to do, and you can keep using APEX.',
+      previous_worker: 'There is nothing to do; give it a moment. If it stays stuck, quit APEX completely and open it again.'
+    }
   },
   errors: {
     apply_failed: 'The AI engine update did not finish. Quit APEX completely, open it again, and retry.',
@@ -149,6 +179,7 @@ const zh: DesktopUpdateCopy = {
   holders: {
     names: {
       apex_running: 'APEX 自己的后台进程',
+      leftover_child: 'APEX 之前留下的后台进程',
       leftover_engine: '上一次 APEX 的引擎',
       leftover_gateway: '上一次留下的消息网关',
       terminal_hermes: '终端里运行的 hermes',
@@ -165,8 +196,22 @@ const zh: DesktopUpdateCopy = {
     confirmBody: (names, then) =>
       `将结束：${names}。APEX 会先请它们自己退出，10 秒内没退出就强制结束，然后${then === 'install' ? '安装更新并重启' : '换成自带引擎'}。`,
     gatewayNote: '它停下后，微信、飞书等消息渠道要等 APEX 重新打开才会恢复。',
+    childNote: '如果它还在做之前没做完的事（比如渲染视频），结束后要重新做。',
     ending: '正在结束…',
     endFailed: '没能结束这些进程。请完全退出 APEX 后重新打开，或重启电脑。'
+  },
+  wait: {
+    title: '现在还不能安装',
+    close: '知道了',
+    closeProgram: '关掉这个程序就行；不知道它是什么的话，重启电脑也可以。在这之前可以接着用 APEX。',
+    ownWork: '它做完会自己退出，不用操作。',
+    next: {
+      active_work: '你可以接着用 APEX，也可以先停掉正在做的任务。',
+      activity_unknown: '不用操作，你可以接着用 APEX。',
+      engine_holders: '关掉那个程序就行；不知道是哪个的话，重启电脑也可以。',
+      gateway_busy: '不用操作，你可以接着用 APEX。',
+      previous_worker: '不用操作，等一小会儿。一直不动的话，请完全退出 APEX 后重新打开。'
+    }
   },
   errors: {
     apply_failed: 'AI 引擎没有更新完。请完全退出 APEX 后重新打开，再试一次。',
@@ -204,6 +249,7 @@ const zhHant: DesktopUpdateCopy = {
   holders: {
     names: {
       apex_running: 'APEX 自己的後台程序',
+      leftover_child: 'APEX 之前留下的後台程序',
       leftover_engine: '上一次 APEX 的引擎',
       leftover_gateway: '上一次留下的訊息網關',
       terminal_hermes: '終端裡執行的 hermes',
@@ -220,8 +266,22 @@ const zhHant: DesktopUpdateCopy = {
     confirmBody: (names, then) =>
       `將結束：${names}。APEX 會先請它們自己退出，10 秒內沒退出就強制結束，然後${then === 'install' ? '安裝更新並重啟' : '換成自帶引擎'}。`,
     gatewayNote: '它停下後，微信、飛書等訊息渠道要等 APEX 重新打開才會恢復。',
+    childNote: '如果它還在做之前沒做完的事（比如渲染影片），結束後要重新做。',
     ending: '正在結束…',
     endFailed: '沒能結束這些程序。請完全退出 APEX 後重新打開，或重新啟動電腦。'
+  },
+  wait: {
+    title: '現在還不能安裝',
+    close: '知道了',
+    closeProgram: '關掉這個程式就行；不知道它是什麼的話，重新啟動電腦也可以。在這之前可以接著用 APEX。',
+    ownWork: '它做完會自己退出，不用操作。',
+    next: {
+      active_work: '你可以接著用 APEX，也可以先停掉正在做的任務。',
+      activity_unknown: '不用操作，你可以接著用 APEX。',
+      engine_holders: '關掉那個程式就行；不知道是哪個的話，重新啟動電腦也可以。',
+      gateway_busy: '不用操作，你可以接著用 APEX。',
+      previous_worker: '不用操作，等一小會兒。一直不動的話，請完全退出 APEX 後重新打開。'
+    }
   },
   errors: {
     apply_failed: 'AI 引擎沒有更新完。請完全退出 APEX 後重新打開，再試一次。',

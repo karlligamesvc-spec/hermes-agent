@@ -392,6 +392,25 @@ test('online bundle activation waits for worker retirement and preserves the poi
   }
 })
 
+test('a switch the gate refuses reports nothing past verifying (hc-1118: the renderer raises its overlay on activating)', { skip: process.platform === 'win32' }, async () => {
+  const home = mkHome()
+
+  try {
+    const deps = baseDeps(home)
+    const phases: string[] = []
+    deps.onProgress = event => phases.push(event.phase)
+
+    deps.beforeSwitch = async () => {
+      throw new Error('controlled live worker')
+    }
+
+    assert.equal((await install.applyBundleUpdate(deps)).ok, false)
+    assert.deepEqual(phases, ['preflight', 'downloading', 'verifying'])
+  } finally {
+    rm(home)
+  }
+})
+
 test('applyBundleUpdate: full success downloads, commits, switches, GCs', { skip: process.platform === 'win32' }, async () => {
   const home = mkHome()
 

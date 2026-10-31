@@ -183,6 +183,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     submit: payload => ipcRenderer.send('hermes:quick-entry:submit', payload),
     dismiss: () => ipcRenderer.send('hermes:quick-entry:dismiss'),
     pushState: payload => ipcRenderer.send('hermes:quick-entry:state', payload),
+    // hc-1113: the primary renderer says what became of a submitted line.
+    receipt: receipt => ipcRenderer.send('hermes:quick-entry:receipt', receipt),
     onState: callback => {
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('hermes:quick-entry:state', listener)
@@ -196,7 +198,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
       return () => ipcRenderer.removeListener('hermes:quick-entry:submit', listener)
     },
     onShown: callback => {
-      const listener = () => callback()
+      const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('hermes:quick-entry:shown', listener)
 
       return () => ipcRenderer.removeListener('hermes:quick-entry:shown', listener)

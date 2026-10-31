@@ -4,7 +4,9 @@ import { extractImageRefs } from '@/lib/embedded-images'
 import { dedupeGeneratedImageEchoesInParts } from '@/lib/generated-images'
 import type { MessageReaction, SessionMessage } from '@/types/hermes'
 
+import { FAILED_TURN_DISPLAY_KIND, failedTurnDisplayText } from './failed-turn'
 import { assistantTextPart, chatMessageText, dedupeRepeatedTextInParts, reasoningPart, textPart } from './parts'
+import { productTimelineLabel } from './timeline-labels'
 import {
   applyStoredToolResult,
   applyStoredToolResultToParts,
@@ -200,6 +202,12 @@ function asyncResultBody(content: string): string | undefined {
 }
 
 function timelineDisplayContent(message: SessionMessage, content: string): string {
+  const productLabel = productTimelineLabel(message.display_kind, () => timelineTaskCount(message.display_metadata))
+
+  if (productLabel !== undefined) {
+    return productLabel
+  }
+
   if (message.display_kind === 'model_switch') {
     return 'model changed'
   }
@@ -225,6 +233,10 @@ function timelineDisplayContent(message: SessionMessage, content: string): strin
 
   if (message.display_kind === 'process_complete') {
     return timelineDisplayText(message.display_metadata) ?? 'background process finished'
+  }
+
+  if (message.display_kind === FAILED_TURN_DISPLAY_KIND) {
+    return failedTurnDisplayText(content)
   }
 
   return content

@@ -1,17 +1,16 @@
 import { useEffect, useRef } from 'react'
 
-import { holdUntilBotSwitchLands, singleThreadQuickEntryTarget } from '@/app/single-thread/quick-entry'
+import { deliverQuickCapture } from '@/app/quick-entry/deliver'
 import { useI18n } from '@/i18n'
 import { rememberQuickEntryLocale } from '@/i18n/quick-entry'
 import {
   initQuickEntryBridge,
-  QUICK_TARGET_CURRENT,
-  QUICK_TARGET_NEW,
+  type QuickEntryAssistantRef,
   type QuickEntrySessionOption,
   setQuickEntrySubmitHandler
 } from '@/store/quick-entry'
 import { $gatewayState, $sessions } from '@/store/session'
-import { sessionTileDelegate } from '@/store/session-states'
+import { $currentBot } from '@/store/single-thread-bots'
 import { isAuxiliaryWindow } from '@/store/windows'
 
 interface QuickEntryBridgeParams {
@@ -36,6 +35,13 @@ function sessionOptions(): QuickEntrySessionOption[] {
     }))
 }
 
+/** hc-1113: the assistant on screen while several are on (the quick window names it and its lines go there); nothing with one. */
+function assistantOnScreen(): { assistant?: QuickEntryAssistantRef } {
+  const bot = $currentBot.get()
+
+  return bot ? { assistant: { name: bot.name, profile: bot.profile } } : {}
+}
+
 /**
  * Wires the global-hotkey Quick Entry window back into the app, both ways:
  *
@@ -47,9 +53,11 @@ function sessionOptions(): QuickEntrySessionOption[] {
  *   clicking New Chat and typing does. One submit pipeline, no bespoke RPC.
  * - **Outbound:** gateway connection state + the recent-session list are pushed
  *   to the quick window (via main, which caches the latest push), so its input
- *   disables with a reconnect hint whenever the backend is unreachable. The
- *   language this window resolved goes through localStorage instead (hc-1001),
- *   so the quick window has it on its first paint.
+ *   disables with a reconnect hint whenever the backend is unreachable. With
+ *   several assistants on, the push also names the one on screen, and main
+ *   hands it over on every summon (hc-1113). The language this window resolved
+ *   goes through localStorage instead (hc-1001), so the quick window has it on
+ *   its first paint.
  *
  * Handlers register ONCE through refs tracking the latest callbacks —
  * re-registering on identity churn leaves a nulled-handler window that can drop
@@ -75,43 +83,13 @@ export function useQuickEntryBridge({ startFreshSessionDraft, submitText }: Quic
       return
     }
 
-    setQuickEntrySubmitHandler(function deliver(capture) {
-      // hc-1077: a capture made while another assistant is being switched to waits for that switch.
-      if (holdUntilBotSwitchLands(() => deliver(capture))) {
-        return
-      }
-
-      const { target: picked, text } = capture
-      // hc-1014: in single-thread mode every capture goes to the one conversation.
-      const target = singleThreadQuickEntryTarget(picked)
-
-      if (target === QUICK_TARGET_NEW) {
-        // Same as the user clicking New Chat and typing: fresh draft, then the
-        // normal submit creates the backend session.
-        startFreshRef.current()
-        void submitTextRef.current(text)
-
-        return
-      }
-
-      if (target !== QUICK_TARGET_CURRENT) {
-        // A picked stored session: resume + submit in the background through
-        // the session-tile delegate so the primary view stays where it is.
-        const delegate = sessionTileDelegate()
-
-        if (delegate) {
-          void delegate
-            .resumeTile(target)
-            .then(runtimeId => delegate.submitToSession(runtimeId, text))
-            // A dead/undeliverable target must not swallow the prompt.
-            .catch(() => void submitTextRef.current(text))
-
-          return
-        }
-      }
-
-      void submitTextRef.current(text)
-    })
+    // hc-1113: routing and its outcome live in deliverQuickCapture; the outcome becomes main's receipt.
+    setQuickEntrySubmitHandler(capture =>
+      deliverQuickCapture(capture, {
+        startFreshSessionDraft: () => startFreshRef.current(),
+        submitText: text => submitTextRef.current(text)
+      })
+    )
 
     const dispose = initQuickEntryBridge()
 
@@ -135,17 +113,19 @@ export function useQuickEntryBridge({ startFreshSessionDraft, submitText }: Quic
     }
 
     const push = () => {
-      api.pushState({ connected: $gatewayState.get() === 'open', sessions: sessionOptions() })
+      api.pushState({ connected: $gatewayState.get() === 'open', sessions: sessionOptions(), ...assistantOnScreen() })
     }
 
     push()
 
     const offGateway = $gatewayState.listen(push)
     const offSessions = $sessions.listen(push)
+    const offAssistant = $currentBot.listen(push)
 
     return () => {
       offGateway()
       offSessions()
+      offAssistant()
     }
   }, [])
 }
