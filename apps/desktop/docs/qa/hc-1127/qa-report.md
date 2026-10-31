@@ -4,7 +4,15 @@
 
 窗口和引擎一起启动（`createWindow` 里调 `startHermes`），都排在第一次拉平台配置之前。没有缓存的第一次启动读到的开关全是空的：登录后是旧工作台，引擎环境变量也没设。配置随后存进缓存，所以退出重开就对了。
 
-配置回来得够快时，窗口有机会读到，界面就是对的，但引擎环境还是错的。所以这个问题和网络有关，本地假服务 0 毫秒回应时看不到旧界面，测试要带上真实耗时。
+结果取决于配置落在窗口两次读取的什么时候。这两次读取在窗口开始加载后约 150 毫秒和 170 毫秒（单线在前，多助手在后），真实接口在这台 Mac 上用 Node 约 130 毫秒，所以很容易卡在这附近：
+
+| 配置落在 | `single-thread` | `multi-bot` | 界面 | 引擎环境 |
+|---|---|---|---|---|
+| 第一次读取之前 | true | true | 产品模式 | 错 |
+| 两次读取之间（hc-1126 在 0.17.69 上看到的就是这样） | false | true | 旧工作台 | 错 |
+| 第二次读取之后 | false | false | 旧工作台 | 错 |
+
+引擎环境三种情况都是错的，只修窗口不够。本地假服务 0 毫秒回应时看不到旧界面，测试要带上延迟。
 
 ## 环境
 
@@ -44,6 +52,17 @@
 ![修复后第一句回复](screenshots/fix-3-first-reply.png)
 
 ![修复后的全过程](screenshots/filmstrip-fix.png)
+
+## 配置落在两次读取之间
+
+把配置的延迟调到正好落在两次读取中间（`hc-1127-reads-gap.mjs`，读主进程里每次读取的版本和 localStorage）：
+
+| | 两次读取读到的版本 | `single-thread` | `multi-bot` |
+|---|---|---|---|
+| 干净 main（配置 126、134 毫秒才回） | v0、v7 | false | true |
+| 这个 PR（配置比上限晚，2805–2820 毫秒才回） | v0、v7 | true | true |
+
+每个 store 在读取之前先注册监听：配置要么赶在读取前落地，读取就能读到；要么在注册之后落地，监听就能听到，中间没有空隙。`late-client-config.test.ts` 钉住了这个顺序和这种夹缝。
 
 ## 各种情况
 
@@ -102,7 +121,7 @@
 
 ## 反向验证
 
-每处都把故障注回去，断言注入点只命中一次，跑完按内容还原并核对 sha256。32 处全部变红。脚本和完整输出不在仓库里，下面是每处第一条变红的测试。
+每处都把故障注回去，断言注入点只命中一次，跑完按内容还原并核对 sha256。36 处全部变红。脚本和完整输出不在仓库里，下面是每处第一条变红的测试。
 
 | 注入 | 结果 | 变红条数 | 第一条 |
 |---|---|---|---|
@@ -129,17 +148,21 @@
 | sync: an older version lands (rollback rule) | RED | 1 | an install with a config cached: exactly what it did before an older version never lands: a roll |
 | sync: stops sending the known version | RED | 1 | an install with a config cached: exactly what it did before the boot check asks with the known v |
 | sync: applied version reset when storing | RED | 1 | an install with a config cached: exactly what it did before a newer version is stored for the ne |
-| main.tsx: does not follow a late config | RED | 1 | the window main.tsx follows a late config before the shell renders |
-| first-launch: a late config skips single-thread | RED | 2 | a config that lands after the window opened reaches all three switches read once per window, and |
-| first-launch: a late config skips multi-bot | RED | 1 | a config that lands after the window opened reaches all three switches read once per window, and |
-| first-launch: a late config skips relay | RED | 1 | a config that lands after the window opened reaches all three switches read once per window, and |
+| single-thread: no longer listens for a late config | RED | 4 | a config that lands after the window opened between the two startup reads: both switches end on, |
+| single-thread: reads before it listens | RED | 1 | a config that lands after the window opened every store listens before it reads, so nothing can  |
 | single-thread: the once-per-window read keeps the old answer | RED | 1 | a config that lands after the window opened the once-per-window reads answer from the new config |
-| multi-bot: a late config leaves the cap | RED | 1 | a config that lands after the window opened reaches all three switches read once per window, and |
+| multi-bot: no longer listens for a late config | RED | 3 | a config that lands after the window opened every store listens before it reads, so nothing can  |
+| multi-bot: reads before it listens | RED | 1 | a config that lands after the window opened every store listens before it reads, so nothing can  |
+| multi-bot: the once-per-window read keeps the old answer | RED | 1 | a config that lands after the window opened the once-per-window reads answer from the new config |
+| multi-bot: a late config leaves the cap | RED | 1 | a config that lands after the window opened after both reads: reaches all three switches read on |
+| relay: no longer listens for a late config | RED | 2 | a config that lands after the window opened after both reads: reaches all three switches read on |
+| relay: the once-per-window read keeps the old answer | RED | 1 | a config that lands after the window opened the once-per-window reads answer from the new config |
+| lib: the bridge is never subscribed | RED | 4 | a config that lands after the window opened between the two startup reads: both switches end on, |
 | single-thread: stores start on (off path drifts) | RED | 1 | launch-time switch stores (hc-1127 identity) every launch traces as recorded on clean main |
 | single-thread: the read stops persisting the hint | RED | 1 | launch-time switch stores (hc-1127 identity) every launch traces as recorded on clean main |
 | single-thread: a second read per window | RED | 1 | launch-time switch stores (hc-1127 identity) every launch traces as recorded on clean main |
 
-第一轮有 3 处没变红，都是测试的问题，已补：两个读取总是同时返回（后来这段等待代码删了），多助手上限恰好等于默认值。
+中途有 4 处没变红，都是测试本身没卡住，已补：两个读取总是同时返回（后来这段等待代码删了），多助手上限恰好等于默认值，接力开关没先读过一次。
 
 e2e 不进 CI，所以另在干净 main 上跑了同一个用例：「平台开」和「退出重开」在 main 上是红的，红在第一次启动的旧界面和没设的环境变量；退出重开之后 main 上是产品模式，环境变量是 1，和问题描述一致。
 

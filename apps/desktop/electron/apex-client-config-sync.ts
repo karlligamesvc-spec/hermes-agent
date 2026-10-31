@@ -14,7 +14,7 @@
  *
  * Past the wait the window opens with what it has, and the fetch keeps going. Should
  * the config land after that, the switches settle for whatever spawns next and the
- * open windows hear about it. That costs a new user nothing they can see: the login
+ * open windows hear about it (src/lib/desktop-features.ts `onLateClientConfig`). That costs a new user nothing they can see: the login
  * screen covers the shell until sign-in, and sign-in waits once more before it commits
  * the new key. The engine restarts on that key, which puts a late switch into its env.
  *
