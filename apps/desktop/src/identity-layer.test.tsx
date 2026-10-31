@@ -627,7 +627,7 @@ describe('identity: the home zero-state is ours', () => {
 describe('identity: the assistant introduces itself as APEX', () => {
   it('upgrades upstream SOUL.md files at boot, before the runtime starts', () => {
     const main = readSource('electron', 'main.ts').replace(/^\s*\/\/.*$/gm, '')
-    const boot = main.slice(main.indexOf('app.whenReady().then(() => {'))
+    const boot = main.slice(main.indexOf('app.whenReady().then('))
     const soul = boot.indexOf('ensureApexDesktopSouls(HERMES_HOME)')
 
     expect(soul).toBeGreaterThan(0)
