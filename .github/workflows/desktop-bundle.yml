@@ -94,7 +94,7 @@ jobs:
 
           platforms = {
               "win-x64": {"runner": "windows-latest", "os": "win", "arch": "x64", "experimental": False},
-              "mac-arm64": {"runner": "macos-14", "os": "mac", "arch": "arm64", "experimental": True},
+              "mac-arm64": {"runner": "macos-15", "os": "mac", "arch": "arm64", "experimental": True},
               # macos-13 was retired on 2025-12-04. macos-15-intel is the
               # standard GitHub-hosted replacement for x86_64 macOS jobs.
               "mac-x64": {"runner": "macos-15-intel", "os": "mac", "arch": "x64", "experimental": True},
