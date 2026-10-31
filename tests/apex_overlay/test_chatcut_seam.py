@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 import pytest
 
 import hermes_yaml as yaml
-from apex_overlay import chatcut, chatcut_import
+from apex_overlay import chatcut, chatcut_account, chatcut_import
 from tests.apex_overlay.chatcut_fake_service import EDITOR_URL, PAID_TOOLS, FakeService
 
 
@@ -74,8 +74,8 @@ def service(home, monkeypatch):
     from tools import mcp_tool_lifecycle
 
     mcp_tool_lifecycle.shutdown_mcp_servers()
-    for key in list(chatcut._attempts):
-        chatcut._end_attempt(key)
+    for key in list(chatcut_account._attempts):
+        chatcut_account._end_attempt(key)
     fake.stop()
 
 
@@ -101,7 +101,7 @@ def browser(monkeypatch):
 
     fake = _Browser()
     fake.opened, fake.pages = [], []
-    monkeypatch.setattr(chatcut.webbrowser, "open", fake.open)
+    monkeypatch.setattr(chatcut_account.webbrowser, "open", fake.open)
     monkeypatch.setattr(chatcut_import.webbrowser, "open", fake.open)
     return fake
 
@@ -229,6 +229,7 @@ def test_the_config_names_apex_and_never_another_host(home, monkeypatch):
     config = chatcut.server_config()
 
     assert config["oauth"]["client_name"] == "APEX Desktop"
+    assert config["auth"] == "oauth"
     assert config["headers"] == {"x-chatcut-mcp-client": "apex_desktop", "x-chatcut-mcp-surface": "apex_desktop"}
     blob = json.dumps(config).lower()
     for other in ("kimi", "claude", "codex", "grok", "cursor", "workbuddy", "embedded-preview", "plugin-version"):
@@ -408,6 +409,65 @@ def test_each_card_gets_its_own_clarify_row_that_opens_and_closes(service, brows
     assert events[0][1] == events[1][1] != events[2][1] == events[3][1]
 
 
+def test_a_different_account_source_changes_nothing_above_the_seam(service, browser, home, clip):
+    """An issued credential instead of the user's OAuth: no card, no browser, no registration, and everything else
+    (the allowlist, who we say we are, the upload card, disconnecting) exactly as it was. Per user, never shared."""
+    from hermes_cli import mcp_config
+    from hermes_cli.config import get_env_value, save_env_value
+    from tools.registry import registry
+
+    env_name = "APEX_CHATCUT_ISSUED_TOKEN"
+
+    class IssuedForThisUser:
+        upload_question_key = "upload_question"
+        forgot = 0
+
+        def server_entry(self):
+            return {"headers": {"Authorization": f"Bearer ${{{env_name}}}"}}
+
+        def has_credential(self):
+            return bool(get_env_value(env_name))
+
+        def connect(self, agent):
+            token = "issued-for-this-apex-user"
+            service.tokens.add(token)
+            save_env_value(env_name, token)
+            mcp_config._save_mcp_server(chatcut.SERVER_NAME, chatcut.server_config())
+            return {"status": "connected"}
+
+        def forget(self):
+            type(self).forgot += 1
+            save_env_value(env_name, "")
+
+    chatcut._install_disconnect(mcp_config)
+    previous = chatcut_account.use_account(IssuedForThisUser())
+    try:
+        agent, result = _connect(None)
+
+        assert result["status"] == "connected"
+        assert agent.asked == [], "this source has nothing to ask"
+        assert browser.opened == []
+        assert service.clients == {}, "no dynamic registration"
+        assert {h["x-chatcut-mcp-client"] for h in service.mcp_headers} == {"apex_desktop"}
+        names = {name.rsplit("__", 1)[-1] for name in registry.get_tool_names_for_toolset("mcp-chatcut")}
+        assert names == {"read_script", "apply_script", "submit_export", "get_editor_url"}
+        assert chatcut.is_connected()
+
+        # The upload consent does not depend on how the user was signed in.
+        declined = _Agent(chatcut.copy("upload_no"))
+        assert _import(declined, clip)["status"] == "declined"
+        assert len(declined.asked) == 1
+        assert service.fetched == {}
+        assert _import(_Agent(chatcut.copy("upload_yes")), clip)["status"] == "imported"
+
+        assert mcp_config._remove_mcp_server(chatcut.SERVER_NAME) is True
+        assert IssuedForThisUser.forgot == 1
+        assert not chatcut.is_connected()
+        assert not chatcut.has_upload_consent()
+    finally:
+        chatcut_account.use_account(previous)
+
+
 def test_connect_signs_in_under_apexs_name_and_admits_only_the_allowlist(service, browser, home):
     from tools.registry import registry
 
@@ -452,7 +512,7 @@ def test_connecting_again_asks_nothing(service, browser):
 
 
 def test_a_slow_browser_step_keeps_one_flow_and_finishes_later(service, browser, monkeypatch):
-    monkeypatch.setattr(chatcut, "WAIT_SECONDS", 0.2)
+    monkeypatch.setattr(chatcut_account, "WAIT_SECONDS", 0.2)
     browser.hold = True
 
     agent, first = _connect(chatcut.copy("connect_yes"))
@@ -466,20 +526,20 @@ def test_a_slow_browser_step_keeps_one_flow_and_finishes_later(service, browser,
     assert len(browser.opened) == 1, "and does not open a second page"
 
     browser.approve(browser.opened[0])
-    monkeypatch.setattr(chatcut, "WAIT_SECONDS", 15)
+    monkeypatch.setattr(chatcut_account, "WAIT_SECONDS", 15)
     _, third = _connect(None)
     assert third["status"] == "connected"
 
 
 def test_a_flow_past_its_time_is_called_expired_not_waiting(service, browser, monkeypatch):
-    monkeypatch.setattr(chatcut, "WAIT_SECONDS", 0.2)
-    monkeypatch.setattr(chatcut, "AUTHORIZE_SECONDS", 0.2)
+    monkeypatch.setattr(chatcut_account, "WAIT_SECONDS", 0.2)
+    monkeypatch.setattr(chatcut_account, "AUTHORIZE_SECONDS", 0.2)
     browser.hold = True
 
     _, result = _connect(chatcut.copy("connect_yes"))
 
     assert result["status"] == "expired"
-    assert chatcut._attempts == {}
+    assert chatcut_account._attempts == {}
 
 
 def test_a_reminted_page_is_expired_not_waiting(service, browser, monkeypatch):

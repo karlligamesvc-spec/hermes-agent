@@ -350,8 +350,8 @@ def import_files(agent: Any, args: Mapping[str, Any] | None, ctx: Any) -> str:
         listed = f"「{files[0].name}」" if len(files) == 1 else chatcut.copy("file_list").format(
             first=files[0].name, count=len(files))
         yes = chatcut.copy("upload_yes")
-        answer = chatcut.ask_on_card(
-            agent, chatcut.copy("upload_question").format(files=listed), yes, chatcut.copy("upload_no"))
+        question = chatcut.copy(chatcut.account().upload_question_key).format(files=listed)
+        answer = chatcut.ask_on_card(agent, question, yes, chatcut.copy("upload_no"))
         if answer != yes:
             return tool_result(status="declined", note=DECLINED_NOTE, user_said=answer)
         chatcut.record_upload_consent()
