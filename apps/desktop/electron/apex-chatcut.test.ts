@@ -80,18 +80,44 @@ describe('the panel the editor runs in', () => {
     const listeners: Array<(event: unknown, item: never, contents?: { getURL(): string }) => void> = []
     const cleared: string[] = []
     const asked: string[] = []
+    const removed: string[] = []
+    const reloaded: string[] = []
 
-    return {
+    const fake = {
       asked,
       cleared,
+      cookies: [
+        { domain: '.chatcut.io', name: '__Secure-better-auth.session_token', path: '/' },
+        { domain: 'zero-cloud.chatcut.io', name: 'zero', path: '/sync' }
+      ] as { domain: string; name: string; path: string }[],
       listeners,
+      openUrls: ['https://app.chatcut.io/editor/p-1', 'https://app.chatcut.io.example.com/', 'file:///apex/index.html'],
+      pages: {
+        getAllWebContents: () =>
+          fake.openUrls.map(url => ({ getURL: () => url, reload: () => void reloaded.push(url) }))
+      },
+      reloaded,
+      removed,
       sessions: {
         fromPartition(partition: string) {
           asked.push(partition)
 
           return {
+            clearCache: async () => {
+              cleared.push('http cache')
+            },
             clearStorageData: async ({ origin }: { origin: string }) => {
               cleared.push(origin)
+            },
+            cookies: {
+              get: async ({ domain }: { domain: string }) => {
+                assert.equal(domain, 'chatcut.io')
+
+                return fake.cookies
+              },
+              remove: async (url: string, name: string) => {
+                removed.push(`${url} ${name}`)
+              }
             },
             on: (_event: 'will-download', listener: never) => {
               listeners.push(listener)
@@ -100,6 +126,17 @@ describe('the panel the editor runs in', () => {
         }
       }
     }
+
+    return fake
+  }
+
+  async function leaveAccount(fake: ReturnType<typeof fakeSessions>, env: Record<string, string>, log?: (line: string) => void) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-chatcut-'))
+
+    installChatcutPanel(fake.sessions, fake.pages, () => '/dl', env, log)
+    scrubChatcutConnections(dir)
+    fs.rmSync(dir, { force: true, recursive: true })
+    await new Promise(resolve => setImmediate(resolve))
   }
 
   function download(name: string) {
@@ -111,7 +148,7 @@ describe('the panel the editor runs in', () => {
   test('switch off: the panel session is not even looked up, and nothing listens', () => {
     const fake = fakeSessions()
 
-    installChatcutPanel(fake.sessions, () => '/dl', {})
+    installChatcutPanel(fake.sessions, fake.pages, () => '/dl', {})
 
     assert.deepEqual(fake.asked, [])
     assert.equal(fake.listeners.length, 0)
@@ -121,7 +158,7 @@ describe('the panel the editor runs in', () => {
     const fake = fakeSessions()
     const item = download('chatcut-export-1.mp4')
 
-    installChatcutPanel(fake.sessions, () => '/dl-does-not-exist', { [CHATCUT_ACTIVE_ENV]: '1' })
+    installChatcutPanel(fake.sessions, fake.pages, () => '/dl-does-not-exist', { [CHATCUT_ACTIVE_ENV]: '1' })
     fake.listeners[0](null, item as never, { getURL: () => 'https://app.chatcut.io/editor/p-1' })
 
     assert.equal(item.saved, '/dl-does-not-exist/chatcut-export-1.mp4')
@@ -135,7 +172,7 @@ describe('the panel the editor runs in', () => {
     const fake = fakeSessions()
     const item = download('x.zip')
 
-    installChatcutPanel(fake.sessions, () => '/dl', { [CHATCUT_ACTIVE_ENV]: '1' })
+    installChatcutPanel(fake.sessions, fake.pages, () => '/dl', { [CHATCUT_ACTIVE_ENV]: '1' })
     fake.listeners[0](null, item as never, { getURL: () => url })
 
     assert.equal(item.saved, '')
@@ -151,22 +188,69 @@ describe('the panel the editor runs in', () => {
   test.each([
     ['switch on', { [CHATCUT_ACTIVE_ENV]: '1' }],
     ['switch off: a rollback must not strand a sign-in', {}]
-  ])('the account leaving clears the panel’s ChatCut sign-in and footage: %s', (_label, env) => {
+  ])('the account leaving clears the panel’s ChatCut sign-in and footage: %s', async (_label, env) => {
     const fake = fakeSessions()
+
+    await leaveAccount(fake, env)
+
+    // The sign-in is a parent-domain cookie: clearing the two origins alone left it signed in.
+    assert.deepEqual(fake.removed, [
+      'https://chatcut.io/ __Secure-better-auth.session_token',
+      'https://zero-cloud.chatcut.io/sync zero'
+    ])
+    assert.deepEqual(fake.cleared, ['https://app.chatcut.io', 'https://api.chatcut.io', 'http cache'])
+  })
+
+  test('an editor still open goes back to the sign-in page, and only the editor reloads', async () => {
+    const fake = fakeSessions()
+
+    await leaveAccount(fake, {})
+
+    assert.deepEqual(fake.reloaded, ['https://app.chatcut.io/editor/p-1'])
+  })
+
+  test('nobody signed in to ChatCut here: other pages in the panel keep their cache', async () => {
+    const fake = fakeSessions()
+
+    fake.cookies = []
+    fake.openUrls = []
+    await leaveAccount(fake, {})
+
+    assert.deepEqual(fake.removed, [])
+    assert.equal(fake.cleared.includes('http cache'), false)
+  })
+
+  test('a panel that cannot be cleared is logged and does not stop the sign-out', async () => {
+    const fake = fakeSessions()
+    const lines: string[] = []
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-chatcut-'))
 
-    installChatcutPanel(fake.sessions, () => '/dl', env)
-    scrubChatcutConnections(dir)
+    installChatcutPanel(
+      {
+        fromPartition: () => {
+          const panel = fake.sessions.fromPartition('p')
+
+          return { ...panel, cookies: { ...panel.cookies, get: async () => Promise.reject(new Error('locked')) } }
+        }
+      },
+      fake.pages,
+      () => '/dl',
+      {},
+      line => lines.push(line)
+    )
+
+    assert.deepEqual(scrubChatcutConnections(dir), [])
+    await new Promise(resolve => setImmediate(resolve))
     fs.rmSync(dir, { force: true, recursive: true })
 
-    assert.deepEqual(fake.cleared, ['https://app.chatcut.io', 'https://api.chatcut.io'])
+    assert.deepEqual(lines, ['[chatcut] could not clear the panel: Error: locked'])
   })
 
   test('main installs it at startup, without growing past the download handler', () => {
     const main = fs.readFileSync(path.join(import.meta.dirname, 'main.ts'), 'utf8')
     const start = main.indexOf('function installDownloadHandling()')
 
-    assert.match(main.slice(start, start + 200), /installChatcutPanel\(session, \(\) => app\.getPath\('downloads'\), process\.env, rememberLog\)/)
+    assert.match(main.slice(start, start + 200), /installChatcutPanel\(session, electronWebContents, \(\) => app\.getPath\('downloads'\), process\.env, rememberLog\)/)
   })
 })
 

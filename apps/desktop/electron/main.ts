@@ -7856,7 +7856,7 @@ function isAudioCapturePermission(permission, details) {
 // Chromium-initiated downloads (anchor/blob, drag-outs) land here. Without a handler the OS save dialog opens with the
 // process cwd as the default directory and whatever extensionless name the anchor carried: route them to Downloads.
 function installDownloadHandling() {
-  installChatcutPanel(session, () => app.getPath('downloads'), process.env, rememberLog) // hc-1122
+  installChatcutPanel(session, electronWebContents, () => app.getPath('downloads'), process.env, rememberLog) // hc-1122
   session.defaultSession.on('will-download', (_event, item) => {
     const suggested = item.getFilename() || 'download'
     const hasExtension = Boolean(path.extname(suggested))

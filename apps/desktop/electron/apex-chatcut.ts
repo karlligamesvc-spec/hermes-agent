@@ -16,8 +16,8 @@
  *
  * The editor runs in the preview panel, whose session (`persist:hermes-preview`)
  * has no download handling and keeps its own sign-in and locally stored footage:
- * without the two seams below an export stops on a native save dialog, and the next
- * person to sign in on this computer would find the last one's ChatCut in the panel.
+ * without the seam below an export stops on a native save dialog, and the next person
+ * to sign in on this computer would find the last one's ChatCut in the panel.
  *
  * Electron-free apart from what main hands in: unit-tested with `vitest --project electron`.
  */
@@ -36,6 +36,8 @@ const SERVER_NAME = 'chatcut'
 const PANEL_PARTITION = 'persist:hermes-preview'
 const EDITOR_ORIGIN = 'https://app.chatcut.io'
 const API_ORIGIN = 'https://api.chatcut.io'
+/** The sign-in cookies sit on the parent domain, where clearing an origin does not reach them. */
+const COOKIE_DOMAIN = 'chatcut.io'
 /** A developer's own server may share the name; only this endpoint's entry is ours to remove. */
 const CHATCUT_HOST = 'api.chatcut.io'
 
@@ -152,11 +154,47 @@ interface DownloadLike {
 }
 
 interface PanelSessionLike {
+  clearCache(): Promise<void>
   clearStorageData(options: { origin: string }): Promise<void>
+  cookies: {
+    get(filter: { domain: string }): Promise<{ domain?: string; name: string; path?: string }[]>
+    remove(url: string, name: string): Promise<void>
+  }
   on(event: 'will-download', listener: (event: unknown, item: DownloadLike, contents?: { getURL(): string }) => void): unknown
 }
 
+interface OpenPagesLike {
+  getAllWebContents(): readonly { getURL(): string; reload(): void }[]
+}
+
 let clearPanelSession: (() => void) | null = null
+
+/**
+ * The sign-in, the locally stored footage and the cached project pages all go, and an
+ * editor still open reloads into the sign-in page instead of keeping the last person's
+ * project on screen. Other sites in the panel keep their own sign-ins. The HTTP cache
+ * cannot be cleared per site, so it is only cleared when there was a ChatCut sign-in.
+ */
+async function clearChatcutFromPanel(panel: PanelSessionLike, openPages: OpenPagesLike): Promise<void> {
+  const cookies = await panel.cookies.get({ domain: COOKIE_DOMAIN })
+
+  await Promise.all(
+    cookies.map(({ domain = COOKIE_DOMAIN, name, path: at = '/' }) =>
+      panel.cookies.remove(`https://${domain.replace(/^\./, '')}${at}`, name)
+    )
+  )
+  await Promise.all([EDITOR_ORIGIN, API_ORIGIN].map(origin => panel.clearStorageData({ origin })))
+
+  if (cookies.length > 0) {
+    await panel.clearCache()
+  }
+
+  for (const page of openPages.getAllWebContents()) {
+    if (isEditorPage(page.getURL())) {
+      page.reload()
+    }
+  }
+}
 
 /**
  * Called once at startup. With the switch on, a download started by the editor saves
@@ -167,16 +205,15 @@ let clearPanelSession: (() => void) | null = null
  */
 export function installChatcutPanel(
   sessions: { fromPartition(partition: string): PanelSessionLike },
+  openPages: OpenPagesLike,
   downloadsDir: () => string,
   env: Record<string, string | undefined>,
   log: (line: string) => void = () => undefined
 ): void {
   clearPanelSession = () => {
-    const panel = sessions.fromPartition(PANEL_PARTITION)
-
-    for (const origin of [EDITOR_ORIGIN, API_ORIGIN]) {
-      void panel.clearStorageData({ origin }).catch(error => log(`[chatcut] could not clear ${origin}: ${error}`))
-    }
+    void clearChatcutFromPanel(sessions.fromPartition(PANEL_PARTITION), openPages).catch(error =>
+      log(`[chatcut] could not clear the panel: ${error}`)
+    )
   }
 
   if (env[CHATCUT_ACTIVE_ENV] !== '1') {
