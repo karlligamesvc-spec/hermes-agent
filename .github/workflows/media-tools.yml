@@ -21,7 +21,7 @@ jobs:
       matrix:
         include:
           - target: mac-arm64
-            runner: macos-14
+            runner: macos-15
           - target: mac-x64
             runner: macos-15-intel
           - target: win-x64
@@ -52,7 +52,7 @@ jobs:
       matrix:
         include:
           - target: mac-arm64
-            runner: macos-14
+            runner: macos-15
           - target: mac-x64
             runner: macos-15-intel
           - target: win-x64
