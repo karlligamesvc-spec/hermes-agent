@@ -272,25 +272,49 @@ describe('the primary engine follows a re-login', () => {
     )
   })
 
-  // A fresh install launches signed out; its first sign-in and a later re-login happen in the same run.
-  test('a primary spawned signed out adopts the first key without a restart, then follows the next change', async () => {
+  // hc-1120: by the first sign-in it has built a session on no key (or one a sign-out left in config.yaml).
+  test('a primary spawned signed out restarts once idle on its first key, then follows the next change', async () => {
     const apex = primary('default', null)
     let stored = OLD_KEY
+    apex.store(OLD_KEY)
     const { log, restarts } = restarter(apex.holders, () => stored)
 
-    assert.deepEqual(await restarts.run('managed-runtime-complete'), { restarted: [], waiting: [] })
-    assert.equal(apex.restarts, 0)
-    assert.deepEqual(apex.engine.actions, [], 'not asked: nothing it built holds an older relay key')
+    assert.deepEqual(await restarts.run('managed-runtime-complete'), {
+      restarted: ['primary backend "default"'],
+      waiting: []
+    })
+    assert.equal(apex.restarts, 1)
+    assert.deepEqual(apex.engine.actions, ['prepare', 'commit'], 'asked through the retirement fence first')
     assert.deepEqual(
       apex.holders().map(holder => holder.stamp),
       [maskRelayKey(OLD_KEY)]
     )
-    assert.ok(log.some(line => line.includes('was started signed out')))
+    assert.ok(log.some(line => line.includes('restarting primary backend "default" for the refreshed relay key')))
 
     stored = NEW_KEY
     apex.store(NEW_KEY)
     assert.deepEqual((await restarts.run('managed-runtime-complete')).restarted, ['primary backend "default"'])
-    assert.equal(apex.restarts, 1)
+    assert.equal(apex.restarts, 2)
+  })
+
+  test('a primary spawned signed out and running a turn (a BYOK provider) waits for it before the first key', async () => {
+    const apex = primary('default', null, { busy: true })
+    apex.store(OLD_KEY)
+    const { restarts } = restarter(apex.holders, () => OLD_KEY)
+
+    assert.deepEqual((await restarts.run('managed-runtime-complete')).waiting, ['primary backend "default"'])
+    assert.equal(apex.restarts, 0)
+
+    apex.state.busy = false
+    assert.deepEqual((await restarts.run('retry')).restarted, ['primary backend "default"'])
+  })
+
+  test('nobody signed in and nothing on a key: a primary spawned signed out is left alone', async () => {
+    const apex = primary('default', null)
+    const { restarts } = restarter(apex.holders, () => null)
+
+    assert.deepEqual(await restarts.run('boot-seed'), { restarted: [], waiting: [] })
+    assert.deepEqual(apex.engine.actions, [])
   })
 
   // reloadBackendForRelayKey skips a re-provision's second re-home on this (wiring test).

@@ -285,16 +285,18 @@ test('signing out revokes the key, leaves no copy on disk or in a running proces
     'sign-out-relay-key',
     async ({ page, sandbox, keys, revokes, signIn, send, replied, desktopLog }) => {
       expect(await signIn('alice@example.invalid')).toMatchObject({ ok: true })
-      await page.reload()
-      // Sign in again: the primary restarts on the new key (hc-1106), so its env carries it too.
-      expect(await signIn('alice@example.invalid')).toMatchObject({ ok: true })
+      // The primary was spawned signed out, so it restarts on the key (hc-1120) and its env carries it too.
       await expect
         .poll(desktopLog, { timeout: 60_000 })
         .toContain('restarting primary backend "default" for the refreshed relay key')
+      await page.reload()
+      // Until the home page's input mounts, the chat composer is the first visible match, and a click
+      // that resolved to it stays on that element after it is hidden.
+      await page.locator('[data-slot="business-goal-input"]').waitFor({ state: 'visible', timeout: 60_000 })
       // A turn, so the engine has built a session on the key (and backed config.yaml up).
       await send('sign-out probe one')
       await replied('sign-out probe one')
-      const key = keys[1].key
+      const key = keys[0].key
 
       // A second assistant: its home holds its own copy of config.yaml.
       const assistant = path.join(sandbox.hermesHome, 'profiles', 'apex-bot-2')
@@ -317,7 +319,7 @@ test('signing out revokes the key, leaves no copy on disk or in a running proces
       expect(revokes[0].bearerAccount).toBe(ACCOUNTS['alice@example.invalid'])
       expect(revokes[0].body.legacy_key_hash).toBe(crypto.createHash('sha256').update(key).digest('hex'))
       expect(JSON.stringify(revokes[0].body)).not.toContain(key)
-      expect(keys.map(entry => entry.status)).toEqual(['rotated', 'revoked'])
+      expect(keys.map(entry => entry.status)).toEqual(['revoked'])
 
       await expect
         .poll(desktopLog, { timeout: 30_000 })

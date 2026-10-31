@@ -1,3 +1,11 @@
+// hc-1120: a primary spawned signed out builds its session before the sign-in, on no
+// key (a resume builds the agent as soon as the history is loaded), and a session
+// keeps its client. Every turn after the sign-in was a 401 until the app restarted
+// (M7, 0.17.68, finding 15). A sign-in takes a while in a real browser, so these wait
+// at the login screen; without the wait the build can run after the sign-in and read
+// the new key from config.yaml, which hid this. Production runs single-thread, where
+// the main line resumes at boot.
+//
 // hc-1121: signing in through the real login screen while the primary restarts
 // for the new key. The restart takes the renderer's socket down right when the
 // screen checks the runtime, so a successful sign-in (M7, 0.17.68, finding 16)
@@ -61,7 +69,8 @@ async function withAccountServer(
   const sandbox = createSandbox(name)
 
   const mock = await startMockServer({
-    replyForPrompt: prompt => (prompt.match(/sign-in probe (one|two)/)?.[0] ?? 'other').replace(/ /g, '-') + '-ok'
+    replyForPrompt: prompt =>
+      (prompt.match(/sign-in probe (one|two|three|four)/)?.[0] ?? 'other').replace(/ /g, '-') + '-ok'
   })
 
   const keys: Fixture['keys'] = []
@@ -337,5 +346,237 @@ test('signing out and back in does not bring the account menu back', async () =>
     await formClosed(ctx)
     await expect(ctx.current().page.getByRole('menuitem', { name: '退出登录' })).toBeHidden({ timeout: 10_000 })
     await turnOnKey(ctx, 'sign-in probe two', 1)
+  })
+})
+
+const AT_THE_LOGIN_SCREEN_MS = 15_000
+
+test('a fresh install: the first sign-in restarts the primary and the first turn goes out on the key', async () => {
+  test.setTimeout(240_000)
+
+  await withAccountServer('signin-fresh', {}, async ctx => {
+    await expect(ctx.current().page.getByRole('button', { name: /登录 APEX/ })).toBeVisible({ timeout: 60_000 })
+    await ctx.current().page.waitForTimeout(AT_THE_LOGIN_SCREEN_MS)
+    await ctx.signIn()
+    await formClosed(ctx)
+    await expect
+      .poll(ctx.desktopLog, { timeout: 30_000 })
+      .toContain('restarting primary backend "default" for the refreshed relay key')
+    await turnOnKey(ctx, 'sign-in probe one', 0)
+    expect(ctx.rejected).toEqual([])
+  })
+})
+
+// The first thing every new user does. The user types as soon as there is somewhere to type: Enter pressed
+// while the renderer re-dials does not send, and the text has to still be there to send afterwards.
+test('first open, sign in, first sentence: nothing lost, no 401, no red line', async () => {
+  test.setTimeout(240_000)
+
+  await withAccountServer('signin-first-sentence', {}, async ctx => {
+    const { page } = ctx.current()
+    await expect(page.getByRole('button', { name: /登录 APEX/ })).toBeVisible({ timeout: 60_000 })
+    await page.waitForTimeout(AT_THE_LOGIN_SCREEN_MS)
+
+    const signedInAt = Date.now()
+    const timeline: string[] = []
+    let lastSeen = ''
+
+    // What a person would see, as it changes: the login screen, and the composer's wording.
+    const watching = setInterval(() => {
+      void page
+        .evaluate(() => {
+          const login = document.body.innerText.includes('登录 APEX')
+
+          const composer = document.querySelector<HTMLElement>('textarea, [contenteditable="true"]')
+
+          const hint = composer?.getAttribute('placeholder') ?? composer?.getAttribute('data-placeholder') ?? ''
+
+          return `login=${login} composer=${Boolean(composer)} hint=${hint}`
+        })
+        .then(seen => {
+          if (seen !== lastSeen) {
+            lastSeen = seen
+            timeline.push(`${Date.now() - signedInAt} ms: ${seen}`)
+          }
+        })
+        .catch(() => undefined)
+    }, 50)
+
+    await ctx.signIn()
+    await turnOnKey(ctx, 'sign-in probe one', 0)
+    clearInterval(watching)
+    const replyAfter = Date.now() - signedInAt
+
+    fs.writeFileSync(
+      test.info().outputPath('timing.txt'),
+      `sign-in to first reply: ${replyAfter} ms\n${timeline.join('\n')}\n`
+    )
+    expect(replyAfter, 'sign-in to the first reply').toBeLessThan(30_000)
+    expect(ctx.rejected).toEqual([])
+    expect(
+      await page
+        .getByText(RED)
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ).toBe(false)
+    expect(
+      await page
+        .getByText(/登录成功,但/)
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ).toBe(false)
+  })
+})
+
+// No pause at the login screen: the engine may still be busy, so its restart is put off, and the first
+// sentence goes out before it.
+test('sign in the moment the screen appears and send at once: the sentence still gets its reply', async () => {
+  test.setTimeout(240_000)
+
+  await withAccountServer('signin-send-at-once', {}, async ctx => {
+    await expect(ctx.current().page.getByRole('button', { name: /登录 APEX/ })).toBeVisible({ timeout: 60_000 })
+    await ctx.signIn()
+    await turnOnKey(ctx, 'sign-in probe one', 0)
+
+    fs.writeFileSync(
+      test.info().outputPath('timing.txt'),
+      `put off: ${ctx.desktopLog().includes('still holds the previous relay key')}; turned away: ${JSON.stringify(ctx.rejected)}\n`
+    )
+  })
+})
+
+// The narrowest case: a draft already in the box, Enter the moment the login screen goes, before the
+// restart begins. The engine is busy with that turn, so its restart waits, and the sentence is answered.
+test('a sentence sent before the restart begins gets its reply', async () => {
+  test.setTimeout(240_000)
+
+  await withAccountServer('signin-before-restart', {}, async ctx => {
+    const { page } = ctx.current()
+    await expect(page.getByRole('button', { name: /登录 APEX/ })).toBeVisible({ timeout: 60_000 })
+    await page.waitForTimeout(AT_THE_LOGIN_SCREEN_MS)
+
+    const composer = page.locator('textarea, [contenteditable="true"]').first()
+    await composer.focus()
+    await page.keyboard.insertText('sign-in probe one')
+    await ctx.signIn()
+
+    await expect
+      .poll(() => page.evaluate(() => document.body.innerText.includes('登录 APEX')), {
+        intervals: [5],
+        timeout: 30_000
+      })
+      .toBe(false)
+    await composer.focus()
+    await page.keyboard.press('Enter')
+
+    await ctx.replied('sign-in probe one')
+    expect(ctx.relayed.at(-1)).toBe(0)
+    expect(ctx.rejected).toEqual([])
+    fs.writeFileSync(
+      test.info().outputPath('timing.txt'),
+      `put off: ${ctx.desktopLog().includes('still holds the previous relay key')}\n`
+    )
+  })
+})
+
+test('sign out and back in within one run: the next turn reaches the relay on the new key', async () => {
+  test.setTimeout(300_000)
+
+  await withAccountServer('signin-same-run', {}, async ctx => {
+    await firstTurnThenSignOut(ctx)
+    await expect.poll(ctx.desktopLog, { timeout: 60_000 }).toContain('so it no longer holds the revoked relay key')
+    await ctx.current().page.waitForTimeout(AT_THE_LOGIN_SCREEN_MS)
+    await ctx.signIn()
+    await formClosed(ctx)
+    await turnOnKey(ctx, 'sign-in probe two', 1)
+    expect(ctx.rejected).toEqual([])
+  })
+})
+
+test('reopen signed out, then sign in: the next turn reaches the relay on the new key', async () => {
+  test.setTimeout(300_000)
+
+  await withAccountServer('signin-reopen', {}, async ctx => {
+    await firstTurnThenSignOut(ctx)
+    await ctx.relaunch()
+    await ctx.current().page.waitForTimeout(AT_THE_LOGIN_SCREEN_MS)
+    await ctx.signIn()
+    await formClosed(ctx)
+    await turnOnKey(ctx, 'sign-in probe two', 1)
+    expect(ctx.rejected).toEqual([])
+  })
+})
+
+// M7's exact state: a sign-out on an older version left the key in config.yaml.
+test('reopen after an older version signed out and left its key behind, then sign in', async () => {
+  test.setTimeout(300_000)
+
+  await withAccountServer('signin-reopen-leftover', {}, async ctx => {
+    await ctx.signIn()
+    await formClosed(ctx)
+    await turnOnKey(ctx, 'sign-in probe one', 0)
+    await ctx.relaunch(() => fs.rmSync(path.join(ctx.sandbox.userDataDir, 'apex-managed.json')))
+    await ctx.current().page.waitForTimeout(AT_THE_LOGIN_SCREEN_MS)
+    await ctx.signIn()
+    await formClosed(ctx)
+    await turnOnKey(ctx, 'sign-in probe two', 1)
+    expect(ctx.rejected).toEqual([])
+  })
+})
+
+// Several assistants: the primary serves the one pinned last time, APEX itself goes through the pool.
+test('several assistants, the primary on one of them: reopen signed out, then sign in', async () => {
+  test.setTimeout(420_000)
+
+  await withAccountServer('signin-multi-bot', { APEXNODES_MULTI_BOT: '1' }, async ctx => {
+    await ctx.signIn()
+    await formClosed(ctx)
+    await turnOnKey(ctx, 'sign-in probe one', 0)
+
+    const created = ctx.current().page
+    await created.getByRole('button', { name: '新建一个助手' }).click()
+    await created.getByPlaceholder('比如：小红书文案').fill('剪辑助手')
+    await created.getByRole('button', { name: '建好了' }).click()
+    await expect(created.getByText('剪辑助手').first()).toBeVisible({ timeout: 60_000 })
+
+    // Its first open asks three questions; a message before they are done is an answer, not a turn.
+    await created.getByText('剪辑助手').first().click()
+    await created.getByRole('button', { name: /文案/ }).first().click()
+    await created.getByRole('button', { name: /简短直接/ }).click()
+    await created.getByRole('button', { name: /抖音/ }).first().click()
+    await expect(created.getByText(/分工定了/).first()).toBeVisible({ timeout: 30_000 })
+    await turnOnKey(ctx, 'sign-in probe three', 0)
+
+    await ctx.signOut()
+    await expect(created.getByRole('button', { name: /登录 APEX/ })).toBeVisible({ timeout: 30_000 })
+
+    const profiles = path.join(ctx.sandbox.hermesHome, 'profiles')
+    const [assistant] = fs.readdirSync(profiles).filter(name => !name.startsWith('.'))
+
+    // The pin a user gets by working in that assistant last (M7 pinned it the same way).
+    await ctx.relaunch(() =>
+      fs.writeFileSync(
+        path.join(ctx.sandbox.userDataDir, 'active-profile.json'),
+        JSON.stringify({ profile: assistant })
+      )
+    )
+    await ctx.current().page.waitForTimeout(AT_THE_LOGIN_SCREEN_MS)
+    await ctx.signIn()
+    await formClosed(ctx)
+    await expect
+      .poll(ctx.desktopLog, { timeout: 30_000 })
+      .toContain(`restarting primary backend "${assistant}" for the refreshed relay key`)
+
+    const { page } = ctx.current()
+    await page.getByText('剪辑助手').first().click()
+    await turnOnKey(ctx, 'sign-in probe two', 1)
+    await page.getByText('APEX', { exact: true }).last().click()
+    // Text typed before its conversation is back is cleared when it arrives.
+    await expect(page.getByText('sign-in-probe-one-ok').first()).toBeVisible({ timeout: 30_000 })
+    await page.waitForTimeout(1500)
+    await turnOnKey(ctx, 'sign-in probe four', 1)
+    expect(ctx.rejected).toEqual([])
   })
 })

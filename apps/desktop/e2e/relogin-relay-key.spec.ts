@@ -218,16 +218,27 @@ async function withRelogin(
   }
 }
 
+// hc-1120: the primary was spawned signed out, so the first sign-in restarts it. Reload once it is back,
+// and wait for the home page's input: until it mounts the chat composer is the first visible match, and
+// a click that resolved to it stays on that element after it is hidden.
+async function firstSignIn({ page, signIn, desktopLog }: Pick<Relogin, 'desktopLog' | 'page' | 'signIn'>) {
+  expect(await signIn()).toMatchObject({ ok: true })
+  await expect
+    .poll(() => desktopLog().match(/HERMES_BACKEND_READY/g)?.length ?? 0, { timeout: 60_000 })
+    .toBeGreaterThanOrEqual(2)
+  await page.reload()
+  await page.locator('[data-slot="business-goal-input"]').waitFor({ state: 'visible', timeout: 60_000 })
+}
+
 const completions = (calls: Array<{ key: number; path: string }>, key: number) =>
   calls.filter(call => call.key === key && call.path.endsWith('/chat/completions'))
 
 test('a re-login moves the running engine onto the new relay key', async () => {
   test.setTimeout(300_000)
 
-  await withRelogin('relogin-relay-key', {}, async ({ page, relayed, rejected, signIn, send, replied }) => {
+  await withRelogin('relogin-relay-key', {}, async ({ page, relayed, rejected, signIn, send, replied, desktopLog }) => {
     // First sign-in, then a conversation whose engine session is built on that key.
-    expect(await signIn()).toMatchObject({ ok: true })
-    await page.reload()
+    await firstSignIn({ page, signIn, desktopLog })
     await send('relogin probe one')
     await replied('relogin probe one')
     expect(completions(relayed, 0).length).toBeGreaterThan(0)
@@ -253,28 +264,34 @@ test('a re-login during a reply lets the turn finish, then moves the engine onto
     'relogin-relay-key-busy',
     { holdFirstStreamForPrompt: 'relogin probe hold' },
     async ({ page, mock, relayed, rejected, signIn, send, replied, desktopLog }) => {
-      expect(await signIn()).toMatchObject({ ok: true })
-      await page.reload()
+      await firstSignIn({ page, signIn, desktopLog })
       await send('relogin probe hold')
       await mock.waitForHeldStream()
 
       // Re-login while the reply is still streaming: the engine is asked, says busy, and keeps the turn.
       allowErrorBanners()
+      const sinceReLogin = desktopLog().length
       expect(await signIn()).toMatchObject({ ok: true })
       // desktop.log is appended asynchronously: poll for the line instead of reading it once.
       await expect
         .poll(desktopLog, { timeout: 15_000 })
         .toContain('primary backend "default" still holds the previous relay key; restarting it once idle (busy')
-      expect(desktopLog()).not.toContain('restarting primary backend')
+      expect(desktopLog().slice(sinceReLogin)).not.toContain('restarting primary backend')
 
       mock.releaseHeldStream()
       await replied('relogin probe hold')
 
       // Idle now: the 30 s retry restarts it.
       await expect
-        .poll(() => desktopLog().includes('restarting primary backend "default" for the refreshed relay key'), {
-          timeout: 75_000
-        })
+        .poll(
+          () =>
+            desktopLog()
+              .slice(sinceReLogin)
+              .includes('restarting primary backend "default" for the refreshed relay key'),
+          {
+            timeout: 75_000
+          }
+        )
         .toBe(true)
 
       const rejectedBefore = rejected.length
