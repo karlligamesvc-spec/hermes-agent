@@ -1,0 +1,353 @@
+{
+  "/": {
+    "chatShown": true,
+    "views": [],
+    "where": "/"
+  },
+  "/chat-1": {
+    "chatShown": true,
+    "views": [],
+    "where": "/chat-1"
+  },
+  "/new": {
+    "chatShown": true,
+    "views": [],
+    "where": "/"
+  },
+  "/sessions/session-1": {
+    "chatShown": true,
+    "views": [],
+    "where": "/session-1"
+  },
+  "/analysis": {
+    "chatShown": false,
+    "views": [
+      "analysis"
+    ],
+    "where": "/analysis"
+  },
+  "/projects": {
+    "chatShown": false,
+    "views": [
+      "projects"
+    ],
+    "where": "/projects"
+  },
+  "/projects?status=active#row": {
+    "chatShown": false,
+    "views": [
+      "projects"
+    ],
+    "where": "/projects?status=active#row"
+  },
+  "/projects/": {
+    "chatShown": true,
+    "views": [
+      "projects"
+    ],
+    "where": "/projects/"
+  },
+  "/projects/project-1": {
+    "chatShown": false,
+    "views": [
+      "projects",
+      "project-detail"
+    ],
+    "where": "/projects/project-1"
+  },
+  "/projects/project%2Fa%20b": {
+    "chatShown": false,
+    "views": [
+      "projects",
+      "project-detail"
+    ],
+    "where": "/projects/project%2Fa%20b"
+  },
+  "/projects/a/b": {
+    "chatShown": true,
+    "views": [],
+    "where": "/"
+  },
+  "/PROJECTS": {
+    "chatShown": true,
+    "views": [
+      "projects"
+    ],
+    "where": "/PROJECTS"
+  },
+  "/workflows": {
+    "chatShown": false,
+    "views": [
+      "workflows"
+    ],
+    "where": "/workflows"
+  },
+  "/workflows?projectId=project-1": {
+    "chatShown": false,
+    "views": [
+      "workflows"
+    ],
+    "where": "/workflows?projectId=project-1"
+  },
+  "/workflow-runs/run-1": {
+    "chatShown": false,
+    "views": [
+      "workflows",
+      "workflow-run"
+    ],
+    "where": "/workflow-runs/run-1"
+  },
+  "/deliverables": {
+    "chatShown": false,
+    "views": [
+      "deliverables"
+    ],
+    "where": "/deliverables"
+  },
+  "/deliverables/item-1": {
+    "chatShown": false,
+    "views": [
+      "deliverables",
+      "deliverable-detail"
+    ],
+    "where": "/deliverables/item-1"
+  },
+  "/cron": {
+    "chatShown": false,
+    "views": [
+      "cron"
+    ],
+    "where": "/cron"
+  },
+  "/history": {
+    "chatShown": false,
+    "views": [
+      "history"
+    ],
+    "where": "/history"
+  },
+  "/assistant": {
+    "chatShown": false,
+    "views": [
+      "assistant"
+    ],
+    "where": "/assistant"
+  },
+  "/accounts": {
+    "chatShown": false,
+    "views": [
+      "assistant"
+    ],
+    "where": "/assistant"
+  },
+  "/tasks": {
+    "chatShown": false,
+    "views": [
+      "tasks"
+    ],
+    "where": "/tasks"
+  },
+  "/skills": {
+    "chatShown": false,
+    "views": [
+      "skills"
+    ],
+    "where": "/skills"
+  },
+  "/messaging": {
+    "chatShown": false,
+    "views": [
+      "messaging"
+    ],
+    "where": "/messaging"
+  },
+  "/artifacts": {
+    "chatShown": false,
+    "views": [
+      "artifacts"
+    ],
+    "where": "/artifacts"
+  },
+  "/im-entry": {
+    "chatShown": false,
+    "views": [
+      "im-entry"
+    ],
+    "where": "/im-entry"
+  },
+  "/search": {
+    "chatShown": false,
+    "views": [
+      "search"
+    ],
+    "where": "/search"
+  },
+  "/settings": {
+    "chatShown": false,
+    "views": [],
+    "where": "/settings"
+  },
+  "/profile": {
+    "chatShown": false,
+    "views": [],
+    "where": "/profile"
+  },
+  "/agents": {
+    "chatShown": false,
+    "views": [],
+    "where": "/agents"
+  },
+  "/not/a/route": {
+    "chatShown": true,
+    "views": [],
+    "where": "/"
+  },
+  "/projects/project-1 from /deliverables": {
+    "closed": {
+      "chatShown": false,
+      "views": [
+        "deliverables"
+      ],
+      "where": "/deliverables"
+    },
+    "opened": {
+      "chatShown": false,
+      "views": [
+        "deliverables",
+        "project-detail"
+      ],
+      "where": "/projects/project-1"
+    }
+  },
+  "/projects/project-1 from /workflows": {
+    "closed": {
+      "chatShown": false,
+      "views": [
+        "workflows"
+      ],
+      "where": "/workflows"
+    },
+    "opened": {
+      "chatShown": false,
+      "views": [
+        "workflows",
+        "project-detail"
+      ],
+      "where": "/projects/project-1"
+    }
+  },
+  "/workflow-runs/run-1 from /assistant": {
+    "closed": {
+      "chatShown": false,
+      "views": [
+        "assistant"
+      ],
+      "where": "/assistant"
+    },
+    "opened": {
+      "chatShown": false,
+      "views": [
+        "assistant",
+        "workflow-run"
+      ],
+      "where": "/workflow-runs/run-1"
+    }
+  },
+  "/deliverables/item-1 from /projects": {
+    "closed": {
+      "chatShown": false,
+      "views": [
+        "projects"
+      ],
+      "where": "/projects"
+    },
+    "opened": {
+      "chatShown": false,
+      "views": [
+        "projects",
+        "deliverable-detail"
+      ],
+      "where": "/deliverables/item-1"
+    }
+  },
+  "/workflow-runs/run-1 from /projects": {
+    "closed": {
+      "chatShown": false,
+      "views": [
+        "projects"
+      ],
+      "where": "/projects"
+    },
+    "opened": {
+      "chatShown": false,
+      "views": [
+        "projects",
+        "workflow-run"
+      ],
+      "where": "/workflow-runs/run-1"
+    }
+  },
+  "/deliverables/item-1 from /history": {
+    "closed": {
+      "chatShown": false,
+      "views": [
+        "history"
+      ],
+      "where": "/history"
+    },
+    "opened": {
+      "chatShown": false,
+      "views": [
+        "history",
+        "deliverable-detail"
+      ],
+      "where": "/deliverables/item-1"
+    }
+  },
+  "/projects/project-1 closed, opened directly": {
+    "chatShown": false,
+    "views": [
+      "projects"
+    ],
+    "where": "/projects"
+  },
+  "/workflow-runs/run-1 closed, opened directly": {
+    "chatShown": false,
+    "views": [
+      "workflows"
+    ],
+    "where": "/workflows"
+  },
+  "/deliverables/item-1 closed, opened directly": {
+    "chatShown": false,
+    "views": [
+      "deliverables"
+    ],
+    "where": "/deliverables"
+  },
+  "/projects signed out": {
+    "chatShown": false,
+    "views": [],
+    "where": "/projects"
+  },
+  "/projects/project-1 signed out": {
+    "chatShown": false,
+    "views": [],
+    "where": "/projects/project-1"
+  },
+  "/workflows signed out": {
+    "chatShown": false,
+    "views": [],
+    "where": "/workflows"
+  },
+  "/assistant signed out": {
+    "chatShown": false,
+    "views": [],
+    "where": "/assistant"
+  },
+  "/deliverables signed out": {
+    "chatShown": false,
+    "views": [],
+    "where": "/deliverables"
+  }
+}

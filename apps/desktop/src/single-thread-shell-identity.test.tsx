@@ -183,8 +183,10 @@ describe('hc-1014 switch on, product mode: one conversation', () => {
 
     expect(items).toContain('更早的对话')
     expect(items).not.toContain('历史会话')
+    // hc-1123: and no 项目. Everything else stays in the golden's order.
+    expect(items).not.toContain('项目')
     expect(items.filter(item => item !== '更早的对话')).toEqual(
-      (JSON.parse(golden('account-menu.json')) as string[]).filter(item => item !== '历史会话')
+      (JSON.parse(golden('account-menu.json')) as string[]).filter(item => item !== '历史会话' && item !== '项目')
     )
   })
 

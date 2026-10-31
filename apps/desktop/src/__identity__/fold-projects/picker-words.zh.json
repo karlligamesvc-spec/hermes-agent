@@ -1,0 +1,6 @@
+{
+  "existingTitle": "选择项目文件夹",
+  "parentTitle": "选择项目创建位置",
+  "pickFailed": "无法打开文件夹选择器",
+  "createFailed": "无法创建项目文件夹"
+}

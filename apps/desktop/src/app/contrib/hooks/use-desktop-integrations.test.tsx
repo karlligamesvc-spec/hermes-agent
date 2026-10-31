@@ -590,6 +590,28 @@ describe('useDesktopIntegrations', () => {
       expect(navigate).toHaveBeenCalledWith('/index-network/intent/1')
     })
 
+    it('hc-1123: hermes://open/projects still navigates in product mode; the route gate is what closes it', () => {
+      let deepLink: ((payload: { kind: string; name: string; params: Record<string, string> }) => void) | undefined
+
+      Object.assign(window.hermesDesktop, {
+        onDeepLink: (cb: (payload: { kind: string; name: string; params: Record<string, string> }) => void) => {
+          deepLink = cb
+
+          return () => {}
+        }
+      })
+      setSingleThreadFlagForTest(true)
+
+      try {
+        render({ profileReady: true })
+        deepLink?.({ kind: 'open', name: 'projects', params: {} })
+
+        expect(navigate).toHaveBeenCalledWith('/projects')
+      } finally {
+        setSingleThreadFlagForTest(false)
+      }
+    })
+
     it('routes hermes://mcp/install to the pending-install dialog, not navigation', () => {
       let deepLink: ((payload: { kind: string; name: string; params: Record<string, string> }) => void) | undefined
       desktopWindow.hermesDesktop = {

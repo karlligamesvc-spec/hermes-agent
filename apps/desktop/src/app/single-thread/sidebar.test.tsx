@@ -335,7 +335,7 @@ describe('hc-1061 the account menu (twin of AccountPanel’s)', () => {
     return screen.getAllByRole('menuitem').map(item => item.textContent?.trim() ?? '')
   }
 
-  it('lists exactly AccountPanel’s destinations, in the same order: no 沉浸式分析 (hc-1070)', async () => {
+  it('lists exactly AccountPanel’s destinations, in the same order: no 沉浸式分析 (hc-1070), no 项目 (hc-1123)', async () => {
     const panel = render(
       <MemoryRouter>
         <I18nProvider configClient={null} initialLocale="zh">
@@ -353,6 +353,7 @@ describe('hc-1061 the account menu (twin of AccountPanel’s)', () => {
 
     expect(expected).toContain('更早的对话')
     expect(expected).not.toContain('沉浸式分析')
+    expect(expected).not.toContain('项目')
     expect(items).toEqual(expected)
   })
 
@@ -387,14 +388,13 @@ describe('hc-1061 the account menu (twin of AccountPanel’s)', () => {
     }
   })
 
-  it('pins the menu item by item: AccountPanel’s list with 更早的对话, nothing else (hc-1070)', async () => {
+  it('pins the menu item by item: AccountPanel’s list with 更早的对话, nothing else (hc-1070, hc-1123)', async () => {
     const onNavigate = vi.fn()
     renderSidebar({ onNavigate })
 
     expect(await menuItems(screen.getByRole('button', { name: '打开账户菜单: 小满' }))).toEqual([
       '个人资料',
       '设置',
-      '项目',
       '定时运行',
       '连接助手',
       '更早的对话',
@@ -403,15 +403,29 @@ describe('hc-1061 the account menu (twin of AccountPanel’s)', () => {
       '退出登录'
     ])
 
-    // The two items that go through the shell's navigation are 项目 and 定时运行, never the analysis workspace.
-    for (const label of ['项目', '定时运行']) {
-      cleanup()
-      renderSidebar({ onNavigate })
-      await menuItems(screen.getByRole('button', { name: '打开账户菜单: 小满' }))
-      fireEvent.click(screen.getByRole('menuitem', { name: label }))
-    }
+    // The one item that goes through the shell's navigation is 定时运行, never 项目 or the analysis workspace.
+    cleanup()
+    renderSidebar({ onNavigate })
+    await menuItems(screen.getByRole('button', { name: '打开账户菜单: 小满' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '定时运行' }))
 
-    expect(onNavigate.mock.calls.map(([item]) => (item as { id: string }).id)).toEqual(['projects', 'scheduled-runs'])
+    expect(onNavigate.mock.calls.map(([item]) => (item as { id: string; route: string })).map(({ id, route }) => [id, route])).toEqual([
+      ['scheduled-runs', '/cron']
+    ])
+  })
+
+  it.each([
+    ['个人资料', '/profile'],
+    ['设置', '/settings'],
+    ['连接助手', '/assistant'],
+    ['更早的对话', '/history'],
+    ['交付物', '/deliverables']
+  ])('hc-1123 keeps %s, which still opens %s', async (label, path) => {
+    renderSidebar()
+    await menuItems(screen.getByRole('button', { name: '打开账户菜单: 小满' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: label }))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe(path))
   })
 })
 
