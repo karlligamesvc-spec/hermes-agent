@@ -409,7 +409,7 @@ def test_each_card_gets_its_own_clarify_row_that_opens_and_closes(service, brows
     assert events[0][1] == events[1][1] != events[2][1] == events[3][1]
 
 
-def test_a_different_account_source_changes_nothing_above_the_seam(service, browser, home, clip):
+def test_a_different_account_source_changes_nothing_above_the_seam(service, browser, home, clip, monkeypatch):
     """An issued credential instead of the user's OAuth: no card, no browser, no registration, and everything else
     (the allowlist, who we say we are, the upload card, disconnecting) exactly as it was. Per user, never shared."""
     from hermes_cli import mcp_config
@@ -418,8 +418,12 @@ def test_a_different_account_source_changes_nothing_above_the_seam(service, brow
 
     env_name = "APEX_CHATCUT_ISSUED_TOKEN"
 
+    # The one thing a source does change: whose credits the upload card names.
+    for language in chatcut._COPY:
+        monkeypatch.setitem(chatcut._COPY[language], "upload_question_issued", "ISSUED-WORDING {files}")
+
     class IssuedForThisUser:
-        upload_question_key = "upload_question"
+        upload_question_key = "upload_question_issued"
         forgot = 0
 
         def server_entry(self):
@@ -457,6 +461,7 @@ def test_a_different_account_source_changes_nothing_above_the_seam(service, brow
         declined = _Agent(chatcut.copy("upload_no"))
         assert _import(declined, clip)["status"] == "declined"
         assert len(declined.asked) == 1
+        assert "ISSUED-WORDING" in json.dumps(declined.asked, ensure_ascii=False)
         assert service.fetched == {}
         assert _import(_Agent(chatcut.copy("upload_yes")), clip)["status"] == "imported"
 
@@ -736,14 +741,31 @@ def test_a_good_file_still_goes_when_another_is_refused(service, browser, tmp_pa
     assert result["failed"][0]["file"].endswith("missing.mp4")
 
 
-def test_relative_paths_are_refused(service, browser):
+def test_relative_paths_are_refused(service, browser, clip, monkeypatch):
+    """Even one that would resolve: what a relative path means depends on where the engine happens to run."""
     _connected(browser)
     chatcut.record_upload_consent()
+    monkeypatch.chdir(clip.parent)
 
-    result = _import(_Agent(None), "relative/clip.mp4")
+    result = _import(_Agent(None), clip.name)
 
     assert result["status"] == "partial"
+    assert result["failed"] == [{"file": clip.name, "error": "不是绝对路径"}]
     assert "import_media" not in service.tool_calls
+
+
+def test_a_file_the_editor_could_not_fetch_says_how_to_recover(clip):
+    """The browser refusing the loopback address (a local-network prompt denied, say) reaches the tool as one
+    file's error. Retrying cannot help then, so the note has to name the way out."""
+    files, _ = chatcut_import._resolve_files([str(clip)], "p-1")
+    payload = {"results": [{"assetId": files[0].asset_id, "ok": False, "error": "Failed to fetch"}]}
+
+    result = json.loads(chatcut_import._outcome(files, [], payload, None))
+
+    assert result["status"] == "partial"
+    assert result["failed"] == [{"file": clip.name, "error": "Failed to fetch"}]
+    assert "手动上传" in result["note"]
+    assert "本地网络" in result["note"]
 
 
 def test_no_browser_opens_the_editor_once_and_retries(service, browser, clip, monkeypatch):

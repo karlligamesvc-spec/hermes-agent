@@ -10,9 +10,9 @@ object ``current_account()`` returns, and nothing else about how the user got si
 * ``upload_question_key``: the upload card's wording, because it names whose credits are used.
 
 **Today that is one implementation, the user's own ChatCut account over OAuth, and it is for development and
-acceptance only: the switch stays off.** A credential issued per APEX user under an agreement with ChatCut would be
-a second implementation, with no change above this file. What must never exist here is one credential shared by
-every user: their terms forbid it, and it would put different people's footage in one account.
+acceptance only: the switch stays off.** A credential issued per APEX user would be a second implementation, with no
+change above this file. What must never exist here is one credential shared by every user: it would put different
+people's footage in one account.
 """
 
 from __future__ import annotations

@@ -90,7 +90,10 @@ IMPORTED_NOTE = (
     "文件已经进了编辑器。先用 browse_assets 确认，字幕和按文字剪辑要等 "
     "track_progress（action=status, target=transcription）完成。"
 )
-PARTIAL_NOTE = "有文件没导入成功。把 failed 里的原因告诉用户；只重试失败的文件，再调用一次即可。"
+PARTIAL_NOTE = (
+    "有文件没导入成功。把 failed 里的原因告诉用户；只重试失败的文件，再调用一次即可。"
+    "还是失败就请他在编辑器里手动上传；编辑器开在他自己的浏览器里时，可能是浏览器拦了本机文件，也可以请他在站点设置里允许访问本地网络。"
+)
 
 
 def editor_origin() -> str:
