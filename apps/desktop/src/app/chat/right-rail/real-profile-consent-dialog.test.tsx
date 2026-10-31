@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { $chatcutFlag, setChatcutFlagForTest } from '@/store/chatcut'
 import {
   $realProfilePromptClaim,
   $realProfilePromptDismissed,
@@ -73,6 +74,52 @@ describe('RealProfileConsentDialog', () => {
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
+    setChatcutFlagForTest(false)
+    delete (window as { hermesDesktop?: unknown }).hermesDesktop
+  })
+
+  describe('hc-1122 over ChatCut’s editor', () => {
+    const EDITOR = 'https://app.chatcut.io/editor/p-1'
+
+    const shown = async (switchOn: boolean) => {
+      ;(window as { hermesDesktop?: unknown }).hermesDesktop = {
+        clientConfig: { get: async () => ({ payload: { desktop_features: { chatcut: switchOn } } }) }
+      }
+      render(<RealProfileConsentDialog tabId="tab-1" url={EDITOR} />)
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 5))
+      })
+
+      return screen.queryByText(promptCopy.title) !== null
+    }
+
+    it('switch on: no offer on top of the editor', async () => {
+      await expect(shown(true)).resolves.toBe(false)
+      expect($chatcutFlag.get()).toBe(true)
+    })
+
+    it('switch off: the editor’s tab is like any other, once the switch is read', async () => {
+      await expect(shown(false)).resolves.toBe(true)
+    })
+
+    it('switch on: every other tab keeps the offer, and does not even read the switch', async () => {
+      setChatcutFlagForTest(true)
+
+      const get = vi.fn()
+
+      ;(window as { hermesDesktop?: unknown }).hermesDesktop = { clientConfig: { get } }
+      render(<RealProfileConsentDialog tabId="tab-1" url="https://example.com/" />)
+
+      expect(screen.queryByText(promptCopy.title)).not.toBeNull()
+      expect(get).not.toHaveBeenCalled()
+    })
+
+    it('a look-alike host is not the editor', async () => {
+      setChatcutFlagForTest(true)
+      render(<RealProfileConsentDialog tabId="tab-1" url="https://app.chatcut.io.example.com/editor/p-1" />)
+
+      expect(screen.queryByText(promptCopy.title)).not.toBeNull()
+    })
   })
 
   it('shows when the feature is off and accepting writes browser.use_real_profile', async () => {

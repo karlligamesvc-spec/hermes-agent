@@ -2,9 +2,12 @@
  * hc-1122: the `desktop_features.chatcut` switch, for Settings.
  *
  * On, product mode's Settings gets a ChatCut page with the connection's state and
- * 断开 (app/settings/chatcut-settings.tsx). Connecting itself happens in the
- * conversation: the engine's `chatcut_connect` tool asks on a choice card. Off
- * unless something says on: the admin client config's literal `true`, or this
+ * 断开 (app/settings/chatcut-settings.tsx), and the editor opens in the panel beside
+ * the chat without the browser panel's first-open offer on top of it. Connecting
+ * itself happens in the conversation: the engine's `chatcut_connect` tool asks on a
+ * choice card.
+ *
+ * Off unless something says on: the admin client config's literal `true`, or this
  * install's APEXNODES_CHATCUT=1 (`=0` keeps it off whatever the platform says),
  * which main hands over as `installSwitches` (electron/apex-desktop-features.ts).
  *
@@ -21,7 +24,18 @@ export const CHATCUT_FEATURE = 'chatcut'
 /** The name in `mcp_servers`, the engine's `apex_overlay/chatcut.py` SERVER_NAME. */
 export const CHATCUT_SERVER = 'chatcut'
 
+const EDITOR_ORIGIN = 'https://app.chatcut.io'
+
 export const $chatcutFlag = atom<boolean>(false)
+
+/** A tab showing ChatCut's editor. */
+export function isChatcutEditorUrl(url: null | string | undefined): boolean {
+  try {
+    return new URL(String(url)).origin === EDITOR_ORIGIN
+  } catch {
+    return false
+  }
+}
 
 /** The switch for one cached client-config state: an install switch wins, else the platform's literal `true`. */
 export function chatcutSwitchFrom(

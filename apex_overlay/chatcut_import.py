@@ -59,7 +59,7 @@ IMPORT_SCHEMA = {
         "project_id and timeline_id (from create_project, read_project or manage_timelines) and absolute paths. "
         "Returns status: imported (asset ids; use browse_assets, then track_progress target=transcription before "
         "transcript or caption work), partial, declined, needs_editor (the editor is not open in a signed-in "
-        "browser: give the user editor_url and retry when they say it is open), or an error."
+        "browser: tell the user, and retry when they say it is ready), or an error."
     ),
     "parameters": {
         "type": "object",
@@ -82,8 +82,8 @@ NO_FILES = f"paths 要填 1 到 {MAX_FILES} 个本机文件的绝对路径。"
 IDS_REQUIRED = "project_id 和 timeline_id 都要填完整的 UUID（从 create_project、read_project 或 manage_timelines 拿）。"
 DECLINED_NOTE = "用户这次不同意上传，文件没有离开这台电脑。不要再问，也不要换别的办法上传；问他想怎么做。"
 NEEDS_EDITOR_NOTE = (
-    "ChatCut 的编辑器要在已登录的浏览器里开着才能取到文件。把 editor_url 作为链接给用户（可能已经替他打开了），"
-    "请他确认页面打开了；如果浏览器问要不要允许访问本地网络，要点允许。他说好了就再调用一次，文件名不变。"
+    "ChatCut 的编辑器要开着、并且登录了才能取到文件。已经替用户在右侧面板打开了（打不开时把 editor_url 作为链接给他）。"
+    "请他在面板里登录：Google 登录在面板里用不了，要选邮箱验证码。他说好了就再调用一次，文件名不变。"
     "还是不行就请他在编辑器里手动上传。"
 )
 IMPORTED_NOTE = (
@@ -275,7 +275,15 @@ def _editor_url(project_id: str) -> Optional[str]:
     return clean_editor_url(unquote(match.group(0)) if "%2Feditor%2F" in match.group(0) else match.group(0)) if match else None
 
 
-def _open_browser(url: str) -> bool:
+def open_editor(url: str) -> bool:
+    """Show the editor in the panel beside the chat; the user's browser only where there is no panel."""
+    from tools.open_preview_tool import open_preview_tool
+
+    try:
+        if json.loads(open_preview_tool(url, label="ChatCut")).get("success"):
+            return True
+    except Exception:
+        logger.warning("apex-overlay: could not open the ChatCut panel", exc_info=True)
     try:
         return bool(webbrowser.open(url))
     except Exception:
@@ -364,7 +372,7 @@ def import_files(agent: Any, args: Mapping[str, Any] | None, ctx: Any) -> str:
         if "error" in result:
             # Most often no signed-in browser has the editor open. Open it once, give it a moment, try once more.
             editor = _editor_url(project_id)
-            if editor and _open_browser(editor):
+            if editor and open_editor(editor):
                 _wait_for_editor()
                 result = _send(files, server.base, project_id, timeline_id)
         if "error" in result:

@@ -14,7 +14,12 @@
  * the switch says: the switch going off must not strand a credential. Removing the
  * local copy is all that can be done: ChatCut publishes no revocation endpoint.
  *
- * Electron-free: plain fs, unit-tested with `vitest --project electron`.
+ * The editor runs in the preview panel, whose session (`persist:hermes-preview`)
+ * has no download handling and keeps its own sign-in and locally stored footage:
+ * without the two seams below an export stops on a native save dialog, and the next
+ * person to sign in on this computer would find the last one's ChatCut in the panel.
+ *
+ * Electron-free apart from what main hands in: unit-tested with `vitest --project electron`.
  */
 
 import fs from 'node:fs'
@@ -28,6 +33,9 @@ export const CHATCUT_ACTIVE_ENV = 'APEX_CHATCUT_ACTIVE'
 export const CHATCUT_FEATURE = 'chatcut'
 
 const SERVER_NAME = 'chatcut'
+const PANEL_PARTITION = 'persist:hermes-preview'
+const EDITOR_ORIGIN = 'https://app.chatcut.io'
+const API_ORIGIN = 'https://api.chatcut.io'
 /** A developer's own server may share the name; only this endpoint's entry is ours to remove. */
 const CHATCUT_HOST = 'api.chatcut.io'
 
@@ -118,6 +126,70 @@ export function withoutChatcutEntry(text: string): null | string {
   return [...lines.slice(0, start), ...lines.slice(end)].join('\n')
 }
 
+/** Where an export from the editor lands: Downloads, never over an existing file. */
+export function chatcutDownloadPath(downloadsDir: string, filename: string, exists = fs.existsSync): string {
+  const { ext, name } = path.parse(path.basename(filename) || 'chatcut-export')
+  let candidate = path.join(downloadsDir, `${name}${ext}`)
+
+  for (let copy = 1; exists(candidate); copy += 1) {
+    candidate = path.join(downloadsDir, `${name} (${copy})${ext}`)
+  }
+
+  return candidate
+}
+
+function isEditorPage(url: null | string | undefined): boolean {
+  try {
+    return new URL(String(url)).origin === EDITOR_ORIGIN
+  } catch {
+    return false
+  }
+}
+
+interface DownloadLike {
+  getFilename(): string
+  setSavePath(path: string): void
+}
+
+interface PanelSessionLike {
+  clearStorageData(options: { origin: string }): Promise<void>
+  on(event: 'will-download', listener: (event: unknown, item: DownloadLike, contents?: { getURL(): string }) => void): unknown
+}
+
+let clearPanelSession: (() => void) | null = null
+
+/**
+ * Called once at startup. With the switch on, a download started by the editor saves
+ * straight to Downloads and every other page in the panel keeps the save dialog. The
+ * panel's ChatCut sign-in is cleared with the account whatever the switch says, so a
+ * rollback strands nothing; the session is only touched at that moment, so with the
+ * switch off and no sign-out nothing here runs at all.
+ */
+export function installChatcutPanel(
+  sessions: { fromPartition(partition: string): PanelSessionLike },
+  downloadsDir: () => string,
+  env: Record<string, string | undefined>,
+  log: (line: string) => void = () => undefined
+): void {
+  clearPanelSession = () => {
+    const panel = sessions.fromPartition(PANEL_PARTITION)
+
+    for (const origin of [EDITOR_ORIGIN, API_ORIGIN]) {
+      void panel.clearStorageData({ origin }).catch(error => log(`[chatcut] could not clear ${origin}: ${error}`))
+    }
+  }
+
+  if (env[CHATCUT_ACTIVE_ENV] !== '1') {
+    return
+  }
+
+  sessions.fromPartition(PANEL_PARTITION).on('will-download', (_event, item, contents) => {
+    if (isEditorPage(contents?.getURL())) {
+      item.setSavePath(chatcutDownloadPath(downloadsDir(), item.getFilename()))
+    }
+  })
+}
+
 function assistantHomes(root: string): string[] {
   let profiles: string[] = []
 
@@ -159,6 +231,8 @@ function removeTokenFiles(home: string): boolean {
  */
 export function scrubChatcutConnections(root: string): string[] {
   const touched: string[] = []
+
+  clearPanelSession?.()
 
   for (const home of assistantHomes(root)) {
     let found = false

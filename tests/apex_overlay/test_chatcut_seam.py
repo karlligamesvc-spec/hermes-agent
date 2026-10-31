@@ -769,6 +769,47 @@ def test_no_browser_opens_the_editor_once_and_retries(service, browser, clip, mo
     assert result["editor_url"] == browser.opened[-1]
 
 
+def test_the_editor_opens_in_the_panel_where_there_is_one(service, browser, clip, monkeypatch):
+    """Desktop has a panel beside the chat: the system browser is only for where it does not."""
+    from tools import open_preview_tool as preview
+
+    opened: list[str] = []
+
+    def panel(url, label=""):
+        opened.append(url)
+        service.browser_connected = True
+        return json.dumps({"success": True, "url": url, "label": label})
+
+    _connected(browser)
+    chatcut.record_upload_consent()
+    monkeypatch.setattr(chatcut_import, "EDITOR_CONNECT_SECONDS", 0.1)
+    monkeypatch.setattr(preview, "open_preview_tool", panel)
+    service.browser_connected = False
+    in_browser = len(browser.opened)
+
+    result = _import(_Agent(None), clip)
+
+    assert result["status"] == "imported"
+    assert len(opened) == 1
+    assert "editor-boot-token" not in opened[0]
+    assert len(browser.opened) == in_browser, "the panel answered, so the system browser stays out of it"
+
+
+def test_no_panel_falls_back_to_the_browser(service, browser, clip, monkeypatch):
+    from tools import open_preview_tool as preview
+
+    _connected(browser)
+    chatcut.record_upload_consent()
+    monkeypatch.setattr(chatcut_import, "EDITOR_CONNECT_SECONDS", 0.1)
+    monkeypatch.setattr(preview, "open_preview_tool", lambda url, label="": json.dumps({"error": "desktop only"}))
+    service.browser_connected = False
+    in_browser = len(browser.opened)
+
+    _import(_Agent(None), clip)
+
+    assert len(browser.opened) == in_browser + 1
+
+
 def test_still_no_browser_says_so_and_hands_a_clean_link(service, browser, clip, monkeypatch):
     _connected(browser)
     chatcut.record_upload_consent()

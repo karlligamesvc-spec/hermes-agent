@@ -13,7 +13,14 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, test } from 'vitest'
 
-import { applyChatcutSwitch, CHATCUT_ACTIVE_ENV, scrubChatcutConnections, withoutChatcutEntry } from './apex-chatcut'
+import {
+  applyChatcutSwitch,
+  CHATCUT_ACTIVE_ENV,
+  chatcutDownloadPath,
+  installChatcutPanel,
+  scrubChatcutConnections,
+  withoutChatcutEntry
+} from './apex-chatcut'
 import { clearAccountPromptMirrors } from './apex-memory-ledger'
 import { applyDesktopFeatureSwitches } from './apex-model-tiers'
 
@@ -65,6 +72,101 @@ describe('the launch switch', () => {
 
     assert.deepEqual(applyDesktopFeatureSwitches(env, ON), [CHATCUT_ACTIVE_ENV])
     assert.equal(env[CHATCUT_ACTIVE_ENV], '1')
+  })
+})
+
+describe('the panel the editor runs in', () => {
+  function fakeSessions() {
+    const listeners: Array<(event: unknown, item: never, contents?: { getURL(): string }) => void> = []
+    const cleared: string[] = []
+    const asked: string[] = []
+
+    return {
+      asked,
+      cleared,
+      listeners,
+      sessions: {
+        fromPartition(partition: string) {
+          asked.push(partition)
+
+          return {
+            clearStorageData: async ({ origin }: { origin: string }) => {
+              cleared.push(origin)
+            },
+            on: (_event: 'will-download', listener: never) => {
+              listeners.push(listener)
+            }
+          }
+        }
+      }
+    }
+  }
+
+  function download(name: string) {
+    const item = { getFilename: () => name, saved: '', setSavePath: (to: string) => (item.saved = to) }
+
+    return item
+  }
+
+  test('switch off: the panel session is not even looked up, and nothing listens', () => {
+    const fake = fakeSessions()
+
+    installChatcutPanel(fake.sessions, () => '/dl', {})
+
+    assert.deepEqual(fake.asked, [])
+    assert.equal(fake.listeners.length, 0)
+  })
+
+  test('switch on: the editor’s export saves to Downloads with no dialog', () => {
+    const fake = fakeSessions()
+    const item = download('chatcut-export-1.mp4')
+
+    installChatcutPanel(fake.sessions, () => '/dl-does-not-exist', { [CHATCUT_ACTIVE_ENV]: '1' })
+    fake.listeners[0](null, item as never, { getURL: () => 'https://app.chatcut.io/editor/p-1' })
+
+    assert.equal(item.saved, '/dl-does-not-exist/chatcut-export-1.mp4')
+  })
+
+  test.each([
+    ['another site', 'https://example.com/page'],
+    ['a look-alike host', 'https://app.chatcut.io.example.com/editor/p-1'],
+    ['no page', '']
+  ])('switch on: %s keeps the save dialog', (_label, url) => {
+    const fake = fakeSessions()
+    const item = download('x.zip')
+
+    installChatcutPanel(fake.sessions, () => '/dl', { [CHATCUT_ACTIVE_ENV]: '1' })
+    fake.listeners[0](null, item as never, { getURL: () => url })
+
+    assert.equal(item.saved, '')
+  })
+
+  test('a name already taken gets a number, and a name cannot climb out of Downloads', () => {
+    const taken = new Set(['/dl/a.mp4', '/dl/a (1).mp4'])
+
+    assert.equal(chatcutDownloadPath('/dl', 'a.mp4', file => taken.has(String(file))), '/dl/a (2).mp4')
+    assert.equal(chatcutDownloadPath('/dl', '../../etc/passwd', () => false), '/dl/passwd')
+  })
+
+  test.each([
+    ['switch on', { [CHATCUT_ACTIVE_ENV]: '1' }],
+    ['switch off: a rollback must not strand a sign-in', {}]
+  ])('the account leaving clears the panel’s ChatCut sign-in and footage: %s', (_label, env) => {
+    const fake = fakeSessions()
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-chatcut-'))
+
+    installChatcutPanel(fake.sessions, () => '/dl', env)
+    scrubChatcutConnections(dir)
+    fs.rmSync(dir, { force: true, recursive: true })
+
+    assert.deepEqual(fake.cleared, ['https://app.chatcut.io', 'https://api.chatcut.io'])
+  })
+
+  test('main installs it at startup, without growing past the download handler', () => {
+    const main = fs.readFileSync(path.join(import.meta.dirname, 'main.ts'), 'utf8')
+    const start = main.indexOf('function installDownloadHandling()')
+
+    assert.match(main.slice(start, start + 200), /installChatcutPanel\(session, \(\) => app\.getPath\('downloads'\), process\.env, rememberLog\)/)
   })
 })
 
