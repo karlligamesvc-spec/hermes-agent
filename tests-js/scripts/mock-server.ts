@@ -159,7 +159,7 @@ function recordSystemPrompt(messages: { content?: unknown; role?: unknown }[] | 
   }
 }
 
-function lastUserMessageOf(messages: { role?: unknown }[] | undefined) {
+function lastUserMessageOf(messages: any[] | undefined) {
   return [...(messages ?? [])].reverse().find(message => message?.role === 'user')
 }
 
