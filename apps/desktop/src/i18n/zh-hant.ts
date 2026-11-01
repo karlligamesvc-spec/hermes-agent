@@ -1270,10 +1270,10 @@ export const zhHant = defineLocale({
         failedSave: '無法儲存真實設定檔設定',
         prompt: {
           title: '讓網站保持登入狀態',
-          body: '讓 Hermes 使用預設瀏覽器設定檔的快照進行瀏覽，網站開啟時即已登入。',
+          body: '讓 APEX 的背景瀏覽器使用預設瀏覽器設定檔的快照，助手開啟網站時即已登入。這個面板不受影響。',
           bulletSnapshot: 'Cookie 與登入資訊會複製到受管理的快照中。',
           bulletLiveProfile: '絕不會直接開啟你的真實瀏覽器設定檔。',
-          bulletLocal: '所有資料都不會離開這台電腦。',
+          bulletLocal: '快照只保存在這台電腦上，但助手讀到的網頁內容會傳送給模型。',
           dontShowAgain: '不再顯示',
           notNow: '暫不',
           enable: '使用我的設定檔'
