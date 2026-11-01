@@ -63,7 +63,9 @@ const StepFile: FC<{ call: ProcessCall }> = ({ call }) => {
     >
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5">
         <FileTypeIcon className="shrink-0 text-(--ui-text-tertiary)" path={name} size="0.875rem" />
-        <span className="min-w-0 flex-1 truncate text-xs text-(--ui-text-secondary)">{name}</span>
+        <span className="min-w-0 flex-1 truncate text-xs text-(--ui-text-secondary)" data-process-file-name="">
+          {name}
+        </span>
         {path && <ResultActions className="mt-0" kind="file" path={path} />}
       </div>
       {diff && <FileDiffPanel diff={diff} path={name} />}

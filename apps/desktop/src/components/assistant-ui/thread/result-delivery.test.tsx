@@ -258,19 +258,23 @@ describe('file edits fold out of the chat', () => {
     fireEvent.click(await screen.findByRole('button', { name: '看过程' }))
     screen.getAllByRole('button', { name: '看内容' }).forEach(toggle => fireEvent.click(toggle))
 
-    const text = await waitFor(() => {
-      const rows = [...container.querySelectorAll<HTMLElement>('[data-process-file]')]
+    const rows = await waitFor(() => {
+      const found = [...container.querySelectorAll<HTMLElement>('[data-process-file]')]
 
-      expect(rows).toHaveLength(2)
+      expect(found).toHaveLength(2)
 
-      return rows.map(row => row.textContent).join('\n')
+      return found
     })
 
-    expect(text).toContain('文案.txt')
-    expect(text).toContain('桥里写的文案')
-    // The patch has no path to name: it reads as a file, and offers nothing to reveal.
-    expect(text).toContain('文件')
-    expect(text).toContain('补丁里的一行')
+    const [bridged, patched] = rows
+    const fileName = (row: HTMLElement) => row.querySelector('[data-process-file-name]')?.textContent
+
+    expect(fileName(bridged)).toBe('文案.txt')
+    expect(bridged.textContent).toContain('桥里写的文案')
+    // The patch has no path to name: it reads as a file, and offers nothing to save or reveal.
+    expect(fileName(patched)).toBe('文件')
+    expect(patched.textContent).toContain('补丁里的一行')
+    expect(within(patched).queryByRole('button', { name: '下载' })).toBeNull()
   })
 
   it('leaves a relative path to the session that wrote it', async () => {
