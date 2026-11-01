@@ -53,12 +53,18 @@ SURFACES = {
 _cache: dict[str, dict[str, str]] = {}
 
 
-def _normalized(prompt: str, home: Path) -> str:
-    """The prompt without what belongs to this machine: its folders, its OS and the wall clock."""
-    prompt = prompt.replace(str(home), "<HERMES_HOME>").replace(str(ROOT), "<CHECKOUT>")
-    prompt = prompt.replace(str(Path.home()), "<USER_HOME>")
+def _without_machine_lines(prompt: str) -> str:
+    """Its OS, the wall clock and its Python tools. The tools line is there only when the probe has something to
+    say (tools/env_probe.py), so it goes whole, with the blank line after it."""
     prompt = re.sub(r"(?m)^Host: .*$", "Host: <pinned>", prompt)
-    return re.sub(r"(?m)^Conversation started: .*$", "Conversation started: <pinned>", prompt)
+    prompt = re.sub(r"(?m)^Conversation started: .*$", "Conversation started: <pinned>", prompt)
+    return re.sub(r"(?m)^Python toolchain: .*\n+", "", prompt)
+
+
+def _normalized(prompt: str, home: Path) -> str:
+    """The prompt without what belongs to this machine: its folders and _without_machine_lines."""
+    prompt = prompt.replace(str(home), "<HERMES_HOME>").replace(str(ROOT), "<CHECKOUT>")
+    return _without_machine_lines(prompt.replace(str(Path.home()), "<USER_HOME>"))
 
 
 def _prompts(tmp_path_factory, name: str) -> dict[str, str]:
@@ -80,7 +86,12 @@ def _prompts(tmp_path_factory, name: str) -> dict[str, str]:
 
 
 def _golden() -> dict[str, dict[str, str]]:
-    return json.loads(GOLDEN.read_text(encoding="utf-8"))
+    """As recorded on clean main, whose machine had a Python tools line; the file itself is never rewritten for that."""
+    recorded = json.loads(GOLDEN.read_text(encoding="utf-8"))
+    return {
+        surface: {platform: _without_machine_lines(prompt) for platform, prompt in prompts.items()}
+        for surface, prompts in recorded.items()
+    }
 
 
 def _expected(name: str, platform: str) -> str:
@@ -100,6 +111,26 @@ def test_write_goldens_when_asked(tmp_path_factory):
     GOLDEN.parent.mkdir(parents=True, exist_ok=True)
     recorded = {name: _prompts(tmp_path_factory, name) for name in GOLDEN_SURFACES}
     GOLDEN.write_text(json.dumps(recorded, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "tools_line",
+    [
+        "Python toolchain: python3=3.14.7 (no pip module), pip=missing, PEP 668=yes (use venv or uv), uv=installed.\n\n",
+        "Python toolchain: python3=3.14.7 (no pip module), pip→python3.14, uv=installed.\n\n",
+        "",
+    ],
+    ids=["this-mac", "ci-linux", "nothing-to-say"],
+)
+def test_a_machines_python_tools_do_not_count(tools_line):
+    prompt = f"Before.\n\n{tools_line}You are chatting inside the desktop app."
+    assert _without_machine_lines(prompt) == "Before.\n\nYou are chatting inside the desktop app."
+
+
+def test_only_the_tools_line_goes():
+    """A prompt that merely mentions the words keeps them, and a real difference elsewhere still shows."""
+    assert _without_machine_lines("See Python toolchain: below.\n") == "See Python toolchain: below.\n"
+    assert _without_machine_lines("A\n") != _without_machine_lines("B\n")
 
 
 def test_the_golden_covers_every_surface_and_platform():
