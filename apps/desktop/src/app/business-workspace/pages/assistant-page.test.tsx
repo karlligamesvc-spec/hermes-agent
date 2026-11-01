@@ -13,7 +13,9 @@ const { deliverablesHook, navigate, projectsHook } = vi.hoisted(() => ({
 }))
 
 vi.mock('react-router', () => ({ useNavigate: () => navigate }))
-vi.mock('@/i18n', () => ({ useI18n: () => ({ locale: 'zh' }) }))
+vi.mock('@/i18n', () => ({
+  useI18n: () => ({ locale: 'zh', t: { businessWorkspace: { projects: { refreshFailed: 'refresh failed', refreshRetry: 'retry' } } } })
+}))
 vi.mock('../../im-entry', () => ({ ImEntryView: ({ embedded }: { embedded: boolean }) => <div data-testid="real-connections">{embedded ? 'embedded connections' : 'standalone connections'}</div> }))
 vi.mock('../hooks/use-workflow-domain-lists', () => ({ useWorkflowProjects: projectsHook }))
 vi.mock('../hooks/use-workflow-deliverables', () => ({ useWorkflowDeliverables: deliverablesHook }))
@@ -257,5 +259,18 @@ describe('hc-1129 product mode: 连接助手 stops pointing at 交付物', () =>
     expect(navigate).toHaveBeenLastCalledWith(DELIVERABLES_ROUTE)
     fireEvent.click(screen.getByText('Latest output').closest('button')!)
     expect(navigate).toHaveBeenLastCalledWith(deliverableDetailRoute('newest'))
+  })
+
+  it.each([
+    ['developer mode with the switch on', true, 'technical'],
+    ['the switch off', false, 'product']
+  ] as const)('%s keeps the deliverables refresh error', (_label, flag, toolView) => {
+    setSingleThreadFlagForTest(flag)
+    setToolViewMode(toolView)
+    seed({ mode: 'ready', items: [] }, { ...READY, refreshFailed: true, retry: () => undefined })
+
+    const { container } = render(<AssistantWorkspaceView />)
+
+    expect(container.querySelector('[data-workflow-refresh-notice]')).toBeTruthy()
   })
 })

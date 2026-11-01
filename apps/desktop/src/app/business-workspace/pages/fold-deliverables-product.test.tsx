@@ -12,6 +12,7 @@ import { seedSignedIn } from '../../../__identity__/fold-projects/render'
 import type { WorkflowRunOverview } from '../api/types'
 
 import { AssistantWorkspaceView } from './assistant-page'
+import { DeliverablesView } from './deliverables-page'
 import { WorkflowRunView } from './workflow-run-page'
 
 /**
@@ -109,6 +110,19 @@ describe('hc-1129 连接助手 reads', () => {
     await renderAssistant()
 
     expect(listDeliverables).toHaveBeenCalled()
+  })
+
+  it('the 交付物 page itself passes no option and still reads them', async () => {
+    setMode(OFF)
+    render(
+      <MemoryRouter>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <DeliverablesView />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(listDeliverables).toHaveBeenCalled())
   })
 })
 
