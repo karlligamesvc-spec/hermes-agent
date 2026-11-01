@@ -12,7 +12,10 @@ export function useFolderPickerWords() {
     : t.composer.projectPicker
 }
 
-/** hc-1123: the 交付物 pages' words, with no 项目 or Hermes in product mode. */
+/**
+ * hc-1123: the 交付物 pages' words, with no 项目 or Hermes in product mode. hc-1129 closes
+ * those pages there for now; these are the words they reopen with.
+ */
 export function useDeliverablesWords() {
   const { locale, t } = useI18n()
   const productMode = useSingleThreadMode()

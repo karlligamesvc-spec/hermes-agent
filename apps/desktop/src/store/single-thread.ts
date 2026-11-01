@@ -18,7 +18,7 @@ import { useStore } from '@nanostores/react'
 import { atom, computed } from 'nanostores'
 
 import type { DesktopClientConfigState } from '@/global'
-import { desktopFeatureOn } from '@/lib/desktop-features'
+import { desktopFeatureOn, onLateClientConfig } from '@/lib/desktop-features'
 import { persistBoolean, storedBoolean } from '@/lib/storage'
 import { $toolViewMode } from '@/store/tool-view'
 
@@ -92,4 +92,8 @@ export function setSingleThreadFlagForTest(on: boolean): void {
 
 // Read as soon as anything in the window imports the switch, so readers outside
 // React (slash commands, keybindings) see the settled value too.
+onLateClientConfig(state => {
+  reading = null
+  settle(singleThreadSwitchFrom(state))
+})
 void loadSingleThreadFlag()

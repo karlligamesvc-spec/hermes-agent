@@ -1,0 +1,193 @@
+{
+  "/deliverables": {
+    "chatShown": false,
+    "views": [
+      "deliverables"
+    ],
+    "where": "/deliverables"
+  },
+  "/deliverables?kind=report#row": {
+    "chatShown": false,
+    "views": [
+      "deliverables"
+    ],
+    "where": "/deliverables?kind=report#row"
+  },
+  "/deliverables/": {
+    "chatShown": true,
+    "views": [
+      "deliverables"
+    ],
+    "where": "/deliverables/"
+  },
+  "/deliverables/item-1": {
+    "chatShown": false,
+    "views": [
+      "deliverables",
+      "deliverable-detail"
+    ],
+    "where": "/deliverables/item-1"
+  },
+  "/deliverables/item-1?from=link#top": {
+    "chatShown": false,
+    "views": [
+      "deliverables",
+      "deliverable-detail"
+    ],
+    "where": "/deliverables/item-1?from=link#top"
+  },
+  "/deliverables/a%2Fb%20c": {
+    "chatShown": false,
+    "views": [
+      "deliverables",
+      "deliverable-detail"
+    ],
+    "where": "/deliverables/a%2Fb%20c"
+  },
+  "/deliverables/a/b": {
+    "chatShown": true,
+    "views": [],
+    "where": "/"
+  },
+  "/DELIVERABLES": {
+    "chatShown": true,
+    "views": [
+      "deliverables"
+    ],
+    "where": "/DELIVERABLES"
+  },
+  "/Deliverables/item-1": {
+    "chatShown": true,
+    "views": [],
+    "where": "/"
+  },
+  "/assistant -> /deliverables/item-1": {
+    "closed": {
+      "chatShown": false,
+      "views": [
+        "assistant"
+      ],
+      "where": "/assistant"
+    },
+    "opened": {
+      "chatShown": false,
+      "views": [
+        "assistant",
+        "deliverable-detail"
+      ],
+      "where": "/deliverables/item-1"
+    }
+  },
+  "/history -> /deliverables/item-1": {
+    "closed": {
+      "chatShown": false,
+      "views": [
+        "history"
+      ],
+      "where": "/history"
+    },
+    "opened": {
+      "chatShown": false,
+      "views": [
+        "history",
+        "deliverable-detail"
+      ],
+      "where": "/deliverables/item-1"
+    }
+  },
+  "/projects -> /deliverables/item-1": {
+    "closed": {
+      "chatShown": false,
+      "views": [
+        "projects"
+      ],
+      "where": "/projects"
+    },
+    "opened": {
+      "chatShown": false,
+      "views": [
+        "projects",
+        "deliverable-detail"
+      ],
+      "where": "/deliverables/item-1"
+    }
+  },
+  "/deliverables -> /deliverables/item-1": {
+    "closed": {
+      "chatShown": false,
+      "views": [
+        "deliverables"
+      ],
+      "where": "/deliverables"
+    },
+    "opened": {
+      "chatShown": false,
+      "views": [
+        "deliverables",
+        "deliverable-detail"
+      ],
+      "where": "/deliverables/item-1"
+    }
+  },
+  "/deliverables -> /workflow-runs/run-1": {
+    "closed": {
+      "chatShown": false,
+      "views": [
+        "deliverables"
+      ],
+      "where": "/deliverables"
+    },
+    "opened": {
+      "chatShown": false,
+      "views": [
+        "deliverables",
+        "workflow-run"
+      ],
+      "where": "/workflow-runs/run-1"
+    }
+  },
+  "/deliverables -> /projects/project-1": {
+    "closed": {
+      "chatShown": false,
+      "views": [
+        "deliverables"
+      ],
+      "where": "/deliverables"
+    },
+    "opened": {
+      "chatShown": false,
+      "views": [
+        "deliverables",
+        "project-detail"
+      ],
+      "where": "/projects/project-1"
+    }
+  },
+  "/deliverables/item-1 closed": {
+    "closed": {
+      "chatShown": false,
+      "views": [
+        "deliverables"
+      ],
+      "where": "/deliverables"
+    },
+    "opened": {
+      "chatShown": false,
+      "views": [
+        "deliverables",
+        "deliverable-detail"
+      ],
+      "where": "/deliverables/item-1"
+    }
+  },
+  "signed out /deliverables": {
+    "chatShown": false,
+    "views": [],
+    "where": "/deliverables"
+  },
+  "signed out /deliverables/item-1": {
+    "chatShown": false,
+    "views": [],
+    "where": "/deliverables/item-1"
+  }
+}

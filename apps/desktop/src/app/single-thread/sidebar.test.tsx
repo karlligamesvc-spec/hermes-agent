@@ -335,7 +335,7 @@ describe('hc-1061 the account menu (twin of AccountPanel’s)', () => {
     return screen.getAllByRole('menuitem').map(item => item.textContent?.trim() ?? '')
   }
 
-  it('lists exactly AccountPanel’s destinations, in the same order: no 沉浸式分析 (hc-1070), no 项目 (hc-1123)', async () => {
+  it('lists exactly AccountPanel’s destinations, in the same order: no 沉浸式分析 (hc-1070), 项目 (hc-1123) or 交付物 (hc-1129)', async () => {
     const panel = render(
       <MemoryRouter>
         <I18nProvider configClient={null} initialLocale="zh">
@@ -388,7 +388,7 @@ describe('hc-1061 the account menu (twin of AccountPanel’s)', () => {
     }
   })
 
-  it('pins the menu item by item: AccountPanel’s list with 更早的对话, nothing else (hc-1070, hc-1123)', async () => {
+  it('pins the menu item by item: AccountPanel’s list with 更早的对话, nothing else (hc-1070, hc-1123, hc-1129)', async () => {
     const onNavigate = vi.fn()
     renderSidebar({ onNavigate })
 
@@ -398,7 +398,6 @@ describe('hc-1061 the account menu (twin of AccountPanel’s)', () => {
       '定时运行',
       '连接助手',
       '更早的对话',
-      '交付物',
       '重新登录',
       '退出登录'
     ])
@@ -418,8 +417,7 @@ describe('hc-1061 the account menu (twin of AccountPanel’s)', () => {
     ['个人资料', '/profile'],
     ['设置', '/settings'],
     ['连接助手', '/assistant'],
-    ['更早的对话', '/history'],
-    ['交付物', '/deliverables']
+    ['更早的对话', '/history']
   ])('hc-1123 keeps %s, which still opens %s', async (label, path) => {
     renderSidebar()
     await menuItems(screen.getByRole('button', { name: '打开账户菜单: 小满' }))

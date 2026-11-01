@@ -41,7 +41,7 @@ import {
 } from '@/components/apex-avatar-look'
 import type { DesktopClientConfigState } from '@/global'
 import { APEX_NAME, withBotName } from '@/lib/assistant-name'
-import { desktopFeatureOn } from '@/lib/desktop-features'
+import { desktopFeatureOn, onLateClientConfig } from '@/lib/desktop-features'
 import { persistBoolean, readJson, storedBoolean, writeJson } from '@/lib/storage'
 
 import {
@@ -600,4 +600,9 @@ export function resetBotRosterForTest(roster: readonly ApexBot[] = [apexBot()]):
 }
 
 // Read as soon as anything in the window imports the switch.
+onLateClientConfig(state => {
+  reading = null
+  settle(multiBotSwitchFrom(state))
+  $multiBotMax.set(multiBotMaxFrom(state.payload))
+})
 void loadMultiBotFlag()

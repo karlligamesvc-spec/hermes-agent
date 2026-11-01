@@ -1,0 +1,30 @@
+{
+  "打开交付物": {
+    "state": {
+      "opener": {
+        "hash": "",
+        "pathname": "/assistant",
+        "search": "",
+        "state": null
+      }
+    },
+    "to": "/deliverables/deliverable-pending"
+  },
+  "要求修改": {
+    "state": {
+      "opener": {
+        "hash": "",
+        "pathname": "/assistant",
+        "search": "",
+        "state": null
+      }
+    },
+    "to": "/deliverables/deliverable-pending"
+  },
+  "批准交付物": [
+    {
+      "deliverableId": "deliverable-pending",
+      "status": "approved"
+    }
+  ]
+}

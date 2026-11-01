@@ -32,7 +32,7 @@ import { resolveElectronBinary } from './electron-binary'
 import { resolvePackagedE2ePython } from './python-prerequisite'
 import { installErrorBannerGuard } from './test'
 
-const DESKTOP_ROOT = path.resolve(import.meta.dirname, '..')
+export const DESKTOP_ROOT = path.resolve(import.meta.dirname, '..')
 const REPO_ROOT = path.resolve(DESKTOP_ROOT, '..', '..')
 const RELEASE_ROOT = path.join(DESKTOP_ROOT, 'release')
 const DESKTOP_PACKAGE = JSON.parse(fs.readFileSync(path.join(DESKTOP_ROOT, 'package.json'), 'utf8'))
@@ -273,6 +273,11 @@ export function buildAppEnv(sandbox: Sandbox, extra: Record<string, string> = {}
     // mid-flight — otherwise the quit confirmation waits on a click that no
     // one is there to make, and the worker dies on a teardown timeout.
     HERMES_DESKTOP_SKIP_QUIT_CONFIRM: '1',
+    // hc-1127: a home with no cached client config fetches it before the first
+    // window, and production's switches would turn these specs' shell into product
+    // mode. A closed port answers at once, so they stay off the network. A spec that
+    // wants a platform passes its own (`extra`, or APEXNODES_API_BASE in the env).
+    APEXNODES_API_BASE: clean.APEXNODES_API_BASE || 'http://127.0.0.1:9',
     // Clear dev-server override — we want the built dist/, not a vite server.
     // The dev-server check in main.ts looks for this env var; if it's set,
     // it loads from the vite URL instead of the local file.
