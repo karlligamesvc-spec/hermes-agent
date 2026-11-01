@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -110,6 +110,18 @@ describe('hc-1129 连接助手 reads', () => {
     await renderAssistant()
 
     expect(listDeliverables).toHaveBeenCalled()
+  })
+
+  it('switching to developer mode with the page open reads them then, with no stale error left', async () => {
+    setMode(PRODUCT)
+    await renderAssistant()
+    expect(listDeliverables).not.toHaveBeenCalled()
+
+    act(() => setToolViewMode('technical'))
+
+    await waitFor(() => expect(listDeliverables).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('还没有项目交付物。')).toBeTruthy()
+    expect(screen.queryByText('暂时无法读取账号数据，请从对应页面重试。')).toBeNull()
   })
 
   it('the 交付物 page itself passes no option and still reads them', async () => {
