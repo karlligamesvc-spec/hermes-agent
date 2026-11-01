@@ -1687,10 +1687,10 @@ export const en: Translations = {
         failedSave: 'Could not save the real-profile setting',
         prompt: {
           title: 'Stay signed in to your sites',
-          body: 'Let Hermes browse with a snapshot of your default browser profile, so sites open already signed in.',
+          body: "Let APEX's background browser use a snapshot of your signed-in profile. This panel is not affected.",
           bulletSnapshot: 'Cookies and logins are copied into a managed snapshot.',
           bulletLiveProfile: 'Your live browser profile is never opened directly.',
-          bulletLocal: 'Nothing leaves this computer.',
+          bulletLocal: 'The snapshot stays on this computer, but pages the assistant reads are sent to the model.',
           dontShowAgain: "Don't show again",
           notNow: 'Not now',
           enable: 'Use my profile'

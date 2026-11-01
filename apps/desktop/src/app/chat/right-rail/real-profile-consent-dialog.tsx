@@ -22,6 +22,7 @@ import {
   claimRealProfilePrompt,
   releaseRealProfilePrompt
 } from '@/store/real-profile-consent'
+import { useSingleThreadMode } from '@/store/single-thread'
 
 import { hermesConfigCacheWriter, useHermesConfigRecord } from '../../hooks/use-config-record'
 
@@ -29,6 +30,15 @@ interface RealProfileConsentDialogProps {
   /** The Browser tab this pane renders — used only to claim the prompt so
    *  several mounted Browser panes never stack duplicate dialogs. */
   tabId: string
+}
+
+/**
+ * hc-1132: product mode does not offer this at all. The panel it opens over never uses the setting, only the
+ * assistant's background browser does, and product mode has no plain way back to the switch. Developer mode and
+ * the switch off keep the offer; app/single-thread/real-profile-reset.ts settles anyone who said yes before.
+ */
+export function RealProfileConsentDialog(props: RealProfileConsentDialogProps) {
+  return useSingleThreadMode() ? null : <RealProfileConsentOffer {...props} />
 }
 
 /**
@@ -43,7 +53,7 @@ interface RealProfileConsentDialogProps {
  * again" persists the opt-out across launches. Turning the toggle off later
  * does NOT resurrect the prompt inside the same run.
  */
-export function RealProfileConsentDialog({ tabId }: RealProfileConsentDialogProps) {
+function RealProfileConsentOffer({ tabId }: RealProfileConsentDialogProps) {
   const { t } = useI18n()
   const copy = t.settings.toolsets.browserRealProfile
   const prompt = copy.prompt

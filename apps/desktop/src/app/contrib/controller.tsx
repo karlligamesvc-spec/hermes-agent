@@ -8,6 +8,7 @@ import { SessionStatusDot } from '@/app/chat/session-status-dot'
 import { PALETTE_AREA, type PaletteContribution, paletteToggle } from '@/app/command-palette/contrib'
 import { unlessFolded } from '@/app/shell/product-fold'
 import { type StatusbarItem } from '@/app/shell/statusbar-controls'
+import { watchRealProfileReset } from '@/app/single-thread/real-profile-reset'
 import { AskDirective } from '@/components/assistant-ui/ask-directive'
 import { InlinePreviewDirective } from '@/components/assistant-ui/inline-preview-directive'
 import { IdleMount } from '@/components/idle-mount'
@@ -432,6 +433,9 @@ if (!isBrowserWindow() && !isHudWindow()) {
   watchRouteTiles()
   watchPreviewTiles()
 }
+
+// hc-1132: product mode no longer offers real-profile browsing, so settle whoever said yes to the old dialog.
+watchRealProfileReset()
 
 // Composer pop-out state is keyed by layout zone, so drop entries for zones the
 // user has since closed or merged away — otherwise a long-lived install keeps a
