@@ -68,7 +68,12 @@ const StepFile: FC<{ call: ProcessCall }> = ({ call }) => {
         </span>
         {path && <ResultActions className="mt-0" kind="file" path={path} />}
       </div>
-      {diff && <FileDiffPanel diff={diff} path={name} />}
+      {diff && (
+        // The same padding a tool row gives its diff: the panel bleeds into it to show its change bars.
+        <div className="grid min-w-0 overflow-hidden border-t border-(--ui-stroke-tertiary) p-1.5">
+          <FileDiffPanel className="-mt-1.5" diff={diff} path={name} />
+        </div>
+      )}
       {text && (
         <pre className="m-0 max-h-56 overflow-auto whitespace-pre-wrap wrap-anywhere border-t border-(--ui-stroke-tertiary) px-2 py-1.5 font-mono text-[0.7rem] leading-relaxed text-(--ui-text-secondary)">
           {clampForDisplay(text)}
