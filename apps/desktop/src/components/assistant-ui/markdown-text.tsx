@@ -12,6 +12,7 @@ import { type ComponentProps, memo, type ReactNode, useEffect, useMemo, useRef, 
 
 import { ExpandableBlock } from '@/components/chat/expandable-block'
 import { PreviewAttachment } from '@/components/chat/preview-attachment'
+import { ResultMediaCard } from '@/components/chat/result-media-card'
 import { chunkByLines, SyntaxHighlighter } from '@/components/chat/shiki-highlighter'
 import { TranscriptVideo } from '@/components/chat/transcript-video'
 import { ZoomableImage } from '@/components/chat/zoomable-image'
@@ -39,6 +40,7 @@ import { previewTargetFromMarkdownHref } from '@/lib/preview-targets'
 import { sessionRefFromMarkdownHref } from '@/lib/session-refs'
 import { isDirectiveInProgress } from '@/lib/transcript-directives'
 import { cn } from '@/lib/utils'
+import { useSingleThreadMode } from '@/store/single-thread'
 
 import { ArtifactCard } from './artifact-card'
 import { SessionRefLink } from './directive-text'
@@ -149,6 +151,11 @@ function OpenMediaButton({ kind, path }: { kind: 'audio' | 'video'; path: string
 }
 
 function MediaAttachment({ path }: { path: string }) {
+  // hc-1130: product mode hands a result over as a card with its own actions.
+  return useSingleThreadMode() ? <ResultMediaCard path={path} /> : <InlineMediaAttachment path={path} />
+}
+
+function InlineMediaAttachment({ path }: { path: string }) {
   const [src, setSrc] = useState('')
   const [failed, setFailed] = useState(false)
   const { open, openFailed } = useOpenMediaFile(path)
@@ -364,8 +371,9 @@ function MarkdownLink({ children, className, href, ...props }: ComponentProps<'a
 export function MarkdownImage(props: ComponentProps<'img'>) {
   const rawSrc = typeof props.src === 'string' ? props.src : ''
   const kind = rawSrc ? mediaKind(rawSrc) : 'file'
+  const resultImage = useSingleThreadMode() && kind === 'image' && isFileMediaPath(rawSrc)
 
-  if (kind === 'video' || kind === 'audio') {
+  if (kind === 'video' || kind === 'audio' || resultImage) {
     return <MediaAttachment path={rawSrc} />
   }
 

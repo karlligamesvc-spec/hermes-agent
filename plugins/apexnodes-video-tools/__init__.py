@@ -339,7 +339,7 @@ def _localize_gateway_video(result: dict[str, Any], prompt: str) -> str:
     if not video_url:
         return tool_result(**result)
     try:
-        local_path = _gateway.download_media(video_url, filename_hint=prompt[:40] or "generated_video")
+        local_path = _gateway.download_media(video_url, filename_hint=_gateway.media_title_hint(prompt) or "generated_video")
     except _gateway.GatewayError:
         note = (
             "视频已生成，但保存到本机失败：请尽快通过 video_url 查看/下载"
