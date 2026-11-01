@@ -296,7 +296,7 @@ describe('the delete confirmation', () => {
     expect(screen.getByRole('heading', { name: '删掉「带货脚本」？' })).toBeTruthy()
     expect(
       screen.getByText(
-        '它的对话、它在这台电脑上存的图片和视频、它那份技能会一起删掉，删了找不回来。你的「关于你」、交付物和用量都不受影响。'
+        '它的对话、它在这台电脑上存的图片和视频、它那份技能会一起删掉，删了找不回来。你的「关于你」和用量都不受影响。'
       )
     ).toBeTruthy()
     expect(screen.getByRole('button', { name: '先不删' })).toBeTruthy()

@@ -464,6 +464,164 @@ describe('hc-1070 single-thread product mode has no 沉浸式分析', () => {
   })
 })
 
+describe('hc-1129 single-thread product mode has no 交付物', () => {
+  const deliverablesOnScreen = () => screen.queryByText('deliverables-view') ?? screen.queryByText('deliverable-detail-view')
+  const where = () => screen.getByTestId('location').textContent
+
+  const openedFrom = (pathname: string, to: string) => ({
+    pathname: to,
+    state: routeDrawerNavigationState({ hash: '', pathname, search: '', state: null })
+  })
+
+  afterEach(() => {
+    setSingleThreadFlagForTest(false)
+    setToolViewMode('product')
+  })
+
+  it.each([
+    '/deliverables',
+    '/deliverables?kind=report#row',
+    '/deliverables/',
+    '/DELIVERABLES',
+    '/deliverables/item-1',
+    '/deliverables/item-1?from=link#top',
+    '/deliverables/a%2Fb%20c',
+    '/deliverables/a/b',
+    '/Deliverables/item-1'
+  ])('a cold start on %s lands on the conversation', async path => {
+    setSingleThreadFlagForTest(true)
+    renderRoutes([path])
+
+    await waitFor(() => expect(where()).toBe('/'))
+    expect(deliverablesOnScreen()).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it.each(['/deliverables', '/deliverables/item-1'])(
+    'navigating to %s later (hermes://open, a plugin notification, host.navigate) turns back too',
+    async path => {
+      setSingleThreadFlagForTest(true)
+      renderRoutes(['/chat-1'])
+
+      fireEvent.click(screen.getByRole('button', { name: `Go ${path}` }))
+
+      await waitFor(() => expect(where()).toBe('/'))
+      expect(deliverablesOnScreen()).toBeNull()
+    }
+  )
+
+  it.each(['/deliverables', '/deliverables/item-1'])(
+    'turns back from %s before the sign-in gate: a signed-out window does not sit on a blank page',
+    async path => {
+      setSingleThreadFlagForTest(true)
+      renderRoutes(['/chat-1'])
+      act(() => $authState.set({ ...$authState.get(), status: 'signed-out' }))
+
+      fireEvent.click(screen.getByRole('button', { name: `Go ${path}` }))
+
+      await waitFor(() => expect(where()).toBe('/'))
+    }
+  )
+
+  it('history forward onto 交付物 turns back', async () => {
+    setSingleThreadFlagForTest(true)
+    render(
+      <MemoryRouter initialEntries={['/chat-1', '/deliverables']} initialIndex={0}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <LocationProbe />
+          <ChatRoutesSurface actions={{ getGateway: () => null } as unknown as WiringActions} />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+    expect(where()).toBe('/chat-1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Forward' }))
+
+    await waitFor(() => expect(where()).toBe('/'))
+    expect(deliverablesOnScreen()).toBeNull()
+  })
+
+  it('a deliverable drawer over a page that stays closes itself: its own gate, not the page under it', async () => {
+    setSingleThreadFlagForTest(true)
+    renderRoutes(['/assistant', openedFrom('/assistant', '/deliverables/item-1')])
+
+    await waitFor(() => expect(where()).toBe('/'))
+    expect(deliverablesOnScreen()).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('a signed-out deliverable drawer over a page that stays turns back too', async () => {
+    setSingleThreadFlagForTest(true)
+    $authState.set({ ...originalAuth, enabled: true, status: 'signed-out' })
+    render(
+      <MemoryRouter initialEntries={['/history', openedFrom('/history', '/deliverables/item-1')]} initialIndex={1}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <LocationProbe />
+          <ChatRoutesSurface actions={{ getGateway: () => null } as unknown as WiringActions} />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(where()).toBe('/'))
+  })
+
+  it('a run opened from 交付物 before the switch does not put 交付物 back under it', async () => {
+    setSingleThreadFlagForTest(true)
+    renderRoutes(['/deliverables', openedFrom('/deliverables', '/workflow-runs/run-1')])
+
+    await waitFor(() => expect(where()).toBe('/'))
+    expect(deliverablesOnScreen()).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  const OPENED_VIEW: Record<string, string> = {
+    '/deliverables': 'deliverables-view',
+    '/deliverables/item-1': 'deliverable-detail-view'
+  }
+
+  it.each(Object.keys(OPENED_VIEW))('closes %s when developer mode is switched off', async path => {
+    setSingleThreadFlagForTest(true)
+    setToolViewMode('technical')
+    renderRoutes([path])
+    expect(await screen.findByText(OPENED_VIEW[path]!)).toBeTruthy()
+
+    act(() => setToolViewMode('product'))
+
+    await waitFor(() => expect(where()).toBe('/'))
+    expect(deliverablesOnScreen()).toBeNull()
+  })
+
+  it.each(Object.keys(OPENED_VIEW))(
+    'closes %s when the switch is read after a remembered route has already opened it',
+    async path => {
+      setSingleThreadFlagForTest(false)
+      renderRoutes([path])
+      expect(await screen.findByText(OPENED_VIEW[path]!)).toBeTruthy()
+
+      act(() => setSingleThreadFlagForTest(true))
+
+      await waitFor(() => expect(where()).toBe('/'))
+      expect(deliverablesOnScreen()).toBeNull()
+    }
+  )
+
+  it.each([
+    ['the switch off', false, 'product'],
+    ['developer mode with the switch on', true, 'technical']
+  ] as const)('%s keeps both 交付物 routes', async (_label, flag, toolView) => {
+    setSingleThreadFlagForTest(flag)
+    setToolViewMode(toolView)
+    renderRoutes(['/deliverables'])
+
+    expect(await screen.findByText('deliverables-view')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Go /deliverables/item-1' }))
+    expect(await screen.findByText('deliverable-detail-view')).toBeTruthy()
+    expect(where()).toBe('/deliverables/item-1')
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(where()).toBe('/deliverables'))
+  })
+})
+
 describe('hc-1123 single-thread product mode has no 项目 or 工作流', () => {
   const projectsOnScreen = () =>
     screen.queryByText('projects-view') ?? screen.queryByText('project-detail-view') ?? screen.queryByText('workflows-view')
@@ -524,7 +682,7 @@ describe('hc-1123 single-thread product mode has no 项目 or 工作流', () => 
 
   it('a project drawer over a page that stays closes itself, and takes nobody back to a project on close', async () => {
     setSingleThreadFlagForTest(true)
-    renderRoutes(['/deliverables', openedFrom('/deliverables', '/projects/project-1')])
+    renderRoutes(['/history', openedFrom('/history', '/projects/project-1')])
 
     await waitFor(() => expect(where()).toBe('/'))
     expect(projectsOnScreen()).toBeNull()
@@ -556,7 +714,7 @@ describe('hc-1123 single-thread product mode has no 项目 or 工作流', () => 
     setSingleThreadFlagForTest(true)
     $authState.set({ ...originalAuth, enabled: true, status: 'signed-out' })
     render(
-      <MemoryRouter initialEntries={['/deliverables', openedFrom('/deliverables', '/projects/project-1')]} initialIndex={1}>
+      <MemoryRouter initialEntries={['/history', openedFrom('/history', '/projects/project-1')]} initialIndex={1}>
         <I18nProvider configClient={null} initialLocale="en">
           <LocationProbe />
           <ChatRoutesSurface actions={{ getGateway: () => null } as unknown as WiringActions} />
@@ -601,10 +759,8 @@ describe('hc-1123 single-thread product mode has no 项目 or 工作流', () => 
 
   it.each([
     ['/cron', 'cron-view'],
-    ['/deliverables', 'deliverables-view'],
     ['/history', 'history-view'],
     ['/assistant', 'assistant-view'],
-    ['/deliverables/item-1', 'deliverable-detail-view'],
     ['/workflow-runs/run-1', 'workflow-run-view']
   ])('keeps %s', async (path, view) => {
     setSingleThreadFlagForTest(true)
@@ -622,17 +778,6 @@ describe('hc-1123 single-thread product mode has no 项目 or 工作流', () => 
     })
 
     expect(where()).toBe(path)
-  })
-
-  it('a deliverable opened directly closes onto 交付物, never onto a project page', async () => {
-    setSingleThreadFlagForTest(true)
-    renderRoutes(['/deliverables/item-1'])
-    await screen.findByText('deliverable-detail-view')
-
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
-
-    await waitFor(() => expect(where()).toBe('/deliverables'))
-    expect(screen.getByText('deliverables-view')).toBeTruthy()
   })
 
   it('a run drawer opened with no source (a deep link) sits on 连接助手 and closes onto it, never on 工作流', async () => {

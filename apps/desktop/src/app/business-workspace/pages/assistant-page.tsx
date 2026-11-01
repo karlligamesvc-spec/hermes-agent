@@ -19,19 +19,20 @@ const COPY = {
   ar: { title: 'المساعد المتصل', description: 'راجع قنوات الرسائل وعمليات المشاريع الحديثة وما يحتاج إلى متابعة والنتائج المسلمة. ابدأ المحادثة من «البدء».', connections: 'قنوات الرسائل', current: 'عمليات المشاريع الحالية', attention: 'تحتاج إلى متابعة', recent: 'آخر النتائج المسلمة', projects: 'عرض المشاريع', deliverables: 'عرض النتائج', history: 'عرض سجل المحادثات', emptyCurrent: 'لا توجد عمليات نشطة ضمن المشاريع الحديثة.', emptyAttention: 'لا توجد عناصر تحتاج إلى متابعة ضمن المشاريع الحديثة.', emptyRecent: 'لا توجد نتائج مشاريع بعد.', loading: 'جارٍ تحميل بيانات الحساب…', unavailable: 'بيانات الحساب غير متاحة. أعد المحاولة من الصفحة المعنية.', partial: 'بعض المشاريع بلا ملخص تشغيل. راجع صفحة المشاريع.', queued: 'في الانتظار', running: 'قيد التشغيل', review: 'بانتظار المراجعة', failed: 'فشل التشغيل' }
 } as const
 
-/** hc-1123: what 连接助手 says in product mode, where there are no project pages to point at. */
+/** hc-1123, hc-1129: what 连接助手 says in product mode, where there are no project or 交付物 pages to point at. */
 const PRODUCT_COPY = {
-  zh: { current: '正在运行', description: '查看消息渠道和最近的交付成果。', emptyRecent: '还没有交付物。' },
-  'zh-hant': { current: '正在執行', description: '查看訊息渠道和最近的交付成果。', emptyRecent: '尚無交付物。' },
-  en: { current: 'Running now', description: 'See messaging channels and recent deliverables.', emptyRecent: 'No deliverables yet.' },
-  ja: { current: '実行中', description: 'メッセージチャネルと最近の成果を確認できます。', emptyRecent: '成果はまだありません。' },
-  ar: { current: 'قيد التشغيل الآن', description: 'راجع قنوات الرسائل وآخر النتائج المسلمة.', emptyRecent: 'لا توجد نتائج بعد.' }
+  zh: { current: '正在运行', description: '查看和连接消息渠道。' },
+  'zh-hant': { current: '正在執行', description: '查看和連接訊息渠道。' },
+  en: { current: 'Running now', description: 'See and connect your messaging channels.' },
+  ja: { current: '実行中', description: 'メッセージチャネルの確認と接続ができます。' },
+  ar: { current: 'قيد التشغيل الآن', description: 'راجع قنوات الرسائل واربطها.' }
 } as const
 
 /**
  * 当前项目运行 and 需要处理. hc-1123: product mode has no project pages, so these
  * stop pointing at them: a row opens its run, closing that comes back here, and
- * a section shows only when it has a row to show.
+ * a section shows only when it has a row to show. hc-1129: a run waiting for review
+ * is not a row there, because reviewing happens on the 交付物 page product mode lacks.
  */
 function ProjectSections({ projects }: { projects: ReturnType<typeof useWorkflowProjects> }) {
   const { locale } = useI18n()
@@ -51,7 +52,7 @@ function ProjectSections({ projects }: { projects: ReturnType<typeof useWorkflow
   const needsAttention = projectItems
     .filter(
       item =>
-        (item.summary?.attention === 'failed' || item.summary?.attention === 'review') &&
+        (item.summary?.attention === 'failed' || (!productMode && item.summary?.attention === 'review')) &&
         (!productMode || item.summary.currentRunId)
     )
     .slice(0, 3)
@@ -128,7 +129,8 @@ export function AssistantWorkspaceView() {
   const c = productMode ? { ...COPY[locale], ...PRODUCT_COPY[locale] } : COPY[locale]
   const navigate = useNavigate()
   const projects = useWorkflowProjects()
-  const { state: deliverables } = useWorkflowDeliverables()
+  // hc-1129: product mode has no 交付物 page, so no section points at it and nothing is read for it.
+  const { state: deliverables } = useWorkflowDeliverables({ enabled: !productMode })
 
   const recent =
     deliverables.mode === 'ready'
@@ -145,31 +147,33 @@ export function AssistantWorkspaceView() {
     >
       <div className="apex-primary-page-column space-y-6 pb-10">
         <WorkflowRefreshNotice state={projects} />
-        <WorkflowRefreshNotice state={deliverables} />
+        {!productMode && <WorkflowRefreshNotice state={deliverables} />}
         <BusinessPageHeader description={c.description} eyebrow={c.title} icon="organization" title={c.title} />
         <BusinessSection action={c.history} onAction={() => navigate(HISTORY_ROUTE)} title={c.connections}>
           <ImEntryView className="w-full" embedded />
         </BusinessSection>
         <ProjectSections projects={projects} />
-        <BusinessSection action={c.deliverables} onAction={() => navigate(DELIVERABLES_ROUTE)} title={c.recent}>
-          {deliverableFallback ? (
-            <BusinessLimitation text={deliverableFallback} />
-          ) : recent.length ? (
-            recent.map(item => (
-              <button
-                className="flex w-full items-center justify-between gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left text-sm"
-                key={item.id}
-                onClick={() => navigate(deliverableDetailRoute(item.id))}
-                type="button"
-              >
-                <span className="truncate font-medium">{item.title}</span>
-                <span className="shrink-0 text-(--ui-text-tertiary)">{item.updatedAt.slice(0, 10)}</span>
-              </button>
-            ))
-          ) : (
-            <BusinessLimitation text={c.emptyRecent} />
-          )}
-        </BusinessSection>
+        {!productMode && (
+          <BusinessSection action={c.deliverables} onAction={() => navigate(DELIVERABLES_ROUTE)} title={c.recent}>
+            {deliverableFallback ? (
+              <BusinessLimitation text={deliverableFallback} />
+            ) : recent.length ? (
+              recent.map(item => (
+                <button
+                  className="flex w-full items-center justify-between gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left text-sm"
+                  key={item.id}
+                  onClick={() => navigate(deliverableDetailRoute(item.id))}
+                  type="button"
+                >
+                  <span className="truncate font-medium">{item.title}</span>
+                  <span className="shrink-0 text-(--ui-text-tertiary)">{item.updatedAt.slice(0, 10)}</span>
+                </button>
+              ))
+            ) : (
+              <BusinessLimitation text={c.emptyRecent} />
+            )}
+          </BusinessSection>
+        )}
       </div>
     </section>
   )
