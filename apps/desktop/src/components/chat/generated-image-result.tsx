@@ -7,8 +7,18 @@ import { ImageActionButton, ImageLightbox } from '@/components/chat/zoomable-ima
 import { useImageDownload } from '@/hooks/use-image-download'
 import { useI18n } from '@/i18n'
 import { generatedImageFromResult } from '@/lib/generated-images'
-import { filePathFromMediaPath, gatewayMediaDataUrl, isRemoteGateway, mediaExternalUrl, mediaName } from '@/lib/media'
+import {
+  filePathFromMediaPath,
+  gatewayMediaDataUrl,
+  isFileMediaPath,
+  isRemoteGateway,
+  mediaExternalUrl,
+  mediaName
+} from '@/lib/media'
 import { cn } from '@/lib/utils'
+import { useSingleThreadMode } from '@/store/single-thread'
+
+import { ResultActions, useResultDownload } from './result-actions'
 
 // Aspect hint from the tool args sizes the frame *before* the image loads, so
 // the placeholder and the resolved image occupy the same box — no layout shift.
@@ -48,6 +58,15 @@ async function resolveImageSrc(path: string): Promise<string> {
   return window.hermesDesktop.readFileDataUrl(filePathFromMediaPath(path))
 }
 
+/** hc-1130: in product mode a file on disk saves under its short title, with actions under it. */
+function useGeneratedImageSave(image: null | string, src: string) {
+  const { download: saveShownImage, saving } = useImageDownload(src)
+  const resultPath = useSingleThreadMode() && image && isFileMediaPath(image) ? image : ''
+  const { download: saveResult } = useResultDownload(resultPath, 'image')
+
+  return { download: resultPath ? saveResult : saveShownImage, resultPath, saving }
+}
+
 export const GeneratedImage: FC<{ aspectRatio?: string; result?: unknown }> = ({ aspectRatio, result }) => {
   const { t } = useI18n()
   const copy = t.desktop
@@ -60,7 +79,7 @@ export const GeneratedImage: FC<{ aspectRatio?: string; result?: unknown }> = ({
   const [canvasGone, setCanvasGone] = useState(false)
   const [failed, setFailed] = useState(false)
   const [lightboxOpen, setLightboxOpen] = useState(false)
-  const { download, saving } = useImageDownload(src)
+  const { download, resultPath, saving } = useGeneratedImageSave(image, src)
 
   useEffect(() => setRatio(hintedRatio(aspectRatio)), [aspectRatio])
 
@@ -164,6 +183,7 @@ export const GeneratedImage: FC<{ aspectRatio?: string; result?: unknown }> = ({
           <ImageActionButton className="group-hover/image:opacity-100" copy={copy} onClick={download} saving={saving} />
         )}
       </span>
+      {resultPath && loaded && <ResultActions kind="image" path={resultPath} />}
       {src && (
         <ImageLightbox
           alt="Generated image"

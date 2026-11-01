@@ -40,6 +40,9 @@ export interface MockServerOptions {
   /** Choose distinct replies from the latest input without replaying history. */
   replyForPrompt?: (prompt: string) => string
 
+  /** Script a whole tool-using turn: the next step, given how many tool results came back so far this turn. */
+  scriptForPrompt?: (prompt: string, toolResults: number) => null | ScriptedTurn
+
   /** Extra ids listed by GET /v1/models beside `mock-model` (a pickable second model). */
   extraModels?: string[]
 
@@ -511,6 +514,14 @@ export function groupScriptedLine(userText: string, history: string[] = []): str
   return '(pass)'
 }
 
+/** The next step of a turn a spec scripts whole (`scriptForPrompt`, counting this turn's tool results), else `E2E_CALL`. */
+function promptScriptTurn(options: MockServerOptions, userText: string, messages: any[]): ScriptedTurn | null {
+  const lastUser = messages.map(message => message?.role).lastIndexOf('user')
+  const toolResults = messages.slice(lastUser + 1).filter(message => message?.role === 'tool').length
+
+  return options.scriptForPrompt?.(userText, toolResults) ?? directToolCallTurn(userText, messages)
+}
+
 /**
  * One scripted tool call driven by the user's own text, for specs that need the
  * agent to exercise a REAL tool once (e.g. Bot Mode's `message_agent`):
@@ -958,7 +969,7 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
             return
           }
 
-          const directCall = directToolCallTurn(userText, messages)
+          const directCall = promptScriptTurn(options, userText, messages)
 
           if (directCall !== null) {
             if (stream) {

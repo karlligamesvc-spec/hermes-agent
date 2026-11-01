@@ -15,15 +15,18 @@ import { Button } from '@/components/ui/button'
 import { DisclosureCaret } from '@/components/ui/disclosure-caret'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { useI18n } from '@/i18n'
+import { useResultCopy } from '@/i18n/single-thread-results'
 import type { ProcessCopy } from '@/i18n/types-process'
 import { hostPathLabel, PrettyLink } from '@/lib/external-link'
 import { AlertCircle, CheckCircle2 } from '@/lib/icons'
 import { separateGluedReasoningBlocks } from '@/lib/reasoning-blocks'
 import { cn } from '@/lib/utils'
 import { $gatewayState } from '@/store/session'
+import { useSingleThreadMode } from '@/store/single-thread'
 import { $toolDisclosureOpen, $toolViewMode, setToolDisclosureOpen } from '@/store/tool-view'
 
 import { CreatorTipSlot } from './creator-tip'
+import { stepFileCalls, StepFileContents } from './file-step-contents'
 import {
   type CallState,
   hasSources,
@@ -302,6 +305,10 @@ function StepRow({
   const showSources = step.state !== 'running' && hasSources(step.sources)
   const [sourcesOpen, toggleSources] = useDisclosure(`process-source:${turnKey}:${step.key}`, false)
   const running = step.state === 'running'
+  // hc-1130: a file edit's contents, folded out of the chat in product mode.
+  const files = useSingleThreadMode() ? stepFileCalls(step) : []
+  const [filesOpen, toggleFiles] = useDisclosure(`process-files:${turnKey}:${step.key}`, false)
+  const resultCopy = useResultCopy()
 
   return (
     <li className="grid min-w-0 gap-1" data-process-step="" data-state={step.state}>
@@ -324,8 +331,20 @@ function StepRow({
             {sourcesOpen ? copy.hideSource : copy.showSource}
           </button>
         )}
+        {files.length > 0 && (
+          <button
+            aria-expanded={filesOpen}
+            className={LINK_BUTTON_CLASS}
+            data-process-files-toggle=""
+            onClick={toggleFiles}
+            type="button"
+          >
+            {filesOpen ? resultCopy.hideContents : resultCopy.showContents}
+          </button>
+        )}
       </div>
       {sourcesOpen && showSources && <SourcesPanel step={step} />}
+      {filesOpen && files.length > 0 && <StepFileContents calls={files} />}
       {step.subtasks.length > 0 && <Subtasks step={step} />}
       {devMode && <TechDetails calls={[...step.prep, ...step.calls]} />}
       <span className="sr-only">{copy.status.stepOf(index + 1)}</span>

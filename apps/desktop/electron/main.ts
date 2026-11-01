@@ -8598,7 +8598,7 @@ async function finalizeGatewayDownload(res, statusCode, headers, ctx: any = {}) 
   }
 
   const disposition = headers['content-disposition'] || headers['Content-Disposition']
-  const filename = filenameFromContentDisposition(disposition) || ctx.suggested || ctx.fallbackName
+  const filename = ctx.suggested || filenameFromContentDisposition(disposition) || ctx.fallbackName
 
   const result = await dialog.showSaveDialog(mainWindow, {
     defaultPath: filename,

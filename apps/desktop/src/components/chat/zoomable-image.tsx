@@ -10,6 +10,8 @@ import { cn } from '@/lib/utils'
 
 export interface ZoomableImageProps extends ComponentProps<'img'> {
   containerClassName?: string
+  /** Saves the file behind the image instead of the bytes on screen (hc-1130). */
+  onDownload?: () => void
   slot?: string
 }
 
@@ -18,10 +20,19 @@ export interface ImageActionCopy {
   savingImage: string
 }
 
-export function ZoomableImage({ className, containerClassName, src, alt, slot, ...props }: ZoomableImageProps) {
+export function ZoomableImage({
+  className,
+  containerClassName,
+  onDownload,
+  src,
+  alt,
+  slot,
+  ...props
+}: ZoomableImageProps) {
   const { t } = useI18n()
   const copy = t.desktop
-  const { download, saving } = useImageDownload(src)
+  const { download: saveImage, saving } = useImageDownload(src)
+  const download = onDownload ?? saveImage
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const canOpen = Boolean(src)
 

@@ -14,6 +14,7 @@ import { AlertCircle, CheckCircle2 } from '@/lib/icons'
 import { useSessionSlice } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
 import { useUserFacingModelName } from '@/store/model-tiers'
+import { useSingleThreadMode } from '@/store/single-thread'
 import { $subagentsBySession } from '@/store/subagents'
 import { openSessionInNewWindow } from '@/store/windows'
 
@@ -69,7 +70,8 @@ function DelegateRowView({ row }: { row: DelegateRow }) {
   const { sessionId } = row
   const live = isDelegateRowLive(row.status)
   const elapsed = useElapsedSeconds(live, `delegate:${row.id}`)
-  const activity = row.activity.slice(-TICKER_DEPTH)
+  // hc-1130: a child's ticker relays its commands and paths; product mode keeps its goal and state.
+  const activity = useSingleThreadMode() ? [] : row.activity.slice(-TICKER_DEPTH)
   // hc-960: a child's model reads as its tier on an APEX account.
   const modelName = useUserFacingModelName()
 

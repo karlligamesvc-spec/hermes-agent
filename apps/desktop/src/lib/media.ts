@@ -65,6 +65,56 @@ export function mediaName(path: string): string {
   }
 }
 
+function decodedMediaName(path: string): string {
+  // `new URL` reads `C:\\Users\\a.mp4` as a URL, so a Windows path still has its folders here.
+  const name = mediaName(path).split('\\').pop() || path
+
+  return name.replace(/(?:%[0-9a-f]{2})+/gi, encoded => {
+    try {
+      return decodeURIComponent(encoded)
+    } catch {
+      return encoded
+    }
+  })
+}
+
+// hc-1130: what a result is called to the person who asked for it. Generated
+// files are named after the prompt plus a unique tail (「一条_15_秒的竖屏短视频_分三
+// 个镜头_…_4a2ea035.mp4」), so a title keeps the opening words that fit and drops
+// the tail. Names no person chose (`media_4a2ea035`) come back empty: the caller
+// says what kind of file it is instead.
+const MEDIA_TITLE_MAX = 24
+const FILE_EXTENSION_RE = /\.[^.\s]{1,8}$/
+const UNIQUE_TAIL_RE = /[_-][0-9a-f]{8}$/i
+const UNSAFE_NAME_RE = /[<>:"/\\|?*]+/g
+const NAMELESS_TITLES = new Set(['audio', 'download', 'file', 'generated video', 'image', 'media', 'output', 'video'])
+
+export function mediaShortTitle(path: string): string {
+  const stem = decodedMediaName(path).replace(FILE_EXTENSION_RE, '').replace(UNIQUE_TAIL_RE, '')
+  let title = ''
+
+  for (const word of stem.split(/[_\s]+/).filter(Boolean)) {
+    const next = title ? `${title} ${word}` : word
+
+    if ([...next].length > MEDIA_TITLE_MAX) {
+      break
+    }
+
+    title = next
+  }
+
+  const short = (title || [...stem].slice(0, MEDIA_TITLE_MAX).join('')).replace(UNSAFE_NAME_RE, ' ').trim()
+
+  return NAMELESS_TITLES.has(short.toLowerCase()) ? '' : short
+}
+
+/** The name a save dialog starts from: the short title, keeping the extension. */
+export function mediaSaveName(path: string, fallbackTitle: string): string {
+  const extension = FILE_EXTENSION_RE.exec(decodedMediaName(path))?.[0] ?? ''
+
+  return `${mediaShortTitle(path) || fallbackTitle}${extension}`
+}
+
 export function mediaMarkdownHref(path: string): string {
   return `#media:${encodeURIComponent(path)}`
 }
@@ -212,7 +262,8 @@ export async function gatewayMediaDataUrl(path: string): Promise<string> {
 // used by preview endpoints.
 export async function downloadGatewayMediaFile(
   path: string,
-  origin?: { sessionId: string; profile?: string }
+  origin?: { sessionId: string; profile?: string },
+  suggestedName?: string
 ): Promise<{ canceled?: boolean; path?: string; saved: boolean }> {
   // URI conversion belongs to the gateway OS, not the renderer's URL parser.
   const file = path
@@ -227,13 +278,7 @@ export async function downloadGatewayMediaFile(
     path: file,
     profile: origin?.profile ?? conn?.profile,
     ...(origin ? { sessionId: origin.sessionId } : {}),
-    suggestedName: mediaName(file).replace(/(?:%[0-9a-f]{2})+/gi, encoded => {
-      try {
-        return decodeURIComponent(encoded)
-      } catch {
-        return encoded
-      }
-    })
+    suggestedName: suggestedName ?? decodedMediaName(file)
   })
 }
 
