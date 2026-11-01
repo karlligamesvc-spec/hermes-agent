@@ -9,15 +9,15 @@
  * What it does, per profile (the dialog wrote to whichever assistant was on screen):
  * - off: settled. Nothing to undo, and any later "on" is somebody's own choice.
  * - on, in product mode: PUT it off, then settled.
- * - on, in developer mode: left alone and asked again, so it goes off once if that
- *   person later lands in product mode with it still on.
+ * - on, outside product mode (developer mode or the single-thread switch off, which
+ *   count the same): left alone and asked again, so it goes off once if that person
+ *   later lands in product mode with it still on.
  *
  * Settled profiles are never read again, and once all are settled nothing runs on
- * this install any more. That is what keeps someone who turns it on by hand in
- * developer mode from being switched back, now or on any later launch.
+ * this install any more. That is what keeps someone who turns it on by hand outside
+ * product mode from being switched back, now or on any later launch.
  *
- * With the single-thread switch off nothing runs at all: no reads, no ledger. A
- * failed read or write settles nothing, so the next launch tries again. A remote
+ * A failed read or write settles nothing, so the next launch tries again. A remote
  * gateway's config is not this install's, so it is left alone too. The ledger lives
  * in this window's storage and config.yaml is the only other thing written; rolling
  * the app back leaves the setting off.
@@ -28,7 +28,7 @@ import { readUseRealProfile } from '@/app/settings/browser-real-profile-panel'
 import { getHermesConfigRecord, getProfiles, saveHermesConfigRecord } from '@/hermes'
 import { readJson, writeJson } from '@/lib/storage'
 import { $connection, $gatewayState } from '@/store/session'
-import { $singleThreadFlag, $singleThreadMode } from '@/store/single-thread'
+import { $singleThreadMode } from '@/store/single-thread'
 import { isAuxiliaryWindow, isPeerInstanceWindow, isWatchWindow } from '@/store/windows'
 
 export const REAL_PROFILE_RESET_KEY = 'apex.desktop.real-profile-reset.v1'
@@ -95,7 +95,7 @@ let running = false
 let runAgain = false
 
 function settleIfDue(): void {
-  if ($gatewayState.get() !== 'open' || !$singleThreadFlag.get() || $connection.get()?.mode === 'remote') {
+  if ($gatewayState.get() !== 'open' || $connection.get()?.mode === 'remote') {
     return
   }
 
@@ -130,14 +130,12 @@ export function watchRealProfileReset(): () => void {
   }
 
   const stopGateway = $gatewayState.listen(settleIfDue)
-  const stopFlag = $singleThreadFlag.listen(settleIfDue)
   const stopMode = $singleThreadMode.listen(settleIfDue)
 
   settleIfDue()
 
   return () => {
     stopGateway()
-    stopFlag()
     stopMode()
   }
 }

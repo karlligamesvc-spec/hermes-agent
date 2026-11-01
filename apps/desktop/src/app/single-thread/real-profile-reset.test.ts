@@ -178,23 +178,6 @@ describe('someone who said yes to the old dialog', () => {
     expect(writes(state)).toHaveLength(1)
     expect(ledger()).toEqual({ complete: true, settled: ['default'] })
   })
-
-  it('also waits when the switch comes on while in developer mode', async () => {
-    setSingleThreadFlagForTest(false)
-    setToolViewMode('technical')
-    const state = install({ default: true })
-
-    await launch()
-
-    expect(state.calls).toEqual([])
-
-    setSingleThreadFlagForTest(true)
-    await settle()
-
-    expect(state.disk.default).toBe(true)
-    expect(writes(state)).toEqual([])
-    expect(ledger()).toEqual({ complete: false, settled: [] })
-  })
 })
 
 describe('turning it on by hand is not undone', () => {
@@ -304,32 +287,66 @@ describe('every assistant', () => {
   })
 })
 
-describe('the switch off', () => {
-  it.each(['product', 'technical'] as const)('reads nothing and records nothing (%s view)', async toolView => {
+describe('the single-thread switch off counts the same as developer mode', () => {
+  it.each(['product', 'technical'] as const)('leaves an "on" alone and asks again (%s view)', async toolView => {
     setSingleThreadFlagForTest(false)
     setToolViewMode(toolView)
     const state = install({ default: true })
 
     await launch()
 
-    expect(state.calls).toEqual([])
+    expect(writes(state)).toEqual([])
     expect(state.disk.default).toBe(true)
-    expect(window.localStorage.getItem(REAL_PROFILE_RESET_KEY)).toBeNull()
+    expect(ledger()).toEqual({ complete: false, settled: [] })
   })
 
-  it('takes effect the moment product mode really starts', async () => {
+  it('turns it off once when product mode really starts', async () => {
     setSingleThreadFlagForTest(false)
     setToolViewMode('product')
     const state = install({ default: true })
 
     await launch()
-    expect(state.calls).toEqual([])
+    expect(state.disk.default).toBe(true)
 
     setSingleThreadFlagForTest(true)
     await settle()
 
     expect(state.disk.default).toBe(false)
     expect(writes(state)).toHaveLength(1)
+    expect(ledger()).toEqual({ complete: true, settled: ['default'] })
+  })
+
+  it('stays out of the way when the switch comes on in developer mode', async () => {
+    setSingleThreadFlagForTest(false)
+    setToolViewMode('technical')
+    const state = install({ default: true })
+
+    await launch()
+    setSingleThreadFlagForTest(true)
+    await settle()
+
+    expect(writes(state)).toEqual([])
+    expect(state.disk.default).toBe(true)
+    expect(ledger()).toEqual({ complete: false, settled: [] })
+  })
+
+  it('does not undo turning it on by hand while the switch is off', async () => {
+    setSingleThreadFlagForTest(false)
+    setToolViewMode('product')
+    const state = install({ default: false })
+
+    await launch()
+    expect(ledger()).toEqual({ complete: true, settled: ['default'] })
+
+    state.disk.default = true
+    state.calls.length = 0
+    setSingleThreadFlagForTest(true)
+    await settle()
+    quit()
+    await launch()
+
+    expect(state.disk.default).toBe(true)
+    expect(state.calls).toEqual([])
   })
 })
 
