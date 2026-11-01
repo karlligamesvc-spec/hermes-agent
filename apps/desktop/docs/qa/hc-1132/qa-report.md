@@ -37,11 +37,10 @@ Kael 定了三条：
 
 | 情况 | 做什么 |
 |---|---|
-| 单线开关关闭 | 完全不跑：不读配置，不写标记，不改设置 |
 | 产品模式，这个助手开着 | 关掉一次，记为已处理 |
 | 产品模式，这个助手关着 | 不写配置，记为已处理 |
-| 开发者模式，这个助手关着 | 不写配置，记为已处理。之后手动打开是用户自己的选择，不会被改回 |
-| 开发者模式，这个助手开着 | 不动，不记。之后到了产品模式还开着，就关一次 |
+| 产品模式之外（开发者模式或单线关闭，两者算法相同），这个助手关着 | 不写配置，记为已处理。之后手动打开是用户自己的选择，不会被改回 |
+| 产品模式之外，这个助手开着 | 不动，不记。之后到了产品模式还开着，就关一次 |
 | 读或写失败 | 不记，下次启动再试 |
 | 所有助手都处理完 | 记 `complete`，这台机器之后不再读任何东西。之后新建的助手也不看 |
 | 连的是远程网关 | 不动：那份配置不属于这台机器 |
@@ -49,7 +48,8 @@ Kael 定了三条：
 
 - 标记是本机 localStorage 的 `apex.desktop.real-profile-reset.v1`，一个 `{complete, settled}`。
 - 没有任何界面提示。关掉后，真在用这个功能的人下次用助手浏览时是未登录状态。
-- 已知的一个边角：开发者模式下故意打开、从没在新版本的产品模式下运行过的人，第一次进产品模式会被关一次。之后再手动打开就不会再动。
+- 单线关闭和开发者模式一样，都不改设置、框照旧，只多读一次配置和写一个 localStorage 标记。界面逐字节不变。
+- 已知的一个边角：在升级前就在产品模式之外打开、从没在新版本的产品模式下运行过的人，第一次进产品模式会被关一次。之后再手动打开就不会再动。
 
 ### 回滚
 
@@ -102,7 +102,7 @@ golden 怎么证明「除这几句外逐字节不变」：测试把这两句换�
 
 ## 反向验证
 
-脚本放在协调会话的共享笔记（`hc-1132-inject.py`、`hc-1132-inject-output.json`）。每行注入都先断言锚点恰好命中一次，改完跑三个测试文件，用 sha256 确认还原。42 行全部变红。第一轮 R21 是绿的：原测试的切换发生在扫描读模式之前，碰不到丢触发那条路径。补了一条切换发生在两个助手之间的测试后变红。
+脚本放在协调会话的共享笔记（`hc-1132-inject.py`、`hc-1132-inject-output.json`）。每行注入都先断言锚点恰好命中一次，改完跑三个测试文件，用 sha256 确认还原。41 行全部变红。第一轮 R21 是绿的：原测试的切换发生在扫描读模式之前，碰不到丢触发那条路径。补了一条切换发生在两个助手之间的测试后变红。
 
 | 撤掉或改坏什么 | 文件 | 变红 | 代表性的红测试 |
 |---|---|---|---|
@@ -122,16 +122,16 @@ golden 怎么证明「除这几句外逐字节不变」：测试把这两句换�
 | I3 the dialog layout moves | `real-profile-consent-dialog.tsx` | 15 | with the switch off the dialog in en |
 | I4 the Capabilities toggle copy moves | `zh.ts` | 3 | with the switch off the Capabilities toggle in zh |
 | I5 accepting writes more than the one key | `real-profile-consent-dialog.tsx` | 4 | with the switch off accepting writes the same one key |
-| R1 developer mode is switched off too | `real-profile-reset.ts` | 5 | someone who said yes to the old dialog waits in developer mode, then goes off once on reaching product mode |
-| R2 runs with the single-thread switch off | `real-profile-reset.ts` | 4 | someone who said yes to the old dialog also waits when the switch comes on while in developer mode |
-| R3 keeps scanning after it finished | `real-profile-reset.ts` | 5 | someone who said yes to the old dialog goes off once in product mode and never again |
+| R1 developer mode is switched off too | `real-profile-reset.ts` | 8 | someone who said yes to the old dialog waits in developer mode, then goes off once on reaching product mode |
+| R2 the single-thread switch off is treated as product mode | `real-profile-reset.ts` | 2 | the single-thread switch off counts the same as developer mode leaves an "on" alone and asks again (product view) |
+| R3 keeps scanning after it finished | `real-profile-reset.ts` | 6 | someone who said yes to the old dialog goes off once in product mode and never again |
 | R4 a settled profile is read again | `real-profile-reset.ts` | 2 | turning it on by hand is not undone on one assistant while another still waits |
-| R5 an off profile is not settled, so a later "on" is switched back | `real-profile-reset.ts` | 3 | turning it on by hand is not undone when it was off at the first look in developer mode |
+| R5 an off profile is not settled, so a later "on" is switched back | `real-profile-reset.ts` | 4 | turning it on by hand is not undone when it was off at the first look in developer mode |
 | R6 a failed read or write counts as done | `real-profile-reset.ts` | 2 | failures settle nothing a refused write is tried again next launch, once |
-| R7 the ledger says complete while someone still waits | `real-profile-reset.ts` | 6 | someone who said yes to the old dialog waits in developer mode, then goes off once on reaching product mode |
-| R8 the default profile is addressed by name | `real-profile-reset.ts` | 2 | someone who said yes to the old dialog goes off once in product mode and never again |
-| R9 every profile goes to the primary | `real-profile-reset.ts` | 4 | turning it on by hand is not undone on one assistant while another still waits |
-| R10 the write turns it on | `real-profile-reset.ts` | 15 | someone who said yes to the old dialog goes off once in product mode and never again |
+| R7 the ledger says complete while someone still waits | `real-profile-reset.ts` | 9 | someone who said yes to the old dialog waits in developer mode, then goes off once on reaching product mode |
+| R8 the default profile is read through the primary engine | `real-profile-reset.ts` | 1 | every assistant reads each profile through its own scope and writes only the one that is on |
+| R9 the default profile is written through the primary engine | `real-profile-reset.ts` | 2 | someone who said yes to the old dialog goes off once in product mode and never again |
+| R10 the write turns it on | `real-profile-reset.ts` | 16 | someone who said yes to the old dialog goes off once in product mode and never again |
 | R11 reads with defaults merged | `real-profile-reset.ts` | 2 | every assistant reads each profile through its own scope and writes only the one that is on |
 | R12 no refresh of the settings pages | `real-profile-reset.ts` | 1 | someone who said yes to the old dialog refreshes what the settings pages show |
 | R13 an empty list is recorded as finished | `real-profile-reset.ts` | 1 | failures settle nothing an empty list records nothing |
@@ -141,38 +141,45 @@ golden 怎么证明「除这几句外逐字节不变」：测试把这两句换�
 | R17 runs in a pop-out or HUD | `real-profile-reset.ts` | 1 | when it runs leaves it to the primary window: auxiliary |
 | R18 runs in a peer window | `real-profile-reset.ts` | 1 | when it runs leaves it to the primary window: peer |
 | R19 runs in a watch window | `real-profile-reset.ts` | 1 | when it runs leaves it to the primary window: watch |
-| R20 scans run over each other | `real-profile-reset.ts` | 4 | the switch off takes effect the moment product mode really starts |
+| R20 scans run over each other | `real-profile-reset.ts` | 3 | when it runs does not run over itself: triggers during a scan make one more, not a second write |
 | R21 a trigger during a scan is dropped | `real-profile-reset.ts` | 1 | when it runs a switch to product mode after a profile was already passed over goes back for it |
-| R22 a mode change is not listened to | `real-profile-reset.ts` | 3 | someone who said yes to the old dialog waits in developer mode, then goes off once on reaching product mode |
-| R23 the switch is not listened to | `real-profile-reset.ts` | 1 | someone who said yes to the old dialog also waits when the switch comes on while in developer mode |
+| R22 a mode change is not listened to | `real-profile-reset.ts` | 4 | someone who said yes to the old dialog waits in developer mode, then goes off once on reaching product mode |
 | R24 the gateway is not listened to | `real-profile-reset.ts` | 2 | failures settle nothing a failed list records nothing and is tried again when the gateway comes back |
-| R25 the first look at launch is skipped | `real-profile-reset.ts` | 16 | someone who said yes to the old dialog goes off once in product mode and never again |
+| R25 the first look at launch is skipped | `real-profile-reset.ts` | 21 | someone who said yes to the old dialog goes off once in product mode and never again |
 | R26 the shell never starts it | `controller.tsx` | 1 | hc-1132 the app root starts the one-time reset at load |
 
 ## 实走记录
 
-dev Electron，全新沙箱，`HOME` 和 `HERMES_HOME` 都指向沙箱，真实 `hermes serve`，假 LLM，「使用自己的密钥」。
+dev Electron，全新沙箱，`HOME` 和 `HERMES_HOME` 都指向沙箱，真实 `hermes serve`，假 LLM，「使用自己的密钥」。下面都跑在最终代码上（只有 C 跑在干净 main 上）。
 
-**A. 单线开、多助手开，默认助手和 `apex-bot-2` 都预置 `use_real_profile: true` 和一份假副本**
+**A. 单线开、多助手开，主引擎固定为 `apex-bot-2`，两个助手都预置 `use_real_profile: true` 和一份假副本**
 
 | 步骤 | 结果 |
 |---|---|
-| 启动 | 引擎就绪后两份 `config.yaml` 都变成 `false`（`?profile=` 走通），标记 `{"complete":true,"settled":["default","apex-bot-2"]}`，假副本还在 |
+| 启动（`ps` 显示主引擎是 `--profile apex-bot-2`） | 两份 `config.yaml` 都变成 `false`，标记 `{"complete":true,"settled":["default","apex-bot-2"]}`，假副本还在 |
 | 点聊天里的链接 | 面板打开，webview 的 partition 是 `persist:hermes-preview`，`[role=dialog]` 0 个 |
-| 弹出到 `?win=browser` | 另一个 renderer，单线提示为 true，`[role=dialog]` 0 个 |
+| 弹出到 `?win=browser` | 另一个 renderer，`[role=dialog]` 0 个，webview 在 |
 | 默认助手上跑一次真实的 `browser_exec` | 默认助手的 `browser-profile/` 被删，`apex-bot-2` 的还在 |
-| `apex-bot-2` 上跑一次 | 它的也被删了 |
-| 切开发者模式 | 主窗口和弹出窗口都出现新文案的框；英文界面也是新文案 |
-| 开发者模式点「使用我的配置文件」 | 写入屏幕上那个助手的配置，默认助手不变 |
-| 回产品模式并重启 | 手动打开的值没被改回，标记没变，恢复的面板没弹框 |
+| 切到 `apex-bot-2` 再跑一次 | 它的也被删了 |
+| 切开发者模式 | 主窗口和弹出窗口都出现新文案的框；切英文也是新文案 |
+| 开发者模式点「使用我的配置文件」 | 写入屏幕上那个助手（`apex-bot-2`）的配置，默认助手不变 |
+| 回产品模式并重启，等 12 秒 | 手动打开的值没被改回，标记没变，恢复的面板没弹框 |
 
-**B. 单线关（`APEXNODES_SINGLE_THREAD=0`），同样预置开着**
+**B. 单线关（`APEXNODES_SINGLE_THREAD=0`），两个助手预置开着，再打开单线重启**
 
-输入框出现后再等 12 秒：两份配置都还是 `true`，没有标记。
+| 步骤 | 结果 |
+|---|---|
+| 单线关启动 | 两份配置都还是 `true`，标记 `{"complete":false,"settled":[]}` |
+| 同一沙箱，单线和多助手都打开重启（主引擎 `--profile apex-bot-2`） | 两份都变成 `false`，标记 `{"complete":true,"settled":["default","apex-bot-2"]}` |
 
 **C. 对照：干净 main `12fa0a86e9`，产品模式，同样的点击**
 
 弹出旧文案的框（「让 Hermes …」「所有数据都不会离开这台电脑」）。说明 A 里的「不弹」不是操作路径碰不到它。
+
+### 实走抓到、单元测试没抓到的
+
+- **默认助手关不掉。** 第一版用不带名字的请求改默认助手。多助手打开时主引擎可能跑别的助手（`active-profile.json` 决定），请求就落到那个助手身上，默认助手没变，账本却写成了完成。B 的第二步抓到：标记已完成，默认助手还是 `true`。单元测试的假服务把不带名字的请求当成默认助手，所以测不出来。修法是永远按名字请求，假服务也改成走主引擎。这条现在有反向验证 R8、R9。线上 `multi_bot` 已开，这个 bug 如果漏过去会真实发生。
+- **默认工具是 `browser_exec`，不是 `browser_navigate`。** 调查阶段我读的是内置工具那条路径，实走时看到助手可用的工具里根本没有 `browser_navigate`。于是单独验证了 `browser_exec` 也能走到清理，结论成立，不需要改引擎。
 
 ## 证据边界
 
@@ -182,7 +189,8 @@ dev Electron，全新沙箱，`HOME` 和 `HERMES_HOME` 都指向沙箱，真实 
 - 沙箱里的副本是假文件。没有在设置开着时调用过浏览器工具，也没有读过这台 Mac 真实的浏览器配置。
 - 第一次安装、平台开关还没读到时（hc-1127 那段不超过 2.5 秒的窗口），如果恰好打开了网页面板，框可能短暂出现，开关读到后自动消失。没有复现。
 - 多助手实走只有两个助手；更多助手和各种失败路径靠单元测试。
-- 「开发者模式下开着，之后才进入产品模式」只有单元测试，没有实走。
+- 「开发者模式下开着，之后才进入产品模式」只有单元测试；单线关走的是同一段判断，那条实走过。
+- 回滚没有实际跑过旧版本，「已关掉的不会自动打开」来自代码：旧版本没有任何把它打开的逻辑，除非用户再点同意。
 
 ## 和 #544 的关系
 
@@ -192,10 +200,10 @@ dev Electron，全新沙箱，`HOME` 和 `HERMES_HOME` 都指向沙箱，真实 
 function RealProfileConsentOffer({ tabId, url }: RealProfileConsentDialogProps) {
 ```
 
-解决后跑 `identity`、`real-profile-consent`、`chatcut` 三组：47 个文件、685 条，0 失败（6 条跳过），其中 identity 43 个文件。
+解决后在最终 head 上跑 `identity`、`real-profile-consent`、`chatcut` 三组：47 个文件、685 条，679 通过，6 跳过，0 失败，其中 identity 43 个文件。
 
 ## 测试结果
 
-- 三个守卫文件 86 条通过；`CI=true TZ=UTC` 和 Node 26（CI 同款，`localStorage` 是内存版）都通过，golden 没有变化。
-- 桌面端全量 vitest：16886 条，16852 通过，31 跳过，3 失败。失败的 3 条都在 `runtime-gateway-retirement`，干净 main 上同样失败，是本机环境问题。
+- 三个守卫文件 88 条通过；`CI=true TZ=UTC` 和 Node 26（CI 同款，`localStorage` 是内存版）都通过，golden 没有变化。
+- 桌面端全量 vitest：16888 条，16854 通过，31 跳过，3 失败。失败的 3 条都在 `runtime-gateway-retirement`，干净 main 上同样失败，是本机环境问题。
 - `npm run check:lint` 通过（0 error）；`python scripts/check --only health` 通过。
