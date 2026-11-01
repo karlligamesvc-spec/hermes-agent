@@ -148,6 +148,21 @@ let _taskPanelResumeIndex = 0
 /** User messages received by the mock, for E2E assertions on real submits. */
 const _receivedUserTexts: string[] = []
 
+/** System prompts received by the mock, for E2E assertions on what the engine really sends. */
+export const receivedSystemPrompts: string[] = []
+
+function recordSystemPrompt(messages: { content?: unknown; role?: unknown }[] | undefined): void {
+  const content = messages?.find(message => message?.role === 'system')?.content
+
+  if (typeof content === 'string') {
+    receivedSystemPrompts.push(content)
+  }
+}
+
+function lastUserMessageOf(messages: { role?: unknown }[] | undefined) {
+  return [...(messages ?? [])].reverse().find(message => message?.role === 'user')
+}
+
 /** Reset the script indices (called between tests via restartMockServer). */
 function resetScriptIndex(): void {
   _scriptIndex = 0
@@ -679,9 +694,8 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
             // malformed JSON — treat as non-streaming with defaults
           }
 
-          const lastUserMessage = [...(parsed.messages ?? [])]
-            .reverse()
-            .find((message: { role?: unknown }) => message?.role === 'user')
+          recordSystemPrompt(parsed.messages)
+          const lastUserMessage = lastUserMessageOf(parsed.messages)
 
           const recordedPrompt = promptTextFromLastUserMessage(lastUserMessage)
 
