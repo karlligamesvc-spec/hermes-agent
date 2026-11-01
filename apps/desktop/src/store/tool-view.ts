@@ -6,6 +6,10 @@ export type ToolViewMode = 'product' | 'technical'
 
 type ToolDisclosureStates = Record<string, boolean>
 
+interface DeveloperModeBridge {
+  syncDeveloperMode?: (on: boolean) => Promise<unknown>
+}
+
 const TOOL_VIEW_TECHNICAL_STORAGE_KEY = 'hermes.desktop.toolView.technical'
 const TOOL_DISCLOSURE_STORAGE_KEY = 'hermes.desktop.toolDisclosure.v1'
 const MAX_DISCLOSURE_STATES = 240
@@ -18,6 +22,7 @@ const disclosureOpenCache = new Map<string, ReadableAtom<boolean | undefined>>()
 const anyDisclosureOpenCache = new Map<string, ReadableAtom<boolean>>()
 
 $toolViewMode.subscribe(mode => persistBoolean(TOOL_VIEW_TECHNICAL_STORAGE_KEY, mode === 'technical'))
+$toolViewMode.subscribe(mode => tellEngine(mode === 'technical'))
 $toolDisclosureStates.subscribe(persistToolDisclosureStates)
 
 export function setToolViewMode(mode: ToolViewMode) {
@@ -51,6 +56,19 @@ export function $anyToolDisclosureOpen(ids: readonly string[]): ReadableAtom<boo
   }
 
   return cached
+}
+
+/** hc-1131: main keeps a marker file in step, so a developer-mode session's prompt leaves out product mode's rules. */
+function tellEngine(developerMode: boolean) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const bridge = window.hermesDesktop as unknown as DeveloperModeBridge | undefined
+
+  void Promise.resolve(bridge?.syncDeveloperMode?.(developerMode)).catch(() => {
+    // The marker catches up at the next launch or flip; the worst case is one session's prompt.
+  })
 }
 
 function loadToolDisclosureStates(): ToolDisclosureStates {

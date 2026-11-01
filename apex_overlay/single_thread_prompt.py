@@ -14,8 +14,8 @@ install's own APEXNODES_SINGLE_THREAD) into its own output variable
 ``APEX_SINGLE_THREAD_ACTIVE=1`` at launch, before the engine spawns
 (electron/apex-single-thread.ts). No variable, no section: cloud containers
 never set it, and a Desktop with the switch off builds exactly the prompt it
-built before. The engine does not know the renderer's developer mode, so the
-rules stay on there too; developer mode only adds technical detail on screen.
+built before. These rules stay on in the renderer's developer mode too; it only
+adds technical detail on screen.
 
 hc-1082: with several assistants on (``APEX_MULTI_BOT_ACTIVE=1``), the name
 line is replaced by apex_overlay/assistant_name.py's lines: this assistant's

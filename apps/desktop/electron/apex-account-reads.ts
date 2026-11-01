@@ -7,13 +7,15 @@
  * ledger (read and edited) and the hc-1061 plan usage line. Each handler's
  * request and ok:false shapes live in its own module;
  * this file only registers them, so main.ts holds one call instead of one
- * handler per read.
+ * handler per read. hc-1131's developer-mode marker registers here too: it
+ * needs no account, but main.ts may not grow.
  */
 
 import { fetchAnnouncements, markAnnouncementRead } from './apex-announcements'
 import { type CreatorProfileDeps, creatorProfileRequest } from './apex-creator-profile'
 import { type CreatorTipsCache, fetchCreatorTips } from './apex-creator-tips'
 import { dailyIdeasRequest } from './apex-daily-ideas'
+import { syncDeveloperModeMarker } from './apex-developer-mode'
 import { memoryLedgerRequest } from './apex-memory-ledger'
 import { fetchPlanUsage } from './apex-plan-usage'
 import { fetchMyTeam } from './apex-team'
@@ -45,5 +47,8 @@ export function registerApexAccountReads(
   )
   ipcMain.handle('hermes:managed:memoryLedger', async (_event, request) =>
     memoryLedgerRequest(reads, hermesHome, request)
+  )
+  ipcMain.handle('hermes:apex:developerMode', async (_event, on) =>
+    syncDeveloperModeMarker(hermesHome, on === true, reads.log)
   )
 }
