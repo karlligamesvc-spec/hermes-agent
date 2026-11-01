@@ -681,8 +681,9 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
       if (req.method === 'POST' && (options.apiPrefixes ?? ['/v1']).some(prefix => req.url?.startsWith(`${prefix}/chat/completions`))) {
         let body = ''
 
-        req.on('data', (chunk: Buffer) => {
-          body += chunk.toString()
+        req.setEncoding('utf8') // A chunk can end inside a multi-byte character; decoding each on its own corrupts it.
+        req.on('data', (chunk: string) => {
+          body += chunk
         })
 
         req.on('end', () => {
