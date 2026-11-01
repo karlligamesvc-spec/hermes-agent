@@ -87,12 +87,12 @@ describe('hc-1123 product mode: 连接助手 stops pointing at project pages', (
   })
 
   it('has no 查看项目, and every row opens its run with this page under it', () => {
-    seed([row('p-running', 'Campaign run', 'run-1', 'running', 'none'), row('p-review', 'Review project', 'run-2', 'waiting_review', 'review'), row('p-failed', 'Failed project', 'run-3', 'failed', 'failed')])
+    seed([row('p-running', 'Campaign run', 'run-1', 'running', 'none'), row('p-failed', 'Failed project', 'run-3', 'failed', 'failed')])
     render(<AssistantWorkspaceView />)
 
     expect(screen.queryByRole('button', { name: '查看项目' })).toBeNull()
 
-    for (const [name, runId] of [['Campaign run', 'run-1'], ['Review project', 'run-2'], ['Failed project', 'run-3']] as const) {
+    for (const [name, runId] of [['Campaign run', 'run-1'], ['Failed project', 'run-3']] as const) {
       fireEvent.click(screen.getByText(name).closest('button')!)
       expect(navigate).toHaveBeenLastCalledWith(workflowRunRoute(runId), backHere)
     }
@@ -116,10 +116,6 @@ describe('hc-1123 product mode: 连接助手 stops pointing at project pages', (
 
     fireEvent.click(screen.getByRole('button', { name: '查看会话历史' }))
     expect(navigate).toHaveBeenLastCalledWith(HISTORY_ROUTE)
-    fireEvent.click(screen.getByRole('button', { name: '查看交付物' }))
-    expect(navigate).toHaveBeenLastCalledWith(DELIVERABLES_ROUTE)
-    fireEvent.click(screen.getByText('Latest output').closest('button')!)
-    expect(navigate).toHaveBeenLastCalledWith(deliverableDetailRoute('newest'))
   })
 
   it.each([
@@ -135,10 +131,8 @@ describe('hc-1123 product mode: 连接助手 stops pointing at project pages', (
     const { container } = render(<AssistantWorkspaceView />)
 
     expect(container.textContent).not.toContain('项目')
-    expect(screen.getByText('查看消息渠道和最近的交付成果。')).toBeTruthy()
-    expect(screen.getByText('还没有交付物。')).toBeTruthy()
+    expect(screen.getByText('查看和连接消息渠道。')).toBeTruthy()
     expect(screen.getByRole('heading', { name: '消息渠道' })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: '最近交付' })).toBeTruthy()
   })
 
   it('a run listed beside a project with no summary sends nobody to the project page', () => {
@@ -150,7 +144,7 @@ describe('hc-1123 product mode: 连接助手 stops pointing at project pages', (
   })
 
   it('a project needing attention with no run to open is not a row at all', () => {
-    seed([row('p-odd', 'No run yet', null, null, 'review')])
+    seed([row('p-odd', 'No run yet', null, null, 'failed')])
     render(<AssistantWorkspaceView />)
 
     expect(screen.queryByText('No run yet')).toBeNull()
@@ -165,5 +159,103 @@ describe('hc-1123 product mode: 连接助手 stops pointing at project pages', (
     expect(screen.getAllByRole('button', { name: '查看项目' })).toHaveLength(2)
     fireEvent.click(screen.getByText('Review project').closest('button')!)
     expect(navigate).toHaveBeenLastCalledWith(projectDetailRoute('p-review'))
+  })
+})
+
+describe('hc-1129 product mode: 连接助手 stops pointing at 交付物', () => {
+  const seed = (projects: unknown, deliverables: unknown) => {
+    projectsHook.mockReturnValue(projects)
+    deliverablesHook.mockReturnValue({ state: deliverables })
+  }
+
+  const READY = { mode: 'ready', items: [{ id: 'newest', title: 'Latest output', updatedAt: '2026-09-28T00:00:00Z' }] }
+
+  const reviewRow = {
+    id: 'p-review',
+    name: 'Review project',
+    summary: { attention: 'review', currentRunId: 'run-2', currentRunStatus: 'waiting_review' }
+  }
+
+  beforeEach(() => {
+    deliverablesHook.mockClear()
+    setSingleThreadFlagForTest(true)
+    setToolViewMode('product')
+  })
+
+  afterEach(() => {
+    setSingleThreadFlagForTest(false)
+    setToolViewMode('product')
+  })
+
+  it.each([
+    ['ready with a row', READY],
+    ['ready and empty', { mode: 'ready', items: [] }],
+    ['loading', { mode: 'loading' }],
+    ['failed', { mode: 'failed' }],
+    ['unavailable, as production answers today', { mode: 'unavailable' }],
+    ['refreshing and failed', { ...READY, refreshFailed: true, retry: () => undefined }]
+  ])('shows no 最近交付, 查看交付物 or read error while the read is %s', (_label, deliverables) => {
+    seed({ mode: 'ready', items: [] }, deliverables)
+
+    const { container } = render(<AssistantWorkspaceView />)
+
+    expect(screen.queryByRole('heading', { name: '最近交付' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '查看交付物' })).toBeNull()
+    expect(screen.queryByText('Latest output')).toBeNull()
+    expect(container.querySelector('[data-workflow-refresh-notice]')).toBeNull()
+    expect(screen.queryByText('暂时无法读取账号数据，请从对应页面重试。')).toBeNull()
+    expect(container.textContent).not.toContain('交付')
+    expect(screen.getByTestId('real-connections')).toBeTruthy()
+  })
+
+  it('asks the read to stay off', () => {
+    seed({ mode: 'ready', items: [] }, READY)
+    render(<AssistantWorkspaceView />)
+
+    expect(deliverablesHook).toHaveBeenLastCalledWith({ enabled: false })
+  })
+
+  it('does not list a run waiting for review: reviewing happens on the page product mode lacks', () => {
+    seed({ mode: 'ready', items: [reviewRow] }, READY)
+    render(<AssistantWorkspaceView />)
+
+    expect(screen.queryByText('Review project')).toBeNull()
+    expect(screen.queryByRole('heading', { name: '需要处理' })).toBeNull()
+  })
+
+  it('a failed run is still a row: the drawer can retry it', () => {
+    seed(
+      {
+        mode: 'ready',
+        items: [
+          reviewRow,
+          { id: 'p-failed', name: 'Failed project', summary: { attention: 'failed', currentRunId: 'run-3', currentRunStatus: 'failed' } }
+        ]
+      },
+      READY
+    )
+    render(<AssistantWorkspaceView />)
+
+    expect(screen.getByRole('heading', { name: '需要处理' })).toBeTruthy()
+    expect(screen.getByText('Failed project')).toBeTruthy()
+    expect(screen.queryByText('Review project')).toBeNull()
+  })
+
+  it.each([
+    ['developer mode with the switch on', true, 'technical'],
+    ['the switch off', false, 'product']
+  ] as const)('%s keeps the section, its buttons, the review row and the read', (_label, flag, toolView) => {
+    setSingleThreadFlagForTest(flag)
+    setToolViewMode(toolView)
+    seed({ mode: 'ready', items: [reviewRow] }, READY)
+    render(<AssistantWorkspaceView />)
+
+    expect(deliverablesHook).toHaveBeenLastCalledWith({ enabled: true })
+    expect(screen.getByRole('heading', { name: '最近交付' })).toBeTruthy()
+    expect(screen.getByText('Review project')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '查看交付物' }))
+    expect(navigate).toHaveBeenLastCalledWith(DELIVERABLES_ROUTE)
+    fireEvent.click(screen.getByText('Latest output').closest('button')!)
+    expect(navigate).toHaveBeenLastCalledWith(deliverableDetailRoute('newest'))
   })
 })

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 
 import { PAGE_INSET_X } from '@/app/layout-constants'
@@ -10,6 +10,7 @@ import { Loader } from '@/components/ui/loader'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useI18n } from '@/i18n'
 import { formatBusinessDayTime } from '@/lib/time'
+import { useSingleThreadMode } from '@/store/single-thread'
 
 import { deliverableDetailRoute } from '../../routes'
 import type { WorkflowRunOverview } from '../api/types'
@@ -18,6 +19,11 @@ import { useWorkflowRun } from '../hooks/use-workflow-run'
 import { businessStatusPresentation, businessStatusToneClass } from '../view-model/display-status'
 
 type RunDeliverable = WorkflowRunOverview['deliverables'][number]
+
+/** hc-1129: product mode has no 交付物 page to open or review one on, so the drawer lists none and asks for no decision. */
+function OutsideProductMode({ children }: { children: ReactNode }) {
+  return useSingleThreadMode() ? null : children
+}
 
 export function WorkflowRunView() {
   const { locale, t } = useI18n()
@@ -211,14 +217,16 @@ export function WorkflowRunView() {
           </TabsList>
 
           <TabsContent value="progress">
-            {pendingReviewCount > 0 && (
-              <RunSection title={copy.pendingReviewTitle}>
-                <p className="pt-4 text-sm text-(--ui-text-secondary)">
-                  {copy.pendingReviewDescription(pendingReviewCount)}
-                </p>
-                {pendingDeliverables.map(deliverable => renderDeliverable(deliverable, true))}
-              </RunSection>
-            )}
+            <OutsideProductMode>
+              {pendingReviewCount > 0 && (
+                <RunSection title={copy.pendingReviewTitle}>
+                  <p className="pt-4 text-sm text-(--ui-text-secondary)">
+                    {copy.pendingReviewDescription(pendingReviewCount)}
+                  </p>
+                  {pendingDeliverables.map(deliverable => renderDeliverable(deliverable, true))}
+                </RunSection>
+              )}
+            </OutsideProductMode>
 
             <RunSection title={copy.stageProgress}>
               {steps.length > 0 ? (
@@ -288,24 +296,26 @@ export function WorkflowRunView() {
               )}
             </RunSection>
 
-            {pendingReviewCount === 0 && (
-              <RunSection title={copy.pendingReviewTitle}>
-                <div className="py-4">
-                  <p className="text-sm font-medium">{copy.noPendingTitle}</p>
-                  <p className="mt-1 text-xs leading-5 text-(--ui-text-secondary)">{copy.noPendingDescription}</p>
-                </div>
-              </RunSection>
-            )}
+            <OutsideProductMode>
+              {pendingReviewCount === 0 && (
+                <RunSection title={copy.pendingReviewTitle}>
+                  <div className="py-4">
+                    <p className="text-sm font-medium">{copy.noPendingTitle}</p>
+                    <p className="mt-1 text-xs leading-5 text-(--ui-text-secondary)">{copy.noPendingDescription}</p>
+                  </div>
+                </RunSection>
+              )}
 
-            {(otherDeliverables.length > 0 || deliverables.length === 0) && (
-              <RunSection title={copy.deliverables}>
-                {otherDeliverables.length > 0 ? (
-                  otherDeliverables.map(deliverable => renderDeliverable(deliverable, false))
-                ) : (
-                  <EmptyState description={copy.noDeliverablesDescription} title={copy.noDeliverablesTitle} />
-                )}
-              </RunSection>
-            )}
+              {(otherDeliverables.length > 0 || deliverables.length === 0) && (
+                <RunSection title={copy.deliverables}>
+                  {otherDeliverables.length > 0 ? (
+                    otherDeliverables.map(deliverable => renderDeliverable(deliverable, false))
+                  ) : (
+                    <EmptyState description={copy.noDeliverablesDescription} title={copy.noDeliverablesTitle} />
+                  )}
+                </RunSection>
+              )}
+            </OutsideProductMode>
           </TabsContent>
 
           <TabsContent value="details">

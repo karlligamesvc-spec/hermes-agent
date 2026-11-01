@@ -5,8 +5,8 @@
  *
  * AccountPanel stays as it is for every other mode (its account-menu golden is
  * pinned), so this row carries its own copy of the menu: the same destinations
- * in the same order. hc-1070, hc-1123: 「沉浸式分析」 and 「项目」 are not among
- * them; product mode has neither page. sidebar.test.tsx compares the two menus item
+ * in the same order. hc-1070, hc-1123, hc-1129: 「沉浸式分析」, 「项目」 and 「交付物」 are
+ * not among them; product mode has none of those pages. sidebar.test.tsx compares the two menus item
  * by item so they cannot drift apart. A session that is not signed in, or has expired, gets
  * AccountPanel itself: its sign-in recovery card is the one to show.
  */
@@ -37,7 +37,7 @@ import { $threadPresence } from '@/store/single-thread-presence'
 
 import { AccountPanel } from '../chat/sidebar/account-panel'
 import { CloudLoginNotice } from '../chat/sidebar/cloud-login-notice'
-import { ASSISTANT_ROUTE, DELIVERABLES_ROUTE, HISTORY_ROUTE, PROFILE_STATS_ROUTE, SETTINGS_ROUTE } from '../routes'
+import { ASSISTANT_ROUTE, HISTORY_ROUTE, PROFILE_STATS_ROUTE, SETTINGS_ROUTE } from '../routes'
 
 import { useSingleThreadNavLabels } from './nav-labels'
 
@@ -238,7 +238,6 @@ function SingleThreadAccountMenu({
       {item('calendar', nav['scheduled-runs'] ?? '', () => onNavigateBusiness('scheduled-runs'))}
       {item('organization', nav.assistant ?? '', () => navigate(ASSISTANT_ROUTE))}
       {item('history', nav.history ?? '', () => navigate(HISTORY_ROUTE))}
-      {item('files', nav.deliverables ?? '', () => navigate(DELIVERABLES_ROUTE))}
       <DropdownMenuSeparator />
       {item('sign-in', a.relogin, () => requestManagedReSignIn(''))}
       <DropdownMenuItem
