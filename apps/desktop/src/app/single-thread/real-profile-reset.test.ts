@@ -27,8 +27,11 @@ interface ApiRequest {
   profile?: string
 }
 
-/** A fake install: profile → the setting on disk. Reads and writes go through what the real API helpers send. */
-function install(disk: Record<string, boolean>) {
+/**
+ * A fake install: profile → the setting on disk. Reads and writes go through what the real API helpers send.
+ * A request with no profile goes where it really goes: to the primary engine, whichever profile that is running.
+ */
+function install(disk: Record<string, boolean>, primary = 'default') {
   const state = {
     calls: [] as ApiRequest[],
     disk,
@@ -57,7 +60,7 @@ function install(disk: Record<string, boolean>) {
           return { profiles: Object.keys(state.disk).map(name => ({ is_default: name === 'default', name })) }
         }
 
-        const profile = request.profile ?? 'default'
+        const profile = request.profile ?? primary
 
         if (request.method === 'PUT') {
           if (state.failWrite.has(profile)) {
@@ -141,7 +144,7 @@ describe('someone who said yes to the old dialog', () => {
     await launch()
 
     expect(state.disk.default).toBe(false)
-    expect(writes(state)).toEqual([{ body: OFF, method: 'PUT', path: '/api/config' }])
+    expect(writes(state)).toEqual([{ body: OFF, method: 'PUT', path: '/api/config', profile: 'default' }])
     expect(ledger()).toEqual({ complete: true, settled: ['default'] })
 
     quit()
@@ -263,12 +266,22 @@ describe('every assistant', () => {
 
     expect(state.calls).toEqual([
       expect.objectContaining({ path: '/api/profiles' }),
-      { path: '/api/config?include_defaults=false' },
+      { path: '/api/config?include_defaults=false', profile: 'default' },
       { path: '/api/config?include_defaults=false', profile: 'apex-bot-2' },
       { body: OFF, method: 'PUT', path: '/api/config', profile: 'apex-bot-2' },
       { path: '/api/config?include_defaults=false', profile: 'apex-bot-3' }
     ])
     expect(state.disk).toEqual({ default: false, 'apex-bot-2': false, 'apex-bot-3': false })
+  })
+
+  it('reaches the default profile when the primary engine is running another assistant', async () => {
+    product()
+    const state = install({ default: true, 'apex-bot-2': true }, 'apex-bot-2')
+
+    await launch()
+
+    expect(state.disk).toEqual({ default: false, 'apex-bot-2': false })
+    expect(writes(state).map(call => call.profile)).toEqual(['default', 'apex-bot-2'])
   })
 
   it('stops looking once all are settled, so an assistant made later is not touched', async () => {

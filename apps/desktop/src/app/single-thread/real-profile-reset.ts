@@ -63,18 +63,17 @@ async function settleProfiles(): Promise<void> {
       continue
     }
 
-    // Null is the primary backend's own profile; the primary serves the others through ?profile=.
-    const scope = profile.is_default ? null : profile.name
-
+    // Always by name, the default profile too: with several assistants the primary engine can be running any
+    // of them (active-profile.json), so an unscoped request reaches that assistant, not the default profile.
     try {
-      if (readUseRealProfile(await getHermesConfigRecord(scope, { includeDefaults: false }))) {
+      if (readUseRealProfile(await getHermesConfigRecord(profile.name, { includeDefaults: false }))) {
         if (!$singleThreadMode.get()) {
           waiting = true
 
           continue
         }
 
-        await saveHermesConfigRecord({ browser: { use_real_profile: false } }, scope)
+        await saveHermesConfigRecord({ browser: { use_real_profile: false } }, profile.name)
         changed = true
       }
 
