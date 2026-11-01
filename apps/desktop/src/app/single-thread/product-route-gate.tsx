@@ -1,6 +1,7 @@
 /**
  * The pages single-thread product mode does not have: 沉浸式分析 (hc-1070), 项目
- * and 工作流 (hc-1123). Their menu items and page buttons are folded, and this gate
+ * and 工作流 (hc-1123), 交付物 (hc-1129, until it has real content to show). Their
+ * menu items and page buttons are folded, and this gate
  * closes the routes themselves: every other way in (a route remembered from
  * developer mode on a cold start, history back, a hermes://open deep link, a
  * plugin notification or host.navigate) ends on the route, so product mode turns

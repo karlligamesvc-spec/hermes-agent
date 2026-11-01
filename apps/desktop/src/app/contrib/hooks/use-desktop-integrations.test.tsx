@@ -246,7 +246,9 @@ describe('useDesktopIntegrations', () => {
 
     it.each([
       ['a remembered chat', 'hermes.desktop.lastSessionId.profile.default', 'remembered-session'],
-      ['a remembered page', 'hermes.desktop.lastRoute.profile.default', '/projects']
+      ['a remembered page', 'hermes.desktop.lastRoute.profile.default', '/projects'],
+      ['a remembered 交付物 (hc-1129)', 'hermes.desktop.lastRoute.profile.default', '/deliverables'],
+      ['a remembered deliverable (hc-1129)', 'hermes.desktop.lastRoute.profile.default', '/deliverables/item-1']
     ])('opens the one conversation, never %s, with the setting on or still loading', (_label, key, value) => {
       window.localStorage.setItem(key, value)
       setSingleThreadFlagForTest(true)
@@ -607,6 +609,28 @@ describe('useDesktopIntegrations', () => {
         deepLink?.({ kind: 'open', name: 'projects', params: {} })
 
         expect(navigate).toHaveBeenCalledWith('/projects')
+      } finally {
+        setSingleThreadFlagForTest(false)
+      }
+    })
+
+    it('hc-1129: hermes://open/deliverables still navigates in product mode; the route gate is what closes it', () => {
+      let deepLink: ((payload: { kind: string; name: string; params: Record<string, string> }) => void) | undefined
+
+      Object.assign(window.hermesDesktop, {
+        onDeepLink: (cb: (payload: { kind: string; name: string; params: Record<string, string> }) => void) => {
+          deepLink = cb
+
+          return () => {}
+        }
+      })
+      setSingleThreadFlagForTest(true)
+
+      try {
+        render({ profileReady: true })
+        deepLink?.({ kind: 'open', name: 'deliverables/item-1', params: {} })
+
+        expect(navigate).toHaveBeenCalledWith('/deliverables/item-1')
       } finally {
         setSingleThreadFlagForTest(false)
       }

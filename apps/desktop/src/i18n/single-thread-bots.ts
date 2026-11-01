@@ -8,8 +8,8 @@
  *
  * The delete text says exactly what goes: the profile directory holds the assistant's conversations,
  * the images and videos its tools cached on this computer (`<profile>/cache/media`) and its own copy
- * of the skills. 「关于你」 (the cloud memory ledger), 交付物 (the cloud workflow deliverables) and
- * usage are the account's and stay.
+ * of the skills. 「关于你」 (the cloud memory ledger) and usage are the account's and stay. So do the
+ * cloud workflow deliverables, but product mode has no 交付物 page (hc-1129), so the text does not name them.
  */
 
 import type { ApexAvatarShape, ApexBotColor } from '@/components/apex-avatar-look'
@@ -102,7 +102,7 @@ const en: SingleThreadBotsCopy = {
   remove: 'Delete this assistant',
   deleteTitle: name => `Delete “${name}”?`,
   deleteBody:
-    'Its conversations, the images and videos it saved on this computer, and its copy of the skills go with it, for good. Your “About you”, your deliverables and your usage stay as they are.',
+    'Its conversations, the images and videos it saved on this computer, and its copy of the skills go with it, for good. Your “About you” and your usage stay as they are.',
   deleteCancel: 'Keep it',
   deleteConfirm: 'Delete',
   deleting: 'Deleting…',
@@ -149,7 +149,7 @@ const zh: SingleThreadBotsCopy = {
   remove: '删除这个助手',
   deleteTitle: name => `删掉「${name}」？`,
   deleteBody:
-    '它的对话、它在这台电脑上存的图片和视频、它那份技能会一起删掉，删了找不回来。你的「关于你」、交付物和用量都不受影响。',
+    '它的对话、它在这台电脑上存的图片和视频、它那份技能会一起删掉，删了找不回来。你的「关于你」和用量都不受影响。',
   deleteCancel: '先不删',
   deleteConfirm: '删掉',
   deleting: '正在删…',
@@ -196,7 +196,7 @@ const zhHant: SingleThreadBotsCopy = {
   remove: '刪除這個助手',
   deleteTitle: name => `刪掉「${name}」？`,
   deleteBody:
-    '它的對話、它在這台電腦上存的圖片和影片、它那份技能會一起刪掉，刪了找不回來。你的「關於你」、交付物和用量都不受影響。',
+    '它的對話、它在這台電腦上存的圖片和影片、它那份技能會一起刪掉，刪了找不回來。你的「關於你」和用量都不受影響。',
   deleteCancel: '先不刪',
   deleteConfirm: '刪掉',
   deleting: '正在刪…',

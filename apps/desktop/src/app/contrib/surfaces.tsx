@@ -369,7 +369,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
         <Route element={page(<SkillsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="skills" />
         <Route element={page(<MessagingView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="messaging" />
         <Route element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="artifacts" />
-        <Route element={page(<AccountWorkspace><DeliverablesView /></AccountWorkspace>)} path={DELIVERABLES_ROUTE.slice(1)} />
+        <Route element={<ProductRouteGate>{page(<AccountWorkspace><DeliverablesView /></AccountWorkspace>)}</ProductRouteGate>} path={DELIVERABLES_ROUTE.slice(1)} />
         <Route
           element={page(
             <CronView onOpenSession={actions.onResumeSession} setStatusbarItemGroup={setStatusbarItemGroup} />
@@ -431,7 +431,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
       )}
       {deliverableDetailOpen && (
         <Routes>
-          <Route element={<AccountWorkspace><DeliverableDetailRouteDrawer /></AccountWorkspace>} path="deliverables/:deliverableId" />
+          <Route element={<ProductRouteGate><AccountWorkspace><DeliverableDetailRouteDrawer /></AccountWorkspace></ProductRouteGate>} path="deliverables/:deliverableId" />
         </Routes>
       )}
     </>

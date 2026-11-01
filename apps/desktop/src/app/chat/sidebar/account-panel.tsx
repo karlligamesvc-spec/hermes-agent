@@ -75,7 +75,7 @@ function initialOf(name: string): string {
 // a popover menu with the account's team when it has one (hc-971), 个人资料, 设置,
 // 项目, 定时运行, 连接助手, 历史会话, 交付物, optional real usage, and 退出登录. These destinations share one information-architecture group
 // instead of spending permanent sidebar height on additional rows. Product mode
-// has no 项目 (hc-1123). Rendered only on managed builds when signed in (the auth gate handles the signed-out
+// has no 项目 (hc-1123) and no 交付物 (hc-1129). Rendered only on managed builds when signed in (the auth gate handles the signed-out
 // case); on a managed-disabled build the panel stays hidden.
 export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), onNavigateBusiness }: {
   businessChrome?: boolean
@@ -230,10 +230,12 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
           <Codicon name="history" size="0.875rem" />
           <span>{nav.history}</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => navigate(DELIVERABLES_ROUTE)}>
-          <Codicon name="files" size="0.875rem" />
-          <span>{nav.deliverables}</span>
-        </DropdownMenuItem>
+        {!productMode && (
+          <DropdownMenuItem onSelect={() => navigate(DELIVERABLES_ROUTE)}>
+            <Codicon name="files" size="0.875rem" />
+            <span>{nav.deliverables}</span>
+          </DropdownMenuItem>
+        )}
         {usageLabel ? (
           <DropdownMenuItem onSelect={() => navigate(`${SETTINGS_ROUTE}`)}>
             <Codicon name="graph" size="0.875rem" />
