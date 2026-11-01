@@ -1576,6 +1576,12 @@ def _guess_extension(url: str, content_type: str | None) -> str:
     return ".mp4"
 
 
+def media_title_hint(prompt: str, limit: int = 20) -> str:
+    """生成文件的名字取提示词第一句的开头(hc-1130),不是整段提示词。"""
+    first = re.split(r"[，。！？；：\n]|[,.;:!?](?:\s|$)", (prompt or "").strip(), maxsplit=1)[0]
+    return first.strip()[:limit]
+
+
 def download_media(
     url: str,
     *,

@@ -449,7 +449,8 @@ describe('started', () => {
       {
         chip: '做完了 · 用时 6 分 10 秒',
         steps: ['已有', '交回了', '交回了'],
-        buttons: ['打开剪辑助手的对话'],
+        // hc-1130: the file it hands back is a result card, with its own 下载.
+        buttons: ['下载', '打开剪辑助手的对话'],
         text: '一共多跑了 2 个回合。每一棒的过程在各自的对话里。'
       }
     ],
