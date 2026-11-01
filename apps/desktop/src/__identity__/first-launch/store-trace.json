@@ -1,0 +1,200 @@
+{
+  "cached on, hint on (a returning user)": {
+    "end": {
+      "multiBot": true,
+      "multiBotMax": 5,
+      "singleThread": true,
+      "singleThreadMode": true
+    },
+    "reads": 2,
+    "start": {
+      "multiBot": true,
+      "singleThread": true,
+      "singleThreadMode": true
+    },
+    "writes": [
+      "apex.desktop.feature.single-thread=true",
+      "apex.desktop.feature.multi-bot=true"
+    ]
+  },
+  "cached on, hint off (the launch after a rollout)": {
+    "end": {
+      "multiBot": true,
+      "multiBotMax": 5,
+      "singleThread": true,
+      "singleThreadMode": true
+    },
+    "reads": 2,
+    "start": {
+      "multiBot": false,
+      "singleThread": false,
+      "singleThreadMode": false
+    },
+    "writes": [
+      "apex.desktop.feature.single-thread=true",
+      "apex.desktop.feature.multi-bot=true"
+    ]
+  },
+  "cached on, no hint (first launch of a new shell on an old home)": {
+    "end": {
+      "multiBot": true,
+      "multiBotMax": 5,
+      "singleThread": true,
+      "singleThreadMode": true
+    },
+    "reads": 2,
+    "start": {
+      "multiBot": false,
+      "singleThread": false,
+      "singleThreadMode": false
+    },
+    "writes": [
+      "apex.desktop.feature.single-thread=true",
+      "apex.desktop.feature.multi-bot=true"
+    ]
+  },
+  "cached on, developer mode": {
+    "end": {
+      "multiBot": true,
+      "multiBotMax": 5,
+      "singleThread": true,
+      "singleThreadMode": false
+    },
+    "reads": 2,
+    "start": {
+      "multiBot": false,
+      "singleThread": true,
+      "singleThreadMode": false
+    },
+    "writes": [
+      "apex.desktop.feature.single-thread=true",
+      "apex.desktop.feature.multi-bot=true"
+    ]
+  },
+  "cached off, hint off": {
+    "end": {
+      "multiBot": false,
+      "multiBotMax": 4,
+      "singleThread": false,
+      "singleThreadMode": false
+    },
+    "reads": 2,
+    "start": {
+      "multiBot": false,
+      "singleThread": false,
+      "singleThreadMode": false
+    },
+    "writes": [
+      "apex.desktop.feature.single-thread=false",
+      "apex.desktop.feature.multi-bot=false"
+    ]
+  },
+  "cached off, hint on (the launch after a rollback)": {
+    "end": {
+      "multiBot": false,
+      "multiBotMax": 4,
+      "singleThread": false,
+      "singleThreadMode": false
+    },
+    "reads": 2,
+    "start": {
+      "multiBot": true,
+      "singleThread": true,
+      "singleThreadMode": true
+    },
+    "writes": [
+      "apex.desktop.feature.single-thread=false",
+      "apex.desktop.feature.multi-bot=false"
+    ]
+  },
+  "cached off, no hint": {
+    "end": {
+      "multiBot": false,
+      "multiBotMax": 4,
+      "singleThread": false,
+      "singleThreadMode": false
+    },
+    "reads": 2,
+    "start": {
+      "multiBot": false,
+      "singleThread": false,
+      "singleThreadMode": false
+    },
+    "writes": [
+      "apex.desktop.feature.single-thread=false",
+      "apex.desktop.feature.multi-bot=false"
+    ]
+  },
+  "nothing cached, no hint": {
+    "end": {
+      "multiBot": false,
+      "multiBotMax": 5,
+      "singleThread": false,
+      "singleThreadMode": false
+    },
+    "reads": 2,
+    "start": {
+      "multiBot": false,
+      "singleThread": false,
+      "singleThreadMode": false
+    },
+    "writes": [
+      "apex.desktop.feature.single-thread=false",
+      "apex.desktop.feature.multi-bot=false"
+    ]
+  },
+  "nothing cached, hint off": {
+    "end": {
+      "multiBot": false,
+      "multiBotMax": 5,
+      "singleThread": false,
+      "singleThreadMode": false
+    },
+    "reads": 2,
+    "start": {
+      "multiBot": false,
+      "singleThread": false,
+      "singleThreadMode": false
+    },
+    "writes": [
+      "apex.desktop.feature.single-thread=false",
+      "apex.desktop.feature.multi-bot=false"
+    ]
+  },
+  "install switch 0 over a platform on": {
+    "end": {
+      "multiBot": false,
+      "multiBotMax": 5,
+      "singleThread": false,
+      "singleThreadMode": false
+    },
+    "reads": 2,
+    "start": {
+      "multiBot": false,
+      "singleThread": false,
+      "singleThreadMode": false
+    },
+    "writes": [
+      "apex.desktop.feature.single-thread=false",
+      "apex.desktop.feature.multi-bot=false"
+    ]
+  },
+  "install switch 1 over nothing cached": {
+    "end": {
+      "multiBot": true,
+      "multiBotMax": 5,
+      "singleThread": true,
+      "singleThreadMode": true
+    },
+    "reads": 2,
+    "start": {
+      "multiBot": false,
+      "singleThread": false,
+      "singleThreadMode": false
+    },
+    "writes": [
+      "apex.desktop.feature.single-thread=true",
+      "apex.desktop.feature.multi-bot=true"
+    ]
+  }
+}

@@ -41,7 +41,7 @@ import { useStore } from '@nanostores/react'
 import { atom, computed } from 'nanostores'
 
 import type { DesktopClientConfigState } from '@/global'
-import { desktopFeatureOn } from '@/lib/desktop-features'
+import { desktopFeatureOn, onLateClientConfig } from '@/lib/desktop-features'
 import { HANDOFF_RESULT_MAX_CHARS, handoffCarryText } from '@/lib/handoff-text'
 import { persistBoolean, readJson, storedBoolean, writeJson } from '@/lib/storage'
 
@@ -108,6 +108,11 @@ export function loadMultiBotHandoffFlag(): Promise<boolean> {
 
   return readingFlag
 }
+
+onLateClientConfig(state => {
+  readingFlag = null
+  settleFlag(multiBotHandoffSwitchFrom(state))
+})
 
 /** Tests only: forget the read and set the switch. */
 export function setMultiBotHandoffFlagForTest(on: boolean): void {
