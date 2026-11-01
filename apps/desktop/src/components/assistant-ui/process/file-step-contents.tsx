@@ -18,6 +18,7 @@ import {
 import { FileDiffPanel } from '@/components/chat/diff-lines'
 import { ResultActions } from '@/components/chat/result-actions'
 import { FileTypeIcon } from '@/components/ui/file-type-icon'
+import { useResultCopy } from '@/i18n/single-thread-results'
 import { toolResultRecord, type ToolResultSource } from '@/lib/tool-result-metadata'
 import { recordPreviewArtifact } from '@/store/preview-status'
 import { $toolInlineDiff } from '@/store/tool-diffs'
@@ -47,11 +48,12 @@ function writtenText(args: Record<string, unknown>): string {
 }
 
 const StepFile: FC<{ call: ProcessCall }> = ({ call }) => {
+  const copy = useResultCopy()
   const sideDiff = useStore($toolInlineDiff(call.id))
   const result = toolResultRecord(call.part as ToolResultSource)
   const diff = stripInlineDiffChrome(sideDiff) || inlineDiffFromResult(result)
   const path = fileEditPath(call.args, result)
-  const name = fileEditBasename(path)
+  const name = fileEditBasename(path) || copy.kinds.file
   const text = diff ? '' : writtenText(call.args)
 
   return (

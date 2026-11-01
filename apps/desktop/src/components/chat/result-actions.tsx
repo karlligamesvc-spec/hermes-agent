@@ -1,5 +1,7 @@
+import { useStore } from '@nanostores/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { useSessionView } from '@/app/chat/session-view'
 import { pickRevealLabel } from '@/app/right-sidebar/file-actions'
 import { useI18n } from '@/i18n'
 import { useResultCopy } from '@/i18n/single-thread-results'
@@ -9,6 +11,7 @@ import {
   downloadGatewayMediaFile,
   filePathFromMediaPath,
   isFileMediaPath,
+  isInlineMediaSrc,
   isRemoteGateway,
   type MediaKind,
   mediaSaveName
@@ -22,11 +25,13 @@ export const RESULT_ACTION_CLASS =
 /**
  * Save a result under its short title. A file goes through the same bridge the
  * document card uses (it reads the file, not the bytes on screen, and works for
- * a remote gateway); a link has no file here, so the browser takes it.
+ * a remote gateway); a link has no file here, so the browser takes it. A relative
+ * path belongs to the session that wrote it, so the session resolves it.
  */
 export function useResultDownload(path: string, kind: MediaKind) {
   const { t } = useI18n()
   const copy = useResultCopy()
+  const storedId = useStore(useSessionView().$storedId)
   const [downloading, setDownloading] = useState(false)
   const [downloaded, setDownloaded] = useState(false)
   const mounted = useRef(false)
@@ -47,7 +52,7 @@ export function useResultDownload(path: string, kind: MediaKind) {
       return
     }
 
-    if (!isFileMediaPath(path)) {
+    if (isInlineMediaSrc(path)) {
       openExternalLink(path)
 
       return
@@ -56,7 +61,8 @@ export function useResultDownload(path: string, kind: MediaKind) {
     setDownloading(true)
 
     try {
-      const result = await downloadGatewayMediaFile(path, undefined, mediaSaveName(path, fallbackTitle))
+      const origin = !isFileMediaPath(path) && storedId ? { sessionId: storedId } : undefined
+      const result = await downloadGatewayMediaFile(path, origin, mediaSaveName(path, fallbackTitle))
 
       if (mounted.current && result.saved) {
         setDownloaded(true)
@@ -69,7 +75,7 @@ export function useResultDownload(path: string, kind: MediaKind) {
         setDownloading(false)
       }
     }
-  }, [downloading, failedTitle, fallbackTitle, path])
+  }, [downloading, failedTitle, fallbackTitle, path, storedId])
 
   return { download, downloaded, downloading }
 }

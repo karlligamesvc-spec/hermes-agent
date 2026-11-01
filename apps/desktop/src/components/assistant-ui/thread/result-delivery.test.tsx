@@ -14,7 +14,7 @@ import { type Locale } from '@/i18n'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
 import { $previewStatusBySession } from '@/store/preview-status'
 import { clearAllPrompts, setApprovalRequest } from '@/store/prompts'
-import { $activeSessionId, $connection, $gatewayState } from '@/store/session'
+import { $activeSessionId, $connection, $gatewayState, $selectedStoredSessionId } from '@/store/session'
 import { $singleThreadFlag } from '@/store/single-thread'
 import { clearDismissedToolRows } from '@/store/tool-dismiss'
 import { $toolDisclosureStates, setToolViewMode } from '@/store/tool-view'
@@ -109,6 +109,7 @@ afterEach(() => {
   setToolViewMode('product')
   $singleThreadFlag.set(false)
   $activeSessionId.set(null)
+  $selectedStoredSessionId.set(null)
   $toolDisclosureStates.set({})
   clearAllPrompts()
 })
@@ -218,6 +219,105 @@ describe('file edits fold out of the chat', () => {
 
     expect(file.textContent).toContain('burn.py')
     expect(file.textContent).toContain('import os')
+  })
+
+  it('finds the file inside a reloaded tool_call bridge, and a patch that names no path', async () => {
+    const reloaded: ThreadMessage[] = [
+      {
+        id: 'bridge-answer',
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool-call',
+            toolCallId: 'bridge',
+            toolName: 'tool_call',
+            args: { name: 'write_file', arguments: { path: RESULT_COPY, content: '桥里写的文案\n' } },
+            argsText: '{}',
+            result: { bytes_written: 12 }
+          },
+          {
+            type: 'tool-call',
+            toolCallId: 'v4a',
+            toolName: 'patch',
+            args: { mode: 'patch', patch: '*** Begin Patch\n+补丁里的一行\n*** End Patch' },
+            argsText: '{}',
+            result: { success: true }
+          },
+          { type: 'text', text: '都好了。' }
+        ],
+        status: { type: 'complete', reason: 'stop' },
+        createdAt,
+        metadata: { unstable_state: null, unstable_annotations: [], unstable_data: [], steps: [], custom: {} }
+      } as unknown as ThreadMessage
+    ]
+
+    const { container } = renderIn(reloaded)
+
+    expect(container.textContent).not.toContain('桥里写的文案')
+
+    fireEvent.click(await screen.findByRole('button', { name: '看过程' }))
+    screen.getAllByRole('button', { name: '看内容' }).forEach(toggle => fireEvent.click(toggle))
+
+    const text = await waitFor(() => {
+      const rows = [...container.querySelectorAll<HTMLElement>('[data-process-file]')]
+
+      expect(rows).toHaveLength(2)
+
+      return rows.map(row => row.textContent).join('\n')
+    })
+
+    expect(text).toContain('文案.txt')
+    expect(text).toContain('桥里写的文案')
+    // The patch has no path to name: it reads as a file, and offers nothing to reveal.
+    expect(text).toContain('文件')
+    expect(text).toContain('补丁里的一行')
+  })
+
+  it('leaves a relative path to the session that wrote it', async () => {
+    const relative: ThreadMessage[] = [
+      {
+        id: 'relative-answer',
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool-call',
+            toolCallId: 'relative',
+            toolName: 'write_file',
+            args: { path: '文案.txt', content: '相对路径\n' },
+            argsText: '{}',
+            result: { bytes_written: 12 }
+          },
+          { type: 'text', text: '写好了。' }
+        ],
+        status: { type: 'complete', reason: 'stop' },
+        createdAt,
+        metadata: { unstable_state: null, unstable_annotations: [], unstable_data: [], steps: [], custom: {} }
+      } as unknown as ThreadMessage
+    ]
+
+    $selectedStoredSessionId.set('stored-session')
+
+    const { container } = renderIn(relative)
+
+    fireEvent.click(await screen.findByRole('button', { name: '看过程' }))
+    fireEvent.click(await screen.findByRole('button', { name: '看内容' }))
+
+    const file = await waitFor(() => {
+      const row = container.querySelector<HTMLElement>('[data-process-file]')
+
+      expect(row).not.toBeNull()
+
+      return row as HTMLElement
+    })
+
+    expect(within(file).queryByRole('button', { name: REVEAL })).toBeNull()
+
+    fireEvent.click(within(file).getByRole('button', { name: '下载' }))
+    await waitFor(() =>
+      expect(saveGatewayFile).toHaveBeenCalledWith(
+        expect.objectContaining({ path: '文案.txt', sessionId: 'stored-session', suggestedName: '文案.txt' })
+      )
+    )
   })
 
   it('gives a failed edit no contents to open: it changed nothing', async () => {
@@ -490,6 +590,26 @@ describe('every result card has a way to take the file away', () => {
     expect(audio.getAttribute('controlslist')).toBe('nodownload')
     expect(video.hasAttribute('controls')).toBe(true)
     expect(audio.hasAttribute('controls')).toBe(true)
+  })
+
+  it('hands a link to the browser: no save dialog, no file manager', async () => {
+    const link = 'https://cdn.example.com/a/%E6%88%90%E7%89%87.mp4'
+    const open = vi.fn(async () => {})
+
+    Object.defineProperty(window, 'hermesDesktop', {
+      configurable: true,
+      value: { openExternal: open, revealPath, saveGatewayFile }
+    })
+
+    const { container } = renderIn(resultTurn(`MEDIA:${link}`))
+    const found = await card(container, 'video')
+
+    expect(within(found).getByText('成片')).toBeTruthy()
+    expect(within(found).queryByRole('button', { name: REVEAL })).toBeNull()
+
+    fireEvent.click(within(found).getByRole('button', { name: '下载' }))
+    await waitFor(() => expect(open).toHaveBeenCalledWith(link))
+    expect(saveGatewayFile).not.toHaveBeenCalled()
   })
 
   it('offers no file manager for a file on a remote gateway', async () => {
