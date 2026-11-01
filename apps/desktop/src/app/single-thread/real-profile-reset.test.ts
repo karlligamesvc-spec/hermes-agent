@@ -477,6 +477,7 @@ describe('when it runs', () => {
   it('a switch to product mode after a profile was already passed over goes back for it', async () => {
     developer()
     const state = install({ default: true, 'apex-bot-2': true })
+
     let release = () => {}
     state.holdRead['apex-bot-2'] = new Promise(resolve => (release = resolve))
 
