@@ -320,7 +320,7 @@ describe('the product pages', () => {
     [{ period: 'month', planName: '快速', usedRatio: 0.18 }, '快速', '本月用了 18%'],
     [{ period: 'week', planName: '专业', usedRatio: 0.004 }, '专业', '本周用了 不到 1%'],
     [{ period: 'month', planName: '团队', usedRatio: null }, '团队', '不限量'],
-    [{ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18 }, 'Pro', '本月用了 18%']
+    [{ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18 }, 'PRO', '本月用了 18%']
   ] as const)('用量: %j', (usage, plan, line) => {
     setAccount('tier')
     setMode('product')
@@ -341,7 +341,7 @@ describe('the product pages', () => {
     $planUsage.set({ accountId: 'acct-1', usage: { period: 'month', planName: '快速', usedRatio: 0.18 } })
     renderSettings('/settings?tab=usage')
 
-    expect(screen.getByText('Pro')).toBeTruthy()
+    expect(screen.getByText('PRO')).toBeTruthy()
     expect(screen.queryByText('快速')).toBeNull()
   })
 

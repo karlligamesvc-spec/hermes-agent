@@ -346,12 +346,12 @@ describe('this week’s allowance', () => {
 
 describe('the plan’s name', () => {
   it.each([
-    ['free', '免费', '免费', '升级'],
-    ['fast', '快速', 'Pro', '升级'],
-    ['advanced', '高级', 'Max', '查看套餐'],
+    ['free', '免费', 'FREE', '升级'],
+    ['fast', '快速', 'PRO', '升级'],
+    ['advanced', '高级', 'MAX', '查看套餐'],
     // A code the plans page does not list keeps the cloud's name, and is not called something it is not.
     ['plus', 'Plus 旧套餐', 'Plus 旧套餐', '升级'],
-    // apexnodes_billing's alias: `pro` is the old name of `advanced`, not the plan listed as Pro.
+    // apexnodes_billing's alias: `pro` is the old name of `advanced`, not the plan listed as PRO.
     ['pro', '高级', '高级', '升级']
   ])('%s from the cloud reads as its plans-page name', async (planCode, planName, shown, button) => {
     installBridge({ planUsage: reads({ period: 'month', planCode, planName, usedRatio: null, weekly: null }) })
@@ -367,7 +367,7 @@ describe('the plan’s name', () => {
     renderSidebar()
     const menu = await openMenu()
 
-    expect(menu.querySelector('[data-apex-account-plan]')?.textContent).toBe('Pro')
+    expect(menu.querySelector('[data-apex-account-plan]')?.textContent).toBe('PRO')
   })
 
   it('with nothing known, a plain word', async () => {
@@ -389,11 +389,11 @@ describe('the plan’s name', () => {
     })
     const { container } = renderSidebar()
 
-    await waitFor(() => expect(container.querySelector('[data-single-thread-account-line]')?.textContent).toBe('Pro'))
+    await waitFor(() => expect(container.querySelector('[data-single-thread-account-line]')?.textContent).toBe('PRO'))
 
     const menu = await openMenu()
 
-    await waitFor(() => expect(menu.querySelector('[data-apex-account-plan]')?.textContent).toBe('Pro'))
+    await waitFor(() => expect(menu.querySelector('[data-apex-account-plan]')?.textContent).toBe('PRO'))
     expect(menu.querySelector('[data-apex-weekly-quota]')?.textContent).toContain('还剩 75%')
   })
 })
@@ -582,7 +582,7 @@ describe('several assistants: the account is not one of them', () => {
     renderSidebar()
     const menu = await openMenu()
 
-    await waitFor(() => expect(menu.querySelector('[data-apex-account-plan]')?.textContent).toBe('Pro'))
+    await waitFor(() => expect(menu.querySelector('[data-apex-account-plan]')?.textContent).toBe('PRO'))
     expect(menu.textContent).toContain('小满')
     expect(menu.textContent).toContain('xiaoman@example.com')
     expect(menu.textContent).not.toContain('剪辑助手')
@@ -597,12 +597,12 @@ describe('several assistants: the account is not one of them', () => {
     const { container } = renderSidebar()
     const line = () => container.querySelector('[data-single-thread-account-line]')?.textContent
 
-    await waitFor(() => expect(line()).toBe('Pro'))
+    await waitFor(() => expect(line()).toBe('PRO'))
     const before = planUsage.mock.calls.length
 
     act(() => $activeGatewayProfile.set('default'))
 
-    expect(line()).toBe('Pro')
+    expect(line()).toBe('PRO')
     expect(planUsage.mock.calls.length).toBe(before)
   })
 })
