@@ -301,6 +301,38 @@ describe('this week’s allowance', () => {
     expect(menu.querySelector('[data-apex-weekly-meter]')?.textContent).toBe('Resets Nov 8, 8:00 AM')
   })
 
+  it.each([
+    ['en', 'Upgrade', 'Contact us', 'Sign out', 'Unlimited'],
+    ['zh-hant', '升級', '聯絡我們', '登出', '不限量']
+  ] as const)(
+    '%s reads as a whole, with no English left over',
+    async (locale, upgrade, contact, signOut, unlimited) => {
+      installBridge({ planUsage: reads(usage(SHADOW)) })
+      setRuntimeI18nLocale(locale)
+      render(
+        <MemoryRouter initialEntries={['/thread-root']}>
+          <I18nProvider configClient={null} initialLocale={locale}>
+            <SidebarProvider>
+              <SidebarSurface actions={ACTIONS} currentView="chat" />
+            </SidebarProvider>
+          </I18nProvider>
+        </MemoryRouter>
+      )
+
+      const trigger = await screen.findByRole('button', { name: /小满/ })
+
+      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false })
+
+      const menu = await screen.findByRole('menu')
+
+      await waitFor(() => expect(quotaItem(menu).textContent).toContain(unlimited))
+
+      for (const label of [upgrade, contact, signOut]) {
+        expect(screen.getByRole('menuitem', { name: label })).toBeTruthy()
+      }
+    }
+  )
+
   it('English, while nothing is limited', async () => {
     installBridge({ planUsage: reads(usage(SHADOW)) })
     renderSidebar('en')

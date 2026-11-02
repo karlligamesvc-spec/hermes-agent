@@ -64,8 +64,7 @@ export interface AccountMenuCopy {
   priceSoon: string
   currentPlan: string
   upgradeTo: (plan: string) => string
-  testingTitle: string
-  testingBody: string
+  testingNotice: string
 }
 
 const en: AccountMenuCopy = {
@@ -106,8 +105,7 @@ const en: AccountMenuCopy = {
   priceSoon: 'Price coming soon',
   currentPlan: 'Current plan',
   upgradeTo: plan => `Upgrade to ${plan}`,
-  testingTitle: 'Paid plans are still being tested.',
-  testingBody: 'They will launch later. You have not been charged.'
+  testingNotice: 'Paid plans are still being tested and will launch later. You have not been charged.'
 }
 
 const zh: AccountMenuCopy = {
@@ -148,8 +146,7 @@ const zh: AccountMenuCopy = {
   priceSoon: '价格待公布',
   currentPlan: '当前套餐',
   upgradeTo: plan => `升级到 ${plan}`,
-  testingTitle: '付费功能正在测试中。',
-  testingBody: '付费功能后续推出，现在不会扣费。'
+  testingNotice: '付费功能正在测试中，后续推出，现在不会扣费。'
 }
 
 const zhHant: AccountMenuCopy = {
@@ -190,8 +187,7 @@ const zhHant: AccountMenuCopy = {
   priceSoon: '價格待公布',
   currentPlan: '目前方案',
   upgradeTo: plan => `升級到 ${plan}`,
-  testingTitle: '付費功能正在測試中。',
-  testingBody: '付費功能後續推出，現在不會扣費。'
+  testingNotice: '付費功能正在測試中，後續推出，現在不會扣費。'
 }
 
 export const ACCOUNT_MENU_COPY: Readonly<Record<Locale, AccountMenuCopy>> = {

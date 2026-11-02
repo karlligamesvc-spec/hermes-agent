@@ -223,8 +223,7 @@ export function ProductPlansSettings() {
             className="rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-tertiary)/40 px-3 py-2 text-xs leading-5 text-foreground"
             data-apex-plans-testing-notice=""
           >
-            {copy.testingTitle}
-            {copy.testingBody}
+            {copy.testingNotice}
           </div>
         )}
       </div>

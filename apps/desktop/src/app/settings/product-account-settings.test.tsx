@@ -11,6 +11,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 
 import { restoreRecordingTimeZone } from '@/__identity__/single-thread-shell/time-zone'
 import { DesktopAuthGate } from '@/app/desktop-auth-gate'
+import { ResponsiveRouteDrawer } from '@/app/overlays/responsive-route-drawer'
 import type { DesktopPlanUsage } from '@/global'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
 import { ACCOUNT_MENU_COPY } from '@/i18n/account-menu'
@@ -257,6 +258,32 @@ describe('the sign-in screen over Settings: Settings is a modal, which would lea
     expect(screen.getByRole('button', { name: '返回' })).toBeTruthy()
   })
 
+  it('the route drawer (a run opened from 连接助手) steps aside the same way', async () => {
+    setRuntimeI18nLocale('zh')
+    render(
+      <I18nProvider configClient={null} initialLocale="zh">
+        <MemoryRouter initialEntries={['/workflow-runs/run-1']}>
+          <ResponsiveRouteDrawer onClose={vi.fn()} title="运行">
+            <div data-testid="drawer-body">drawer</div>
+          </ResponsiveRouteDrawer>
+          <DesktopAuthGate enabled requestGateway={(async () => ({ ok: true })) as never} />
+        </MemoryRouter>
+      </I18nProvider>
+    )
+    expect(screen.getByTestId('drawer-body')).toBeTruthy()
+    expect(noPointer()).toBe(true)
+
+    act(() => requestManagedReSignIn(''))
+    await screen.findByRole('heading', { name: '开始使用' })
+
+    await waitFor(() => expect(noPointer()).toBe(false))
+    expect(screen.queryByTestId('drawer-body')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '返回' }))
+
+    await waitFor(() => expect(screen.getByTestId('drawer-body')).toBeTruthy())
+  })
+
   it('a re-sign-in finished: the overlay is back and nothing blocks it', async () => {
     renderWithGate('/settings?tab=account')
     fireEvent.click(screen.getByRole('button', { name: '重新登录' }))
@@ -428,8 +455,8 @@ describe('the plans page', () => {
   })
 
   it.each([
-    ['zh', '升级到 Pro', '付费功能正在测试中。付费功能后续推出，现在不会扣费。'],
-    ['en', 'Upgrade to Max', 'Paid plans are still being tested.They will launch later. You have not been charged.']
+    ['zh', '升级到 Pro', '付费功能正在测试中，后续推出，现在不会扣费。'],
+    ['en', 'Upgrade to Max', 'Paid plans are still being tested and will launch later. You have not been charged.']
   ] as const)('%s: a paid button says it is in testing, and buys nothing', (locale, label, notice) => {
     // Every call the page could make on the way to a purchase has to go through one of these.
     const bridgeCalls: string[] = []
@@ -617,8 +644,7 @@ describe('the copy', () => {
       copy.plansIntro,
       copy.plansUnlimitedNote,
       copy.priceSoon,
-      copy.testingTitle,
-      copy.testingBody,
+      copy.testingNotice,
       ...Object.values(copy.planAllowances)
     ]
 
