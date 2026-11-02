@@ -193,7 +193,7 @@ function ProductUsageSettings() {
             </span>
           }
           description={used}
-          title={usage ? planLabel(usage, '', accountCopy) : copy.usageNone}
+          title={usage ? planLabel(usage, auth.account.plan, accountCopy) : copy.usageNone}
         />
         {usage && (
           <ListRow

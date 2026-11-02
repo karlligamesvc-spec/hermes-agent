@@ -44,7 +44,7 @@ function setMode(mode: Mode): void {
 function setAccount(account: Account): void {
   $authState.set({
     ...signedOut,
-    account: { email: 'creator@example.com', name: '' } as never,
+    account: { email: 'creator@example.com', name: '', plan: '' },
     accountId: account === 'own-key' ? null : 'acct-1',
     enabled: account !== 'own-key',
     modelTiers: account === 'tier',
@@ -332,6 +332,17 @@ describe('the product pages', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '查看使用记录' }))
     expect(location).toBe('/profile')
+  })
+
+  it('用量, an older cloud that gives no code: the sign-in’s code names the plan, as on the menu’s card', () => {
+    setAccount('tier')
+    setMode('product')
+    $authState.set({ ...$authState.get(), account: { email: 'creator@example.com', name: '', plan: 'fast' } })
+    $planUsage.set({ accountId: 'acct-1', usage: { period: 'month', planName: '快速', usedRatio: 0.18 } })
+    renderSettings('/settings?tab=usage')
+
+    expect(screen.getByText('Pro')).toBeTruthy()
+    expect(screen.queryByText('快速')).toBeNull()
   })
 
   it('用量 with no plan line says so', () => {

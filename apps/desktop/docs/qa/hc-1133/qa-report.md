@@ -21,7 +21,7 @@
 | 额度：周账本关着 | `weekly: null` | 「不限量」 |
 | 额度：真的在限额 | `enforced: true`，用了 5% | 「还剩 95%」、进度条 95、「11月8日 8:00 重置」（本机时区） |
 | 额度：用完 | `enforced: true`，用了 125% | 「已用完」（红字）、进度条 0、重置时间 |
-| 套餐名 | `fast` / `advanced` | 卡片和账户行都叫 Pro / Max；Max 的按钮是「查看套餐」 |
+| 套餐名 | `fast` / `advanced` | 卡片和账户行都叫 Pro / Max；Max 的按钮是「查看套餐」。账户行只有套餐名，没有百分比（见「第二轮」） |
 | 联系我们 | 点 | 交给系统 `mailto:support@apex-nodes.com`，顶部提示写出地址，可复制 |
 | 设置 | 点 | `/settings`，左栏 10 项：个性化、记忆、语音、通知、外观、连接微信和飞书、助手与记录、用量、账号、关于 |
 | 个人资料 | 设置 › 账号 › 打开 | `/profile`，关掉回到打开设置之前的页面 |
@@ -66,6 +66,40 @@
 - `e2e/sign-out-relay-key.spec.ts`：2 条全过。
 
 走查的完整输出在 `walk-results.txt`，脚本和假服务在协调会话的共享笔记 `hc-1133-accept/`。
+
+## 第二轮：账户行、个人资料、登录提示
+
+同样的环境，又一个全新沙箱。这一轮多录了窗口画出来的每一条提示，不管是谁弹的。输出在 `walk-results-round3.txt`。
+
+| 步骤 | 做法 | 结果 |
+|---|---|---|
+| 账户行：现在的回包 | 免费，周额度只记不拦 | 「免费」 |
+| 账户行：付费 | `fast`，本月用了 18% | 「Pro」，没有百分比（`46-row-pro.jpg`） |
+| 账户行：真的在限额 | `fast`，`enforced: true`，用了 5% | 账户行还是「Pro」；数字在卡片里，「还剩 95%」（`47-row-pro-enforced-menu.jpg`） |
+| 账户行：其他 | `advanced`；认不出的 `team_internal`，云端叫它「团队」 | 「Max」；「团队」 |
+| 个人资料 | 同上 5 种回包 | 头部徽标和方案一行一致：免费、Pro、Pro、Max、团队（`49-profile-free.jpg`、`48-profile-pro.jpg`、`51-profile-unknown-cloud-name.jpg`） |
+| 登录提示：第一次登录 | 全新环境登录 | 「登录成功 / APEX 准备好了。」（`45-signin-toast-zh.jpg`） |
+| 登录提示：重新登录 | 设置 › 账号 › 重新登录 | 同一句，登录后回到 `?tab=account`（`52-resignin-toast-zh.jpg`） |
+| 登录提示：401 后再登录 | 主进程发 `hermes:auth-gate` | 同一句 |
+| 退出失败 | 假服务的吊销回 500 | 「退出登录未完成。请重试；如果登录已过期，可重新登录。」带「重新登录」（`53-signout-failed-toast-zh.jpg`）。点了登录，还是同一句登录提示 |
+| 退出，再登录 | 正常 | 退出这一路没有弹提示；再登录是同一句 |
+| 英文（产品模式） | 语言切到英文，退出再登录 | 账户行和个人资料是 Pro / Plan: Pro；提示还是「APEX is ready / APEX connected.」（`55-signin-toast-en.jpg`） |
+| 开发者模式 | 切过去，看个人资料，退出再登录 | 个人资料仍是 `free`（`56-developer-profile-raw-code.jpg`）；提示还是英文（`57-developer-signin-toast-en.jpg`） |
+
+走查里三条路径上弹过的提示只有这些：
+
+```text
+[first sign-in] status: 登录成功 APEX 准备好了。
+[re-sign-in from Settings] status: 登录成功 APEX 准备好了。
+[a 401 from main] status: 登录成功 APEX 准备好了。
+[sign-out fails] alert: 退出登录未完成。请重试；如果登录已过期，可重新登录。 重新登录
+[sign-out fails] status: 登录成功 APEX 准备好了。
+[sign in after sign-out] status: 登录成功 APEX 准备好了。
+[English, product mode] status: APEX is ready APEX connected.
+[developer mode] status: APEX is ready APEX connected.
+```
+
+**这一轮没在真窗口里触发的**：引擎不应答时的「APEX 还没准备好」（测试里让探测超时触发）、`managed-recovery` 的几条提示和 `use-gateway-boot` 的几条错误提示（读过代码，都有中文，走查里没出现）。繁体的两条提示只有测试覆盖。
 
 ## 证据边界
 
