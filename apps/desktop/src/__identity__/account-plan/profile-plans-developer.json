@@ -1,0 +1,26 @@
+{
+  "free": {
+    "badge": "free",
+    "row": "free"
+  },
+  "fast": {
+    "badge": "fast",
+    "row": "fast"
+  },
+  "advanced": {
+    "badge": "advanced",
+    "row": "advanced"
+  },
+  "plus": {
+    "badge": "plus",
+    "row": "plus"
+  },
+  "pro": {
+    "badge": "pro",
+    "row": "pro"
+  },
+  "(none)": {
+    "badge": null,
+    "row": "未提供"
+  }
+}
