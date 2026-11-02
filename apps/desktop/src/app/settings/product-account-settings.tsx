@@ -11,8 +11,7 @@
  * to it, so a paid plan's button only says so.
  */
 
-import { useStore } from '@nanostores/react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -21,20 +20,11 @@ import { useI18n } from '@/i18n'
 import { type AccountMenuCopy, planLabel, upgradeLabel, useAccountMenuCopy } from '@/i18n/account-menu'
 import { Sparkles } from '@/lib/icons'
 import { cn } from '@/lib/utils'
-import { $authState } from '@/store/auth'
 import { requestManagedReSignIn } from '@/store/onboarding'
-import {
-  $planUsage,
-  accountPlanTier,
-  type PlanTier,
-  planUsageFor,
-  planUsageOwner,
-  refreshPlanUsage,
-  weeklyQuotaView
-} from '@/store/plan-usage'
+import { accountPlanTier, type PlanTier, weeklyQuotaView } from '@/store/plan-usage'
 
 import { ASSISTANT_ROUTE, CRON_ROUTE, HISTORY_ROUTE, navigateToWorkspacePage, PROFILE_STATS_ROUTE } from '../routes'
-import { AccountAvatar, accountDisplayName } from '../single-thread/account-identity'
+import { AccountAvatar, accountDisplayName, useAccountPlanUsage } from '../single-thread/account-identity'
 import { useSingleThreadNavLabels } from '../single-thread/nav-labels'
 
 import { ListRow, Pill, SectionHeading, SettingsContent } from './primitives'
@@ -42,21 +32,6 @@ import { SETTINGS_PLANS_ROUTE } from './product-settings'
 
 export const ACCOUNT_ICON = codiconIcon('account')
 export const ACTIVITY_ICON = codiconIcon('history')
-
-/** The account's plan usage, read when the page opens; null until there is a line to show. */
-function useAccountPlanUsage() {
-  const auth = useStore($authState)
-  const owner = planUsageOwner(auth)
-  const signedIn = auth.status === 'signed-in'
-
-  useEffect(() => {
-    if (signedIn) {
-      void refreshPlanUsage(owner)
-    }
-  }, [owner, signedIn])
-
-  return { auth, usage: planUsageFor(useStore($planUsage), owner) }
-}
 
 export function ProductAccountSettings() {
   const { t } = useI18n()

@@ -1,14 +1,15 @@
 /**
- * hc-1061 G3: the plan and its usage for the single-thread sidebar's account row
- * (「快速 · 本月用了 18%」), read through main with the login JWT
+ * hc-1061 G3: the plan and its usage for the single-thread sidebar's account row,
+ * read through main with the login JWT
  * (electron/apex-plan-usage.ts → apex-nodes GET /api/v1/account/plan-usage).
  *
  * Kept per account: a line read for one account is never shown for another.
  * A failed read keeps the last good line; no line at all (an older main, an
  * installer-only account, an older cloud, sign-in needed) shows the email.
  *
- * hc-1133: the same read fills the account menu's card (`weeklyQuotaView`,
- * `planTierOf`). It belongs to the account, whichever assistant is on screen.
+ * hc-1133: the row says the plan's name and nothing else; the same read fills the
+ * account menu's card (`weeklyQuotaView`, `planTierOf`). It belongs to the account,
+ * whichever assistant is on screen.
  */
 
 import { atom } from 'nanostores'
@@ -24,7 +25,9 @@ const PLAN_TIER_BY_CODE: Readonly<Record<string, PlanTier>> = { advanced: 'max',
 
 /** Which listed plan a code is; null for anything else (`plus`, a code this build does not know). */
 export function planTierOf(code: null | string | undefined): null | PlanTier {
-  return (code && Object.hasOwn(PLAN_TIER_BY_CODE, code) && PLAN_TIER_BY_CODE[code]) || null
+  const key = code?.trim().toLowerCase()
+
+  return (key && Object.hasOwn(PLAN_TIER_BY_CODE, key) && PLAN_TIER_BY_CODE[key]) || null
 }
 
 /** Which listed plan this account is on: the cloud's word, else the code the sign-in gave. */

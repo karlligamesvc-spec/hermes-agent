@@ -9,7 +9,7 @@
  * - one assistant row: the avatar (hc-1064), 「APEX」, a status line (the latest
  *   reply, what it is doing, 等你决定, 通话中) and a dot for a reply not yet seen;
  * - 「在微信里找 APEX」, which opens the IM entry page;
- * - the account row: the name over 「快速 · 本月用了 18%」 (hc-1062).
+ * - the account row: the name over the plan's name (hc-1062, hc-1133).
  * hc-1070, hc-1123: there is no 「沉浸式分析」 or 「项目」 here, and their routes
  * turn back to the conversation (product-route-gate.tsx).
  *

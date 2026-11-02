@@ -1,7 +1,9 @@
 /**
  * hc-1061 G3: the single-thread sidebar's account row, as prototype v2 draws it:
- * the name over 「快速 · 本月用了 18%」 (hc-1062), falling back to the email
- * when the cloud gives no usage line.
+ * the name over the plan's name, falling back to the email when the cloud gives
+ * no usage line. hc-1133: the row carries no number. Beside 「不限量」 on the menu's
+ * card, a month's percent read as a contradiction; a limit that is real shows
+ * there too.
  *
  * hc-1133: its menu is the account and nothing else: who is signed in, the plan
  * with 升级 and this week's allowance, 设置, 联系我们, 退出登录. What it used to
@@ -26,7 +28,6 @@ import {
 import { useI18n } from '@/i18n'
 import { planLabel, upgradeLabel, useAccountMenuCopy } from '@/i18n/account-menu'
 import { useAccountTeamCopy } from '@/i18n/account-team'
-import { formatUsedPercent, useSingleThreadSidebarCopy } from '@/i18n/single-thread-sidebar'
 import { openExternalLink } from '@/lib/external-link'
 import { cn } from '@/lib/utils'
 import { $accountTeam, loadAccountTeam, teamFor } from '@/store/account-team'
@@ -54,29 +55,20 @@ import { useWeeklyQuotaValue, WeeklyQuotaMeter, weeklyQuotaUsedUp } from './week
 /** The address the website's footer and terms give (apex-nodes web/lib/support.ts). */
 const SUPPORT_EMAIL = 'support@apex-nodes.com'
 
-/** 「快速 · 本月用了 18%」, 「快速」 when the plan is unlimited, null when there is no line to show. */
-function usePlanLine(accountId: string): null | string {
-  const copy = useSingleThreadSidebarCopy()
-  const menuCopy = useAccountMenuCopy()
+/** The plan's name and no number, the same name as the menu's card; null when there is no line to show. */
+function usePlanLine(accountId: string, accountPlan: string): null | string {
+  const copy = useAccountMenuCopy()
   const usage = planUsageFor(useStore($planUsage), accountId)
   const working = useStore($threadPresence).kind === 'working'
 
-  // Read once per account, and again each time a turn ends, which is when the number moves.
+  // Read once per account, and again each time a turn ends, so a change of plan shows without opening the menu.
   useEffect(() => {
     if (!working || !planUsageReadFor(accountId)) {
       void refreshPlanUsage(accountId)
     }
   }, [accountId, working])
 
-  if (!usage) {
-    return null
-  }
-
-  const plan = planLabel(usage, '', menuCopy)
-
-  return usage.usedRatio === null
-    ? plan
-    : copy.planUsage({ percent: formatUsedPercent(usage.usedRatio, copy), period: usage.period, plan })
+  return usage ? planLabel(usage, accountPlan, copy) : null
 }
 
 export function SingleThreadAccountRow() {
@@ -100,7 +92,7 @@ function SignedInAccountRow() {
   const a = t.auth.account
   const { account, accountId } = useStore($authState)
   const owner = planUsageOwner({ account, accountId })
-  const planLine = usePlanLine(owner)
+  const planLine = usePlanLine(owner, account.plan)
   const [open, setOpen] = useState(false)
   const name = accountDisplayName(account, a.fallbackName)
   const email = account.email.trim()

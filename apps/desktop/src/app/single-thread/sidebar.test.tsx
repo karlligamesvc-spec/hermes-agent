@@ -267,32 +267,61 @@ describe('hc-1061 the account row', () => {
     screen.getByRole('button', { name: '打开账户菜单: 小满' }).querySelector('[data-single-thread-account-line]')
       ?.textContent
 
+  const ENFORCED = { enforced: true, resetsAt: '2026-11-08T16:00:00+00:00', unlimited: false, usedRatio: 0.25 }
+  const SHADOW = { ...ENFORCED, enforced: false }
+
+  // hc-1133: the plan's name and nothing else, however much is used and whatever is limited.
   it.each([
-    ['used this month', ok({ period: 'month', planName: '快速', usedRatio: 0.18 }), '快速 · 本月用了 18%'],
-    ['barely used', ok({ period: 'month', planName: '快速', usedRatio: 0.0004 }), '快速 · 本月用了 不到 1%'],
-    ['over the allowance', ok({ period: 'month', planName: '快速', usedRatio: 1.25 }), '快速 · 本月用了 125%'],
-    ['unlimited: the plan alone', ok({ period: 'month', planName: '高级', usedRatio: null }), '高级'],
+    ['used this month', ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18 }), 'Pro'],
+    ['used this week', ok({ period: 'week', planCode: 'fast', planName: '快速', usedRatio: 0.18 }), 'Pro'],
+    ['barely used', ok({ period: 'month', planCode: 'free', planName: '免费', usedRatio: 0.0004 }), '免费'],
+    ['over the allowance', ok({ period: 'month', planCode: 'advanced', planName: '高级', usedRatio: 1.25 }), 'Max'],
+    ['unlimited', ok({ period: 'month', planCode: 'advanced', planName: '高级', usedRatio: null }), 'Max'],
+    [
+      'a week that only records',
+      ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18, weekly: SHADOW }),
+      'Pro'
+    ],
+    [
+      'a week really limited: its number stays on the menu’s card',
+      ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18, weekly: ENFORCED }),
+      'Pro'
+    ],
+    [
+      'a plan this build does not list: the cloud’s name for it',
+      ok({ period: 'month', planCode: 'plus', planName: '团队', usedRatio: 0.18 }),
+      '团队'
+    ],
     ['no line from the cloud: the email', ok(null), 'xiaoman@example.com']
   ])('%s', async (_label, planUsage, expected) => {
     stubBridge({ planUsage })
     renderSidebar()
 
     await waitFor(() => expect(accountLine()).toBe(expected))
+    expect(screen.getByRole('button', { name: '打开账户菜单: 小满' }).textContent).not.toMatch(/%|本月|本周|用了/)
+  })
+
+  it('an older cloud that gives no code: the sign-in’s code names it, as on the menu’s card', async () => {
+    $authState.set({ ...$authState.get(), account: { ...$authState.get().account, plan: 'fast' } })
+    stubBridge({ planUsage: ok({ period: 'month', planName: '快速', usedRatio: 0.18 }) })
+    renderSidebar()
+
+    await waitFor(() => expect(accountLine()).toBe('Pro'))
   })
 
   it('reads the line even when the app opens in the middle of a turn', async () => {
     threadState({ busy: true })
-    stubBridge({ planUsage: ok({ period: 'month', planName: '快速', usedRatio: 0.18 }) })
+    stubBridge({ planUsage: ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18 }) })
     renderSidebar()
 
-    await waitFor(() => expect(accountLine()).toBe('快速 · 本月用了 18%'))
+    await waitFor(() => expect(accountLine()).toBe('Pro'))
   })
 
   it('reads it again when a turn ends, not while one runs', async () => {
-    const read = vi.fn(ok({ period: 'month', planName: '快速', usedRatio: 0.18 }))
+    const read = vi.fn(ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18 }))
     stubBridge({ planUsage: read })
     renderSidebar()
-    await waitFor(() => expect(accountLine()).toBe('快速 · 本月用了 18%'))
+    await waitFor(() => expect(accountLine()).toBe('Pro'))
     expect(read).toHaveBeenCalledTimes(1)
 
     act(() => threadState({ busy: true }))

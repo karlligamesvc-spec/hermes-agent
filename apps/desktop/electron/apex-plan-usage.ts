@@ -1,10 +1,10 @@
 /**
  * apex-plan-usage.ts — hc-1061 / hc-1062
  *
- * The single-thread sidebar's account row says the plan and how much of its
- * allowance is used (「快速 · 本月用了 18%」). The cloud is the only authority on
- * both, so this module reads them with the stored login JWT and hands the
- * renderer a small, validated summary; the JWT never crosses to the renderer.
+ * The single-thread sidebar's account row names the plan; the Settings usage page
+ * and the relay card say how much of its allowance is used. The cloud is the only
+ * authority on both, so this module reads them with the stored login JWT and hands
+ * the renderer a small, validated summary; the JWT never crosses to the renderer.
  * Electron-free so it runs under `vitest --project electron`, like apex-team.ts.
  *
  * Backend contract (apex-nodes `app/routers/account_plan_usage.py`):

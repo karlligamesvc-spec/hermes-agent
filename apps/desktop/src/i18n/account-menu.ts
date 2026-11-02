@@ -205,12 +205,24 @@ export function useAccountMenuCopy(): AccountMenuCopy {
 /**
  * The plan's name, the same everywhere the account shows it: what the plans page
  * lists it as, else what the cloud calls it. `accountPlan` is the code the sign-in
- * gave, for when usage has not been read.
+ * gave, for when usage has not been read. Empty when nothing names it: a code is
+ * not a name, so a code this build does not know is never shown.
  */
-export function planLabel(usage: DesktopPlanUsage | null, accountPlan: string, copy: AccountMenuCopy): string {
+export function knownPlanName(usage: DesktopPlanUsage | null, accountPlan: string, copy: AccountMenuCopy): string {
   const tier = accountPlanTier(usage, accountPlan)
 
-  return tier ? copy.planNames[tier] : usage?.planName || copy.planFallback
+  if (tier) {
+    return copy.planNames[tier]
+  }
+
+  const name = usage?.planName ?? ''
+
+  return name === usage?.planCode || name === accountPlan.trim() ? '' : name
+}
+
+/** The plan's name where a line always has to say something. */
+export function planLabel(usage: DesktopPlanUsage | null, accountPlan: string, copy: AccountMenuCopy): string {
+  return knownPlanName(usage, accountPlan, copy) || copy.planFallback
 }
 
 /** 升级, or 查看套餐 for someone already on the top plan. */

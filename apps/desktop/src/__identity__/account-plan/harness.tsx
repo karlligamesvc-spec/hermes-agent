@@ -54,9 +54,8 @@ export function signInAs(plan: string): void {
   })
 }
 
-/** 个人资料 with nothing in its usage block: only the account's lines change from one render to the next. */
-export async function renderProfile(plan: string, locale: Locale = 'zh') {
-  signInAs(plan)
+/** 个人资料 as the account stands, with nothing in its usage block; `heading` is the name it should draw. */
+export async function mountProfile(locale: Locale, heading: string) {
   vi.mocked(getUsageAnalytics).mockResolvedValue(NO_SESSIONS)
 
   const view = render(
@@ -67,10 +66,17 @@ export async function renderProfile(plan: string, locale: Locale = 'zh') {
     </MemoryRouter>
   )
 
-  await screen.findByRole('heading', { name: 'Kael' })
+  await screen.findByRole('heading', { name: heading })
   await vi.waitFor(() => expect(view.baseElement.querySelector('.p5-profile-section')).not.toBeNull())
 
   return view
+}
+
+/** 个人资料 signed in on this plan code: only the account's lines change from one render to the next. */
+export async function renderProfile(plan: string, locale: Locale = 'zh') {
+  signInAs(plan)
+
+  return mountProfile(locale, 'Kael')
 }
 
 /** What the page says about the plan: the badge in the header and the 方案 row under the email. */

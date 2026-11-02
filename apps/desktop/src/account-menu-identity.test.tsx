@@ -122,7 +122,7 @@ describe.each([
 })
 
 describe('product mode', () => {
-  // By design one word moved on the branch: the row calls `fast` Pro, as the plans page does.
+  // By design the line changed on the branch: the row says `fast` is Pro, as the plans page does, and no number.
   it('the account row itself', async () => {
     seedAccountMenuState()
     setMode(true, 'product')

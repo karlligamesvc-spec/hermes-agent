@@ -377,13 +377,24 @@ describe('the plan’s name', () => {
     expect(menu.querySelector('[data-apex-account-plan]')?.textContent).toBe('当前套餐')
   })
 
-  it('the row under the name uses the same name', async () => {
-    installBridge({ planUsage: reads({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18 }) })
+  it('the row under the name uses the same name, and the card keeps the number', async () => {
+    installBridge({
+      planUsage: reads({
+        period: 'month',
+        planCode: 'fast',
+        planName: '快速',
+        usedRatio: 0.18,
+        weekly: { enforced: true, resetsAt: '2026-11-08T16:00:00+00:00', unlimited: false, usedRatio: 0.25 }
+      })
+    })
     const { container } = renderSidebar()
 
-    await waitFor(() =>
-      expect(container.querySelector('[data-single-thread-account-line]')?.textContent).toBe('Pro · 本月用了 18%')
-    )
+    await waitFor(() => expect(container.querySelector('[data-single-thread-account-line]')?.textContent).toBe('Pro'))
+
+    const menu = await openMenu()
+
+    await waitFor(() => expect(menu.querySelector('[data-apex-account-plan]')?.textContent).toBe('Pro'))
+    expect(menu.querySelector('[data-apex-weekly-quota]')?.textContent).toContain('还剩 75%')
   })
 })
 
@@ -586,12 +597,12 @@ describe('several assistants: the account is not one of them', () => {
     const { container } = renderSidebar()
     const line = () => container.querySelector('[data-single-thread-account-line]')?.textContent
 
-    await waitFor(() => expect(line()).toBe('Pro · 本月用了 18%'))
+    await waitFor(() => expect(line()).toBe('Pro'))
     const before = planUsage.mock.calls.length
 
     act(() => $activeGatewayProfile.set('default'))
 
-    expect(line()).toBe('Pro · 本月用了 18%')
+    expect(line()).toBe('Pro')
     expect(planUsage.mock.calls.length).toBe(before)
   })
 })
