@@ -22,7 +22,7 @@
  * folder as project (⌘O) with the coding projects under it, Import session,
  * the technical 配置档案 and 派生树 pages, 前往's 技能与工具 / 消息平台 / 排程 /
  * 记忆图谱 and the command center's 会话 / 系统 / 重启网关 rows (排程 is the
- * page the account menu opens as 定时运行); Toggle status bar (⇧⌘S), Toggle
+ * page Settings › 助手与记录 opens as 定时运行); Toggle status bar (⇧⌘S), Toggle
  * terminal (⌃`, ⌃⇧`) and Toggle logs. 产物 stays: it lists the images, files
  * and links the conversations produced.
  *

@@ -55,7 +55,8 @@ one-off at the call site.
   route on close. Model/session pickers and dialogs layer above the current
   surface; they are not navigation stacks.
 - **Scheduled jobs is a durable destination.** It renders in the main content
-  area, reached from the bottom-left account menu in the APEX business shell.
+  area, reached from the bottom-left account menu in the APEX business shell
+  (Settings › 助手与记录 in single-thread product mode).
   Its create/edit/delete confirmations may
   use dialogs, but the destination itself never uses an overlay or backdrop.
 - **Panes are working context.** Preview, files, review, and terminal remain

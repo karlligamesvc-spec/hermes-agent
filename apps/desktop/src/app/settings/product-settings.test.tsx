@@ -63,18 +63,11 @@ afterEach(() => {
 })
 
 // Written out here rather than read from product-settings.ts: the check must not reuse what it checks.
-const PRODUCT = [
-  'config:personalization',
-  'config:memory',
-  'config:voice',
-  'notifications',
-  'config:appearance',
-  'im',
-  'usage',
-  'about'
-]
+const COMMON = ['config:personalization', 'config:memory', 'config:voice', 'notifications', 'config:appearance', 'im']
 
-const OWN_KEY = [...PRODUCT.slice(0, -1), 'config:model', 'providers', 'about']
+const PRODUCT = [...COMMON, 'activity', 'usage', 'account', 'plans', 'about']
+
+const OWN_KEY = [...COMMON, 'usage', 'config:model', 'providers', 'about']
 
 describe('$productSettingsViews', () => {
   it.each([
@@ -92,11 +85,12 @@ describe('$productSettingsViews', () => {
     expect($productSettingsViews.get()).toEqual(views)
   })
 
-  it('product mode keeps ten sections at most', () => {
-    setAccount('own-key')
+  it.each(['tier', 'apex', 'own-key'] as const)('product mode keeps ten sections at most in the rail, %s', account => {
+    setAccount(account)
     setMode('product')
+    renderSettings()
 
-    expect($productSettingsViews.get()?.length).toBeLessThanOrEqual(10)
+    expect(railLabels().length).toBeLessThanOrEqual(10)
   })
 })
 
@@ -198,8 +192,8 @@ function railLabels(): string[] {
 
 describe('the Settings overlay in product mode', () => {
   it.each([
-    ['tier', ['个性化', '记忆', '语音', '通知', '外观', '连接微信和飞书', '用量', '关于']],
-    ['apex', ['个性化', '记忆', '语音', '通知', '外观', '连接微信和飞书', '用量', '关于']],
+    ['tier', ['个性化', '记忆', '语音', '通知', '外观', '连接微信和飞书', '助手与记录', '用量', '账号', '关于']],
+    ['apex', ['个性化', '记忆', '语音', '通知', '外观', '连接微信和飞书', '助手与记录', '用量', '账号', '关于']],
     ['own-key', ['个性化', '记忆', '语音', '通知', '外观', '连接微信和飞书', '用量', '模型', '提供方', '关于']]
   ] as const)('%s: the rail', (account, labels) => {
     setAccount(account)
@@ -216,7 +210,7 @@ describe('the Settings overlay in product mode', () => {
     renderSettings()
     const rail = document.querySelector('[data-tour="overlay-nav"]') as HTMLElement
 
-    expect(within(rail).queryAllByRole('button').length).toBe(8)
+    expect(within(rail).queryAllByRole('button').length).toBe(10)
     cleanup()
 
     setMode('developer')
@@ -264,7 +258,7 @@ describe('the Settings overlay in product mode', () => {
     act(() => setToolViewMode('product'))
 
     expect(screen.getByText('personalization-view')).toBeTruthy()
-    expect(railLabels()).toHaveLength(8)
+    expect(railLabels()).toHaveLength(10)
 
     act(() => setToolViewMode('technical'))
 
@@ -325,7 +319,8 @@ describe('the product pages', () => {
   it.each([
     [{ period: 'month', planName: '快速', usedRatio: 0.18 }, '快速', '本月用了 18%'],
     [{ period: 'week', planName: '专业', usedRatio: 0.004 }, '专业', '本周用了 不到 1%'],
-    [{ period: 'month', planName: '团队', usedRatio: null }, '团队', '不限量']
+    [{ period: 'month', planName: '团队', usedRatio: null }, '团队', '不限量'],
+    [{ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18 }, 'Pro', '本月用了 18%']
   ] as const)('用量: %j', (usage, plan, line) => {
     setAccount('tier')
     setMode('product')

@@ -4,6 +4,7 @@ import type { TranslucencyState } from '@hermes/shared/translucency'
 import type { DesktopBootstrapEvent, DesktopBootstrapState } from '../electron/bootstrap-types'
 import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
+import type { DesktopPlanUsageResult } from '../shared/apex-plan-usage'
 
 import type { AnalysisDocumentsBridge } from './app/business-workspace/analysis-types'
 import type { WakeIndicatorState } from './lib/wake-indicator'
@@ -1716,19 +1717,7 @@ export interface DesktopTeamSummary {
 }
 
 // hc-1061 / hc-1062 (apex-nodes account_plan_usage router): electron/apex-plan-usage.ts.
-export interface DesktopPlanUsage {
-  period: 'month' | 'week'
-  planName: string
-  /** Share of the allowance used (1.25 = 125%); null when the plan is unlimited. */
-  usedRatio: null | number
-}
-
-export interface DesktopPlanUsageResult {
-  message?: 'FETCH_FAILED' | 'NOT_SIGNED_IN' | 'SESSION_EXPIRED'
-  needsSignIn?: boolean
-  ok: boolean
-  usage: DesktopPlanUsage | null
-}
+export type { DesktopPlanUsage, DesktopPlanUsageResult, DesktopWeeklyQuota } from '../shared/apex-plan-usage'
 
 /** hc-1073: main's view of the stored login JWT (electron/apex-cloud-login.ts). */
 export interface DesktopCloudLoginState {

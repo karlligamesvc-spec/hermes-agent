@@ -1,7 +1,8 @@
 /**
  * hc-1109: what product mode's Settings shows that the other modes don't — its
  * rail (product-settings.ts says which tabs, in which order) and the 记忆,
- * 连接微信和飞书 and 用量 pages.
+ * 连接微信和飞书 and 用量 pages. hc-1133 adds 账号, 助手与记录 and the plans page
+ * (product-account-settings.tsx).
  */
 
 import { useStore } from '@nanostores/react'
@@ -10,19 +11,29 @@ import { useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
+import { planLabel, useAccountMenuCopy } from '@/i18n/account-menu'
 import { useSettingsProductCopy } from '@/i18n/settings-product'
 import { formatUsedPercent, useSingleThreadSidebarCopy } from '@/i18n/single-thread-sidebar'
 import { BarChart3, Brain, MessageCircle } from '@/lib/icons'
 import { $authState } from '@/store/auth'
-import { $planUsage, planUsageFor, planUsageOwner, refreshPlanUsage } from '@/store/plan-usage'
+import { isApexAccount } from '@/store/model-tiers'
+import { $planUsage, planTierOf, planUsageFor, planUsageOwner, refreshPlanUsage, weeklyQuotaView } from '@/store/plan-usage'
 
 import { ImEntryView } from '../im-entry'
 import type { OverlayNavGroup } from '../overlays/overlay-split-layout'
 import { PROFILE_STATS_ROUTE } from '../routes'
+import { useWeeklyQuotaValue, WeeklyQuotaMeter } from '../single-thread/weekly-quota'
 
 import { MemoryLedgerSettings } from './memory-ledger-settings'
 import { ListRow, SectionHeading, SettingsContent } from './primitives'
-import { $productSettingsViews } from './product-settings'
+import {
+  ACCOUNT_ICON,
+  ACTIVITY_ICON,
+  ProductAccountSettings,
+  ProductActivitySettings,
+  ProductPlansSettings
+} from './product-account-settings'
+import { $productSettingsViews, SETTINGS_PLANS_ROUTE } from './product-settings'
 import type { SettingsView } from './types'
 
 /** The rail as given outside product mode; in product mode only the kept tabs, in product order. */
@@ -33,6 +44,7 @@ export function useProductSettingsRail(
 ): OverlayNavGroup[] {
   const views = useStore($productSettingsViews)
   const copy = useSettingsProductCopy()
+  const accountCopy = useAccountMenuCopy()
 
   return useMemo(() => {
     if (!views) {
@@ -51,7 +63,13 @@ export function useProductSettingsRail(
 
     const memory = byId.get('config:memory')
 
+    // The plans page has no entry: it is opened from 升级 and belongs to 账号, which stays lit.
     const productOnly: Partial<Record<string, OverlayNavGroup>> = {
+      account: {
+        ...own('account', ACCOUNT_ICON, accountCopy.account),
+        active: activeView === 'account' || activeView === 'plans'
+      },
+      activity: own('activity', ACTIVITY_ICON, accountCopy.activity),
       'config:memory': memory && { ...memory, label: copy.memory },
       im: own('im', MessageCircle, copy.im),
       usage: own('usage', BarChart3, copy.usage)
@@ -63,17 +81,26 @@ export function useProductSettingsRail(
 
       return group ? [{ ...group, gapBefore: false }] : []
     })
-  }, [activeView, copy, groups, select, views])
+  }, [accountCopy, activeView, copy, groups, select, views])
 }
 
 /** The page for a product-only tab (and 记忆, the ledger here); null for every other tab. */
 export function productSettingsPage(view: string): ReactNode {
   switch (view) {
+    case 'account':
+      return <ProductAccountSettings />
+
+    case 'activity':
+      return <ProductActivitySettings />
+
     case 'config:memory':
       return <ProductMemorySettings />
 
     case 'im':
       return <ProductImSettings />
+
+    case 'plans':
+      return <ProductPlansSettings />
 
     case 'usage':
       return <ProductUsageSettings />
@@ -116,9 +143,14 @@ function ProductImSettings() {
   )
 }
 
-/** The plan and this period's usage, the line the sidebar's account row shows, and the way to the history. */
+/**
+ * The plan and this period's usage, the line the sidebar's account row shows, the
+ * way to the history and the plans; hc-1133: and this week's allowance, which the
+ * account menu's card opens this page for.
+ */
 function ProductUsageSettings() {
   const copy = useSettingsProductCopy()
+  const accountCopy = useAccountMenuCopy()
   const sidebar = useSingleThreadSidebarCopy()
   const navigate = useNavigate()
   const auth = useStore($authState)
@@ -132,11 +164,15 @@ function ProductUsageSettings() {
     }
   }, [owner, signedIn])
 
+  const weekly = weeklyQuotaView(usage)
+  const weeklyValue = useWeeklyQuotaValue(weekly)
+  const onTopPlan = planTierOf(usage?.planCode ?? auth.account.plan) === 'max'
+
+  // No line for an unlimited month: the plan alone, and 本周额度 below says 不限量.
   const used =
-    usage &&
-    (usage.usedRatio === null
-      ? copy.usageUnlimited
-      : copy.usageUsed({ percent: formatUsedPercent(usage.usedRatio, sidebar), period: usage.period }))
+    usage && usage.usedRatio !== null
+      ? copy.usageUsed({ percent: formatUsedPercent(usage.usedRatio, sidebar), period: usage.period })
+      : undefined
 
   return (
     <SettingsContent>
@@ -145,13 +181,33 @@ function ProductUsageSettings() {
       <div className="p5-card p5-rows mt-3.5">
         <ListRow
           action={
-            <Button onClick={() => navigate(PROFILE_STATS_ROUTE)} size="sm" type="button" variant="outline">
-              {copy.usageHistory}
-            </Button>
+            <span className="flex items-center gap-2">
+              {isApexAccount(auth) && (
+                <Button onClick={() => navigate(SETTINGS_PLANS_ROUTE)} size="sm" type="button" variant="outline">
+                  {onTopPlan ? accountCopy.viewPlans : accountCopy.upgrade}
+                </Button>
+              )}
+              <Button onClick={() => navigate(PROFILE_STATS_ROUTE)} size="sm" type="button" variant="outline">
+                {copy.usageHistory}
+              </Button>
+            </span>
           }
-          description={used || undefined}
-          title={usage ? usage.planName : copy.usageNone}
+          description={used}
+          title={usage ? planLabel(usage, '', accountCopy) : copy.usageNone}
         />
+        {usage && (
+          <ListRow
+            action={<span className="text-xs text-(--ui-text-secondary)">{weeklyValue}</span>}
+            below={
+              weekly.kind === 'limited' ? (
+                <div className="pt-2">
+                  <WeeklyQuotaMeter view={weekly} />
+                </div>
+              ) : undefined
+            }
+            title={accountCopy.weeklyUsage}
+          />
+        )}
       </div>
     </SettingsContent>
   )

@@ -215,7 +215,7 @@ export const SidebarSurface = memo(function SidebarSurface({
   const singleThread = useSingleThreadMode()
 
   return singleThread ? (
-    <SingleThreadSidebar currentView={currentView} onNavigate={latestActions.onNavigate} />
+    <SingleThreadSidebar currentView={currentView} />
   ) : (
     <ChatSidebar currentView={currentView} {...latestActions} />
   )
