@@ -72,7 +72,7 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
 
 export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: SettingsPageProps) {
   const scopeProfile = useStore($settingsScopeProfile)
-  // hc-1109: product mode keeps eight tabs; any other `?tab=` lands on 个性化.
+  // hc-1109, hc-1133: product mode keeps its own tabs; any other `?tab=` lands on 个性化.
   const productViews = useStore($productSettingsViews)
   const productCopy = useSettingsProductCopy()
   const activeConnectionId = useStore($activeConnectionId)

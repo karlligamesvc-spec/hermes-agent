@@ -1,0 +1,186 @@
+## first open, fresh home
+ok
+shot 00-first-open
+ok
+{ "value": "{\"hash\":\"\",\"gate\":false,\"pe\":\"\",\"surface\":false,\"menu\":false}"}
+shot 01-signed-in
+## menu: what production answers today (shadow)
+ok
+shot 02-menu-shadow-unlimited
+{ "value": "小 / 小满 / xiaoman@example.com / 免费 / 升级 / 本周额度 / 不限量 / 设置 / 联系我们 / 退出登录 | bar=undefined | row=免费"}
+## menu: off
+ok
+shot 03-menu-off
+{ "value": "小 / 小满 / xiaoman@example.com / 免费 / 升级 / 本周额度 / 不限量 / 设置 / 联系我们 / 退出登录 | bar=undefined | row=免费"}
+## menu: enforced
+ok
+shot 03-menu-enforced
+{ "value": "小 / 小满 / xiaoman@example.com / 免费 / 升级 / 本周额度 / 还剩 95% / 11月8日 8:00 重置 / 设置 / 联系我们 / 退出登录 | bar=95 | row=免费"}
+## menu: exhausted
+ok
+shot 03-menu-exhausted
+{ "value": "小 / 小满 / xiaoman@example.com / 免费 / 升级 / 本周额度 / 已用完 / 11月8日 8:00 重置 / 设置 / 联系我们 / 退出登录 | bar=0 | row=免费"}
+## menu: pro
+ok
+shot 03-menu-pro
+{ "value": "小 / 小满 / xiaoman@example.com / Pro / 升级 / 本周额度 / 不限量 / 设置 / 联系我们 / 退出登录 | bar=undefined | row=Pro · 本月用了 18%"}
+## menu: max
+ok
+shot 03-menu-max
+{ "value": "小 / 小满 / xiaoman@example.com / Max / 查看套餐 / 本周额度 / 不限量 / 设置 / 联系我们 / 退出登录 | bar=undefined | row=Max"}
+## contact
+ok
+ok
+["mailto:support@apex-nodes.com"]
+{ "value": true}
+shot 04-contact-toast
+## 设置 from the menu
+ok
+ok
+{"value":"#/settings"}
+{ "value": "个性化,记忆,语音,通知,外观,连接微信和飞书,助手与记录,用量,账号,关于"}
+shot 05-settings
+## 账号
+ok
+{"value":"#/settings?tab=account"}
+shot 06-settings-account
+ok
+{"value":"#/profile"}
+shot 07-profile
+{"value":"#/"}
+## 重新登录 from Settings, then 返回
+ok
+{ "value": "{\"hash\":\"#/settings?tab=account\",\"gate\":true,\"pe\":\"\",\"surface\":false,\"menu\":false}"}
+shot 08-resignin-from-settings
+ok
+{ "value": "{\"hash\":\"#/settings?tab=account\",\"gate\":false,\"pe\":\"none\",\"surface\":true,\"menu\":false}"}
+shot 09-back-on-settings-account
+## 重新登录 from Settings, then sign in
+ok
+ok
+{ "value": "{\"hash\":\"#/settings?tab=account\",\"gate\":false,\"pe\":\"none\",\"surface\":true,\"menu\":false}"}
+shot 10-signed-in-again
+## 助手与记录
+ok
+{"value":"#/cron"}
+shot 11-cron
+ok
+{"value":"#/assistant"}
+shot 12-assistant
+ok
+{"value":"#/history"}
+shot 13-history
+shot 14-settings-activity
+## 用量
+ok
+ok
+{"value":"#/settings?tab=usage"}
+{ "value": "用量 / 你的套餐，和这个周期用了多少。 / 免费 / 升级 / 查看使用记录 / 本周额度 / 不限量"}
+shot 15-usage-shadow
+{ "value": "用量 / 你的套餐，和这个周期用了多少。 / 免费 / 升级 / 查看使用记录 / 本周额度 / 11月8日 8:00 重置 / 还剩 95%"}
+shot 16-usage-enforced
+## 升级
+ok
+ok
+{"value":"#/settings?tab=plans"}
+{ "value": "套餐 / 选一个适合你用量的套餐。 / 现在额度不限量。付费功能推出后，各套餐的额度如下。 / 免费 / 当前套餐 / 基础的每周额度 / Pro / 每周额度是免费的 5 倍 / 价格待公布 / 升级到 Pro / Max / 每周额度是免费的 15 倍 / 价格待公布 / 升级到 Max"}
+shot 17-plans
+ok
+{ "value": "付费功能正在测试中，后续推出，现在不会扣费。"}
+shot 18-plans-testing-notice
+ok
+{"value":"#/settings?tab=plans"}
+requests since the paid clicks: []
+urls handed to the OS: []
+shot 18b-plans-on-pro
+{ "value": "free::0 pro:true:0 max::1"}
+{ "value": "free::0 pro::0 max:true:0"}
+## 退出登录 fails
+ok
+ok
+shot 19-signout-failed-toast
+{ "value": "{\"hash\":\"#/\",\"gate\":false,\"pe\":\"\",\"surface\":false,\"menu\":false}"}
+{ "value": true}
+ok
+{ "value": "{\"hash\":\"#/\",\"gate\":true,\"pe\":\"\",\"surface\":false,\"menu\":false}"}
+shot 20-signout-failed-resignin
+ok
+{ "value": "{\"hash\":\"#/\",\"gate\":false,\"pe\":\"\",\"surface\":false,\"menu\":false}"}
+## 退出登录 works
+ok
+ok
+ok
+{ "value": "{\"hash\":\"#/\",\"gate\":true,\"pe\":\"\",\"surface\":false,\"menu\":false}"}
+shot 21-signed-out
+files still holding the key under the home:        0
+[2026-11-02T06:53:28.840Z] [hermes] [managed] sign-out failed (HTTP 500); the local credential stays so it can be retried
+[2026-11-02T06:53:34.480Z] [hermes] [managed] signed out: the server revoked this computer's relay key and the stored credential is deleted; relay key removed from 4 loca
+## sign back in
+ok
+{ "value": "{\"hash\":\"#/\",\"gate\":false,\"pe\":\"\",\"surface\":false,\"menu\":false}"}
+shot 22-signed-back-in
+ok
+shot 23-menu-after-relogin
+{ "value": "小 / 小满 / xiaoman@example.com / 免费 / 升级 / 本周额度 / 不限量 / 设置 / 联系我们 / 退出登录 | bar=undefined | row=免费"}
+## a turn after signing back in
+ok
+ok
+[('relay', '/api/show'), ('relay', '/v1/chat/completions'), ('relay', '/v1/models')]
+shot 24-turn-after-relogin
+## a 401 from main while Settings is open
+{ "value": "{\"hash\":\"#/settings?tab=usage\",\"gate\":true,\"pe\":\"\",\"surface\":false,\"menu\":false}"}
+shot 25-401-over-settings
+ok
+{ "value": "{\"hash\":\"#/settings?tab=usage\",\"gate\":false,\"pe\":\"none\",\"surface\":true,\"menu\":false}"}
+shot 26-after-401-signin
+## English
+ok
+{ "value": "小 / 小满 / xiaoman@example.com / Free / Upgrade / Weekly usage / Unlimited / Settings / Contact us / Sign out | bar=undefined | row=Free"}
+shot 30-en-menu-shadow
+ok
+{ "value": "小 / 小满 / xiaoman@example.com / Free / Upgrade / Weekly usage / 95% left / Resets Nov 8, 8:00 AM / Settings / Contact us / Sign out | bar=95 | row=Free"}
+shot 31-en-menu-enforced
+{ "value": "Personalization,Memory,Voice,Notifications,Appearance,WeChat & Feishu,Assistants & history,Usage,Account,About"}
+shot 32-en-settings-account
+shot 33-en-settings-activity
+ok
+{ "value": "Plans / Pick the plan that fits how much you use APEX. / Usage is unlimited right now. Once paid plans launch, each plan gets the allowance below. / Free / Current plan / The base weekly allowance / Pro / 5× the Free weekly allowance / Price coming soon / Upgrade to Pro / Max / 15× the Free weekly allowance / Price coming soon / Upgrade to Max / Paid plans are still being tested and will launch later. You have not been charged."}
+shot 34-en-plans-notice
+## developer mode
+ok
+{ "value": "个人资料,设置,项目,定时运行,连接助手,历史会话,交付物,重新登录,退出登录"}
+shot 35-developer-account-menu
+{ "value": "#/settings?tab=plans plans=false railEntries=18"}
+shot 36-developer-settings
+## dark
+ok
+shot 37-dark-menu-enforced
+ok
+shot 38-dark-plans-notice
+## narrow window
+{"error":"TimeoutError:locator.click:Timeout15000msexceeded.\nCalllog:\n-waitingforlocator('[data-single-thread-account]').first()\n"}
+shot 39-narrow-menu
+shot 40-narrow-plans
+## several assistants
+ok
+ok
+ok
+{ "value": "APEX,剪辑助手"}
+shot 41-on-assistant
+ok
+{ "value": "小 / 小满 / xiaoman@example.com / 免费 / 升级 / 本周额度 / 还剩 95% / 11月8日 8:00 重置 / 设置 / 联系我们 / 退出登录 | bar=95 | row=免费"}
+shot 42-menu-on-assistant
+{ "value": "account title=设置"}
+{ "value": "plans title=设置"}
+{ "value": "usage title=设置"}
+{ "value": "activity title=剪辑助手 的设置"}
+{ "value": "config:voice title=剪辑助手 的设置"}
+shot 43-settings-account-on-assistant
+shot 44-settings-activity-on-assistant
+## console errors
+[]
+## nothing reached the network but the local fixtures
+['account', 'relay']
+## real home untouched
+96112 Oct 31 11:57 /Users/karlsu/.apexnodes/logs/desktop.log
+ok
