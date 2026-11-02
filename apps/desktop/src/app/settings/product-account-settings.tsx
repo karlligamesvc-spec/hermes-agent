@@ -74,15 +74,13 @@ export function ProductAccountSettings() {
       <SectionHeading icon={ACCOUNT_ICON} title={copy.account} />
       <p className="p5-section-intro">{copy.accountIntro}</p>
       <div className="p5-card p5-rows mt-3.5">
-        <ListRow
-          description={email || undefined}
-          title={
-            <span className="flex items-center gap-2.5" data-apex-account-settings-name="">
-              <AccountAvatar account={auth.account} name={name} />
-              <span className="min-w-0 truncate">{name}</span>
-            </span>
-          }
-        />
+        <div className="flex items-center gap-3 py-3.5" data-apex-account-settings-identity="">
+          <AccountAvatar account={auth.account} name={name} size="size-9" />
+          <div className="min-w-0 flex-1">
+            <div className="p5-row-title truncate">{name}</div>
+            {email ? <div className="p5-row-desc truncate">{email}</div> : null}
+          </div>
+        </div>
         <ListRow
           action={
             <Button onClick={() => navigate(SETTINGS_PLANS_ROUTE)} size="sm" type="button" variant="outline">

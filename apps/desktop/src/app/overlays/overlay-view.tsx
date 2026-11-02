@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 
@@ -9,6 +10,7 @@ import { translateNow } from '@/i18n'
 import { ESCAPE_PRIORITY, isTopEscapeLayer, pushEscapeLayer } from '@/lib/escape-layers'
 import { triggerHaptic } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
+import { $overlaysYieldToSignIn } from '@/store/sign-in-screen'
 
 // Shared top clearance for overlay content that sits *beside* the floating
 // close button (which is absolute at `0.1875rem + titlebar/2`, -translate-y-1/2,
@@ -78,6 +80,7 @@ export function OverlayView({
     document.activeElement instanceof HTMLElement ? document.activeElement : null
   )
   const [contentNode, setContentNode] = useState<HTMLElement | null>(null)
+  const yieldToSignIn = useStore($overlaysYieldToSignIn)
 
   const closeOverlay = () => {
     triggerHaptic('close')
@@ -107,6 +110,11 @@ export function OverlayView({
       }, 0)
     }
   }, [])
+
+  // A modal dialog would leave the sign-in screen above it unclickable (store/sign-in-screen.ts).
+  if (yieldToSignIn) {
+    return null
+  }
 
   return (
     <DialogPrimitive.Root onOpenChange={open => !open && closeOverlay()} open>

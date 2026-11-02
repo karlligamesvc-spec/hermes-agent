@@ -10,11 +10,13 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { restoreRecordingTimeZone } from '@/__identity__/single-thread-shell/time-zone'
+import { DesktopAuthGate } from '@/app/desktop-auth-gate'
 import type { DesktopPlanUsage } from '@/global'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
 import { ACCOUNT_MENU_COPY } from '@/i18n/account-menu'
-import { $authState } from '@/store/auth'
+import { $authState, handleAuthGate } from '@/store/auth'
 import { $managedReSignIn, closeManagedReSignIn } from '@/store/managed-re-sign-in'
+import { requestManagedReSignIn } from '@/store/onboarding'
 import { $planUsage, planTierOf, weeklyQuotaView } from '@/store/plan-usage'
 import { $activeGatewayProfile, $profiles } from '@/store/profile'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
@@ -32,6 +34,12 @@ import { SettingsView } from './index'
  * Every way into these pages outside product mode is pinned in
  * src/account-menu-identity.test.tsx.
  */
+
+// The auth gate re-reads main's status when it mounts; these cases seed the account themselves.
+vi.mock(import('@/store/auth'), async importOriginal => ({
+  ...(await importOriginal()),
+  refreshAuthStatus: async () => undefined
+}))
 
 vi.mock('./about-settings', () => ({ AboutSettings: () => <div>about-view</div> }))
 vi.mock('./appearance-settings', () => ({ AppearanceSettings: () => <div>appearance-view</div> }))
@@ -186,6 +194,87 @@ describe('Settings › 账号', () => {
     fireEvent.click(within(rowOf('套餐')).getByRole('button', { name: label }))
 
     expect(location()).toBe('/settings?tab=plans')
+  })
+})
+
+describe('the sign-in screen over Settings: Settings is a modal, which would leave it dead', () => {
+  const noPointer = () => document.body.style.pointerEvents === 'none'
+  const signInUp = () => screen.queryByRole('heading', { name: '开始使用' }) !== null
+
+  function renderWithGate(route: string) {
+    setRuntimeI18nLocale('zh')
+
+    return render(
+      <I18nProvider configClient={null} initialLocale="zh">
+        <MemoryRouter initialEntries={[route]}>
+          <SettingsView onClose={vi.fn()} />
+          <DesktopAuthGate enabled requestGateway={(async () => ({ ok: true })) as never} />
+          <Location />
+        </MemoryRouter>
+      </I18nProvider>
+    )
+  }
+
+  it('Settings › 账号 › 重新登录: the screen takes clicks, and 返回 comes back to the same page', async () => {
+    renderWithGate('/settings?tab=account')
+    expect(noPointer()).toBe(true) // Without the fix this stays true under the login screen.
+
+    fireEvent.click(screen.getByRole('button', { name: '重新登录' }))
+    await screen.findByRole('heading', { name: '开始使用' })
+
+    await waitFor(() => expect(noPointer()).toBe(false))
+    expect(document.querySelector('[data-overlay-surface]')).toBeNull()
+    // Reachable: Radix's hideOthers would have taken these out of the accessibility tree.
+    expect(screen.getByRole('button', { name: '登录 APEX 账户' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '返回' }))
+
+    await waitFor(() => expect(document.querySelector('[data-overlay-surface]')).not.toBeNull())
+    expect(signInUp()).toBe(false)
+    expect(location()).toBe('/settings?tab=account')
+    expect(screen.getByText('xiaoman@example.com')).toBeTruthy()
+  })
+
+  it('a 401 from main while Settings is open: the screen takes clicks too', async () => {
+    renderWithGate('/settings?tab=usage')
+    expect(noPointer()).toBe(true)
+
+    act(() => handleAuthGate({ reason: 'unauthorized', statusCode: 401 } as never))
+    await screen.findByRole('heading', { name: '开始使用' })
+
+    await waitFor(() => expect(noPointer()).toBe(false))
+    expect(screen.getByRole('button', { name: '登录 APEX 账户' })).toBeTruthy()
+  })
+
+  it('a re-sign-in asked for by anything else (the IM binding, a refused send’s toast): the same', async () => {
+    renderWithGate('/settings?tab=im')
+    expect(noPointer()).toBe(true)
+
+    act(() => requestManagedReSignIn('登录已过期,请重新登录'))
+    await screen.findByRole('heading', { name: '开始使用' })
+
+    await waitFor(() => expect(noPointer()).toBe(false))
+    expect(screen.getByRole('button', { name: '返回' })).toBeTruthy()
+  })
+
+  it('a re-sign-in finished: the overlay is back and nothing blocks it', async () => {
+    renderWithGate('/settings?tab=account')
+    fireEvent.click(screen.getByRole('button', { name: '重新登录' }))
+    await screen.findByRole('heading', { name: '开始使用' })
+
+    act(() => closeManagedReSignIn())
+
+    await waitFor(() => expect(document.querySelector('[data-overlay-surface]')).not.toBeNull())
+    expect(signInUp()).toBe(false)
+  })
+
+  it('developer mode keeps what it had: the overlay stays mounted', async () => {
+    setProductMode(false)
+    renderWithGate('/settings?tab=about')
+
+    act(() => requestManagedReSignIn(''))
+
+    expect(document.querySelector('[data-overlay-surface]')).not.toBeNull()
   })
 })
 

@@ -4,6 +4,7 @@ import { join, relative } from 'node:path'
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { atom } from 'nanostores'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ProfileInfo } from '@/types/hermes'
@@ -146,10 +147,12 @@ describe('hc-1098 several assistants on: the row is gone', () => {
 
     function renderSettingsTop() {
       render(
-        <I18nProvider configClient={null} initialLocale="zh">
-          <SettingsSurfaceHeader description="说明" title="设置" titleId="t" />
-          <SettingsProfileScope />
-        </I18nProvider>
+        <MemoryRouter>
+          <I18nProvider configClient={null} initialLocale="zh">
+            <SettingsSurfaceHeader description="说明" title="设置" titleId="t" />
+            <SettingsProfileScope />
+          </I18nProvider>
+        </MemoryRouter>
       )
     }
 
