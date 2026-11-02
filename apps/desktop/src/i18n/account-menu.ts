@@ -3,8 +3,8 @@
  * pages that took over its other entries (账号, 助手与记录) and the plans page.
  *
  * No price and no amount of money appears here: prices are not set. The plans
- * differ by how many times the free allowance they get, nothing else is claimed
- * for them.
+ * differ by how many times the FREE allowance they get, nothing else is claimed
+ * for them. The plans' names are the same in every language: FREE, PRO, MAX.
  *
  * Kept beside the main catalogs instead of inside them: those files are past
  * the code-health size cap (they may only shrink). Each locale is a whole typed
@@ -21,7 +21,7 @@ import type { Locale } from './types'
 export interface AccountMenuCopy {
   /** The plan's line when neither the cloud nor the sign-in names one. */
   planFallback: string
-  planNames: Record<PlanTier, string>
+  planNames: Readonly<Record<PlanTier, string>>
   upgrade: string
   /** The same button for someone already on the top plan. */
   viewPlans: string
@@ -67,9 +67,12 @@ export interface AccountMenuCopy {
   testingNotice: string
 }
 
+/** Not the model tiers Flash, Pro and Max (MODEL_TIER_LABEL): those are what an assistant runs on. */
+const PLAN_NAMES: Readonly<Record<PlanTier, string>> = { free: 'FREE', max: 'MAX', pro: 'PRO' }
+
 const en: AccountMenuCopy = {
   planFallback: 'Your plan',
-  planNames: { free: 'Free', max: 'Max', pro: 'Pro' },
+  planNames: PLAN_NAMES,
   upgrade: 'Upgrade',
   viewPlans: 'View plans',
   weeklyUsage: 'Weekly usage',
@@ -99,8 +102,8 @@ const en: AccountMenuCopy = {
   plansUnlimitedNote: 'Usage is unlimited right now. Once paid plans launch, each plan gets the allowance below.',
   planAllowances: {
     free: 'The base weekly allowance',
-    max: '15× the Free weekly allowance',
-    pro: '5× the Free weekly allowance'
+    max: '15× the FREE weekly allowance',
+    pro: '5× the FREE weekly allowance'
   },
   priceSoon: 'Price coming soon',
   currentPlan: 'Current plan',
@@ -110,7 +113,7 @@ const en: AccountMenuCopy = {
 
 const zh: AccountMenuCopy = {
   planFallback: '当前套餐',
-  planNames: { free: '免费', max: 'Max', pro: 'Pro' },
+  planNames: PLAN_NAMES,
   upgrade: '升级',
   viewPlans: '查看套餐',
   weeklyUsage: '本周额度',
@@ -140,8 +143,8 @@ const zh: AccountMenuCopy = {
   plansUnlimitedNote: '现在额度不限量。付费功能推出后，各套餐的额度如下。',
   planAllowances: {
     free: '基础的每周额度',
-    max: '每周额度是免费的 15 倍',
-    pro: '每周额度是免费的 5 倍'
+    max: '每周额度是 FREE 的 15 倍',
+    pro: '每周额度是 FREE 的 5 倍'
   },
   priceSoon: '价格待公布',
   currentPlan: '当前套餐',
@@ -151,7 +154,7 @@ const zh: AccountMenuCopy = {
 
 const zhHant: AccountMenuCopy = {
   planFallback: '目前方案',
-  planNames: { free: '免費', max: 'Max', pro: 'Pro' },
+  planNames: PLAN_NAMES,
   upgrade: '升級',
   viewPlans: '查看方案',
   weeklyUsage: '本週額度',
@@ -181,8 +184,8 @@ const zhHant: AccountMenuCopy = {
   plansUnlimitedNote: '現在額度不限量。付費功能推出後，各方案的額度如下。',
   planAllowances: {
     free: '基礎的每週額度',
-    max: '每週額度是免費的 15 倍',
-    pro: '每週額度是免費的 5 倍'
+    max: '每週額度是 FREE 的 15 倍',
+    pro: '每週額度是 FREE 的 5 倍'
   },
   priceSoon: '價格待公布',
   currentPlan: '目前方案',

@@ -13,7 +13,7 @@ import { restoreRecordingTimeZone } from '@/__identity__/single-thread-shell/tim
 import { DesktopAuthGate } from '@/app/desktop-auth-gate'
 import { ResponsiveRouteDrawer } from '@/app/overlays/responsive-route-drawer'
 import type { DesktopPlanUsage } from '@/global'
-import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
+import { I18nProvider, type Locale, setRuntimeI18nLocale } from '@/i18n'
 import { ACCOUNT_MENU_COPY } from '@/i18n/account-menu'
 import { $authState, handleAuthGate } from '@/store/auth'
 import { $managedReSignIn, closeManagedReSignIn } from '@/store/managed-re-sign-in'
@@ -103,7 +103,7 @@ function ReSignInProbe() {
   return <output data-testid="re-sign-in">{request ? `open:${request.notice ?? ''}` : 'closed'}</output>
 }
 
-function renderSettings(route: string, locale: 'en' | 'zh' = 'zh') {
+function renderSettings(route: string, locale: Locale = 'zh') {
   setRuntimeI18nLocale(locale)
 
   return render(
@@ -155,7 +155,7 @@ describe('Settings › 账号', () => {
 
     expect(screen.getByText('小满')).toBeTruthy()
     expect(screen.getByText('xiaoman@example.com')).toBeTruthy()
-    expect(rowOf('套餐').textContent).toContain('免费')
+    expect(rowOf('套餐').textContent).toContain('FREE')
     expect(railLink('account').className).toContain('bg-(--ui-bg-tertiary)')
   })
 
@@ -399,16 +399,38 @@ describe('Settings › 用量: where 本周额度 in the menu leads', () => {
 })
 
 describe('the plans page', () => {
-  it('lists 免费, Pro and Max with what the allowance is relative to', () => {
+  it('lists FREE, PRO and MAX with what the allowance is relative to', () => {
     renderSettings('/settings?tab=plans')
 
     expect(['free', 'pro', 'max'].map(tier => planColumn(tier).querySelector('span')?.textContent)).toEqual([
-      '免费',
-      'Pro',
-      'Max'
+      'FREE',
+      'PRO',
+      'MAX'
     ])
-    expect(planColumn('pro').textContent).toContain('免费的 5 倍')
-    expect(planColumn('max').textContent).toContain('免费的 15 倍')
+    expect(planColumn('pro').textContent).toContain('FREE 的 5 倍')
+    expect(planColumn('max').textContent).toContain('FREE 的 15 倍')
+  })
+
+  // hc-1134: a plan has one name in every language, and the allowances count from it.
+  it.each([
+    ['zh', '每周额度是 FREE 的 5 倍', '每周额度是 FREE 的 15 倍', '升级到 PRO', '升级到 MAX'],
+    ['zh-hant', '每週額度是 FREE 的 5 倍', '每週額度是 FREE 的 15 倍', '升級到 PRO', '升級到 MAX'],
+    ['en', '5× the FREE weekly allowance', '15× the FREE weekly allowance', 'Upgrade to PRO', 'Upgrade to MAX'],
+    ['ja', '5× the FREE weekly allowance', '15× the FREE weekly allowance', 'Upgrade to PRO', 'Upgrade to MAX'],
+    ['ar', '5× the FREE weekly allowance', '15× the FREE weekly allowance', 'Upgrade to PRO', 'Upgrade to MAX']
+  ] as const)('%s: FREE, PRO, MAX, their allowances and their buttons', (locale, proAllowance, maxAllowance, toPro, toMax) => {
+    renderSettings('/settings?tab=plans', locale)
+
+    expect(['free', 'pro', 'max'].map(tier => planColumn(tier).querySelector('span')?.textContent)).toEqual([
+      'FREE',
+      'PRO',
+      'MAX'
+    ])
+    expect(planColumn('pro').textContent).toContain(proAllowance)
+    expect(planColumn('pro').textContent).toContain(toPro)
+    expect(planColumn('max').textContent).toContain(maxAllowance)
+    expect(planColumn('max').textContent).toContain(toMax)
+    expect(document.body.textContent).not.toMatch(/免费|免費|\bFree\b/)
   })
 
   it.each([
@@ -455,8 +477,8 @@ describe('the plans page', () => {
   })
 
   it.each([
-    ['zh', '升级到 Pro', '付费功能正在测试中，后续推出，现在不会扣费。'],
-    ['en', 'Upgrade to Max', 'Paid plans are still being tested and will launch later. You have not been charged.']
+    ['zh', '升级到 PRO', '付费功能正在测试中，后续推出，现在不会扣费。'],
+    ['en', 'Upgrade to MAX', 'Paid plans are still being tested and will launch later. You have not been charged.']
   ] as const)('%s: a paid button says it is in testing, and buys nothing', (locale, label, notice) => {
     // Every call the page could make on the way to a purchase has to go through one of these.
     const bridgeCalls: string[] = []
@@ -623,7 +645,7 @@ describe('planTierOf', () => {
     ['free', 'free'],
     ['fast', 'pro'],
     ['advanced', 'max'],
-    // `pro` is apexnodes_billing's old alias for `advanced`, so it cannot be read as the plan listed as Pro.
+    // `pro` is apexnodes_billing's old alias for `advanced`, so it cannot be read as the plan listed as PRO.
     ['pro', null],
     ['plus', null],
     ['constructor', null],

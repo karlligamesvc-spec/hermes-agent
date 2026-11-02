@@ -1,0 +1,121 @@
+{"ok":true}
+{"ok":true}
+{"ok":true}
+## product mode, zh: the menu card on FREE
+row: { "value": "小 / 小满 / FREE"}
+{"ok":true}
+{ "value": "小 / 小满 / xiaoman@example.com / FREE / 升级 / 本周额度 / 不限量 / 设置 / 联系我们 / 退出登录"}
+shot 60-menu-free
+## the plans page from 升级
+{"ok":true}
+{"value":"#/settings?tab=plans"}
+{ "value": "个性化 / 记忆 / 语音 / 通知 / 外观 / 连接微信和飞书 / 助手与记录 / 用量 / 账号 / 关于 / 设置 / 管理 APEX 的个性化、记忆、通知、外观和用量。 / 管理 APEX 的个性化、记忆、通知、外观和用量。 / 套餐 / 选一个适合你用量的套餐。 / 现在额度不限量。付费功能推出后，各套餐的额度如下。 / FREE / 当前套餐 / 基础的每周额度 / PRO / 每周额度是 FREE 的 5 倍 / 价格待公布 / 升级到 PRO / MAX / 每周额度是 FREE 的 15 倍 / 价格待公布 / 升级到 MAX"}
+shot 61-plans
+{"ok":true}
+{ "value": "个性化 / 记忆 / 语音 / 通知 / 外观 / 连接微信和飞书 / 助手与记录 / 用量 / 账号 / 关于 / 设置 / 管理 APEX 的个性化、记忆、通知、外观和用量。 / 管理 APEX 的个性化、记忆、通知、外观和用量。 / 套餐 / 选一个适合你用量的套餐。 / 现在额度不限量。付费功能推出后，各套餐的额度如下。 / FREE / 当前套餐 / 基础的每周额度 / PRO / 每周额度是 FREE 的 5 倍 / 价格待公布 / 升级到 PRO / MAX / 每周额度是 FREE 的 15 倍 / 价格待公布 / 升级到 MAX / 付费功能正在测试中，后续推出，现在不会扣费。"}
+shot 62-plans-testing-notice
+{"ok":true}
+requests after a paid click: []
+## Settings 账号 and 用量
+{ "value": "个性化 / 记忆 / 语音 / 通知 / 外观 / 连接微信和飞书 / 助手与记录 / 用量 / 账号 / 关于 / 设置 / 管理 APEX 的个性化、记忆、通知、外观和用量。 / 管理 APEX 的个性化、记忆、通知、外观和用量。 / 账号 / 你的 APEX 账号。
+
+shot 63-settings-account
+{ "value": "个性化 / 记忆 / 语音 / 通知 / 外观 / 连接微信和飞书 / 助手与记录 / 用量 / 账号 / 关于 / 设置 / 管理 APEX 的个性化、记忆、通知、外观和用量。 / 管理 APEX 的个性化、记忆、通知、外观和用量。 / 用量 / 你的套餐，和这
+
+shot 64-settings-usage
+## 个人资料
+free: { "value": "{\"badge\":\"FREE\",\"rows\":[\"邮箱: xiaoman@example.com\",\"方案: FREE\"]}"}
+shot 65-profile-free
+row[pro]: { "value": "小 / 小满 / PRO"}
+{"ok":true}
+{ "value": "小 / 小满 / xiaoman@example.com / PRO / 升级 / 本周额度 / 不限量 / 设置 / 联系我们 / 退出登录"}
+shot 66-menu-pro
+profile[pro]: { "value": "{\"badge\":\"PRO\",\"rows\":[\"邮箱: xiaoman@example.com\",\"方案: PRO\"]}"}
+shot 68-profile-pro
+row[max]: { "value": "小 / 小满 / MAX"}
+{"ok":true}
+{ "value": "小 / 小满 / xiaoman@example.com / MAX / 查看套餐 / 本周额度 / 不限量 / 设置 / 联系我们 / 退出登录"}
+shot 67-menu-max
+profile[max]: { "value": "{\"badge\":\"MAX\",\"rows\":[\"邮箱: xiaoman@example.com\",\"方案: MAX\"]}"}
+row[unknownPlan]: { "value": "小 / 小满 / 团队"}
+profile[unknownPlan]: { "value": "{\"badge\":\"团队\",\"rows\":[\"邮箱: xiaoman@example.com\",\"方案: 团队\"]}"}
+## product mode: can the tier picker be reached?
+{"value":"#/settings?tab=config:model"}
+{ "value": "个性化,记忆,语音,通知,外观,连接微信和飞书,助手与记录,用量,账号,关于"}
+{ "value": "(no tier cards)"}
+shot 69-product-no-tier-page
+## zh-hant, product mode
+row: { "value": "小 / 小满 / FREE"}
+{"ok":true}
+{ "value": "小 / 小满 / xiaoman@example.com / FREE / 升級 / 本週額度 / 不限量 / 設定 / 聯絡我們 / 登出"}
+{ "value": "個性化 / 記憶 / 語音 / 通知 / 外觀 / 連接微信和飛書 / 助手與紀錄 / 用量 / 帳號 / 關於 / Settings / 管理 APEX 的個人化、記憶、通知、外觀和用量。 / 管理 APEX 的個人化、記憶、通知、外觀和用量。 / 方案 / 選一個適合你用量的方案。 / 現在額度不限量。付費功能推出後，各方案的額度如下。 / FREE / 目前方案 / 基礎的每週額度 / PRO / 每週額度是 FREE 的 5 倍 / 價格待公布 /
+
+shot 70-hant-plans
+## en, product mode
+row: { "value": "小 / 小满 / FREE"}
+{"ok":true}
+{ "value": "小 / 小满 / xiaoman@example.com / FREE / Upgrade / Weekly usage / Unlimited / Settings / Contact us / Sign out"}
+shot 71-en-menu-free
+{ "value": "Personalization / Memory / Voice / Notifications / Appearance / WeChat & Feishu / Assistants & history / Usage / Account / About / Settings / Manage APEX’s personalization, memory, notifications, appearance and usage. / Manage APEX’s personalization, memory, notifications, appearance and usage. / Plans / Pick the plan that fits how much you use APEX. / Usage is unlimited right now. Once paid plans launch, each plan gets the allowance below. / FREE / Current plan / The base weekly
+
+shot 72-en-plans
+## developer mode: the tier page, on a FREE account
+{"ok":true}
+{ "value": "[[\"custom:apex-nodes.com\",\"Apex-nodes.com\",[\"apex-flash\"]]]"}
+{"value":"#/settings?tab=config:model"}
+{ "value": "个性化,档位,对话,外观,工作区,安全,浏览器,密码与登录,记忆与上下文,语音,高级,通知,网关,键盘快捷键,工具与密钥,已归档对话,关于"}
+{ "value": "flash[available] Flash / 默认 / 快，日常够用 / 写选题、拆爆款、改脚本都够 | pro[locked] Pro / PRO 起可用 / 更会想 / 长视频拆解、商单脚本、多步骤的大任务 | max[coming-soon] Max / 即将开放 / 最强 / 最重要的稿子"}
+shot 73-developer-tier-page
+{"ok":true}
+{ "value": "Pro 档需要 PRO 或以上的套餐。"}
+shot 74-developer-locked-pro
+{"ok":true}
+{ "value": "Max 档还没开放。"}
+profile (raw code): { "value": "{\"badge\":\"free\",\"rows\":[\"邮箱: xiaoman@example.com\",\"方案: free\"]}"}
+shot 75-developer-profile-raw
+{"ok":true}
+{ "value": "个人资料 / 设置 / 项目 / 定时运行 / 连接助手 / 历史会话 / 交付物 / 重新登录 / 退出登录"}
+## developer mode, Max open: FREE account
+{"ok":true}
+{"value":"#/settings?tab=config:model"}
+{ "value": "flash[available] Flash / 默认 / 快，日常够用 / 写选题、拆爆款、改脚本都够 | pro[locked] Pro / PRO 起可用 / 更会想 / 长视频拆解、商单脚本、多步骤的大任务 | max[locked] Max / MAX 起可用 / 最强 / 最重要的稿子"}
+{"ok":true}
+{ "value": "Max 档需要 MAX 或以上的套餐。"}
+shot 76-developer-locked-max
+{"ok":true}
+{ "value": "Pro 档需要 PRO 或以上的套餐。"}
+## developer mode, Max open: a PRO account (the relay lists Flash and Pro)
+{"ok":true}
+{"value":"#/settings?tab=config:model"}
+{ "value": "flash[available] Flash / 默认 / 快，日常够用 / 写选题、拆爆款、改脚本都够 | pro[locked] Pro / PRO 起可用 / 更会想 / 长视频拆解、商单脚本、多步骤的大任务 | max[locked] Max / MAX 起可用 / 最强 / 最重要的稿子"}
+shot 77-developer-pro-open-max-locked
+{"ok":true}
+{ "value": "Max 档需要 MAX 或以上的套餐。"}
+## developer mode, zh-hant and en
+{"ok":true}
+{"value":"#/settings?tab=config:model"}
+{ "value": "flash[available] Flash / 預設 / 快，日常夠用 / 寫選題、拆爆款、改腳本都夠 | pro[locked] Pro / PRO 起可用 / 更會想 / 長影片拆解、商單腳本、多步驟的大任務 | max[locked] Max / MAX 起可用 / 最強 / 最重要的稿子"}
+{"ok":true}
+{ "value": "Pro 檔需要 PRO 或以上的方案。"}
+shot 78-hant-locked-pro
+{"value":"#/settings?tab=config:model"}
+{ "value": "flash[available] Flash / Default / Fast, enough for every day / Topic ideas, viral breakdowns, script edits | pro[locked] Pro / PRO plan and up / Thinks harder / Long-video breakdowns, brand scripts, multi-step jobs | max[locked] Max / MAX plan and up / The strongest / The pieces that matter most"}
+{"ok":true}
+{ "value": "Max needs the MAX plan or higher."}
+shot 79-en-locked-max
+## switch off: the same picker
+{"ok":true}
+{"value":"#/settings?tab=config:model"}
+{ "value": "个性化,档位,对话,外观,工作区,安全,浏览器,密码与登录,记忆与上下文,语音,高级,通知,网关,键盘快捷键,工具与密钥,已归档对话,关于"}
+{ "value": "flash[available] Flash / 默认 / 快，日常够用 / 写选题、拆爆款、改脚本都够 | pro[locked] Pro / PRO 起可用 / 更会想 / 长视频拆解、商单脚本、多步骤的大任务 | max[locked] Max / MAX 起可用 / 最强 / 最重要的稿子"}
+{"ok":true}
+{ "value": "Pro 档需要 PRO 或以上的套餐。"}
+shot 80-switch-off-locked-pro
+profile (raw code): { "value": "{\"badge\":\"free\",\"rows\":[\"邮箱: xiaoman@example.com\",\"方案: free\"]}"}
+shot 81-switch-off-profile-raw
+## console errors
+[]
+## only local fixtures reached
+['account', 'relay']
+## real home untouched
+96112 Oct 31 11:57 /Users/karlsu/.apexnodes/logs/desktop.log

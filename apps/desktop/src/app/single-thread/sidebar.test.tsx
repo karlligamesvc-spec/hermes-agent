@@ -272,20 +272,20 @@ describe('hc-1061 the account row', () => {
 
   // hc-1133: the plan's name and nothing else, however much is used and whatever is limited.
   it.each([
-    ['used this month', ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18 }), 'Pro'],
-    ['used this week', ok({ period: 'week', planCode: 'fast', planName: '快速', usedRatio: 0.18 }), 'Pro'],
-    ['barely used', ok({ period: 'month', planCode: 'free', planName: '免费', usedRatio: 0.0004 }), '免费'],
-    ['over the allowance', ok({ period: 'month', planCode: 'advanced', planName: '高级', usedRatio: 1.25 }), 'Max'],
-    ['unlimited', ok({ period: 'month', planCode: 'advanced', planName: '高级', usedRatio: null }), 'Max'],
+    ['used this month', ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18 }), 'PRO'],
+    ['used this week', ok({ period: 'week', planCode: 'fast', planName: '快速', usedRatio: 0.18 }), 'PRO'],
+    ['barely used', ok({ period: 'month', planCode: 'free', planName: '免费', usedRatio: 0.0004 }), 'FREE'],
+    ['over the allowance', ok({ period: 'month', planCode: 'advanced', planName: '高级', usedRatio: 1.25 }), 'MAX'],
+    ['unlimited', ok({ period: 'month', planCode: 'advanced', planName: '高级', usedRatio: null }), 'MAX'],
     [
       'a week that only records',
       ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18, weekly: SHADOW }),
-      'Pro'
+      'PRO'
     ],
     [
       'a week really limited: its number stays on the menu’s card',
       ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18, weekly: ENFORCED }),
-      'Pro'
+      'PRO'
     ],
     [
       'a plan this build does not list: the cloud’s name for it',
@@ -306,7 +306,7 @@ describe('hc-1061 the account row', () => {
     stubBridge({ planUsage: ok({ period: 'month', planName: '快速', usedRatio: 0.18 }) })
     renderSidebar()
 
-    await waitFor(() => expect(accountLine()).toBe('Pro'))
+    await waitFor(() => expect(accountLine()).toBe('PRO'))
   })
 
   it('reads the line even when the app opens in the middle of a turn', async () => {
@@ -314,14 +314,14 @@ describe('hc-1061 the account row', () => {
     stubBridge({ planUsage: ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18 }) })
     renderSidebar()
 
-    await waitFor(() => expect(accountLine()).toBe('Pro'))
+    await waitFor(() => expect(accountLine()).toBe('PRO'))
   })
 
   it('reads it again when a turn ends, not while one runs', async () => {
     const read = vi.fn(ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18 }))
     stubBridge({ planUsage: read })
     renderSidebar()
-    await waitFor(() => expect(accountLine()).toBe('Pro'))
+    await waitFor(() => expect(accountLine()).toBe('PRO'))
     expect(read).toHaveBeenCalledTimes(1)
 
     act(() => threadState({ busy: true }))

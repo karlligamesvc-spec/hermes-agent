@@ -65,14 +65,14 @@ function readsPlan(usage: unknown) {
 
 describe('个人资料: the plan', () => {
   it.each([
-    ['free', 'zh', '免费'],
-    ['fast', 'zh', 'Pro'],
-    ['advanced', 'zh', 'Max'],
-    ['free', 'zh-hant', '免費'],
-    ['fast', 'zh-hant', 'Pro'],
-    ['free', 'en', 'Free'],
-    ['fast', 'en', 'Pro'],
-    ['advanced', 'en', 'Max']
+    ['free', 'zh', 'FREE'],
+    ['fast', 'zh', 'PRO'],
+    ['advanced', 'zh', 'MAX'],
+    ['free', 'zh-hant', 'FREE'],
+    ['fast', 'zh-hant', 'PRO'],
+    ['free', 'en', 'FREE'],
+    ['fast', 'en', 'PRO'],
+    ['advanced', 'en', 'MAX']
   ] as const)('the sign-in gave %s, in %s: %s', async (code, locale, name) => {
     const { baseElement } = await renderProfile(code, locale)
 
@@ -80,13 +80,13 @@ describe('个人资料: the plan', () => {
     expect(everyWordOn(baseElement)).not.toContain(code)
   })
 
-  it.each([' fast ', 'FAST'])('a code written as %j is still Pro', async code => {
+  it.each([' fast ', 'FAST'])('a code written as %j is still PRO', async code => {
     const { baseElement } = await renderProfile(code)
 
-    expect(profilePlan(baseElement)).toEqual({ badge: 'Pro', row: 'Pro' })
+    expect(profilePlan(baseElement)).toEqual({ badge: 'PRO', row: 'PRO' })
   })
 
-  // `pro` is here on purpose: the billing package maps it to the plan now called Max, so it names nothing.
+  // `pro` is here on purpose: the billing package maps it to the plan now called MAX, so it names nothing.
   it.each(['plus', 'pro', 'team_internal'])('a code nothing names (%s) is not shown', async code => {
     const { baseElement } = await renderProfile(code)
 
@@ -105,7 +105,7 @@ describe('个人资料: the plan', () => {
 
     const { baseElement } = await renderProfile('free')
 
-    await waitFor(() => expect(profilePlan(baseElement)).toEqual({ badge: 'Max', row: 'Max' }))
+    await waitFor(() => expect(profilePlan(baseElement)).toEqual({ badge: 'MAX', row: 'MAX' }))
   })
 
   it('a plan this build does not list: the cloud’s name for it, never the code', async () => {
