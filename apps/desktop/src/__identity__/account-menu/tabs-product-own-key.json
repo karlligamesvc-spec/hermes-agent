@@ -1,0 +1,22 @@
+{
+  "/settings?tab=account": {
+    "location": "/settings?tab=account",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=activity": {
+    "location": "/settings?tab=activity",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=plans": {
+    "location": "/settings?tab=plans",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=usage": {
+    "location": "/settings?tab=usage",
+    "page": "用量你的套餐，和这个周期用了多少。还没读到用量。登录 APEX 账号后，这里会显示套餐和用了多少。查看使用记录",
+    "rail": "config:personalization config:memory config:voice notifications config:appearance im *usage config:model providers about"
+  }
+}

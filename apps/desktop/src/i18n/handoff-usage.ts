@@ -3,8 +3,8 @@
  * the card): 「要多跑 2 个回合，按你的套餐额度算 · 本月已用 18%」, a reminder past
  * 80%, and no relay once the allowance is used up (L6). Never an amount of money.
  *
- * The percent is the sidebar account row's (hc-1062, `formatUsedPercent`), so
- * the card and the row never disagree. Kept beside the main catalogs, which are
+ * The percent is formatted like Settings › 用量 (hc-1062, `formatUsedPercent`), so
+ * the card and that page never disagree. Kept beside the main catalogs, which are
  * past the code-health size cap; zh, zh-hant and en are written out, ja and ar
  * read en.
  */

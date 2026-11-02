@@ -60,22 +60,22 @@ test('planUsageUrl targets the cloud plan-usage endpoint and trims a trailing sl
 })
 
 test.each([
-  [OK_BODY, { period: 'month', planName: '快速', usedRatio: 0.18 }],
+  [OK_BODY, { period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18, weekly: null }],
   [
     { ...OK_BODY, plan: { code: 'fast', name: '  快速 ' } },
-    { period: 'month', planName: '快速', usedRatio: 0.18 }
+    { period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18, weekly: null }
   ],
   [
     { ...OK_BODY, used_ratio: 1.25 },
-    { period: 'month', planName: '快速', usedRatio: 1.25 }
+    { period: 'month', planCode: 'fast', planName: '快速', usedRatio: 1.25, weekly: null }
   ],
   [
     { ...OK_BODY, quota_tokens: null, unlimited: true, used_ratio: null },
-    { period: 'month', planName: '快速', usedRatio: null }
+    { period: 'month', planCode: 'fast', planName: '快速', usedRatio: null, weekly: null }
   ],
   [
     { ...OK_BODY, period: 'week' },
-    { period: 'week', planName: '快速', usedRatio: 0.18 }
+    { period: 'week', planCode: 'fast', planName: '快速', usedRatio: 0.18, weekly: null }
   ],
   // Anything the row cannot say truthfully is no line at all.
   [{ ...OK_BODY, period: 'day' }, null],
@@ -92,10 +92,87 @@ test.each([
   assert.deepEqual(parsePlanUsage(body), expected)
 })
 
+// hc-1133: production's reply today, from the ledger in shadow (apex-nodes week_summary).
+const SHADOW_WEEKLY = {
+  allowance_cents: 2500,
+  resets_at: '2026-11-08T16:00:00+00:00',
+  unlimited: false,
+  used_cents: 1000,
+  used_micro_cny: 10_000_000,
+  used_ratio: 0.4,
+  week_start: '2026-11-02'
+}
+
+test('shadow: the numbers come through, and nothing says they are a limit', () => {
+  assert.deepEqual(parsePlanUsage({ ...OK_BODY, weekly: SHADOW_WEEKLY })?.weekly, {
+    enforced: false,
+    resetsAt: SHADOW_WEEKLY.resets_at,
+    unlimited: false,
+    usedRatio: 0.4
+  })
+})
+
+test.each([
+  [true, true],
+  [false, false],
+  ['true', false],
+  [1, false],
+  [null, false],
+  [undefined, false]
+])('weekly.enforced %j reads as %j: only an explicit true from the cloud', (enforced, expected) => {
+  assert.equal(parsePlanUsage({ ...OK_BODY, weekly: { ...SHADOW_WEEKLY, enforced } })?.weekly?.enforced, expected)
+})
+
+test.each([
+  [null, 'absent'],
+  ['nope', 'not an object'],
+  [['x'], 'a list']
+])('weekly %j (%s) reads as no weekly view, and costs nothing else', (weekly, _label) => {
+  const usage = parsePlanUsage({ ...OK_BODY, weekly })
+
+  assert.equal(usage?.weekly, null)
+  assert.equal(usage?.planName, '快速')
+})
+
+test.each([
+  [{ used_ratio: null }, { usedRatio: null }],
+  [{ used_ratio: -0.1 }, { usedRatio: null }],
+  [{ used_ratio: '40%' }, { usedRatio: null }],
+  [{ used_ratio: Number.NaN }, { usedRatio: null }],
+  [{ resets_at: 'next week' }, { resetsAt: null }],
+  [{ resets_at: 1_700_000_000 }, { resetsAt: null }],
+  [
+    { unlimited: true, used_ratio: null },
+    { unlimited: true, usedRatio: null }
+  ]
+])('a weekly field it cannot use reads as missing: %j', (fields, expected) => {
+  const weekly = parsePlanUsage({ ...OK_BODY, weekly: { ...SHADOW_WEEKLY, ...fields } })?.weekly
+
+  assert.deepEqual(weekly, {
+    enforced: false,
+    resetsAt: SHADOW_WEEKLY.resets_at,
+    unlimited: false,
+    usedRatio: 0.4,
+    ...expected
+  })
+})
+
+test.each([
+  ['fast', 'fast'],
+  [' Advanced ', 'advanced'],
+  ['', undefined],
+  [null, undefined]
+])('plan.code %j reads as %j', (code, expected) => {
+  assert.equal(parsePlanUsage({ ...OK_BODY, plan: { code, name: '快速' } })?.planCode, expected)
+})
+
 test('reads with the stored JWT, never anything else', async () => {
   const d = deps()
 
-  assert.deepEqual(await fetchPlanUsage(d), { ok: true, usage: { period: 'month', planName: '快速', usedRatio: 0.18 } })
+  assert.deepEqual(await fetchPlanUsage(d), {
+    ok: true,
+    usage: { period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18, weekly: null }
+  })
   assert.deepEqual(d.calls, [{ bearer: 'jwt-1', url: 'https://apex-nodes.com/api/v1/account/plan-usage' }])
 })
 

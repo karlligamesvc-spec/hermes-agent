@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
@@ -6,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
 import { X } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import { $overlaysYieldToSignIn } from '@/store/sign-in-screen'
 
 import { closeRouteDrawer, routeDrawerReturnFocusKey } from '../routes'
 import { TITLEBAR_HEIGHT } from '../shell/titlebar'
@@ -88,6 +90,7 @@ export function ResponsiveRouteDrawer({
   const { t } = useI18n()
   const wide = useWideRouteDrawer(compact ? ROUTE_DRAWER_COMPACT_QUERY : ROUTE_DRAWER_WIDE_QUERY)
   const contentRef = useRef<HTMLDivElement | null>(null)
+  const yieldToSignIn = useStore($overlaysYieldToSignIn)
 
   const returnFocusRef = useRef<HTMLElement | null>(
     document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -117,6 +120,11 @@ export function ResponsiveRouteDrawer({
 
     return () => window.removeEventListener('resize', resetNestedScroll)
   }, [])
+
+  // A modal dialog would leave the sign-in screen above it unclickable (store/sign-in-screen.ts).
+  if (yieldToSignIn) {
+    return null
+  }
 
   return (
     <DialogPrimitive.Root onOpenChange={open => !open && onClose()} open>

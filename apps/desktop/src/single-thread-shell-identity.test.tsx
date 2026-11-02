@@ -232,9 +232,7 @@ describe('hc-1014 the seams stay wired', () => {
   it('the sidebar surface swaps in the single-thread sidebar and the chat surface mounts the shell', () => {
     const surfaces = source('app', 'contrib', 'surfaces.tsx')
 
-    expect(surfaces).toContain(
-      '<SingleThreadSidebar currentView={currentView} onNavigate={latestActions.onNavigate} />'
-    )
+    expect(surfaces).toContain('<SingleThreadSidebar currentView={currentView} />')
     expect(surfaces).toContain('useSingleThreadShell(actions.requestGateway)')
   })
 

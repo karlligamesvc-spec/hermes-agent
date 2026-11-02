@@ -243,12 +243,4 @@ describe('hc-1061 the usage percent', () => {
   ])('%s → %s', (ratio, expected) => {
     expect(formatUsedPercent(ratio, zh)).toBe(expected)
   })
-
-  it('names the period the cloud measured', () => {
-    expect(zh.planUsage({ percent: '18%', period: 'month', plan: '快速' })).toBe('快速 · 本月用了 18%')
-    expect(zh.planUsage({ percent: '18%', period: 'week', plan: '快速' })).toBe('快速 · 本周用了 18%')
-    expect(SINGLE_THREAD_SIDEBAR_COPY.en.planUsage({ percent: '18%', period: 'month', plan: 'Fast' })).toBe(
-      'Fast · 18% used this month'
-    )
-  })
 })

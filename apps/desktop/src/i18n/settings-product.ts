@@ -24,7 +24,6 @@ export interface SettingsProductCopy {
   usageIntro: string
   /** 「本月用了 18%」: `percent` is already formatted (「18%」, 「不到 1%」). */
   usageUsed: (parts: { percent: string; period: 'month' | 'week' }) => string
-  usageUnlimited: string
   /** No plan line: signed out, an older cloud, or the read failed. */
   usageNone: string
   /** Opens the per-day usage history (the account menu's 个人资料 page). */
@@ -39,7 +38,6 @@ const en: SettingsProductCopy = {
   memorySignedOut: 'Sign in to your APEX account to see what it remembers here, and to edit, delete or add to it.',
   usageIntro: 'Your plan, and how much of it you have used this period.',
   usageUsed: ({ percent, period }) => `${percent} used this ${period}`,
-  usageUnlimited: 'Unlimited',
   usageNone: 'No usage to show yet. Sign in to your APEX account to see your plan and how much you have used.',
   usageHistory: 'See usage history'
 }
@@ -52,7 +50,6 @@ const zh: SettingsProductCopy = {
   memorySignedOut: '登录 APEX 账号后，这里会列出它记得的事，每条都能改、删、加。',
   usageIntro: '你的套餐，和这个周期用了多少。',
   usageUsed: ({ percent, period }) => `${period === 'week' ? '本周' : '本月'}用了 ${percent}`,
-  usageUnlimited: '不限量',
   usageNone: '还没读到用量。登录 APEX 账号后，这里会显示套餐和用了多少。',
   usageHistory: '查看使用记录'
 }
@@ -65,7 +62,6 @@ const zhHant: SettingsProductCopy = {
   memorySignedOut: '登入 APEX 帳號後，這裡會列出它記得的事，每條都能改、刪、加。',
   usageIntro: '你的方案，和這個週期用了多少。',
   usageUsed: ({ percent, period }) => `${period === 'week' ? '本週' : '本月'}用了 ${percent}`,
-  usageUnlimited: '不限量',
   usageNone: '還沒讀到用量。登入 APEX 帳號後，這裡會顯示方案和用了多少。',
   usageHistory: '查看使用紀錄'
 }

@@ -148,14 +148,14 @@ export async function renderAccountPanel(): Promise<HTMLElement> {
 export async function renderSingleThreadAccountRow(): Promise<HTMLElement> {
   const view = render(
     <Providers>
-      <SingleThreadAccountRow onNavigateBusiness={() => undefined} />
+      <SingleThreadAccountRow />
     </Providers>
   )
 
   const trigger = screen.getAllByRole('button')[0]
 
   fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false })
-  await screen.findByRole('menuitem', { name: '重新登录' })
+  await screen.findByRole('menuitem', { name: '退出登录' })
   await settle()
 
   return view.baseElement
