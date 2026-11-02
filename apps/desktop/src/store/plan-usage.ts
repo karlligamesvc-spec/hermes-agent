@@ -27,6 +27,11 @@ export function planTierOf(code: null | string | undefined): null | PlanTier {
   return (code && Object.hasOwn(PLAN_TIER_BY_CODE, code) && PLAN_TIER_BY_CODE[code]) || null
 }
 
+/** Which listed plan this account is on: the cloud's word, else the code the sign-in gave. */
+export function accountPlanTier(usage: DesktopPlanUsage | null, accountPlan: string): null | PlanTier {
+  return planTierOf(usage?.planCode ?? accountPlan)
+}
+
 /**
  * What the account menu says about this week.
  *

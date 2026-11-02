@@ -18,15 +18,15 @@ import { useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { codiconIcon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
-import { type AccountMenuCopy, planLabel, useAccountMenuCopy } from '@/i18n/account-menu'
+import { type AccountMenuCopy, planLabel, upgradeLabel, useAccountMenuCopy } from '@/i18n/account-menu'
 import { Sparkles } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { $authState } from '@/store/auth'
 import { requestManagedReSignIn } from '@/store/onboarding'
 import {
   $planUsage,
+  accountPlanTier,
   type PlanTier,
-  planTierOf,
   planUsageFor,
   planUsageOwner,
   refreshPlanUsage,
@@ -67,7 +67,6 @@ export function ProductAccountSettings() {
   const name = accountDisplayName(auth.account, a.fallbackName)
   const email = auth.account.email.trim()
   const expired = auth.status === 'expired'
-  const onTopPlan = planTierOf(usage?.planCode ?? auth.account.plan) === 'max'
 
   return (
     <SettingsContent>
@@ -84,7 +83,7 @@ export function ProductAccountSettings() {
         <ListRow
           action={
             <Button onClick={() => navigate(SETTINGS_PLANS_ROUTE)} size="sm" type="button" variant="outline">
-              {onTopPlan ? copy.viewPlans : copy.upgrade}
+              {upgradeLabel(usage, auth.account.plan, copy)}
             </Button>
           }
           description={planLabel(usage, auth.account.plan, copy)}
@@ -194,7 +193,7 @@ export function ProductPlansSettings() {
   const copy = useAccountMenuCopy()
   const { auth, usage } = useAccountPlanUsage()
   const [testingNotice, setTestingNotice] = useState(false)
-  const current = planTierOf(usage?.planCode ?? auth.account.plan)
+  const current = accountPlanTier(usage, auth.account.plan)
 
   return (
     <SettingsContent>

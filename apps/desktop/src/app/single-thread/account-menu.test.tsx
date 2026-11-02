@@ -250,6 +250,7 @@ describe('this week’s allowance', () => {
     const menu = await openMenu()
 
     await waitFor(() => expect(quotaItem(menu).getAttribute('data-apex-weekly-quota')).toBe('limited'))
+    expect(within(quotaItem(menu)).getByText(left).className).not.toContain('text-destructive')
     expect(quotaItem(menu).textContent).toContain(left)
     expect(menu.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe(String(barValue))
     expect(menu.querySelector('[data-apex-weekly-meter]')?.textContent).toBe('11月8日 8:00 重置')
@@ -261,6 +262,7 @@ describe('this week’s allowance', () => {
     const menu = await openMenu()
 
     await waitFor(() => expect(quotaItem(menu).textContent).toContain('已用完'))
+    expect(within(quotaItem(menu)).getByText('已用完').className).toContain('text-destructive')
 
     const bar = menu.querySelector('[role="progressbar"]')
 

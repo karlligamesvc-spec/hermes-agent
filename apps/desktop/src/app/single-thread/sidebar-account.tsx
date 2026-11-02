@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { useI18n } from '@/i18n'
-import { planLabel, useAccountMenuCopy } from '@/i18n/account-menu'
+import { planLabel, upgradeLabel, useAccountMenuCopy } from '@/i18n/account-menu'
 import { useAccountTeamCopy } from '@/i18n/account-team'
 import { formatUsedPercent, useSingleThreadSidebarCopy } from '@/i18n/single-thread-sidebar'
 import { openExternalLink } from '@/lib/external-link'
@@ -35,7 +35,6 @@ import { notify } from '@/store/notifications'
 import { requestManagedReSignIn } from '@/store/onboarding'
 import {
   $planUsage,
-  planTierOf,
   planUsageFor,
   planUsageOwner,
   planUsageReadFor,
@@ -50,7 +49,7 @@ import { SETTINGS_ROUTE } from '../routes'
 import { SETTINGS_PLANS_ROUTE, SETTINGS_USAGE_ROUTE } from '../settings/product-settings'
 
 import { AccountAvatar, accountDisplayName } from './account-identity'
-import { useWeeklyQuotaValue, WeeklyQuotaMeter } from './weekly-quota'
+import { useWeeklyQuotaValue, WeeklyQuotaMeter, weeklyQuotaUsedUp } from './weekly-quota'
 
 /** The address the website's footer and terms give (apex-nodes web/lib/support.ts). */
 const SUPPORT_EMAIL = 'support@apex-nodes.com'
@@ -164,7 +163,6 @@ function PlanCard() {
   const usage = planUsageFor(useStore($planUsage), planUsageOwner(auth))
   const view = weeklyQuotaView(usage)
   const value = useWeeklyQuotaValue(view)
-  const onTopPlan = planTierOf(usage?.planCode ?? auth.account.plan) === 'max'
 
   return (
     <div
@@ -179,7 +177,7 @@ function PlanCard() {
           className="shrink-0 rounded-full border border-(--ui-stroke-secondary) px-2.5 py-1 font-medium text-foreground"
           onSelect={() => navigate(SETTINGS_PLANS_ROUTE)}
         >
-          {onTopPlan ? copy.viewPlans : copy.upgrade}
+          {upgradeLabel(usage, auth.account.plan, copy)}
         </DropdownMenuItem>
       </div>
       <div className="border-t border-dashed border-(--ui-stroke-tertiary) p-1">
@@ -190,7 +188,9 @@ function PlanCard() {
         >
           <Codicon name="dashboard" size="0.875rem" />
           <span className="min-w-0 flex-1 truncate">{copy.weeklyUsage}</span>
-          <span className="shrink-0 text-(--ui-text-tertiary)">{value}</span>
+          <span className={cn('shrink-0 text-(--ui-text-tertiary)', weeklyQuotaUsedUp(view) && 'text-destructive')}>
+            {value}
+          </span>
           <Codicon name="chevron-right" size="0.75rem" />
         </DropdownMenuItem>
         {view.kind === 'limited' && (

@@ -11,18 +11,19 @@ import { useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
-import { planLabel, useAccountMenuCopy } from '@/i18n/account-menu'
+import { planLabel, upgradeLabel, useAccountMenuCopy } from '@/i18n/account-menu'
 import { useSettingsProductCopy } from '@/i18n/settings-product'
 import { formatUsedPercent, useSingleThreadSidebarCopy } from '@/i18n/single-thread-sidebar'
 import { BarChart3, Brain, MessageCircle } from '@/lib/icons'
+import { cn } from '@/lib/utils'
 import { $authState } from '@/store/auth'
 import { isApexAccount } from '@/store/model-tiers'
-import { $planUsage, planTierOf, planUsageFor, planUsageOwner, refreshPlanUsage, weeklyQuotaView } from '@/store/plan-usage'
+import { $planUsage, planUsageFor, planUsageOwner, refreshPlanUsage, weeklyQuotaView } from '@/store/plan-usage'
 
 import { ImEntryView } from '../im-entry'
 import type { OverlayNavGroup } from '../overlays/overlay-split-layout'
 import { PROFILE_STATS_ROUTE } from '../routes'
-import { useWeeklyQuotaValue, WeeklyQuotaMeter } from '../single-thread/weekly-quota'
+import { useWeeklyQuotaValue, WeeklyQuotaMeter, weeklyQuotaUsedUp } from '../single-thread/weekly-quota'
 
 import { MemoryLedgerSettings } from './memory-ledger-settings'
 import { ListRow, SectionHeading, SettingsContent } from './primitives'
@@ -166,7 +167,6 @@ function ProductUsageSettings() {
 
   const weekly = weeklyQuotaView(usage)
   const weeklyValue = useWeeklyQuotaValue(weekly)
-  const onTopPlan = planTierOf(usage?.planCode ?? auth.account.plan) === 'max'
 
   // No line for an unlimited month: the plan alone, and 本周额度 below says 不限量.
   const used =
@@ -184,7 +184,7 @@ function ProductUsageSettings() {
             <span className="flex items-center gap-2">
               {isApexAccount(auth) && (
                 <Button onClick={() => navigate(SETTINGS_PLANS_ROUTE)} size="sm" type="button" variant="outline">
-                  {onTopPlan ? accountCopy.viewPlans : accountCopy.upgrade}
+                  {upgradeLabel(usage, auth.account.plan, accountCopy)}
                 </Button>
               )}
               <Button onClick={() => navigate(PROFILE_STATS_ROUTE)} size="sm" type="button" variant="outline">
@@ -197,7 +197,13 @@ function ProductUsageSettings() {
         />
         {usage && (
           <ListRow
-            action={<span className="text-xs text-(--ui-text-secondary)">{weeklyValue}</span>}
+            action={
+              <span
+                className={cn('text-xs text-(--ui-text-secondary)', weeklyQuotaUsedUp(weekly) && 'text-destructive')}
+              >
+                {weeklyValue}
+              </span>
+            }
             below={
               weekly.kind === 'limited' ? (
                 <div className="pt-2">

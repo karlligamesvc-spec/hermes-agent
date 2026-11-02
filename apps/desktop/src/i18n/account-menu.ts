@@ -13,7 +13,7 @@
  */
 
 import type { DesktopPlanUsage } from '@/global'
-import { type PlanTier, planTierOf } from '@/store/plan-usage'
+import { accountPlanTier, type PlanTier } from '@/store/plan-usage'
 
 import { useI18n } from './context'
 import type { Locale } from './types'
@@ -208,7 +208,12 @@ export function useAccountMenuCopy(): AccountMenuCopy {
  * gave, for when usage has not been read.
  */
 export function planLabel(usage: DesktopPlanUsage | null, accountPlan: string, copy: AccountMenuCopy): string {
-  const tier = planTierOf(usage?.planCode ?? accountPlan)
+  const tier = accountPlanTier(usage, accountPlan)
 
   return tier ? copy.planNames[tier] : usage?.planName || copy.planFallback
+}
+
+/** 升级, or 查看套餐 for someone already on the top plan. */
+export function upgradeLabel(usage: DesktopPlanUsage | null, accountPlan: string, copy: AccountMenuCopy): string {
+  return accountPlanTier(usage, accountPlan) === 'max' ? copy.viewPlans : copy.upgrade
 }
