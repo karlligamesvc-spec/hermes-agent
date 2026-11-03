@@ -1,26 +1,16 @@
 """video_breakdown: the remake card (复刻卡) of one local video, shot by shot (hc-1136).
 
-This file is byte-identical in apex-nodes ``app/runtime_plugins/apexnodes-video-tools/`` and the
-hermes-agent fork ``plugins/apexnodes-video-tools/`` (apex-nodes CI compares the bytes). Each
-plugin's ``__init__`` passes in the one piece that differs between hosted agents and APEX
-Desktop: how to send the keyframes to the platform for labels.
+Byte-identical in apex-nodes ``app/runtime_plugins/apexnodes-video-tools/`` and the hermes-agent
+fork ``plugins/apexnodes-video-tools/`` (apex-nodes CI compares the bytes). Each plugin's
+``__init__`` passes in ``label_fn``, the one piece that differs: how keyframes reach the platform.
 
-Only the standard library and ffmpeg / ffprobe run here:
-
-1. cut the video into shots: ffmpeg's scene score (``select='gte(scene,0)',metadata=print``)
-   ≥ 0.2 is a cut; of cuts closer than 0.5 s only the highest scoring one stays, and none sits
-   within 0.5 s of the start or the end. Only the first 300 s are read;
-2. three keyframes per shot (opening, middle, closing);
-3. camera move and subject motion per shot, judged by short-video-studio's
-   ``footage_motion.py`` as installed with the platform skills (never a copy of it);
-4. the speech of each shot from ``media_transcribe``'s segments file, word by word;
-5. shot size, subject, action, scene, real face, beat and on-screen text from the platform
-   (``label_fn``: one request per LABEL_BATCH shots). The question and the model live there;
-6. ``复刻包-<标题>/`` in the working directory: ``source/``, ``frames/``, ``shots.json``,
-   ``复刻卡.md``, ``复刻卡.jpg``. Fields: coordinator note remake-shots-schema (v2).
-
-A step that cannot run leaves its fields 「不确定」 and says why in ``analysis.notes``; nothing
-is guessed.
+Only the standard library and ffmpeg / ffprobe run here: shots cut by ffmpeg's scene score
+(``merge_cuts``; first 300 s only), three keyframes per shot, camera and subject motion by
+short-video-studio's ``footage_motion.py`` as installed (never a copy), each shot's speech from
+``media_transcribe``'s segments, and shot size, subject, action, scene, real face, beat and
+on-screen text from the platform (the question and the model live there). The package is
+``复刻包-<标题>/``; its fields are in the coordinator note remake-shots-schema. A step that
+cannot run leaves its fields 「不确定」 and says why in ``analysis.notes``; nothing is guessed.
 """
 
 from __future__ import annotations
@@ -52,35 +42,24 @@ MERGE_WITHIN = 0.5
 MAX_SECONDS = 300.0
 KEYFRAME_LONG_SIDE = 720
 LABEL_BATCH = 20
+CARD_MAX_CHARS = 12_000  # 50–95 shot rows (120–240 characters each): whole for almost any short video
 MIN_CAMERA_SHOT = 0.6
 UNSURE = "不确定"
 LABEL_FIELDS = ("shot_size", "subject", "action", "scene", "has_face", "beat")
 SHOT_SIZES = ("特写", "近景", "中景", "全景", "远景")
 SUBJECTS = ("手", "人", "商品", "场景", "文字卡")
 BEATS = ("钩子", "痛点", "演示", "证明", "价格", "行动", "过渡")
-CAMERA = {
-    "static": "固定",
-    "action": "固定",
-    "push_in": "推",
-    "pull_out": "拉",
-    "pan_left": "左摇",
-    "pan_right": "右摇",
-    "tilt_up": "上摇",
-    "tilt_down": "下摇",
-    "shake": "手持晃动",
-    "handheld": "手持晃动",
-}
+CAMERA = {"static": "固定", "action": "固定", "push_in": "推", "pull_out": "拉", "pan_left": "左摇", "pan_right": "右摇",
+          "tilt_up": "上摇", "tilt_down": "下摇", "shake": "手持晃动", "handheld": "手持晃动"}
 MOTION_SCRIPT = ("short-video-studio", "scripts", "footage_motion.py")
 FONT_CANDIDATES = (
-    "/System/Library/Fonts/Helvetica.ttc",
-    "/System/Library/Fonts/Supplemental/Arial.ttf",
-    "/Library/Fonts/Arial.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/TTF/DejaVuSans.ttf",
-    "C:\\Windows\\Fonts\\arial.ttf",
+    "/System/Library/Fonts/Helvetica.ttc", "/System/Library/Fonts/Supplemental/Arial.ttf", "/Library/Fonts/Arial.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans.ttf", "C:\\Windows\\Fonts\\arial.ttf",
 )
 _FFMPEG_TIMEOUT = 300
+_MOVES = {True: "·主体在动", False: "·主体不动"}
+_FACE = {True: "有", False: "没有"}
 
 VIDEO_BREAKDOWN_SCHEMA = {
     "name": "video_breakdown",
@@ -89,8 +68,10 @@ VIDEO_BREAKDOWN_SCHEMA = {
         "场景、有没有真人正脸、画面上的字（花字/字幕）、这一镜的口播和它在整条视频里的作用（钩子/痛点/演示/价格…）。"
         "拆解爆款、复刻视频、照着别人的视频拍时先用本工具，不要只看转写。"
         "video_path 用 social_download 下好的原片或用户发来的视频；先调 media_transcribe，把它结果里的 segments_path "
-        "一起传进来，口播才能分到每个镜头。结果在工作目录的「复刻包-标题」文件夹里：shots.json（逐镜字段）、"
-        "复刻卡.md（每镜一行）、复刻卡.jpg（宫格图，用结果里的 card_media_tag 发给用户看）。"
+        "一起传进来，口播才能分到每个镜头。结果里的 summary 是一句话总结，card 就是复刻卡（每镜一行），"
+        "直接照它们回答、写脚本，不用再读文件，也不要写代码去解析 shots.json；card_media_tag 单独一行发给用户看宫格图。"
+        "镜头太多时 card 只列前面的镜头，note 会说，后面的用 read_file 读 card_path。"
+        "文件都在工作目录的「复刻包-标题」文件夹里，shots.json 是留给后续工具的逐镜字段。"
         "看不准的字段是「不确定」；note 说明哪一步没做，照实告诉用户，不要自己补猜。只分析前 300 秒。"
     ),
     "parameters": {
@@ -556,28 +537,51 @@ def _cell(value: Any) -> str:
     return str(value).replace("|", "/").replace("\n", " ").strip() or "—"
 
 
-def render_card(card: dict) -> str:
+def _card_parts(card: dict) -> tuple[list[str], list[str], list[str]]:
+    """The card's head (title, length, summary, table header), one row per shot, and foot."""
     source, analysis = card["source"], card["analysis"]
-    lines = [f"# 复刻卡：{source.get('title') or Path(source['path']).name}", ""]
-    head = f"原片 {source['duration']:.1f} 秒，{len(card['shots'])} 个镜头"
+    length = f"原片 {source['duration']:.1f} 秒，{len(card['shots'])} 个镜头"
     if analysis["analyzed_seconds"] < source["duration"]:
-        head += f"(只看了前 {analysis['analyzed_seconds']:.0f} 秒)"
-    lines += [head + "。", "", card["summary"], ""]
-    lines.append("| 镜 | 时间 | 景别 | 运镜 | 主体 · 动作 | 画面上的字 | 口播 | 节拍 | 依据(看到的) |")
-    lines.append("|---|---|---|---|---|---|---|---|---|")
+        length += f"(只看了前 {analysis['analyzed_seconds']:.0f} 秒)"
+    head = [
+        f"# 复刻卡：{source.get('title') or Path(source['path']).name}", "", length + "。", "", card["summary"], "",
+        "| 镜 | 时间 | 景别 | 运镜 | 主体 · 动作 | 场景 | 真人脸 | 画面上的字 | 口播 | 节拍 | 依据(看到的) |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    rows = []
     for s in card["shots"]:
         overlays = "；".join(f"{o['text']}({o['kind']}·{o['position']}·{o['size']})" for o in s["text_overlays"])
         if "text_overlays" in s["uncertain"]:
             overlays = UNSURE
-        lines.append(
-            f"| {s['n']} | {s['start']:.2f}–{s['end']:.2f} | {_cell(s['shot_size'])} | {_cell(s['camera'])} | "
-            f"{_cell(s['subject'])} · {_cell(s['action'])} | {_cell(overlays)} | {_cell(s['speech'])} | "
-            f"{_cell(s['beat'])} | {_cell(s['seen'])} |"
+        # A fixed camera tells whether the subject moves; a bool face reads as 有 / 没有.
+        moves = _MOVES.get(s["subject_moves"], "") if s["camera"] == "固定" else ""
+        face = _FACE.get(s["has_face"]) if isinstance(s["has_face"], bool) else _cell(s["has_face"])
+        rows.append(
+            f"| {s['n']} | {s['start']:.2f}–{s['end']:.2f} | {_cell(s['shot_size'])} | {_cell(s['camera'])}{moves} | "
+            f"{_cell(s['subject'])} · {_cell(s['action'])} | {_cell(s['scene'])} | {face} | "
+            f"{_cell(overlays)} | {_cell(s['speech'])} | {_cell(s['beat'])} | {_cell(s['seen'])} |"
         )
-    lines += ["", "看不准的写「不确定」，不是猜的。"]
-    for note in analysis["notes"]:
-        lines.append(f"- {note}")
-    return "\n".join(lines) + "\n"
+    foot = ["", "看不准的写「不确定」，不是猜的。"] + [f"- {note}" for note in analysis["notes"]]
+    return head, rows, foot
+
+
+def render_card(card: dict) -> str:
+    head, rows, foot = _card_parts(card)
+    return "\n".join(head + rows + foot) + "\n"
+
+
+def card_for_result(card: dict) -> tuple[str, int]:
+    """The card as the tool result carries it, so the model reads no file: whole when it fits
+    in CARD_MAX_CHARS, else whole rows from the top and a line saying how many are left out.
+    Returns the text and how many shots it lists."""
+    head, rows, foot = _card_parts(card)
+    kept = list(rows)
+    text = "\n".join(head + kept + foot) + "\n"
+    while len(text) > CARD_MAX_CHARS and kept:
+        kept.pop()
+        left_out = f"(后面还有 {len(rows) - len(kept)} 镜没列在这里，完整的在 复刻卡.md 和 shots.json)"
+        text = "\n".join([*head, *kept, "", left_out, *foot]) + "\n"
+    return text, len(kept)
 
 
 def _summary(card: dict) -> str:
@@ -760,21 +764,19 @@ def build(video_path: str, *, label_fn: Callable[[dict], dict], segments_path: s
     except BaseException:
         shutil.rmtree(root, ignore_errors=True)
         raise
-    card_text = render_card(card)
-    result: dict[str, Any] = {
-        "package_dir": str(final),
-        "shots_path": str(final / "shots.json"),
-        "card_path": str(final / "复刻卡.md"),
-        "card_image": str(final / "复刻卡.jpg"),
-        "card_media_tag": f"MEDIA:{final / '复刻卡.jpg'}",
-        "shot_count": len(card["shots"]),
-        "duration": card["source"]["duration"],
-        "summary": card["summary"],
-        "labels_from": card["analysis"]["labels_from"],
-        "card_text": card_text if len(card_text) <= 12_000 else card_text[:12_000] + "\n…(太长，完整内容见 card_path)",
-    }
+    card_text, listed = card_for_result(card)
+    if listed < len(card["shots"]):
+        notes = [*notes, f"复刻卡有 {len(card['shots'])} 镜，结果里的 card 只列了前 {listed} 镜；后面的镜头用 read_file 读 "
+                         "card_path(复刻卡.md，每镜一行)，不用写代码解析 shots.json。"]
+    result: dict[str, Any] = {"summary": card["summary"], "card": card_text}
     if notes:
         result["note"] = " ".join(notes)
+    result.update({
+        "card_media_tag": f"MEDIA:{final / '复刻卡.jpg'}", "shot_count": len(card["shots"]),
+        "duration": card["source"]["duration"], "labels_from": card["analysis"]["labels_from"],
+        "package_dir": str(final), "card_path": str(final / "复刻卡.md"), "card_image": str(final / "复刻卡.jpg"),
+        "shots_path": str(final / "shots.json"),
+    })
     return result
 
 

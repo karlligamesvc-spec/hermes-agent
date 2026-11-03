@@ -6,6 +6,8 @@ fork's own plugin path:
 
 * the tool registers with a budget the runtime accepts, and its labels request goes to the
   tools gateway's ``/tools/v1/video/shot-labels`` with the managed key;
+* the result opens with the summary and the card itself, so the model reads no file (reading
+  shots.json with code is what made product mode ask for approval);
 * a gateway that refuses (no quota, offline) still leaves a card on disk: the labelled fields
   are 「不确定」 and the result says why, it never guesses;
 * footage_motion.py is found where APEX Desktop installs platform skills
@@ -136,6 +138,9 @@ def test_labels_go_to_the_gateway_and_the_card_lands(desktop):
     sent = desktop.calls[0]["payload"]
     assert [s["n"] for s in sent["shots"]] == [1, 2] and all(len(s["frames"]) == 3 for s in sent["shots"])
     assert result["labels_from"] == "server" and result["shot_count"] == 2
+    # The card rides in the result, next to the summary: the model needs no file (and no code) to read it.
+    assert list(result)[:2] == ["summary", "card"]
+    assert "| 2 | 3.00–6.00 | 近景 | 不确定 | 人 · 说话 | 厨房 | 有 |" in result["card"]
     card = json.loads(Path(result["shots_path"]).read_text(encoding="utf-8"))
     assert Path(result["package_dir"]).parent == desktop.work
     assert all(s["shot_size"] == "近景" and s["evidence"]["shot_size"] == "看图" for s in card["shots"])
