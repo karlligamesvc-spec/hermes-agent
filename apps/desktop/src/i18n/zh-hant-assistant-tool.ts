@@ -158,6 +158,8 @@ export const zhHantAssistantTool: AssistantToolOverrides = {
     social_trending: { done: '已查看熱門榜', pending: '正在查看熱門榜', pendingAction: '正在查看' },
     generate_image: { done: '已生成圖片', pending: '正在生成圖片', pendingAction: '正在生成' },
     generate_video: { done: '已生成影片', pending: '正在生成影片', pendingAction: '正在生成' },
+    video_highlights: { done: '已挑選影片精華', pending: '正在挑選影片精華', pendingAction: '正在挑選' },
+    video_moment_search: { done: '已依描述找畫面', pending: '正在依描述找畫面', pendingAction: '正在找' },
     live_record_start: { done: '已開始錄製直播', pending: '正在開始錄製直播', pendingAction: '正在開始' },
     live_record_status: { done: '已查看直播錄製進度', pending: '正在查看直播錄製進度', pendingAction: '正在查看' },
     live_record_stop: { done: '已結束直播錄製', pending: '正在結束直播錄製', pendingAction: '正在結束' },
