@@ -13,9 +13,9 @@
  * hc-1097: its `list` action reads the ledger; that step is named for looking.
  * hc-1082: `apex_rename`, an assistant renaming itself (only while several
  * assistants are on).
- * hc-1122: ChatCut, while `desktop_features.chatcut` is on: connecting, importing
- * and its MCP tools, whose raw names (`mcp__chatcut__read_script`) must never
- * reach the screen. A tool without its own row reads as editing in general.
+ * hc-1122: ChatCut's MCP tools, while `desktop_features.chatcut` is on. Their
+ * raw names (`mcp__chatcut__read_script`) must never reach the screen; a tool
+ * without its own row reads as editing in general.
  */
 
 import { getRuntimeI18nLocale } from './runtime'
@@ -70,8 +70,6 @@ const en: Record<string, StepCopy> = {
   [MEMORY_FORGET_STEP]: { running: 'Forgetting it', title: 'Forget one thing', done: said('Forgotten') },
   [MEMORY_LIST_STEP]: { running: 'Checking what I remember', title: 'Check what I remember', done: said('Checked') },
   apex_rename: { running: 'Changing my name', title: 'Change my name', done: said('Renamed') },
-  chatcut_connect: { running: 'Connecting ChatCut', title: 'Connect ChatCut', done: said('Done') },
-  chatcut_import_files: { running: 'Bringing your footage into ChatCut', title: 'Import footage', done: said('Imported') },
   [CHATCUT_GENERAL_STEP]: { running: 'Editing in ChatCut', title: 'Edit in ChatCut', done: said('Done') },
   [CHATCUT_CAPTIONS_STEP]: { running: 'Working on the captions', title: 'Captions', done: said('Done') },
   [CHATCUT_CUT_STEP]: { running: 'Cutting the video', title: 'Cut the video', done: said('Cut') },
@@ -84,8 +82,6 @@ const zh: Record<string, StepCopy> = {
   [MEMORY_FORGET_STEP]: { running: '正在忘掉', title: '忘掉一条', done: said('忘掉了') },
   [MEMORY_LIST_STEP]: { running: '正在翻记得的事', title: '查一下记得什么', done: said('查好了') },
   apex_rename: { running: '正在改名字', title: '改名字', done: said('改好了') },
-  chatcut_connect: { running: '正在连接 ChatCut', title: '连接 ChatCut', done: said('好了') },
-  chatcut_import_files: { running: '正在把素材导入 ChatCut', title: '导入素材', done: said('导入好了') },
   [CHATCUT_GENERAL_STEP]: { running: '正在用 ChatCut 剪辑', title: '用 ChatCut 剪辑', done: said('好了') },
   [CHATCUT_CAPTIONS_STEP]: { running: '正在处理字幕', title: '处理字幕', done: said('好了') },
   [CHATCUT_CUT_STEP]: { running: '正在剪视频', title: '剪视频', done: said('剪好了') },
@@ -98,8 +94,6 @@ const zhHant: Record<string, StepCopy> = {
   [MEMORY_FORGET_STEP]: { running: '正在忘掉', title: '忘掉一條', done: said('忘掉了') },
   [MEMORY_LIST_STEP]: { running: '正在翻記得的事', title: '查一下記得什麼', done: said('查好了') },
   apex_rename: { running: '正在改名字', title: '改名字', done: said('改好了') },
-  chatcut_connect: { running: '正在連接 ChatCut', title: '連接 ChatCut', done: said('好了') },
-  chatcut_import_files: { running: '正在把素材匯入 ChatCut', title: '匯入素材', done: said('匯入好了') },
   [CHATCUT_GENERAL_STEP]: { running: '正在用 ChatCut 剪輯', title: '用 ChatCut 剪輯', done: said('好了') },
   [CHATCUT_CAPTIONS_STEP]: { running: '正在處理字幕', title: '處理字幕', done: said('好了') },
   [CHATCUT_CUT_STEP]: { running: '正在剪影片', title: '剪影片', done: said('剪好了') },

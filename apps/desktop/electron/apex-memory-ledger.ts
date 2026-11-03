@@ -36,7 +36,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { managedAccountId } from './apex-account-boundary'
-import { scrubChatcutConnections } from './apex-chatcut'
 import { clearUserProfilePrompt, type CreatorProfileDeps } from './apex-creator-profile'
 
 export const MEMORY_KINDS = ['about_you', 'recent'] as const
@@ -191,11 +190,10 @@ export function clearMemoryLedgerPrompt(hermesHome: string): void {
   }
 }
 
-/** The account changed or signed out: every account-level prompt copy leaves the local agent, and so does ChatCut's sign-in (hc-1122). */
+/** The account changed or signed out: every account-level prompt copy leaves the local agent. */
 export function clearAccountPromptMirrors(hermesHome: string): void {
   clearUserProfilePrompt(hermesHome)
   clearMemoryLedgerPrompt(hermesHome)
-  scrubChatcutConnections(hermesHome)
 }
 
 function statusCodeOf(error: unknown): number | undefined {

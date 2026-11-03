@@ -14,7 +14,6 @@ import {
 import { saveHermesConfigRecord } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { Check, Globe } from '@/lib/icons'
-import { $chatcutFlag, isChatcutEditorUrl, readChatcutFlag } from '@/store/chatcut'
 import { notify, notifyError } from '@/store/notifications'
 import {
   $realProfilePromptClaim,
@@ -30,8 +29,6 @@ interface RealProfileConsentDialogProps {
   /** The Browser tab this pane renders — used only to claim the prompt so
    *  several mounted Browser panes never stack duplicate dialogs. */
   tabId: string
-  /** What the tab shows. Only ChatCut's editor (hc-1122) changes anything here. */
-  url?: string
 }
 
 /**
@@ -46,7 +43,7 @@ interface RealProfileConsentDialogProps {
  * again" persists the opt-out across launches. Turning the toggle off later
  * does NOT resurrect the prompt inside the same run.
  */
-export function RealProfileConsentDialog({ tabId, url }: RealProfileConsentDialogProps) {
+export function RealProfileConsentDialog({ tabId }: RealProfileConsentDialogProps) {
   const { t } = useI18n()
   const copy = t.settings.toolsets.browserRealProfile
   const prompt = copy.prompt
@@ -56,17 +53,6 @@ export function RealProfileConsentDialog({ tabId, url }: RealProfileConsentDialo
   const { data: config } = useHermesConfigRecord()
   const setConfig = hermesConfigCacheWriter()
   const [busy, setBusy] = useState(false)
-  // hc-1122: ChatCut's editor signs in on its own; this offer has no place on top of it. Only that tab reads the
-  // switch, and it stays quiet until the read is back, so every other tab behaves exactly as before.
-  const chatcutOn = useStore($chatcutFlag)
-  const overEditor = isChatcutEditorUrl(url)
-  const [switchRead, setSwitchRead] = useState(false)
-
-  useEffect(() => {
-    if (overEditor) {
-      void readChatcutFlag().finally(() => setSwitchRead(true))
-    }
-  }, [overEditor])
 
   useEffect(() => {
     claimRealProfilePrompt(tabId)
@@ -107,8 +93,7 @@ export function RealProfileConsentDialog({ tabId, url }: RealProfileConsentDialo
   // Config not loaded yet, feature already on, opted out, or another pane
   // owns the prompt — render nothing. `enabled` flipping true after a
   // successful save is also what closes the dialog.
-  const open =
-    Boolean(config) && !enabled && !dismissed && !muted && claim === tabId && !(overEditor && (chatcutOn || !switchRead))
+  const open = Boolean(config) && !enabled && !dismissed && !muted && claim === tabId
 
   if (!open) {
     return null
