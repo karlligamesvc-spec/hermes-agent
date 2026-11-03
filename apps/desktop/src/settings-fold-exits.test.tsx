@@ -368,6 +368,8 @@ const EXITS: Record<string, string> = {
   'app/settings/model-tier-settings.tsx → providers': 'inside 档位, itself folded',
   'app/settings/plugin-install-modal.tsx → keys': 'Capabilities › Plugins, whose doors hc-1085 folded',
   'app/settings/plugin-install-modal.tsx → plugins': 'a moved tab: redirects to Capabilities',
+  'app/settings/product-settings.ts → plans': 'the account menu’s 升级 (hc-1133): kept, for an APEX account',
+  'app/settings/product-settings.ts → usage': 'the account menu’s 本周额度 (hc-1133): kept',
   'app/settings/toolset-config-panel.tsx → keys': 'Capabilities › Toolsets, whose doors hc-1085 folded',
   'app/shell/hooks/use-statusbar-items.tsx → connections':
     'the status bar’s connection switcher; product mode’s bar drops it',

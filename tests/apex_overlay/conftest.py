@@ -57,6 +57,8 @@ _SEAM_MODULES = (
     "proactive_prompt",
     # hc-1036 evidence levels and delivery honesty in every Desktop session.
     "honesty_prompt",
+    # hc-1131 product mode's chat delivers files as cards, not local paths in the reply.
+    "result_delivery_prompt",
     # hc-1032 relay stream byte deadline, keepalive and call id.
     "relay_stream_liveness",
     # hc-1034 one simple command per read-only check; stop and explain after a refusal.

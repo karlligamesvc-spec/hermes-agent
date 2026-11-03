@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { never, Overlays, Providers, removeBridge, seed, settle } from '@/__identity__/re-sign-in/render'
 import { getApiRequestProfile, setApiRequestProfile } from '@/api/client'
 import { AccountPanel } from '@/app/chat/sidebar/account-panel'
+import { ProductAccountSettings } from '@/app/settings/product-account-settings'
 import { SingleThreadAccountRow } from '@/app/single-thread/sidebar-account'
 import { MANAGED_RECOVERY_COPY } from '@/i18n/managed-recovery'
 import { MANAGED_SIGN_IN_COPY } from '@/i18n/managed-sign-in'
@@ -146,7 +147,8 @@ describe('who opens a sign-in', () => {
       'app/chat/sidebar/account-panel.tsx': 3,
       'app/chat/sidebar/cloud-login-notice.tsx': 1,
       'app/im-entry/binding-dialog.tsx': 1,
-      'app/single-thread/sidebar-account.tsx': 2,
+      'app/settings/product-account-settings.tsx': 1,
+      'app/single-thread/sidebar-account.tsx': 1,
       'store/managed-recovery.ts': 1,
       'store/onboarding.ts': 1
     })
@@ -178,13 +180,35 @@ describe('each entry opens the first-open screen over the app', () => {
     expectReSignInScreen(null)
   })
 
-  it('the single-thread account menu', async () => {
+  // hc-1133: 重新登录 left the single-thread account menu for Settings › 账号.
+  it('Settings › 账号 in product mode', async () => {
     installBridge()
     seed()
-    await renderApp(<SingleThreadAccountRow onNavigateBusiness={() => undefined} />)
-    await openMenuAndReSignIn()
+    await renderApp(<ProductAccountSettings />)
+    fireEvent.click(screen.getByRole('button', { name: '重新登录' }))
+    await screen.findByRole('heading', { name: '开始使用' })
 
     expectReSignInScreen(null)
+  })
+
+  it('Settings › 账号 of an expired account says why', async () => {
+    installBridge()
+    seed({ gateReason: 'unauthorized', status: 'expired' })
+    await renderApp(<ProductAccountSettings />)
+    fireEvent.click(screen.getByRole('button', { name: '重新登录' }))
+    await screen.findByRole('heading', { name: '开始使用' })
+
+    expectReSignInScreen(EXPIRED)
+  })
+
+  it('the single-thread account menu no longer lists it', async () => {
+    installBridge()
+    seed()
+    await renderApp(<SingleThreadAccountRow />)
+    fireEvent.pointerDown(screen.getByRole('button', { name: /打开账户菜单/ }), { button: 0, ctrlKey: false })
+    await screen.findByRole('menuitem', { name: '退出登录' })
+
+    expect(screen.queryByRole('menuitem', { name: '重新登录' })).toBeNull()
   })
 
   it('the 「登录已失效」 card of an expired account', async () => {

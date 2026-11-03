@@ -17,6 +17,7 @@ import { ThreadActivityPresence } from '@/store/thread-signals'
 import { sessionWaitingAsk, type WaitingAsk } from '@/store/waiting-for-you'
 
 import { CreatorTipSlot } from './creator-tip'
+import { FoldedEditPreviews } from './file-step-contents'
 import { InterruptedTurnNotice } from './interrupted-turn'
 import { plainStageLine } from './plain-steps'
 import {
@@ -156,6 +157,7 @@ export const SingleThreadProcessFooter: FC = () => {
     <>
       <TurnProcessFooter />
       <InterruptedTurnNotice />
+      <FoldedEditPreviews />
     </>
   ) : null
 }

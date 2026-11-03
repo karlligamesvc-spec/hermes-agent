@@ -15,7 +15,7 @@ import {
 } from '@/hermes'
 import { setModelAssignment } from "@/hermes"
 import { translateNow } from '@/i18n'
-import { managedSignInCopyNow } from '@/i18n/managed-sign-in'
+import { managedSignInCopyNow, signInToastsNow } from '@/i18n/managed-sign-in'
 import { isProviderSetupErrorMessage } from "@/lib/provider-setup-errors"
 import { evaluateRuntimeReadiness, type RuntimeReadinessResult, waitForRuntimeReadiness } from '@/lib/runtime-readiness'
 import { markSignedIn } from '@/store/auth'
@@ -899,7 +899,7 @@ async function finishSignInOnEngine(ctx: OnboardingContext, isCurrent: () => boo
   patch({ managedSubmitting: false })
   markSignedIn()
   finishManagedReSignIn()
-  notifyReady('APEX')
+  notify({ kind: 'success', title: signInToastsNow().readyTitle, message: signInToastsNow().readyMessage })
   completeDesktopOnboarding()
   ctx.onCompleted?.()
 }
@@ -1168,9 +1168,8 @@ export async function refreshOnboarding(ctx: OnboardingContext) {
     notify({
       id: 'runtime-not-ready',
       kind: 'error',
-      title: 'Runtime not ready',
-      message:
-        'Hermes Desktop could not verify the running backend on startup. Some features may be unavailable until the gateway is reachable.'
+      title: signInToastsNow().runtimeNotReadyTitle,
+      message: signInToastsNow().runtimeNotReadyMessage
     })
 
     return false

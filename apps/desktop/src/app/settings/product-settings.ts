@@ -1,10 +1,13 @@
 /**
  * hc-1109: Settings in single-thread product mode.
  *
- * Product mode keeps eight sections, in this order: 个性化, 记忆, 语音, 通知,
- * 外观, 连接微信和飞书, 用量, 关于. Someone on their own key (「使用自己的密钥」,
- * no APEX account) also keeps 模型 and 提供方: the model is theirs to set, the
- * same rule as the composer's model pill (hc-1015, `$modelChoiceHidden`).
+ * Product mode keeps ten sections, in this order: 个性化, 记忆, 语音, 通知, 外观,
+ * 连接微信和飞书, 助手与记录, 用量, 账号, 关于. 助手与记录 and 账号 (hc-1133) hold what
+ * the account menu used to list, plus the plans page, which is reached from 升级
+ * and has no rail entry. Someone on their own key (「使用自己的密钥」, no APEX
+ * account, so no account menu either) has neither and keeps 模型 and 提供方: the
+ * model is theirs to set, the same rule as the composer's model pill (hc-1015,
+ * `$modelChoiceHidden`).
  * 档位, 对话, 工作区, 安全, 浏览器, 密码与登录, 高级, 网关, 键盘快捷键, 工具与密钥,
  * 已归档对话 and the rail's export / import / reset stay in 开发者模式. The switch
  * off and developer mode are untouched.
@@ -33,21 +36,27 @@ import { $modelChoiceHidden } from '@/store/model-choice'
 import { useModelTierMode } from '@/store/model-tiers'
 import { $singleThreadMode } from '@/store/single-thread'
 
+import { SETTINGS_ROUTE } from '../routes'
+
 import { SECTIONS } from './constants'
 import type { DesktopConfigSection, SettingsView } from './types'
 
-const PRODUCT_VIEWS: readonly SettingsView[] = [
+/** hc-1133: the account menu's ways into Settings. */
+export const SETTINGS_PLANS_ROUTE = `${SETTINGS_ROUTE}?tab=plans`
+export const SETTINGS_USAGE_ROUTE = `${SETTINGS_ROUTE}?tab=usage`
+
+const COMMON_VIEWS: readonly SettingsView[] = [
   'config:personalization',
   'config:memory',
   'config:voice',
   'notifications',
   'config:appearance',
-  'im',
-  'usage',
-  'about'
+  'im'
 ]
 
-const OWN_KEY_VIEWS: readonly SettingsView[] = [...PRODUCT_VIEWS.slice(0, -1), 'config:model', 'providers', 'about']
+const PRODUCT_VIEWS: readonly SettingsView[] = [...COMMON_VIEWS, 'activity', 'usage', 'account', 'plans', 'about']
+
+const OWN_KEY_VIEWS: readonly SettingsView[] = [...COMMON_VIEWS, 'usage', 'config:model', 'providers', 'about']
 
 /** The tabs product mode keeps, in rail order; null outside product mode, where every tab is as it was. */
 export const $productSettingsViews = computed(
@@ -56,6 +65,14 @@ export const $productSettingsViews = computed(
     productMode ? (modelChoiceHidden ? PRODUCT_VIEWS : OWN_KEY_VIEWS) : null
 )
 
+/** hc-1133: the pages about the account, the same whichever assistant is on screen. */
+const ACCOUNT_WIDE_VIEWS: ReadonlySet<string> = new Set(['account', 'plans', 'usage'])
+
+/** Is this `?tab=` value a page about the account? Only product mode has these tabs, and several assistants. */
+export function settingsTabAccountWide(tab: null | string): boolean {
+  return tab !== null && ACCOUNT_WIDE_VIEWS.has(tab)
+}
+
 /** Kept tabs whose product page shows none of the section's config fields: 记忆 is the ledger. */
 const FIELDLESS_VIEWS: ReadonlySet<string> = new Set(['config:memory'])
 
@@ -63,6 +80,8 @@ const FIELDLESS_VIEWS: ReadonlySet<string> = new Set(['config:memory'])
 const SETTINGS_TABS: ReadonlySet<string> = new Set([
   ...SECTIONS.map(section => `config:${section.id}`),
   'about',
+  'account',
+  'activity',
   'billing',
   'connections',
   'gateway',
@@ -70,6 +89,7 @@ const SETTINGS_TABS: ReadonlySet<string> = new Set([
   'keybinds',
   'keys',
   'notifications',
+  'plans',
   'providers',
   'sessions',
   'usage',

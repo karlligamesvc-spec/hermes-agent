@@ -3,7 +3,7 @@ import { atom } from 'nanostores'
 import { Codecs, persistentAtom } from '@/lib/persisted'
 
 // One-time consent prompt for real-profile browsing, shown when a Browser
-// pane opens while `browser.use_real_profile` is off. Mirrors the embed
+// pane opens outside product mode while `browser.use_real_profile` is off. Mirrors the embed
 // consent split: "Don't show again" persists across launches; "Not now"
 // mutes for this app run only, so the offer comes back next launch rather
 // than nagging within one.

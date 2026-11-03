@@ -3,6 +3,7 @@
 import { useAuiState } from '@assistant-ui/react'
 import { Children, type FC, Fragment, type PropsWithChildren, useMemo } from 'react'
 
+import { isFileEditTool } from '@/lib/tool-render-class'
 import { useSingleThreadMode } from '@/store/single-thread'
 
 import { TurnProcessBlock } from './process-block'
@@ -40,6 +41,16 @@ export function splitProcessItems(kinds: readonly string[]): ProcessItem[] {
 }
 
 /**
+ * hc-1130: in product mode a file edit is work, not a result. Its card folds
+ * like the rest of the turn's activity, and the process area keeps its contents
+ * (`file-step-contents.tsx`). Only tool parts are read here: code the model
+ * writes in its reply is a text part and never comes through this slot.
+ */
+function slotKind(part: TurnPart, foldFileEdits: boolean): ReturnType<typeof processKind> {
+  return foldFileEdits && isFileEditTool(part.toolName ?? '') ? 'activity' : processKind(part)
+}
+
+/**
  * A range of consecutive tool calls (assistant-ui hands each one over whole).
  *
  * Cards — an edit, an image, a question for the user — stay where they
@@ -53,20 +64,21 @@ export const ProcessToolGroupSlot: FC<PropsWithChildren<{ endIndex: number; star
   endIndex,
   startIndex
 }) => {
+  // hc-1015: in single-thread mode the turn's work is the activity line and
+  // the 「看过程」 line under the answer (single-thread-process.tsx), not a block.
+  const singleThread = useSingleThreadMode()
+
   // Joined rather than returned as an array: assistant-ui compares selector
   // results with `Object.is` and re-runs them on every store update, so a
   // fresh array would re-render the whole group on every text delta.
   const kindKey = useAuiState(state =>
     state.message.parts
       .slice(Math.max(0, startIndex), endIndex + 1)
-      .map(part => (part.type === 'tool-call' ? processKind(part as TurnPart) : 'card'))
+      .map(part => (part.type === 'tool-call' ? slotKind(part as TurnPart, singleThread) : 'card'))
       .join('|')
   )
 
   const messageId = useAuiState(state => state.message.id)
-  // hc-1015: in single-thread mode the turn's work is the activity line and
-  // the 「看过程」 line under the answer (single-thread-process.tsx), not a block.
-  const singleThread = useSingleThreadMode()
   const turnAnchor = useTurnAnchor()
   const anchor = singleThread ? '' : turnAnchor
   const items = useMemo(() => splitProcessItems(kindKey.split('|')), [kindKey])

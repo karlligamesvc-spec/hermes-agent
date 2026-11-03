@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { act, cleanup, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useQuickEntryBridge } from '@/app/contrib/hooks/use-quick-entry-bridge'
@@ -277,9 +278,11 @@ describe('hc-1077 the command palette tells the assistants’ threads apart', ()
 describe('hc-1077 the settings page says whose settings they are', () => {
   function title(): string {
     render(
-      <I18nProvider configClient={null} initialLocale="zh">
-        <SettingsSurfaceHeader description="说明" title="设置" titleId="t" />
-      </I18nProvider>
+      <MemoryRouter>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <SettingsSurfaceHeader description="说明" title="设置" titleId="t" />
+        </I18nProvider>
+      </MemoryRouter>
     )
 
     return screen.getByRole('heading').textContent ?? ''

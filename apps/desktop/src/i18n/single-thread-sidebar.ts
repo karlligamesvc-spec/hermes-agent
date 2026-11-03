@@ -27,8 +27,6 @@ export interface SingleThreadSidebarCopy {
   wechatTitle: string
   wechatBound: string
   wechatUnbound: string
-  /** 「快速 · 本月用了 18%」: `percent` is already formatted (「18%」, 「不到 1%」). */
-  planUsage: (parts: { percent: string; period: 'month' | 'week'; plan: string }) => string
   /** Used, but under one percent: 「不到 1%」 rather than a misleading 「0%」. */
   underOnePercent: string
   /** hc-1077: the round 「+」 beside search (several assistants). */
@@ -51,7 +49,6 @@ const en: SingleThreadSidebarCopy = {
   wechatTitle: 'Find APEX on WeChat',
   wechatBound: 'Connected',
   wechatUnbound: 'Scan once to connect',
-  planUsage: ({ percent, period, plan }) => `${plan} · ${percent} used this ${period}`,
   underOnePercent: 'under 1%',
   newBot: 'New assistant',
   openBotFailed: name => `Couldn’t open ${name} right now. Try again in a moment.`,
@@ -69,7 +66,6 @@ const zh: SingleThreadSidebarCopy = {
   wechatTitle: '在微信里找 APEX',
   wechatBound: '已绑定',
   wechatUnbound: '扫一下就绑上',
-  planUsage: ({ percent, period, plan }) => `${plan} · ${period === 'week' ? '本周' : '本月'}用了 ${percent}`,
   underOnePercent: '不到 1%',
   newBot: '新建一个助手',
   openBotFailed: name => `暂时打不开「${name}」，稍后再试。`,
@@ -87,7 +83,6 @@ const zhHant: SingleThreadSidebarCopy = {
   wechatTitle: '在微信裡找 APEX',
   wechatBound: '已綁定',
   wechatUnbound: '掃一下就綁上',
-  planUsage: ({ percent, period, plan }) => `${plan} · ${period === 'week' ? '本週' : '本月'}用了 ${percent}`,
   underOnePercent: '不到 1%',
   newBot: '新建一個助手',
   openBotFailed: name => `暫時打不開「${name}」，稍後再試。`,

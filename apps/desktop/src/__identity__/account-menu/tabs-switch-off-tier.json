@@ -1,0 +1,22 @@
+{
+  "/settings?tab=account": {
+    "location": "/settings?tab=account",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications gateway keybinds keys sessions about"
+  },
+  "/settings?tab=activity": {
+    "location": "/settings?tab=activity",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications gateway keybinds keys sessions about"
+  },
+  "/settings?tab=plans": {
+    "location": "/settings?tab=plans",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications gateway keybinds keys sessions about"
+  },
+  "/settings?tab=usage": {
+    "location": "/settings?tab=usage",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:model config:chat config:appearance config:workspace config:safety config:browser vault config:memory config:voice config:advanced notifications gateway keybinds keys sessions about"
+  }
+}

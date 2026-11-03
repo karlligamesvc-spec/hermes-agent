@@ -57,6 +57,8 @@ test('finalizeGatewayDownload prompts a save dialog then streams the response', 
   assert.doesNotMatch(fn, /fs\.createWriteStream/)
   // HTTP errors carry their status so a 404 can trigger the fallback.
   assert.match(fn, /throw httpStatusError\(statusCode, /)
+  // hc-1130: the name the caller asked for wins over the server's basename.
+  assert.match(fn, /ctx\.suggested \|\| filenameFromContentDisposition\(disposition\) \|\| ctx\.fallbackName/)
 })
 
 test('data-URL fallback writes through the same failure-atomic primitive, never writeFile in place', () => {

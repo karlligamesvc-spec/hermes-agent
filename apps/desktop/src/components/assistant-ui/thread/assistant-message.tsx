@@ -442,7 +442,10 @@ const SettledChangedFiles: FC = () => {
     return s.message.status?.type === 'running' || !isLastMessage ? EMPTY_PARTS : s.message.parts
   })
 
-  return <ChangedFilesCard parts={settledParts} />
+  // hc-1130: in product mode what the turn changed lives in the process area.
+  const productMode = useSingleThreadMode()
+
+  return productMode ? null : <ChangedFilesCard parts={settledParts} />
 }
 
 /**

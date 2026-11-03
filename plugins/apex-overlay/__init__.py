@@ -143,6 +143,12 @@ _CONTEXT_SEAMS = (
         "the evidence levels, the provenance rule or the no-unasked-switch rule.",
     ),
     (
+        "result_delivery_prompt",
+        "apex-overlay: hc-1131 result delivery prompt section did not register "
+        "(see prior warning). In product mode, replies may write local paths "
+        "under the result cards again.",
+    ),
+    (
         "relay_stream_liveness",
         "apex-overlay: hc-1032 relay stream liveness seam did not apply "
         "(see prior error). A Desktop chat stream whose bytes stop arriving "

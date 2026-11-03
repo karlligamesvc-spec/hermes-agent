@@ -40,6 +40,9 @@ export interface MockServerOptions {
   /** Choose distinct replies from the latest input without replaying history. */
   replyForPrompt?: (prompt: string) => string
 
+  /** Script a whole tool-using turn: the next step, given how many tool results came back so far this turn. */
+  scriptForPrompt?: (prompt: string, toolResults: number) => null | ScriptedTurn
+
   /** Extra ids listed by GET /v1/models beside `mock-model` (a pickable second model). */
   extraModels?: string[]
 
@@ -147,6 +150,21 @@ let _taskPanelResumeIndex = 0
 
 /** User messages received by the mock, for E2E assertions on real submits. */
 const _receivedUserTexts: string[] = []
+
+/** System prompts received by the mock, for E2E assertions on what the engine really sends. */
+export const receivedSystemPrompts: string[] = []
+
+function recordSystemPrompt(messages: { content?: unknown; role?: unknown }[] | undefined): void {
+  const content = messages?.find(message => message?.role === 'system')?.content
+
+  if (typeof content === 'string') {
+    receivedSystemPrompts.push(content)
+  }
+}
+
+function lastUserMessageOf(messages: any[] | undefined) {
+  return [...(messages ?? [])].reverse().find(message => message?.role === 'user')
+}
 
 /** Reset the script indices (called between tests via restartMockServer). */
 function resetScriptIndex(): void {
@@ -511,6 +529,14 @@ export function groupScriptedLine(userText: string, history: string[] = []): str
   return '(pass)'
 }
 
+/** The next step of a turn a spec scripts whole (`scriptForPrompt`, counting this turn's tool results), else `E2E_CALL`. */
+function promptScriptTurn(options: MockServerOptions, userText: string, messages: any[]): ScriptedTurn | null {
+  const lastUser = messages.map(message => message?.role).lastIndexOf('user')
+  const toolResults = messages.slice(lastUser + 1).filter(message => message?.role === 'tool').length
+
+  return options.scriptForPrompt?.(userText, toolResults) ?? directToolCallTurn(userText, messages)
+}
+
 /**
  * One scripted tool call driven by the user's own text, for specs that need the
  * agent to exercise a REAL tool once (e.g. Bot Mode's `message_agent`):
@@ -666,8 +692,9 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
       if (req.method === 'POST' && (options.apiPrefixes ?? ['/v1']).some(prefix => req.url?.startsWith(`${prefix}/chat/completions`))) {
         let body = ''
 
-        req.on('data', (chunk: Buffer) => {
-          body += chunk.toString()
+        req.setEncoding('utf8') // A chunk can end inside a multi-byte character; decoding each on its own corrupts it.
+        req.on('data', (chunk: string) => {
+          body += chunk
         })
 
         req.on('end', () => {
@@ -679,9 +706,8 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
             // malformed JSON — treat as non-streaming with defaults
           }
 
-          const lastUserMessage = [...(parsed.messages ?? [])]
-            .reverse()
-            .find((message: { role?: unknown }) => message?.role === 'user')
+          recordSystemPrompt(parsed.messages)
+          const lastUserMessage = lastUserMessageOf(parsed.messages)
 
           const recordedPrompt = promptTextFromLastUserMessage(lastUserMessage)
 
@@ -958,7 +984,7 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
             return
           }
 
-          const directCall = directToolCallTurn(userText, messages)
+          const directCall = promptScriptTurn(options, userText, messages)
 
           if (directCall !== null) {
             if (stream) {

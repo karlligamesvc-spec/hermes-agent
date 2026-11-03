@@ -3,8 +3,8 @@
  * 「要多跑 N 个回合，按你的套餐额度算 · 本月已用 x%」, a reminder past 80%, and
  * `start: false` with the reason once the allowance is used up (L6; the wording
  * is i18n/handoff-usage.ts). The number is the account's usage line, read
- * through main with the login JWT (store/plan-usage.ts, hc-1062), the same one
- * the sidebar account row shows.
+ * through main with the login JWT (store/plan-usage.ts, hc-1062), the same read
+ * that names the plan on the sidebar account row.
  *
  * Off (relay off), both return null and read nothing.
  */

@@ -258,6 +258,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // hc-1081: after a new assistant's config is on the relay, copy the root's platform skills
   // into that profile (apex-platform-skills-sync.ts); resolves { ok, filled }.
   syncApexProfileSkills: profile => ipcRenderer.invoke('hermes:apex:syncProfileSkills', profile),
+  // hc-1131: main mirrors developer mode to a marker the engine reads (apex-developer-mode.ts).
+  syncDeveloperMode: on => ipcRenderer.invoke('hermes:apex:developerMode', on),
   // ApexNodes managed-LLM (zero-key) default path. See electron/apex-managed.cjs.
   managed: {
     status: () => ipcRenderer.invoke('hermes:managed:status'),
@@ -432,7 +434,15 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // config (no network). Application happens in the MAIN process pre-gateway
   // (main.cjs applyClientConfigToRuntime); the renderer no longer applies.
   clientConfig: {
-    get: () => ipcRenderer.invoke('hermes:clientConfig:get')
+    get: () => ipcRenderer.invoke('hermes:clientConfig:get'),
+    // hc-1127: a launch that started with nothing cached, when its first config
+    // lands after the window opened. Never fires on an install with a cache.
+    onArrived: callback => {
+      const listener = (_event, state) => callback(state)
+      ipcRenderer.on('hermes:clientConfig:arrived', listener)
+
+      return () => ipcRenderer.removeListener('hermes:clientConfig:arrived', listener)
+    }
   },
   // Continuous auth gate: main broadcasts when a backend call returns 401
   // (login lost) or 403 account_disabled (account abnormal). The renderer

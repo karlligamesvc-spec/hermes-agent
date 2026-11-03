@@ -37,7 +37,7 @@ export const MODEL_TIER_LABEL: Readonly<Record<ModelTier, string>> = {
   max: 'Max'
 }
 
-/** Which plan first unlocks a tier — copy only ("快速版起可用"). Whether THIS
+/** Which plan first unlocks a tier — copy only ("PRO 起可用"). Whether THIS
  *  account has it is answered by the relay's entitled list, not by this map. */
 export const MODEL_TIER_UNLOCK_PLAN: Readonly<Record<ModelTier, 'advanced' | 'fast' | null>> = {
   flash: null,

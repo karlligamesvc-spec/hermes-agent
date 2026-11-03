@@ -1,0 +1,82 @@
+{"ok":true}
+## first sign-in
+{"ok":true}
+{"ok":true}
+shot 45-signin-toast-zh
+{ "value": "登录成功 /  / APEX 准备好了。"}
+## the row and 个人资料
+row[shadow]: { "value": "小 / 小满 / 免费"}
+profile[shadow]: { "value": "{\"badge\":\"免费\",\"rows\":[\"邮箱: xiaoman@example.com\",\"方案: 免费\"]}"}
+shot 49-profile-free
+row[pro]: { "value": "小 / 小满 / Pro"}
+shot 46-row-pro
+profile[pro]: { "value": "{\"badge\":\"Pro\",\"rows\":[\"邮箱: xiaoman@example.com\",\"方案: Pro\"]}"}
+shot 48-profile-pro
+row[proEnforced]: { "value": "小 / 小满 / Pro"}
+{"ok":true}
+{ "value": "Pro / 本周额度 还剩 95%"}
+shot 47-row-pro-enforced-menu
+profile[proEnforced]: { "value": "{\"badge\":\"Pro\",\"rows\":[\"邮箱: xiaoman@example.com\",\"方案: Pro\"]}"}
+row[max]: { "value": "小 / 小满 / Max"}
+profile[max]: { "value": "{\"badge\":\"Max\",\"rows\":[\"邮箱: xiaoman@example.com\",\"方案: Max\"]}"}
+shot 50-profile-max
+row[unknownPlan]: { "value": "小 / 小满 / 团队"}
+profile[unknownPlan]: { "value": "{\"badge\":\"团队\",\"rows\":[\"邮箱: xiaoman@example.com\",\"方案: 团队\"]}"}
+shot 51-profile-unknown-cloud-name
+## re-sign-in from Settings
+{"ok":true}
+{"ok":true}
+{"ok":true}
+shot 52-resignin-toast-zh
+{ "value": "#/settings?tab=account"}
+## a 401 from main
+{"ok":true}
+{"ok":true}
+## sign-out fails
+{"ok":true}
+{"ok":true}
+shot 53-signout-failed-toast-zh
+{"ok":true}
+{"ok":true}
+{"ok":true}
+## sign-out
+{"ok":true}
+{"ok":true}
+{"ok":true}
+shot 54-signed-out
+## sign in after sign-out
+{"ok":true}
+{"ok":true}
+## English, product mode
+row: { "value": "小 / 小满 / Pro"}
+profile: { "value": "{\"badge\":\"Pro\",\"rows\":[\"Email: xiaoman@example.com\",\"Plan: Pro\"]}"}
+{"ok":true}
+{"ok":true}
+{"ok":true}
+{"ok":true}
+{"ok":true}
+shot 55-signin-toast-en
+## developer mode
+profile: { "value": "{\"badge\":\"free\",\"rows\":[\"邮箱: xiaoman@example.com\",\"方案: free\"]}"}
+shot 56-developer-profile-raw-code
+{"ok":true}
+{"ok":true}
+{"ok":true}
+{"ok":true}
+{"ok":true}
+shot 57-developer-signin-toast-en
+## every toast the window drew
+[first sign-in] status: 登录成功 APEX 准备好了。
+[re-sign-in from Settings] status: 登录成功 APEX 准备好了。
+[a 401 from main] status: 登录成功 APEX 准备好了。
+[sign-out fails] alert: 退出登录未完成。请重试；如果登录已过期，可重新登录。 重新登录
+[sign-out fails] status: 登录成功 APEX 准备好了。
+[sign in after sign-out] status: 登录成功 APEX 准备好了。
+[English, product mode] status: APEX is ready APEX connected.
+[developer mode] status: APEX is ready APEX connected.
+## console errors
+[]
+## only local fixtures reached
+['account', 'relay']
+## real home untouched
+96112 Oct 31 11:57 /Users/karlsu/.apexnodes/logs/desktop.log

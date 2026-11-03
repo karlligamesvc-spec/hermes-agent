@@ -48,15 +48,12 @@ function Location() {
   return <output data-testid="location">{useLocation().pathname}</output>
 }
 
-function renderSidebar({
-  onNavigate = noop,
-  view = 'chat'
-}: { onNavigate?: SidebarActions['onNavigate']; view?: AppView } = {}) {
+function renderSidebar({ view = 'chat' }: { view?: AppView } = {}) {
   return render(
     <MemoryRouter initialEntries={['/thread-root']}>
       <I18nProvider configClient={null} initialLocale="zh">
         <SidebarProvider>
-          <SidebarSurface actions={{ ...ACTIONS, onNavigate }} currentView={view} />
+          <SidebarSurface actions={ACTIONS} currentView={view} />
         </SidebarProvider>
         <Location />
       </I18nProvider>
@@ -270,32 +267,61 @@ describe('hc-1061 the account row', () => {
     screen.getByRole('button', { name: '打开账户菜单: 小满' }).querySelector('[data-single-thread-account-line]')
       ?.textContent
 
+  const ENFORCED = { enforced: true, resetsAt: '2026-11-08T16:00:00+00:00', unlimited: false, usedRatio: 0.25 }
+  const SHADOW = { ...ENFORCED, enforced: false }
+
+  // hc-1133: the plan's name and nothing else, however much is used and whatever is limited.
   it.each([
-    ['used this month', ok({ period: 'month', planName: '快速', usedRatio: 0.18 }), '快速 · 本月用了 18%'],
-    ['barely used', ok({ period: 'month', planName: '快速', usedRatio: 0.0004 }), '快速 · 本月用了 不到 1%'],
-    ['over the allowance', ok({ period: 'month', planName: '快速', usedRatio: 1.25 }), '快速 · 本月用了 125%'],
-    ['unlimited: the plan alone', ok({ period: 'month', planName: '高级', usedRatio: null }), '高级'],
+    ['used this month', ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18 }), 'PRO'],
+    ['used this week', ok({ period: 'week', planCode: 'fast', planName: '快速', usedRatio: 0.18 }), 'PRO'],
+    ['barely used', ok({ period: 'month', planCode: 'free', planName: '免费', usedRatio: 0.0004 }), 'FREE'],
+    ['over the allowance', ok({ period: 'month', planCode: 'advanced', planName: '高级', usedRatio: 1.25 }), 'MAX'],
+    ['unlimited', ok({ period: 'month', planCode: 'advanced', planName: '高级', usedRatio: null }), 'MAX'],
+    [
+      'a week that only records',
+      ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18, weekly: SHADOW }),
+      'PRO'
+    ],
+    [
+      'a week really limited: its number stays on the menu’s card',
+      ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18, weekly: ENFORCED }),
+      'PRO'
+    ],
+    [
+      'a plan this build does not list: the cloud’s name for it',
+      ok({ period: 'month', planCode: 'plus', planName: '团队', usedRatio: 0.18 }),
+      '团队'
+    ],
     ['no line from the cloud: the email', ok(null), 'xiaoman@example.com']
   ])('%s', async (_label, planUsage, expected) => {
     stubBridge({ planUsage })
     renderSidebar()
 
     await waitFor(() => expect(accountLine()).toBe(expected))
+    expect(screen.getByRole('button', { name: '打开账户菜单: 小满' }).textContent).not.toMatch(/%|本月|本周|用了/)
+  })
+
+  it('an older cloud that gives no code: the sign-in’s code names it, as on the menu’s card', async () => {
+    $authState.set({ ...$authState.get(), account: { ...$authState.get().account, plan: 'fast' } })
+    stubBridge({ planUsage: ok({ period: 'month', planName: '快速', usedRatio: 0.18 }) })
+    renderSidebar()
+
+    await waitFor(() => expect(accountLine()).toBe('PRO'))
   })
 
   it('reads the line even when the app opens in the middle of a turn', async () => {
     threadState({ busy: true })
-    stubBridge({ planUsage: ok({ period: 'month', planName: '快速', usedRatio: 0.18 }) })
+    stubBridge({ planUsage: ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18 }) })
     renderSidebar()
 
-    await waitFor(() => expect(accountLine()).toBe('快速 · 本月用了 18%'))
+    await waitFor(() => expect(accountLine()).toBe('PRO'))
   })
 
   it('reads it again when a turn ends, not while one runs', async () => {
-    const read = vi.fn(ok({ period: 'month', planName: '快速', usedRatio: 0.18 }))
+    const read = vi.fn(ok({ period: 'month', planCode: 'fast', planName: '快速', usedRatio: 0.18 }))
     stubBridge({ planUsage: read })
     renderSidebar()
-    await waitFor(() => expect(accountLine()).toBe('快速 · 本月用了 18%'))
+    await waitFor(() => expect(accountLine()).toBe('PRO'))
     expect(read).toHaveBeenCalledTimes(1)
 
     act(() => threadState({ busy: true }))
@@ -327,7 +353,7 @@ describe('hc-1061 the account row', () => {
   })
 })
 
-describe('hc-1061 the account menu (twin of AccountPanel’s)', () => {
+describe('hc-1133 the account menu is no longer AccountPanel’s twin', () => {
   async function menuItems(trigger: HTMLElement): Promise<string[]> {
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false })
     await screen.findByRole('menuitem', { name: '设置' })
@@ -335,7 +361,7 @@ describe('hc-1061 the account menu (twin of AccountPanel’s)', () => {
     return screen.getAllByRole('menuitem').map(item => item.textContent?.trim() ?? '')
   }
 
-  it('lists exactly AccountPanel’s destinations, in the same order: no 沉浸式分析 (hc-1070), no 项目 (hc-1123)', async () => {
+  it('AccountPanel keeps its list; the single-thread row has the new one (account-menu.test.tsx pins it)', async () => {
     const panel = render(
       <MemoryRouter>
         <I18nProvider configClient={null} initialLocale="zh">
@@ -344,17 +370,22 @@ describe('hc-1061 the account menu (twin of AccountPanel’s)', () => {
       </MemoryRouter>
     )
 
-    const expected = await menuItems(within(panel.container).getByRole('button', { name: '打开账户菜单: 小满' }))
+    const panelItems = await menuItems(within(panel.container).getByRole('button', { name: '打开账户菜单: 小满' }))
+
+    // Product mode reads 历史会话 as 更早的对话; the panel's list is otherwise what it always was.
+    expect(panelItems).toEqual(['个人资料', '设置', '定时运行', '连接助手', '更早的对话', '重新登录', '退出登录'])
 
     cleanup()
     renderSidebar()
 
     const items = await menuItems(screen.getByRole('button', { name: '打开账户菜单: 小满' }))
 
-    expect(expected).toContain('更早的对话')
-    expect(expected).not.toContain('沉浸式分析')
-    expect(expected).not.toContain('项目')
-    expect(items).toEqual(expected)
+    for (const moved of ['个人资料', '定时运行', '连接助手', '更早的对话', '重新登录']) {
+      expect(items).not.toContain(moved)
+    }
+
+    expect(items).toContain('设置')
+    expect(items).toContain('退出登录')
   })
 
   // hc-1121: AccountPanel stays mounted behind the login screen, so an open menu came back with the next sign-in.
@@ -386,46 +417,6 @@ describe('hc-1061 the account menu (twin of AccountPanel’s)', () => {
       // @ts-expect-error — remove the injected test bridge.
       delete window.hermesDesktop
     }
-  })
-
-  it('pins the menu item by item: AccountPanel’s list with 更早的对话, nothing else (hc-1070, hc-1123)', async () => {
-    const onNavigate = vi.fn()
-    renderSidebar({ onNavigate })
-
-    expect(await menuItems(screen.getByRole('button', { name: '打开账户菜单: 小满' }))).toEqual([
-      '个人资料',
-      '设置',
-      '定时运行',
-      '连接助手',
-      '更早的对话',
-      '交付物',
-      '重新登录',
-      '退出登录'
-    ])
-
-    // The one item that goes through the shell's navigation is 定时运行, never 项目 or the analysis workspace.
-    cleanup()
-    renderSidebar({ onNavigate })
-    await menuItems(screen.getByRole('button', { name: '打开账户菜单: 小满' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: '定时运行' }))
-
-    expect(onNavigate.mock.calls.map(([item]) => (item as { id: string; route: string })).map(({ id, route }) => [id, route])).toEqual([
-      ['scheduled-runs', '/cron']
-    ])
-  })
-
-  it.each([
-    ['个人资料', '/profile'],
-    ['设置', '/settings'],
-    ['连接助手', '/assistant'],
-    ['更早的对话', '/history'],
-    ['交付物', '/deliverables']
-  ])('hc-1123 keeps %s, which still opens %s', async (label, path) => {
-    renderSidebar()
-    await menuItems(screen.getByRole('button', { name: '打开账户菜单: 小满' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: label }))
-
-    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe(path))
   })
 })
 

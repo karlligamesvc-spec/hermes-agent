@@ -6,11 +6,11 @@ import { workflowDomainBridge } from '../api/bridge'
 import { useWorkflowDomainPages } from './use-workflow-domain-pages'
 import { useWorkflowDomainRead } from './use-workflow-domain-read'
 
-export function useWorkflowDeliverables(options: { kind?: string; status?: string } = {}) {
-  const { kind, status } = options
+export function useWorkflowDeliverables(options: { enabled?: boolean; kind?: string; status?: string } = {}) {
+  const { enabled = true, kind, status } = options
   const read = useCallback((cursor?: string) => listWorkflowDeliverables({ ...(cursor ? { cursor } : {}), kind, limit: 50, status }), [kind, status])
 
-  return useWorkflowDomainPages(`deliverables:${kind ?? ''}:${status ?? ''}`, read, Boolean(workflowDomainBridge()?.listDeliverables))
+  return useWorkflowDomainPages(`deliverables:${kind ?? ''}:${status ?? ''}`, read, enabled && Boolean(workflowDomainBridge()?.listDeliverables))
 }
 
 export function useWorkflowDeliverable(deliverableId: string | undefined, reloadToken = 0) {

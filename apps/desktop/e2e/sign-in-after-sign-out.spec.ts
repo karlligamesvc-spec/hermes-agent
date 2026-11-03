@@ -321,10 +321,14 @@ test('signing in again from the account menu closes the login screen, with no re
 
     allowErrorBanners()
     const { page } = ctx.current()
+    // hc-1133: in product mode 重新登录 lives in Settings › 账号, and the screen must take clicks over it.
     await page.getByRole('button', { name: /^打开账户菜单/ }).click()
-    await page.getByRole('menuitem', { name: '重新登录' }).click()
+    await page.getByRole('menuitem', { name: '设置' }).click()
+    await page.locator('[data-tour="nav-account"]').click()
+    await page.getByRole('button', { name: '重新登录' }).click()
     await ctx.signIn()
     await formClosed(ctx)
+    await page.getByRole('button', { name: '关闭设置' }).click()
     await expect
       .poll(ctx.desktopLog, { timeout: 30_000 })
       .toContain('restarting primary backend "default" for the refreshed relay key')

@@ -15,6 +15,7 @@ import {
   reconcileUnifiedDesktopHalves
 } from './desktop-plugins-root'
 import { readDirForIpc } from './fs-read-dir'
+import { revealInFileManager } from './fs-reveal'
 import { gitRootForIpc } from './git-root'
 
 export interface FsIpcDeps {
@@ -40,19 +41,7 @@ export function registerFsIpc({
 
   // Reveal a path in the OS file manager (Finder / Explorer / Files).
   ipcMain.handle('hermes:fs:reveal', async (_event, targetPath) => {
-    const target = String(targetPath || '').trim()
-
-    if (!target) {
-      return false
-    }
-
-    try {
-      shell.showItemInFolder(target)
-
-      return true
-    } catch {
-      return false
-    }
+    return revealInFileManager(targetPath, expandUserPath, target => shell.showItemInFolder(target))
   })
 
   // Open a DIRECTORY in the OS file manager, creating it first if needed. Unlike

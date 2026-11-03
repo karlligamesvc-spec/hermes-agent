@@ -285,7 +285,8 @@ test('the registrar wires every account read, and main clears the copy on every 
     'hermes:managed:creatorProfile',
     'hermes:managed:creatorTips',
     'hermes:managed:dailyIdeas',
-    'hermes:managed:memoryLedger'
+    'hermes:managed:memoryLedger',
+    'hermes:apex:developerMode'
   ])
 
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
