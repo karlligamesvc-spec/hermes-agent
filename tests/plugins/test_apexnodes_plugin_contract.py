@@ -51,8 +51,10 @@ CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 # 上传端点;三条新行为：带图转成 ref、服务端不声明支持就不发、上传失败绝不改成不带图。
 # v12(hc-1000):generate_video 改成提交任务再轮询,网关腿端点族加 /tools/v1/video/jobs 和
 # /tools/v1/video/jobs/{job_id},新增网关腿行为 submit_then_poll。
-EXPECTED_CONTRACT_SHA256 = "22d450db9566239ffefd651825ff7df7be0354d0989cf59cffc8f6a9892a9ffe"
-EXPECTED_CONTRACT_VERSION = 12
+# v13(hc-1136):apexnodes-video-tools 加 video_breakdown(复刻卡),两条腿各一个看图端点
+# (/media/shot-labels、/tools/v1/video/shot-labels)。
+EXPECTED_CONTRACT_SHA256 = "00fdb380f2b850ba8f2c91d672d55942c0545b0f9fceb56e20a66f978a15f484"
+EXPECTED_CONTRACT_VERSION = 13
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -83,7 +85,29 @@ PROBES: dict[str, dict] = {
     "social_creator_discovery": {"platform": "douyin", "keyword": "猫粮"},
     "social_product": {"platform": "tiktok", "keyword": "cat food"},
     "generate_video": {"prompt": "一只猫在弹钢琴"},
+    "video_breakdown": {"video_path": "/probe/原片.mp4"},
 }
+
+# A 1×1 JPEG: the keyframe a probe sends for labels.
+_PROBE_JPEG = (
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAx"
+    "NDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAI"
+    "AQEAAD8AKp//2Q=="
+)
+
+
+def _probe_build(video_path, *, label_fn, **_kwargs):
+    """video_breakdown's local steps (ffmpeg, files) stand still in the endpoint probes: only
+    the labels request is the plugin's call to the platform. tests/plugins/
+    test_apexnodes_video_breakdown.py runs the real steps."""
+    shot = {"n": 1, "start": 0.0, "end": 1.0, "speech": "", "frames": [_PROBE_JPEG]}
+    answer = label_fn({"video": {"duration": 1.0, "shot_count": 1}, "shots": [shot]})
+    return {"package_dir": "/probe/复刻包", "shot_count": 1, "labels_from": answer.get("labels_from") or "none"}
+
+
+def stub_breakdown(monkeypatch, handler) -> None:
+    """Make a video_breakdown handler's local steps stand still (see _probe_build)."""
+    monkeypatch.setattr(handler.__globals__["_BREAKDOWN"], "build", _probe_build)
 
 
 # ── 插件装载(PluginManager 命名约定;注册面经 FakeCtx 捕获)────────────────────
@@ -240,6 +264,7 @@ class LegacyHarness:
             return _Response(answer)
 
         monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+        stub_breakdown(monkeypatch, REGISTRY["video_breakdown"]["handler"])
 
     @staticmethod
     def _canned(path: str) -> dict:
@@ -306,6 +331,7 @@ class GatewayHarness:
         monkeypatch.setattr(gateway_module.time, "sleep", lambda _s: None)  # hc-978 poll gaps
         # 桌面最保守形态:无 ffmpeg → 抽音轨失败 → 原文件上传(hc-560 已知语境)。
         monkeypatch.setattr(gateway_module, "extract_audio_for_asr", lambda _p, **_kw: None)
+        stub_breakdown(monkeypatch, REGISTRY["video_breakdown"]["handler"])
 
     @staticmethod
     def _canned(path: str) -> dict:
@@ -390,7 +416,7 @@ def test_contract_covers_exactly_the_shared_tool_surface():
     assert contract_tools == {t for tools in CONTRACT["plugins"].values() for t in tools}
     # hc-563 冻结在 14;hc-600 有意加入四个洞察工具(contract_version 3)。这个数字是
     # 漂移绊线,只能与 contract_version 一起动 —— 与 cloud 侧同一断言保持一致。
-    assert len(contract_tools) == 18
+    assert len(contract_tools) == 19
     assert set(PROBES) == contract_tools
 
 

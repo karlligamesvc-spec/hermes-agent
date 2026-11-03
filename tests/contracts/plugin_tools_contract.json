@@ -1,7 +1,7 @@
 {
  "contract_name": "apexnodes-plugin-tools-parity",
- "contract_version": 12,
- "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948, hc-969, hc-1011, hc-1000",
+ "contract_version": 13,
+ "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948, hc-969, hc-1011, hc-1000, hc-1136",
  "sync_policy": {
   "copies": [
    "hermes-cloud: tests/contracts/plugin_tools_contract.json (source of truth)",
@@ -51,7 +51,8 @@
    "social_trending"
   ],
   "apexnodes-video-tools": [
-   "generate_video"
+   "generate_video",
+   "video_breakdown"
   ]
  },
  "tools": {
@@ -950,6 +951,36 @@
      ]
     }
    }
+  },
+  "video_breakdown": {
+   "schema": {
+    "params": {
+     "segments_path": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     },
+     "url": {
+      "type": "string"
+     },
+     "video_path": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "video_path"
+    ]
+   },
+   "endpoints": {
+    "legacy": [
+     "/media/shot-labels"
+    ],
+    "gateway": [
+     "/tools/v1/video/shot-labels"
+    ]
+   },
+   "behaviors": {}
   }
  }
 }

@@ -55,7 +55,7 @@ EXPECTED_TOOLS = {
         "social_creator_discovery",
         "social_product",
     },
-    "apexnodes-video-tools": {"generate_video"},
+    "apexnodes-video-tools": {"generate_video", "video_breakdown"},
 }
 
 # 桌面机器上不存在的 vendor/master 侧 env——冒烟前必须全空。

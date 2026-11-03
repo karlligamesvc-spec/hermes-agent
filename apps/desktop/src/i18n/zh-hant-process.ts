@@ -130,6 +130,7 @@ export const zhHantProcess: ProcessCopy = {
     generate_video: step('正在生成影片', '生成影片', facts =>
       facts.count ? `生成了 ${facts.count} 部影片` : '影片做好了'
     ),
+    video_breakdown: step('正在逐鏡看影片', '逐鏡拆影片', said('復刻卡做好了')),
     live_record_start: step('正在開始錄直播', '開始錄直播', said('開始錄了')),
     live_record_status: step('正在查看錄製進度', '查看錄製進度', said('看過了')),
     live_record_stop: step('正在結束錄製', '結束錄製', said('錄好了')),

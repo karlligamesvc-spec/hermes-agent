@@ -142,6 +142,7 @@ export const enProcess: ProcessCopy = {
     generate_video: step('Generating the video', 'Generate video', facts =>
       facts.count ? `Made ${n(facts.count, 'video')}` : 'Video ready'
     ),
+    video_breakdown: step('Going through the video shot by shot', 'Break down shots', said('Remake card ready')),
     live_record_start: step('Starting the live recording', 'Start recording', said('Recording')),
     live_record_status: step('Checking the recording', 'Check recording', said('Checked')),
     live_record_stop: step('Stopping the recording', 'Stop recording', said('Stopped')),

@@ -1,5 +1,6 @@
 name: apexnodes-video-tools
-version: "0.2.1"
-description: "Text-to-video generation. P1 gateway mode (default) calls the ApexNodes tools gateway /tools/v1/video/generate; legacy Scheduler endpoint path kept behind TOOLS_GATEWAY_DISABLED=1 (cloud rollback channel)."
+version: "0.3.0"
+description: "Text-to-video generation, and the shot-by-shot remake card of a local video (video_breakdown, hc-1136). P1 gateway mode (default) calls the ApexNodes tools gateway /tools/v1/video/*; legacy Scheduler endpoint path kept behind TOOLS_GATEWAY_DISABLED=1 (cloud rollback channel)."
 provides_tools:
   - generate_video
+  - video_breakdown
