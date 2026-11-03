@@ -54,6 +54,8 @@ EXPECTED_TOOLS = {
         "social_audience",
         "social_creator_discovery",
         "social_product",
+        # hc-1143:TikHub 长尾聚合工具,同一条网关腿。
+        "social_api",
     },
     "apexnodes-video-tools": {"generate_video"},
 }

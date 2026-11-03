@@ -73,6 +73,12 @@ export const zhHantProcess: ProcessCopy = {
     ),
     social_batch_status: step('正在查看批次進度', '查看批次進度', said('看過了')),
     creator_top_posts: step('正在找創作者的熱門作品', '找創作者熱門作品', found('則作品'), publicData),
+    social_api: step(
+      '正在查社群資料',
+      '查社群資料',
+      found('筆'),
+      facts => `來源：${facts.platform ?? '平台'}上的公開資料，經第三方資料服務取得。`
+    ),
     social_audience: step(
       '正在看受眾輪廓',
       '看受眾輪廓',

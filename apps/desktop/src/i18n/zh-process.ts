@@ -78,6 +78,12 @@ export const zhProcess: ProcessCopy = {
     ),
     social_batch_status: step('正在查看批量进度', '查看批量进度', said('看过了')),
     creator_top_posts: step('正在找博主的热门作品', '找博主热门作品', found('条作品'), publicData),
+    social_api: step(
+      '正在查社媒数据',
+      '查社媒数据',
+      found('条'),
+      facts => `来源：${facts.platform ?? '平台'}上的公开数据，经第三方数据服务获取。`
+    ),
     social_audience: step(
       '正在看人群画像',
       '看人群画像',
