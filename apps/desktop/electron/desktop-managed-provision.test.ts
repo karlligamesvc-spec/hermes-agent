@@ -3,10 +3,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { afterEach, test, vi } from 'vitest'
+import { afterEach, describe, test, vi } from 'vitest'
 
 import { parseProvisionResponse } from './apex-managed'
-import { requestRevisionedManagedKeyMutation } from './desktop-managed-provision'
+import {
+  provisionKeyCapabilities,
+  requestRevisionedManagedKeyMutation,
+  warmProvisionKeyCapabilities
+} from './desktop-managed-provision'
 import { ManagedAuthIntent, ModelMutationMetadataStore } from './desktop-model-mutations'
 
 const AUTHORITY = '11111111-1111-4111-8111-111111111111'
@@ -237,4 +241,98 @@ test('pending persistence failure prevents dispatch and leaves the independently
   assert.equal(issued, 0)
   assert.equal(fs.readFileSync(file, 'utf8'), original)
   assert.equal(metadata().credentialRecovery(), false)
+})
+
+// hc-1142: a sign-out used to GET the capabilities right before its revoke, one more round trip while the
+// window waited. Read once per run (or when the account menu opens), and only a version-1 answer is kept.
+describe('the provision-key capabilities are read once per run', () => {
+  let urls = 0
+  const freshUrl = () => `https://apex.invalid/api/v1/desktop/provision-key-${(urls += 1)}`
+
+  function server(answers: Array<unknown>) {
+    const calls: Array<{ url: string; bearer: unknown }> = []
+
+    const get = async (_method: 'GET', url: string, options: { bearer: null | string | undefined }) => {
+      calls.push({ url, bearer: options.bearer })
+      const answer = answers.length > 1 ? answers.shift() : answers[0]
+
+      if (answer instanceof Error) {
+        throw answer
+      }
+
+      return answer
+    }
+
+    return { calls, get }
+  }
+
+  test('a version-1 answer serves every later sign-in and sign-out of the run', async () => {
+    const url = freshUrl()
+    const { calls, get } = server([{ version: 1 }])
+
+    assert.deepEqual(await provisionKeyCapabilities(url, 'token-a', get), { version: 1 })
+    assert.deepEqual(await provisionKeyCapabilities(url, 'token-b', get), { version: 1 })
+    assert.deepEqual(calls, [{ url: `${url}/capabilities`, bearer: 'token-a' }])
+  })
+
+  test('a read in flight is joined, not repeated', async () => {
+    const url = freshUrl()
+    const { calls, get } = server([{ version: 1 }])
+
+    const [first, second] = await Promise.all([provisionKeyCapabilities(url, 't', get), provisionKeyCapabilities(url, 't', get)])
+
+    assert.deepEqual([first, second], [{ version: 1 }, { version: 1 }])
+    assert.equal(calls.length, 1)
+  })
+
+  test.each([
+    ['an older server', { version: 2 }],
+    ['a malformed answer', {}],
+    ['a failure', Object.assign(new Error('503'), { statusCode: 503 })]
+  ])('%s is asked again next time', async (_label, first) => {
+    const url = freshUrl()
+    const { calls, get } = server([first, { version: 1 }])
+
+    await provisionKeyCapabilities(url, 't', get).catch(() => undefined)
+    assert.deepEqual(await provisionKeyCapabilities(url, 't', get), { version: 1 })
+    assert.equal(calls.length, 2)
+  })
+
+  test('a joined read that fails is retried once on the spot', async () => {
+    const url = freshUrl()
+    const { calls, get } = server([Object.assign(new Error('reset'), { code: 'ECONNRESET' }), { version: 1 }])
+
+    // The menu opened (the warm read), and the click came while that read was still out.
+    warmProvisionKeyCapabilities(url, 't', get)
+    assert.deepEqual(await provisionKeyCapabilities(url, 't', get), { version: 1 })
+    assert.equal(calls.length, 2)
+  })
+
+  test('opening the menu reads them ahead; with no login it asks nothing', async () => {
+    const url = freshUrl()
+    const { calls, get } = server([{ version: 1 }])
+
+    warmProvisionKeyCapabilities(url, null, get)
+    assert.equal(calls.length, 0)
+    warmProvisionKeyCapabilities(url, 't', get)
+    await provisionKeyCapabilities(url, 't', get)
+    assert.equal(calls.length, 1)
+  })
+
+  test('a kept answer still goes through the same checks before anything is issued', async () => {
+    const url = freshUrl()
+    const { get } = server([{ version: 1 }])
+    const { metadata } = fixture()
+    await provisionKeyCapabilities(url, 't', get)
+    let unknown = 0
+
+    // The server echoes no revision: the mutation is unproven whatever the capabilities said.
+    await assert.rejects(requestRevisionedManagedKeyMutation({
+      capabilities: () => provisionKeyCapabilities(url, 't', get),
+      nextRevision: () => metadata().nextProvisionRevision(),
+      issue: async () => ({ revoked: true }),
+      isCurrent: () => true, beginMutation: () => () => {}, recordUnknownMutation: () => {unknown++}
+    }), /MANAGED_PROVISION_UNAVAILABLE/)
+    assert.equal(unknown, 1)
+  })
 })

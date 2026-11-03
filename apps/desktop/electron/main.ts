@@ -360,7 +360,7 @@ import {
 import { loadOrCreateInstallationId, sshOwnershipId } from './desktop-installation'
 import { managedRuntimeNeedsRepair } from './desktop-legacy-managed'
 import { formatDesktopLogLine } from './desktop-log-line'
-import { requestRevisionedManagedKeyMutation } from './desktop-managed-provision'
+import { provisionKeyCapabilities, requestRevisionedManagedKeyMutation, warmProvisionKeyCapabilities } from './desktop-managed-provision'
 import {
   commitRotatedManagedCredential, completeManagedModelAssignment, DesktopModelMutationCoordinator,
   isModelConfigurationMutation, legacyModelMutationSettled, ManagedAuthIntent, ManagedModelReceiptRegistry, modelMutationCapability, ModelMutationError, ModelMutationMetadataStore,
@@ -21434,7 +21434,7 @@ async function provisionManagedFromAccessToken(accessToken, account = null, isCu
   const deviceBody = provisionDeviceBody(desktopDeviceInstanceId())
   const scope = capturedTarget || captureModelMutationScope()
 
-  await clientConfigSync.settleBeforeSignInFinishes() // hc-1127: the login screen still covers the shell
+  await Promise.all([clientConfigSync.settleBeforeSignInFinishes(), purpose === 'sign-in' && staleRelayKeys.settled()]) // hc-1127, hc-1142: the login screen still covers the shell
   // Provision rotates the cloud key. Finish this preflight BEFORE that
   // irreversible request, including every unknown HTTP outcome from a prior
   // Native process. A 404 is compatible only for the first, uncontended login.
@@ -21446,7 +21446,7 @@ async function provisionManagedFromAccessToken(accessToken, account = null, isCu
   const result = await provisionManagedRelayForCurrentAccount({
     request: async () => {
       const body = await requestRevisionedManagedKeyMutation({
-        capabilities: () => apexAuthBodylessJson('GET', `${endpoints.provisionKeyUrl}/capabilities`, { bearer: token }),
+        capabilities: () => provisionKeyCapabilities(endpoints.provisionKeyUrl, token, apexAuthBodylessJson),
         nextRevision: () => modelMutationMetadata.nextProvisionRevision(),
         issue: revision => apexAuthPostJson(endpoints.provisionKeyUrl, { bearer: token,
           body: { ...deviceBody, provision_revision: revision } }),
@@ -23329,9 +23329,8 @@ ipcMain.handle('hermes:managed:deepLinkSignIn', async (_event, payload) => {
   }
 })
 
-// signOut: revoke this install first, then forget the relay key. A network/JWT failure leaves local state intact
-// so the user can retry; silently clearing while a server key stays active would be a security regression. Env-managed
-// keys are out-of-band and have no stored server session to revoke. hc-1114: no copy of a revoked key stays behind.
+// signOut: revoke this install first, then forget the relay key. A network/JWT failure leaves local state intact so the user can retry; silently clearing
+// while a server key stays active would be a security regression. Env-managed keys are out-of-band and have no stored server session to revoke. hc-1114: no copy of a revoked key stays behind.
 ipcMain.handle('hermes:managed:signOut', async () => {
   const managed = resolveManagedConfig()
   const envKey = String(process.env.APEXNODES_RELAY_KEY || '').trim()
@@ -23356,9 +23355,9 @@ ipcMain.handle('hermes:managed:signOut', async () => {
     managedKey: managed.key,
     isCurrent,
     prepare: () => desktopModelMutations.fence(isCurrent),
-    revoke: async body => {
+    revoke: async (body, stage) => {
       const result = await requestRevisionedManagedKeyMutation({
-        capabilities: () => apexAuthBodylessJson('GET', `${endpoints.provisionKeyUrl}/capabilities`, { bearer: managed.accessToken }),
+        capabilities: () => stage('capabilities', provisionKeyCapabilities(endpoints.provisionKeyUrl, managed.accessToken, apexAuthBodylessJson)),
         nextRevision: () => modelMutationMetadata.nextProvisionRevision(),
         issue: revision => apexAuthPostJson(provisionKeyRevokeUrl(endpoints.provisionKeyUrl), {
           bearer: managed.accessToken, body: { ...body, provision_revision: revision }
@@ -23377,6 +23376,7 @@ ipcMain.handle('hermes:managed:signOut', async () => {
 })
 
 ipcMain.handle('hermes:managed:cancelPending', deferManagedRuntimeRecovery)
+ipcMain.handle('hermes:managed:prepareSignOut', () => warmProvisionKeyCapabilities(resolveApexEndpoints(process.env).provisionKeyUrl, resolveManagedConfig().accessToken, apexAuthBodylessJson)) // hc-1142
 // hc-1081: M2 calls this right after it creates an assistant (apex-platform-skills-sync.ts).
 registerProfileSkillsSync(ipcMain, () => ({ ...platformSkillsHomes(), env: process.env, log: msg => rememberLog(msg), manifestHash: readPlatformSkillsState().manifestHash }))
 
