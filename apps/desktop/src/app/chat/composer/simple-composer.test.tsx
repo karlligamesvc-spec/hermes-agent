@@ -198,7 +198,7 @@ afterEach(() => {
 })
 
 describe('paste-to-act on the chat composer', () => {
-  it('keeps a pasted share text as written and offers the three chips', async () => {
+  it('keeps a pasted share text as written and offers the four chips', async () => {
     await renderChatBar()
     await paste(DOUYIN_SHARE)
 
@@ -212,7 +212,7 @@ describe('paste-to-act on the chat composer', () => {
       within(group)
         .getAllByRole('button')
         .map(button => button.textContent)
-    ).toEqual(['转逐字稿', '拆它为什么火', '仿写成我的脚本'])
+    ).toEqual(['转逐字稿', '拆它为什么火', '仿写成我的脚本', '复刻成我的'])
   })
 
   // The twin of the test above: an ordinary link still chips on a focused

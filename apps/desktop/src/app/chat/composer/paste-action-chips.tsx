@@ -21,10 +21,15 @@ import {
 } from './paste-actions'
 import { useComposerScope } from './scope'
 
-const ICONS: Record<PasteActionId, string> = { breakdown: 'flame', remix: 'pencil', transcribe: 'note' }
+const ICONS: Record<PasteActionId, string> = {
+  breakdown: 'flame',
+  remake: 'device-camera-video',
+  remix: 'pencil',
+  transcribe: 'note'
+}
 
 /**
- * The three paste-to-act chips. No dismiss control, like the suggestion pills
+ * The four paste-to-act chips. No dismiss control, like the suggestion pills
  * beside them: the chips live exactly as long as their link sits in the draft
  * (or their video among the attachments), and typing past them is the way to
  * ignore them. A 视频号 link gets a line saying to save the video and drag it

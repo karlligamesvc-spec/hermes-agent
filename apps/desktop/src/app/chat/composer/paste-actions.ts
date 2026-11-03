@@ -1,10 +1,11 @@
 /**
  * Paste-to-act (WP4): a short-video link in the composer — pasted, often inside
- * the app's share text — or a local video dropped on it offers three one-click
- * requests above the input: 转逐字稿 / 拆它为什么火 / 仿写成我的脚本. Each one is
- * a preset sentence the existing tools already answer (`social_download` →
- * `media_transcribe`, the `video-script-breakdown` skill); nothing here calls a
- * backend.
+ * the app's share text — or a local video dropped on it offers four one-click
+ * requests above the input: 转逐字稿 / 拆它为什么火 / 仿写成我的脚本 / 复刻成我的.
+ * Each one is a preset sentence the existing tools and skills already answer
+ * (`social_download` → `media_transcribe`, the `video-script-breakdown` skill,
+ * the `short-video-studio` skill's 路径五 for a remake: a shot-by-shot card
+ * first, then one question on how to remake it); nothing here calls a backend.
  *
  * The host list mirrors the server's own share-link parsers, so a chip is never
  * offered for a link the download tool cannot read:
@@ -136,9 +137,9 @@ export function isLocalVideoAttachment(attachment: ComposerAttachment): boolean 
   return attachment.kind === 'file' && LOCAL_VIDEO_RE.test(attachment.path || attachment.label)
 }
 
-export type PasteActionId = 'breakdown' | 'remix' | 'transcribe'
+export type PasteActionId = 'breakdown' | 'remake' | 'remix' | 'transcribe'
 
-export const PASTE_ACTIONS: readonly PasteActionId[] = ['transcribe', 'breakdown', 'remix']
+export const PASTE_ACTIONS: readonly PasteActionId[] = ['transcribe', 'breakdown', 'remix', 'remake']
 
 /** What a pick acts on: a link the tools can download, or a local video —
  *  `replaces` is the 视频号 link that video stands in for. */
