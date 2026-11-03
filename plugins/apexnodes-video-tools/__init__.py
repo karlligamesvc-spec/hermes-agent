@@ -27,6 +27,11 @@ try:  # 网关客户端(fork 内共用);导入失败时插件退回 legacy 路�
 except Exception:  # pragma: no cover - 仅在裸拷贝部署等异常形态出现
     _gateway = None  # type: ignore[assignment]
 
+try:  # hc-1054: long-video analysis (video_highlights, video_moment_search); needs the gateway client.
+    from plugins import apexnodes_video_analysis as _analysis
+except ImportError:  # pragma: no cover - a bare copy without it keeps generate_video
+    _analysis = None  # type: ignore[assignment]
+
 
 def _use_gateway() -> bool:
     return _gateway is not None and _gateway.use_gateway()
@@ -419,3 +424,5 @@ def register(ctx):
         emoji="🎬",
         execution_timeout=_VIDEO_REQUEST_TIMEOUT,
     )
+    if _analysis is not None:
+        _analysis.register(ctx)
