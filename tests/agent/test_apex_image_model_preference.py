@@ -10,6 +10,10 @@ import pytest
 
 
 PLUGIN = Path(__file__).resolve().parents[2] / "plugins/apexnodes-image-tools/__init__.py"
+# hc-1046: the image model catalog the ApexNodes server serves in its checks.
+CATALOG = json.loads(
+    (Path(__file__).resolve().parents[1] / "plugins/fixtures/apex_media_catalog_hc1046.json").read_text(encoding="utf-8")
+)["image"]
 
 
 def _fake_transports(captured, answer):
@@ -91,9 +95,12 @@ def test_a_saved_agnes_image_2_5_moves_to_gpt_image_2_5_flare(image_plugin, monk
 
 def test_the_picker_no_longer_offers_agnes_image_2_5(image_plugin):
     model = image_plugin.GENERATE_IMAGE_SCHEMA["parameters"]["properties"]["model"]
-    assert "agnes-image-2.5-flash" not in model["enum"]
+    # hc-1046: no ids in the schema; the served catalog lists them.
+    assert "enum" not in model
+    served = {row["model"] for row in CATALOG["models"]}
+    assert "agnes-image-2.5-flash" not in served
     assert "Agnes" not in model["description"]
-    assert set(image_plugin.RETIRED_IMAGE_MODELS.values()) <= set(model["enum"])
+    assert set(image_plugin.RETIRED_IMAGE_MODELS.values()) <= served
 
 
 def test_the_desktop_plugin_offers_no_agnes_engine(image_plugin):
@@ -117,7 +124,11 @@ def test_invalid_picker_never_falls_back_to_agnes(
     (tmp_path / "config.yaml").write_text(invalid_yaml, encoding="utf-8")
     monkeypatch.setattr(image_plugin, "_use_gateway", lambda: False)
     monkeypatch.setattr(
-        image_plugin, "_request", lambda *_args: pytest.fail("must not send image request")
+        image_plugin,
+        "_request",
+        lambda _method, path, *_args, **_kwargs: (
+            {"catalog": CATALOG} if path.endswith("/check") else pytest.fail("must not send image request")
+        ),
     )
 
     result = json.loads(image_plugin._handle_generate_image({"prompt": "西高地犬"}))
