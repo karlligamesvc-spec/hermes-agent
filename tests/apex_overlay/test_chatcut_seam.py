@@ -243,6 +243,7 @@ def test_the_section_says_how_to_reach_it_and_what_it_cannot_do(home, signed_in,
     assert "mcp__chatcut__" in text
     assert "还不能把这台电脑上的文件导入" in text
     assert "不需要 ChatCut 账号" in text
+    assert "传到 ChatCut（美国），存在 APEX 使用的 ChatCut 账号下" in text
     assert len(text) <= chatcut.MAX_SECTION_CHARS
 
 

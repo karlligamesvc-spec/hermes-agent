@@ -37,7 +37,8 @@ MAX_SECTION_CHARS = 1_200
 NON_INTERACTIVE_PLATFORMS = frozenset({"api_server", "cron", "webhook", "subagent"})
 
 # The proxy offers exactly these (its PROJECT_TOOLS and UNSCOPED_TOOLS); listed again here so a tool the proxy
-# starts offering by mistake still does not reach the model. Paid generation is not among them.
+# starts offering by mistake still does not reach the model. Paid generation is not among them, nor anything
+# ChatCut may run in a browser on its own (trigger_transcript).
 INCLUDED_TOOLS = (
     "apply_script",
     "browse_assets",
@@ -68,7 +69,6 @@ INCLUDED_TOOLS = (
     "target_project",
     "track_export",
     "track_progress",
-    "trigger_transcript",
 )
 
 
@@ -140,6 +140,7 @@ def render_section(session_info: Mapping[str, Any] | None = None) -> str:
         "它不在上面的技能目录里。用户没提剪辑就不提 ChatCut。",
         "现在还不能把这台电脑上的文件导入 ChatCut。用户要剪本机视频时如实说明，用别的办法照常帮他。",
         "ChatCut 走的是 APEX 的账号，用户不需要 ChatCut 账号：不要让他登录 ChatCut，也不要给他 ChatCut 编辑器的链接。",
+        "用户问起素材去了哪里：传到 ChatCut（美国），存在 APEX 使用的 ChatCut 账号下。",
     ))
 
 

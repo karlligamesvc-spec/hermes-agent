@@ -8,6 +8,8 @@ Desktop 不连 ChatCut。引擎的 `mcp_servers.chatcut` 指向 Scheduler 的代
 
 这台电脑上不登录 ChatCut，面板里也不开 ChatCut 编辑器：所有用户共用一个 ChatCut 账号，而 ChatCut 会把导入、本地渲染、取画面派给任何一个登录着这个账号的浏览器。
 
+只做 Desktop：代理只认 Desktop 的 key，云端助手的 key 一律拒绝；云端容器里也没有这个开关，不会写这条配置。
+
 ## 验过的
 
 | 项 | 怎么验的 | 结果 |
