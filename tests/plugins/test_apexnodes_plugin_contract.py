@@ -51,8 +51,11 @@ CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 # 上传端点;三条新行为：带图转成 ref、服务端不声明支持就不发、上传失败绝不改成不带图。
 # v12(hc-1000):generate_video 改成提交任务再轮询,网关腿端点族加 /tools/v1/video/jobs 和
 # /tools/v1/video/jobs/{job_id},新增网关腿行为 submit_then_poll。
-EXPECTED_CONTRACT_SHA256 = "22d450db9566239ffefd651825ff7df7be0354d0989cf59cffc8f6a9892a9ffe"
-EXPECTED_CONTRACT_VERSION = 12
+# v13(hc-1054):新增 video_highlights、video_moment_search(长视频挑段、按描述找画面),
+# 两条腿都走 /tools/v1/video/{highlights,moments}/jobs;网关腿多一个直传签名端点。新行为：提交带
+# Idempotency-Key 再跟进、结果文件本机可用、按描述只认英文、网关腿本机转 480p 小样直传。
+EXPECTED_CONTRACT_SHA256 = "e3cc710970362dab57f344006ede579cfa1cb59986a00d931ac74f251e1941bb"
+EXPECTED_CONTRACT_VERSION = 13
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -83,7 +86,11 @@ PROBES: dict[str, dict] = {
     "social_creator_discovery": {"platform": "douyin", "keyword": "猫粮"},
     "social_product": {"platform": "tiktok", "keyword": "cat food"},
     "generate_video": {"prompt": "一只猫在弹钢琴"},
+    # hc-1054: a media: handle (the legacy leg's source); GatewayHarness swaps in a local file.
+    "video_highlights": {"source": "media:" + "b" * 32 + "/long.mp4"},
+    "video_moment_search": {"source": "media:" + "b" * 32 + "/long.mp4", "query": "a red suitcase"},
 }
+ANALYSIS_TOOLS = ("video_highlights", "video_moment_search")
 
 
 # ── 插件装载(PluginManager 命名约定;注册面经 FakeCtx 捕获)────────────────────
@@ -208,6 +215,9 @@ class LegacyHarness:
     def __init__(self, monkeypatch, tmp_path):
         self.calls: list[RecordedCall] = []
         self.tmp_path = tmp_path
+        self.monkeypatch = monkeypatch
+        # hc-1054: the analysis tools wait between job reads; the probes never sleep.
+        monkeypatch.setattr("time.sleep", lambda _seconds: None)
         monkeypatch.setenv("TOOLS_GATEWAY_DISABLED", "1")
         monkeypatch.delenv("TOOLS_GATEWAY_BASE", raising=False)
         monkeypatch.delenv("TOOLS_GATEWAY_KEY", raising=False)
@@ -233,7 +243,10 @@ class LegacyHarness:
             path = request.full_url[len(LEGACY_BASE):]
             multipart = "multipart/form-data" in (request.get_header("Content-type") or "")
             body = json.loads(request.data.decode("utf-8")) if request.data and not multipart else None
-            harness.calls.append(RecordedCall(method=request.get_method(), path=path, body=body, raw=request.data))
+            headers = dict(request.header_items())
+            harness.calls.append(
+                RecordedCall(method=request.get_method(), path=path, body=body, raw=request.data, headers=headers)
+            )
             answer = harness._canned(path)
             if isinstance(answer, BaseException):
                 raise answer
@@ -243,6 +256,8 @@ class LegacyHarness:
 
     @staticmethod
     def _canned(path: str) -> dict:
+        if path.startswith(_VH_JOB_PATHS):
+            return _analysis_answer(path)
         if "/media/batch/status/" in path:
             return {"ok": True, "job_id": "j1", "status": "completed", "product": None}
         if path.endswith("/media/batch/submit"):
@@ -271,7 +286,11 @@ class GatewayHarness:
     def __init__(self, monkeypatch, tmp_path):
         self.calls: list[RecordedCall] = []
         self.tmp_path = tmp_path
+        self.monkeypatch = monkeypatch
         self.download_media_fails = False
+        # hc-1054: what the analysis tools did on this machine (the proxy, the direct upload).
+        self.proxied: list[Path] = []
+        self.puts: list[tuple[str, Path, int]] = []
         monkeypatch.delenv("TOOLS_GATEWAY_DISABLED", raising=False)
         monkeypatch.setenv("TOOLS_GATEWAY_BASE", GATEWAY_BASE)
         monkeypatch.setenv("TOOLS_GATEWAY_KEY", GATEWAY_KEY)
@@ -306,9 +325,34 @@ class GatewayHarness:
         monkeypatch.setattr(gateway_module.time, "sleep", lambda _s: None)  # hc-978 poll gaps
         # 桌面最保守形态:无 ffmpeg → 抽音轨失败 → 原文件上传(hc-560 已知语境)。
         monkeypatch.setattr(gateway_module, "extract_audio_for_asr", lambda _p, **_kw: None)
+        self._install_analysis_fakes(monkeypatch, gateway_module)
 
+    def _install_analysis_fakes(self, monkeypatch, gateway_module):
+        """hc-1054: the proxy and the PUT stand in for ffmpeg and storage; each records."""
+        import plugins.apexnodes_video_analysis as analysis
+
+        harness = self
+
+        def _fake_make_proxy(_ffmpeg, source):
+            assert any(c.path == "/tools/v1/video/analysis/check" for c in harness.calls), (
+                "the account's limits are read before any transcoding"
+            )
+            harness.proxied.append(Path(source))
+            proxy = harness.tmp_path / "proxy.mp4"
+            proxy.write_bytes(b"proxy-bytes")
+            return proxy
+
+        def _fake_put(put_url, source, size, *, timeout):
+            harness.puts.append((put_url, Path(source), size))
+
+        monkeypatch.setattr(analysis, "bundled_ffmpeg", lambda: "/opt/apex/ffmpeg")
+        monkeypatch.setattr(analysis, "duration_seconds", lambda _ffmpeg, _path: 3600.0)
+        monkeypatch.setattr(analysis, "make_proxy", _fake_make_proxy)
+        monkeypatch.setattr(gateway_module, "_put_presigned", _fake_put)
     @staticmethod
     def _canned(path: str) -> dict:
+        if path.startswith(_VH_JOB_PATHS):
+            return _analysis_answer(path)
         # 按服务端真实线形 can 响应(app/routers/tools_gateway.py):
         # /social/{p}/{action}、/video/generate = {ok, data, cost_cents} 信封;
         # /asr/transcribe、/social/batch/* = 平铺。hc-978:转写是 /asr/jobs 提交(running)
@@ -340,6 +384,11 @@ class GatewayHarness:
         if tool_name == "media_transcribe":
             # url 形态:一次探针同时走 download 解析 + ASR 上传两个端点族成员。
             return {"url": SHARE_URL}
+        if tool_name in ANALYSIS_TOOLS:
+            # hc-1054: the Desktop analyses a file on this computer.
+            original = self.tmp_path / "long.mp4"
+            original.write_bytes(b"original-bytes")
+            return {**PROBES[tool_name], "source": str(original)}
         return dict(PROBES[tool_name])
 
     def invoke(self, tool_name: str, args: dict) -> tuple[dict, list[RecordedCall]]:
@@ -390,7 +439,7 @@ def test_contract_covers_exactly_the_shared_tool_surface():
     assert contract_tools == {t for tools in CONTRACT["plugins"].values() for t in tools}
     # hc-563 冻结在 14;hc-600 有意加入四个洞察工具(contract_version 3)。这个数字是
     # 漂移绊线,只能与 contract_version 一起动 —— 与 cloud 侧同一断言保持一致。
-    assert len(contract_tools) == 18
+    assert len(contract_tools) == 20
     assert set(PROBES) == contract_tools
 
 
@@ -767,6 +816,120 @@ def _check_images_never_dropped_on_upload_failure(h, tool_name, _spec):
     assert not [c for c in calls if c.path == _GENERATE_PATHS[h.leg]], "never generated without the image"
 
 
+_VH_DIR = "media:" + "c" * 32
+_VH_JOB_PATHS = ("/tools/v1/video/highlights/", "/tools/v1/video/moments/", "/tools/v1/video/analysis/")
+
+
+def _analysis_answer(path: str, *, eta: float = 10_000, preview_path: str | None = None, enabled: bool = True) -> dict:
+    """hc-1054, the platform's wire shapes (apex-nodes docs/TOOLS-GATEWAY-API.md §4.7). A
+    submit answers queued with ``eta``: past the tool's wait by default, so a probe submits
+    once; a small ``eta`` makes the tool read the job, which has succeeded."""
+    if path.endswith("/video/analysis/check"):
+        view = {"enabled": enabled, "direct_upload_available": True, "max_source_minutes": 120, "source_max_bytes": 1 << 30}
+        return {"ok": True, "video_analysis": view}
+    if path.endswith("/video/analysis/upload-url"):
+        return {"ok": True, "upload_id": "u1.mp4", "put_url": "https://cos.test/put", "expires_in": 3600}
+    kind = "moments" if "/moments/" in path else "highlights"
+    if path.endswith("/cancel"):
+        error = {"status_code": 409, "detail": {"code": "video_analysis_cancelled", "message": "这个任务已取消。"}}
+        return {"ok": False, "job_id": "j1", "kind": kind, "status": "cancelled", "error": error}
+    if path.endswith("/jobs"):
+        return {"ok": True, "job_id": "j1", "kind": kind, "status": "queued", "queue_position": 0, "eta_seconds": eta,
+                "poll_after_seconds": 10, "async_delivery": False}
+    report = {"matches": [{"timestamp": 12.5, "score": 0.31}]} if kind == "moments" else {
+        "segments": [{"start": 12.0, "end": 20.0, "duration": 8.0, "score": 0.8}]}
+    thumb = "moment_01.jpg" if kind == "moments" else "thumb_01.jpg"
+    data = {
+        "kind": kind,
+        "report": report,
+        "report_ref": f"{_VH_DIR}/{'moments' if kind == 'moments' else 'report'}.json",
+        "thumbnails": [{"name": thumb, "ref": f"{_VH_DIR}/{thumb}", "url": f"https://apex.test/api/v1/media/image/{thumb}"}],
+        "preview": None,
+    }
+    if preview_path:
+        data["preview"] = {"ref": f"{_VH_DIR}/preview.mp4", "url": "https://apex.test/api/v1/media/video/p1",
+                           "path": preview_path, "media_tag": f"MEDIA:{preview_path}"}
+        data["preview_notice"] = "预览片可能会卡。"
+    return {"ok": True, "job_id": "j1", "kind": kind, "status": "succeeded",
+            "source": {"name": "long.mp4", "seconds": 3600.0, "bytes": 1}, "data": data}
+
+
+def _jobs_path(tool_name: str) -> str:
+    return CONTRACT["tools"][tool_name]["endpoints"]["legacy"][0]
+
+
+def _check_analysis_job_follow(h, tool_name, _spec):
+    jobs = _jobs_path(tool_name)
+    h._canned = lambda path: _analysis_answer(path, eta=30) if path.startswith(_VH_JOB_PATHS) else type(h)._canned(path)  # type: ignore[method-assign]
+    result, calls = h.invoke(tool_name, h.probe_args(tool_name))
+    assert result["status"] == "succeeded" and result["job_id"] == "j1"
+    (submit,) = [c for c in calls if (c.method, c.path) == ("POST", jobs)]
+    headers = {name.lower(): value for name, value in submit.headers.items()}
+    assert headers.get("idempotency-key"), "every submit is named, so a resend never starts a second job"
+    assert ("GET", f"{jobs}/j1") in [(c.method, c.path) for c in calls]
+
+    h._canned = type(h)._canned  # type: ignore[method-assign]  # eta past the wait
+    result, calls = h.invoke(tool_name, h.probe_args(tool_name))
+    assert (result["status"], result["job_id"]) == ("queued", "j1") and result["note"]
+    assert [c.method for c in calls if c.path.startswith(jobs)] == ["POST"], "a long job is not read again in this call"
+
+    result, calls = h.invoke(tool_name, {"job_id": "j1"})
+    assert [(c.method, c.path) for c in calls] == [("GET", f"{jobs}/j1")] and result["status"] == "succeeded"
+    result, calls = h.invoke(tool_name, {"job_id": "j1", "cancel": True})
+    assert [(c.method, c.path) for c in calls] == [("POST", f"{jobs}/j1/cancel")] and result["status"] == "cancelled"
+
+
+def _check_result_files_usable_here(h, tool_name, spec):
+    from hermes_constants import get_hermes_home
+
+    poison = spec["poison_path"]
+    h._canned = lambda path: (  # type: ignore[method-assign]
+        _analysis_answer(path, eta=30, preview_path=poison) if path.startswith(_VH_JOB_PATHS) else type(h)._canned(path)
+    )
+    raw, _calls = h.invoke_raw(tool_name, h.probe_args(tool_name))
+    assert poison not in raw, "the server's path never reaches the result"
+    result = json.loads(raw)
+    (thumb,) = result["thumbnails"]
+    assert result["count"] == 1
+    if h.leg == "legacy":
+        media = Path(get_hermes_home()) / "workspace" / "media" / ("c" * 32)
+        assert thumb["path"] == str(media / thumb["name"]) and result["report_path"].startswith(str(media))
+        assert result["preview"]["path"] == str(media / "preview.mp4")
+        assert result["preview"]["media_tag"] == "MEDIA:" + result["preview"]["path"]
+        return
+    # Gateway: fetched over the signed links into this machine's media cache; no server handle either.
+    assert "media:" not in raw and "ref" not in thumb
+    assert thumb["path"] == str(h.tmp_path / "downloaded.mp4")
+    assert json.loads(Path(result["report_path"]).read_text(encoding="utf-8")) == result["report"]
+    assert result["preview"]["path"] == str(h.tmp_path / "downloaded.mp4")
+    assert result["source_path"] == str(h.tmp_path / "long.mp4")
+
+
+def _check_query_must_be_english(h, tool_name, _spec):
+    result, calls = h.invoke(tool_name, {**h.probe_args(tool_name), "query": "手里拿着产品的特写"})
+    assert "error" in result and "英文" in result["error"]
+    assert not calls, "a query the image model cannot read is refused before any call"
+
+
+def _check_local_source_proxy_upload(h, tool_name, _spec):
+    assert h.leg == "gateway"
+    args = h.probe_args(tool_name)
+    _result, calls = h.invoke(tool_name, args)
+    assert h.proxied == [Path(args["source"])], "the original is transcoded on this machine"
+    (sign,) = [c for c in calls if c.path == "/tools/v1/video/analysis/upload-url"]
+    assert sign.body == {"filename": "proxy.mp4", "size_bytes": len(b"proxy-bytes")}
+    assert h.puts == [("https://cos.test/put", h.tmp_path / "proxy.mp4", len(b"proxy-bytes"))]
+    (submit,) = [c for c in calls if (c.method, c.path) == ("POST", _jobs_path(tool_name))]
+    assert submit.body["source"] == {"upload_id": "u1.mp4", "duration_seconds": 3600.0}
+    assert all(args["source"] not in json.dumps(c.body or {}) for c in calls), "the local path never leaves"
+
+    # An account the platform has not opened: said, and not one second of transcoding.
+    h.proxied.clear()
+    h._canned = lambda path: _analysis_answer(path, enabled=False) if path.startswith(_VH_JOB_PATHS) else type(h)._canned(path)  # type: ignore[method-assign]
+    result, calls = h.invoke(tool_name, h.probe_args(tool_name))
+    assert "error" in result and not h.proxied and not [c for c in calls if c.method == "POST"]
+
+
 # name → callable;跑腿集合 = 契约行为声明的 legs(fork 双腿都在场)。
 BEHAVIOR_CHECKS = {
     "routed_intent_passthrough": _check_routed_intent_passthrough,
@@ -789,6 +952,12 @@ BEHAVIOR_CHECKS = {
     "images_require_server_support": _check_images_require_server_support,
     "images_never_dropped_on_upload_failure": _check_images_never_dropped_on_upload_failure,
     "submit_then_poll": _check_submit_then_poll,
+    # hc-1054: long-video analysis.
+    "source_or_job_id_required": _required_args_check({}),
+    "analysis_job_follow": _check_analysis_job_follow,
+    "result_files_usable_here": _check_result_files_usable_here,
+    "query_must_be_english": _check_query_must_be_english,
+    "local_source_proxy_upload": _check_local_source_proxy_upload,
 }
 
 BEHAVIOR_CASES = [
