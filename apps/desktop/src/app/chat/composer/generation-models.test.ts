@@ -6,6 +6,7 @@ import {
   generationStarter,
   IMAGE_GENERATION_MODELS,
   previouslySelectedImageModel,
+  saveGenerationModelChoice,
   saveImageGenerationModel,
   saveVideoGenerationModel,
   selectedGenerationModel,
@@ -151,6 +152,26 @@ describe('video model runtime binding', () => {
   it('rejects unknown video models before writing configuration', async () => {
     await expect(saveVideoGenerationModel('unknown')).rejects.toThrow()
     expect(saveHermesConfig).not.toHaveBeenCalled()
+  })
+})
+
+// hc-1046: the media tools read who picks: the assistant while the pickers are
+// hidden, the user's saved pick while they are shown.
+describe('saveGenerationModelChoice', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it.each([
+    [true, 'assistant'],
+    [false, 'user']
+  ])('pickers hidden=%s → %s', async (hidden, choice) => {
+    vi.mocked(saveHermesConfig).mockResolvedValueOnce({ ok: true })
+    await saveGenerationModelChoice(hidden)
+    expect(saveHermesConfig).toHaveBeenCalledWith({ apex: { generation_model_choice: choice } })
+  })
+
+  it('reports a failed save', async () => {
+    vi.mocked(saveHermesConfig).mockResolvedValueOnce({ ok: false })
+    await expect(saveGenerationModelChoice(true)).rejects.toThrow()
   })
 })
 
