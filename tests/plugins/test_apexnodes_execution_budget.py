@@ -56,6 +56,9 @@ EXPECTED_BUDGETS = {
     "media_transcribe": 2 * 60 * 60 + 10 * 60,
     "image_ocr": 600,
     "generate_video": 660,
+    # hc-1054: the local proxy and its upload come before the job's own wait.
+    "video_highlights": 3600,
+    "video_moment_search": 3600,
     # hc-1136: the whole card (local steps, then label requests of up to 240 s each).
     "video_breakdown": 600,
 }
