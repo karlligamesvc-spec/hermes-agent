@@ -1,0 +1,76 @@
+[
+  {
+    "id": "1792609200-0-user",
+    "role": "user",
+    "parts": [
+      {
+        "type": "text",
+        "text": "换成 Pro 档",
+        "timestamp": 1792609200
+      }
+    ],
+    "timestamp": 1792609200
+  },
+  {
+    "id": "1792609260-1-system",
+    "role": "system",
+    "parts": [
+      {
+        "type": "text",
+        "text": "model changed",
+        "timestamp": 1792609260
+      }
+    ],
+    "timestamp": 1792609260
+  },
+  {
+    "id": "1792609320-2-system",
+    "role": "system",
+    "parts": [
+      {
+        "type": "text",
+        "text": "resumed interrupted turn",
+        "timestamp": 1792609320
+      }
+    ],
+    "timestamp": 1792609320
+  },
+  {
+    "id": "1792609380-3-system",
+    "role": "system",
+    "parts": [
+      {
+        "type": "text",
+        "text": "personality changed",
+        "timestamp": 1792609380
+      }
+    ],
+    "timestamp": 1792609380
+  },
+  {
+    "id": "1792609440-4-system",
+    "role": "system",
+    "parts": [
+      {
+        "type": "text",
+        "text": "Completed: 写标题",
+        "timestamp": 1792609440
+      }
+    ],
+    "asyncResult": "三个标题",
+    "timestamp": 1792609440
+  },
+  {
+    "id": "1792609500-5-system",
+    "role": "system",
+    "parts": [
+      {
+        "type": "text",
+        "text": "Background Process Finished: ffmpeg -i in.mp4 out.mp4",
+        "timestamp": 1792609500
+      }
+    ],
+    "asyncResult": "Background process proc_1 finished (exit 0).",
+    "timestamp": 1792609500
+  }
+]

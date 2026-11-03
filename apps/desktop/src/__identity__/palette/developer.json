@@ -1,0 +1,83 @@
+[
+  {
+    "heading": "前往",
+    "rows": [
+      "新建会话CtrlN",
+      "设置Ctrl,",
+      "技能与工具",
+      "消息平台",
+      "产物",
+      "排程",
+      "配置档案",
+      "派生树",
+      "记忆图谱"
+    ]
+  },
+  {
+    "heading": "Projects",
+    "rows": [
+      "Open folder as project…CtrlO"
+    ]
+  },
+  {
+    "heading": "命令",
+    "rows": [
+      "Toggle layout edit modeoffCtrlShift\\",
+      "Reload desktop plugins",
+      "Reset layout",
+      "Toggle status baronCtrlShiftS",
+      "Toggle tabsoffCtrlAltT",
+      "Keyboard shortcuts",
+      "Export profile…",
+      "Import profile…",
+      "Add assistant",
+      "Toggle terminaloffCtrl`",
+      "Toggle logsoff",
+      "Toggle Sessions tabon",
+      "Toggle Assistants taboff",
+      "Toggle yolooff"
+    ]
+  },
+  {
+    "heading": "命令中心",
+    "rows": [
+      "会话",
+      "Import session",
+      "系统",
+      "用量",
+      "重启网关",
+      "检查 APEX 更新"
+    ]
+  },
+  {
+    "heading": "外观",
+    "rows": [
+      "更改主题",
+      "更改颜色模式…",
+      "宠物",
+      "生成宠物"
+    ]
+  },
+  {
+    "heading": "设置",
+    "rows": [
+      "个性化",
+      "模型",
+      "对话",
+      "外观",
+      "工作区",
+      "安全",
+      "浏览器",
+      "记忆与上下文",
+      "语音",
+      "高级",
+      "账号",
+      "API 密钥",
+      "网关",
+      "工具",
+      "设置",
+      "已归档对话",
+      "关于"
+    ]
+  }
+]

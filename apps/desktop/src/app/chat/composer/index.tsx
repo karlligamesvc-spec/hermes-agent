@@ -4,6 +4,7 @@ import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useCallback, u
 
 import { useTourMarker } from '@/app/chat/tour-marker'
 import { useHudComposerDrag } from '@/app/hud/composer-drag'
+import { ComposerTriggerPopover, useAtCompletions } from '@/app/single-thread/handoff/composer-at'
 import { composerFill, composerFloatingStrip, composerSurfaceGlass } from '@/components/chat/composer-dock'
 import { $chatOnboardingSolo, $chatOnboardingThreadIds } from '@/components/onboarding-chat/assembly'
 import { OnboardingSkip } from '@/components/onboarding-chat/skip'
@@ -42,12 +43,10 @@ import {
   slashArgStage
 } from './composer-utils'
 import { COMPOSER_AREAS, runComposerMiddleware } from './contrib'
-import { ComposerControls } from './controls'
 import { ComposerDirectiveActions } from './directive-actions'
 import { COMPOSER_DROP_ACTIVE_CLASS, COMPOSER_DROP_FADE_CLASS } from './drop-affordance'
 import { markActiveComposer, onComposerAttachImagesRequest } from './focus'
 import { HelpHint } from './help-hint'
-import { useAtCompletions } from './hooks/use-at-completions'
 import { useComposerBranch } from './hooks/use-composer-branch'
 import { useComposerDraft } from './hooks/use-composer-draft'
 import { useComposerDrop } from './hooks/use-composer-drop'
@@ -82,12 +81,12 @@ import {
   RICH_INPUT_SLOT
 } from './rich-editor'
 import { useComposerScope } from './scope'
+import { ComposerControls } from './single-thread-actions'
 import { ComposerStatusStack } from './status-stack'
 import { CodingStatusRow } from './status-stack/coding-row'
 import { SuggestionPills } from './suggestion-pills'
 import { extractClipboardImageBlobs, openDirectiveScope } from './text-utils'
 import { ComposerToolbarStart } from './toolbar-start'
-import { ComposerTriggerPopover } from './trigger-popover'
 import type { ChatBarProps } from './types'
 import { isRedoShortcut, isUndoShortcut } from './undo-history'
 import { UrlDialog } from './url-dialog'
@@ -414,7 +413,7 @@ export function ChatBar({
 
   // Resting / reconnecting / starting placeholder text, re-rolled only on a real
   // conversation change.
-  const placeholder = useComposerPlaceholder({ disabled, reconnecting, sessionId })
+  const { label: inputLabel, placeholder } = useComposerPlaceholder({ disabled, reconnecting, sessionId })
 
   // Trigger / completion engine: @// detection, the adapter-driven item list,
   // popover selection, and chip insertion. The keydown nav block below consumes
@@ -1088,7 +1087,7 @@ export function ChatBar({
     <div className={cn('relative', stackToolbar ? 'w-full' : 'min-w-(--composer-input-inline-min-width) flex-1')}>
       <div
         aria-disabled={inputDisabled ? true : undefined}
-        aria-label={t.composer.message}
+        aria-label={inputLabel}
         autoCapitalize="off"
         autoCorrect="off"
         className={cn(

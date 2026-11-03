@@ -7,6 +7,7 @@ import { Codicon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
 import { iconSize, MicOff } from '@/lib/icons'
 import type { LiveTranscriptFragment } from '@/lib/voice-live'
+import { useThreadInCall } from '@/store/thread-signals'
 
 import type { ConversationStatus } from './hooks/use-voice-conversation'
 import { useVoicePanelPortalHost } from './hooks/use-voice-panel-portal-host'
@@ -34,6 +35,8 @@ export function VoiceConversationPanel({
   const c = t.composer
   const navigate = useNavigate()
   const portalHost = useVoicePanelPortalHost()
+  // hc-1061: the single-thread sidebar says 通话中 while this panel is open.
+  useThreadInCall()
   const [expanded, setExpanded] = useState(true)
   const panelRef = useRef<HTMLElement>(null)
   const dragRef = useRef<null | { pointerId: number; offsetX: number; offsetY: number }>(null)

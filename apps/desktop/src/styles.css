@@ -1292,6 +1292,15 @@ button,
   user-select: none;
 }
 
+/* hc-1105: your own message is a click-to-edit button outside single-thread
+   product mode, and its words still select and copy. A press that ends as a
+   selection keeps the editor shut (user-message.tsx). */
+[data-slot='aui_user-message-root'] button.composer-human-message,
+[data-slot='aui_user-message-root'] button.composer-human-message * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 img,
 picture,
 video,

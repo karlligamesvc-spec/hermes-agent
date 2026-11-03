@@ -7,11 +7,14 @@ import {
   $realProfilePromptDismissed,
   $realProfilePromptMuted
 } from '@/store/real-profile-consent'
+import { setSingleThreadFlagForTest, SINGLE_THREAD_HINT_KEY } from '@/store/single-thread'
+import { setToolViewMode } from '@/store/tool-view'
 
 import { RealProfileConsentDialog } from './real-profile-consent-dialog'
 
 const mocks = vi.hoisted(() => ({
   cache: vi.fn(),
+  configRead: vi.fn(),
   loadedConfig: {} as Record<string, unknown> | undefined,
   notify: vi.fn(),
   notifyError: vi.fn(),
@@ -58,7 +61,11 @@ vi.mock('@/store/notifications', () => ({
 
 vi.mock('../../hooks/use-config-record', () => ({
   hermesConfigCacheWriter: () => (config: Record<string, unknown>) => mocks.cache(config),
-  useHermesConfigRecord: () => ({ data: mocks.loadedConfig })
+  useHermesConfigRecord: () => {
+    mocks.configRead()
+
+    return { data: mocks.loadedConfig }
+  }
 }))
 
 describe('RealProfileConsentDialog', () => {
@@ -68,6 +75,8 @@ describe('RealProfileConsentDialog', () => {
     $realProfilePromptDismissed.set(false)
     $realProfilePromptMuted.set(false)
     $realProfilePromptClaim.set(null)
+    setSingleThreadFlagForTest(false)
+    setToolViewMode('product')
   })
 
   afterEach(() => {
@@ -152,5 +161,94 @@ describe('RealProfileConsentDialog', () => {
 
     expect(mocks.cache).toHaveBeenLastCalledWith(mocks.loadedConfig)
     expect(mocks.notifyError).toHaveBeenCalled()
+  })
+
+  describe('in product mode (hc-1132)', () => {
+    beforeEach(() => {
+      setSingleThreadFlagForTest(true)
+      setToolViewMode('product')
+    })
+
+    it('offers nothing: no dialog, no config read, no claim, no write', () => {
+      render(<RealProfileConsentDialog tabId="tab-1" />)
+
+      expect(screen.queryByText(promptCopy.title)).toBeNull()
+      expect(mocks.configRead).not.toHaveBeenCalled()
+      expect($realProfilePromptClaim.get()).toBeNull()
+      expect(mocks.save).not.toHaveBeenCalled()
+    })
+
+    it('comes back with developer mode and goes away again with product mode', () => {
+      render(<RealProfileConsentDialog tabId="tab-1" />)
+      expect(screen.queryByText(promptCopy.title)).toBeNull()
+
+      act(() => setToolViewMode('technical'))
+
+      expect(screen.getByText(promptCopy.title)).toBeTruthy()
+      expect($realProfilePromptClaim.get()).toBe('tab-1')
+
+      act(() => setToolViewMode('product'))
+
+      expect(screen.queryByText(promptCopy.title)).toBeNull()
+      expect($realProfilePromptClaim.get()).toBeNull()
+    })
+  })
+
+  // `?win=browser` is its own renderer: its stores start from what the primary window left in storage, before any
+  // client-config read has answered, and the dialog must already be right on that first paint.
+  describe('a popped-out Browser window, a fresh renderer (hc-1132)', () => {
+    const search = window.location.search
+
+    beforeEach(() => {
+      window.history.replaceState(null, '', '?win=browser&tab=tab-1')
+      window.localStorage.clear()
+      vi.resetModules()
+      Object.defineProperty(window, 'hermesDesktop', {
+        configurable: true,
+        value: { clientConfig: { get: () => new Promise(() => undefined), onLate: () => () => undefined } }
+      })
+    })
+
+    afterEach(() => {
+      window.history.replaceState(null, '', search || '/')
+      Reflect.deleteProperty(window, 'hermesDesktop')
+    })
+
+    async function freshRenderer() {
+      const dialog = await import('./real-profile-consent-dialog')
+      const windows = await import('@/store/windows')
+
+      expect(windows.isBrowserWindow()).toBe(true)
+
+      return dialog.RealProfileConsentDialog
+    }
+
+    it('offers nothing when the primary window settled product mode', async () => {
+      window.localStorage.setItem(SINGLE_THREAD_HINT_KEY, 'true')
+      const Dialog = await freshRenderer()
+
+      render(<Dialog tabId="tab-1" />)
+
+      expect(screen.queryByText(promptCopy.title)).toBeNull()
+      expect(mocks.configRead).not.toHaveBeenCalled()
+    })
+
+    it('still offers in developer mode', async () => {
+      window.localStorage.setItem(SINGLE_THREAD_HINT_KEY, 'true')
+      window.localStorage.setItem('hermes.desktop.toolView.technical', 'true')
+      const Dialog = await freshRenderer()
+
+      render(<Dialog tabId="tab-1" />)
+
+      expect(screen.getByText(promptCopy.title)).toBeTruthy()
+    })
+
+    it('still offers with the switch off', async () => {
+      const Dialog = await freshRenderer()
+
+      render(<Dialog tabId="tab-1" />)
+
+      expect(screen.getByText(promptCopy.title)).toBeTruthy()
+    })
   })
 })

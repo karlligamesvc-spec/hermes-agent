@@ -3,12 +3,16 @@ import { useEffect, useRef, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
 import { useI18n } from '@/i18n'
+import { useResultCopy } from '@/i18n/single-thread-results'
 import { Download, MonitorPlay } from '@/lib/icons'
 import { normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
-import { downloadGatewayMediaFile } from '@/lib/media'
+import { downloadGatewayMediaFile, isFileMediaPath, mediaSaveName } from '@/lib/media'
 import { previewName } from '@/lib/preview-targets'
 import { notifyError } from '@/store/notifications'
 import { $previewTabSources, closePreviewForSource, openPreview, type PreviewRecordSource } from '@/store/preview'
+import { useSingleThreadMode } from '@/store/single-thread'
+
+import { RESULT_ACTION_CLASS, RevealResultButton } from './result-actions'
 
 export function PreviewAttachment({ source = 'manual', target }: { source?: PreviewRecordSource; target: string }) {
   const { t } = useI18n()
@@ -23,7 +27,10 @@ export function PreviewAttachment({ source = 'manual', target }: { source?: Prev
   const mountedRef = useRef(false)
   const requestTokenRef = useRef(0)
   const targetRef = useRef(target)
-  const name = previewName(target)
+  const resultCopy = useResultCopy()
+  // hc-1130: in product mode a file on disk reads as its short title, never its path.
+  const shortName = useSingleThreadMode() && isFileMediaPath(target) ? mediaSaveName(target, resultCopy.kinds.file) : ''
+  const name = shortName || previewName(target)
   const isActive = openSources.includes(target)
 
   cwdRef.current = cwd
@@ -108,7 +115,7 @@ export function PreviewAttachment({ source = 'manual', target }: { source?: Prev
       // Works in both modes: the Electron main process fetches the bytes
       // through the session's backend connection (local gateway or remote)
       // and prompts for a save location.
-      const result = await downloadGatewayMediaFile(target)
+      const result = await downloadGatewayMediaFile(target, undefined, shortName || undefined)
 
       if (mountedRef.current && result.saved) {
         setDownloaded(true)
@@ -130,12 +137,12 @@ export function PreviewAttachment({ source = 'manual', target }: { source?: Prev
       <span className="grid size-6 shrink-0 place-items-center rounded-md bg-muted/55 text-muted-foreground/85">
         <MonitorPlay className="size-3.5" />
       </span>
-      <span className="min-w-0 flex-1 truncate text-[0.78rem] font-medium text-foreground/90" title={target}>
+      <span className="min-w-0 flex-1 truncate text-[0.78rem] font-medium text-foreground/90" title={shortName || target}>
         {name}
       </span>
       <button
         aria-label={t.fileMenu.download}
-        className="flex shrink-0 items-center gap-1 rounded-md border border-(--ui-stroke-tertiary) bg-background/40 px-2 py-1 text-[0.7rem] font-medium text-muted-foreground transition-colors hover:bg-accent/55 hover:text-foreground disabled:opacity-50"
+        className={RESULT_ACTION_CLASS}
         disabled={downloading}
         onClick={() => void downloadFile()}
         title={t.fileMenu.download}
@@ -144,6 +151,7 @@ export function PreviewAttachment({ source = 'manual', target }: { source?: Prev
         <Download className="size-3" />
         {downloaded ? t.fileMenu.downloadSaved : t.fileMenu.download}
       </button>
+      {shortName && <RevealResultButton path={target} />}
       <button
         className="shrink-0 rounded-md border border-(--ui-stroke-tertiary) bg-background/40 px-2 py-1 text-[0.7rem] font-medium text-muted-foreground transition-colors hover:bg-accent/55 hover:text-foreground disabled:opacity-50"
         disabled={opening}

@@ -7,6 +7,7 @@ import {
   parseMaybeObject
 } from '@/components/assistant-ui/tool/fallback-model/format'
 import { runtimeTranslations, translateNow } from '@/i18n'
+import { desktopOnlyStepCopy, memoryStepKey } from '@/i18n/desktop-only-steps'
 import type { StepCopy, StepFacts } from '@/i18n/types-process'
 import { connectorCalls } from '@/lib/connector-tools'
 import { isOnboardingEnabled } from '@/lib/onboarding-enabled'
@@ -14,6 +15,8 @@ import { skillDisplayName } from '@/lib/skill-display-name'
 import { firstStringField } from '@/lib/text'
 import { isCardTool, isSilentTool } from '@/lib/tool-render-class'
 import { extractToolErrorMessage } from '@/lib/tool-result-summary'
+
+import { plainGroupKey, plainStep } from './plain-steps'
 
 /**
  * hc-973: a turn's tool work, as the steps a creator would describe.
@@ -78,6 +81,8 @@ export interface ProcessStep {
   copy: StepCopy
   facts: StepFacts
   failedCalls: number
+  /** hc-1066, single-thread product mode only: what the step is for (`step-intent.ts`). */
+  intent?: string
   key: string
   /** Finding tools and loading skills that led up to this step: shown only
    *  in developer mode, under the step it prepared. */
@@ -569,7 +574,14 @@ export function hasSources(sources: StepSources): boolean {
 export function stepCopyFor(toolName: string): StepCopy {
   const copy = runtimeTranslations().assistant.tool.process
 
-  return copy.steps[toolName] ?? copy.unknownStep
+  return copy.steps[toolName] ?? desktopOnlyStepCopy(toolName) ?? copy.unknownStep
+}
+
+/** hc-1063 / hc-1097: a memory-ledger step that only forgot, or only looked, is named for that. */
+function stepCopyKey(calls: ProcessCall[]): string {
+  const toolName = calls[0].toolName
+
+  return toolName === 'apex_memory' ? memoryStepKey(calls.map(call => call.args.action)) : toolName
 }
 
 function stepState(calls: ProcessCall[]): { failedCalls: number; state: CallState } {
@@ -586,9 +598,10 @@ function stepState(calls: ProcessCall[]): { failedCalls: number; state: CallStat
   return { failedCalls, state: failedCalls === calls.length ? 'failed' : 'done' }
 }
 
-function buildStep(calls: ProcessCall[], prep: ProcessCall[]): ProcessStep {
+function buildStep(calls: ProcessCall[], prep: ProcessCall[], plain: boolean): ProcessStep {
   const toolName = calls[0].toolName
-  const copy = stepCopyFor(toolName)
+  const named = plain ? plainStep(calls) : null
+  const copy = named?.copy ?? stepCopyFor(stepCopyKey(calls))
   const facts = stepFacts(calls)
   const { failedCalls, state } = stepState(calls)
 
@@ -597,6 +610,7 @@ function buildStep(calls: ProcessCall[], prep: ProcessCall[]): ProcessStep {
     copy,
     facts,
     failedCalls,
+    ...(named ? { intent: named.intent } : {}),
     key: calls[0].id || `${toolName}:${calls[0].part.timestamp ?? ''}`,
     prep,
     sources: stepSources(calls, copy, facts),
@@ -715,16 +729,21 @@ export interface TurnSteps {
   steps: ProcessStep[]
 }
 
-/** The turn's calls, folded into steps (see `buildTurnProcess`). */
-export function buildTurnSteps(parts: readonly TurnPart[], live: boolean): TurnSteps {
+/**
+ * The turn's calls, folded into steps (see `buildTurnProcess`). `plain`
+ * (hc-1066, single-thread product mode) folds and names them by what they are
+ * for — 「抽帧」「合成视频」 — instead of by tool.
+ */
+export function buildTurnSteps(parts: readonly TurnPart[], live: boolean, plain = false): TurnSteps {
   const steps: ProcessStep[] = []
   const skills: string[] = []
   let pendingPrep: ProcessCall[] = []
   let group: ProcessCall[] = []
+  const groupKey = (call: ProcessCall) => (plain ? plainGroupKey(call) : call.toolName)
 
   const flush = () => {
     if (group.length > 0) {
-      steps.push(buildStep(group, pendingPrep))
+      steps.push(buildStep(group, pendingPrep, plain))
       pendingPrep = []
       group = []
     }
@@ -758,7 +777,7 @@ export function buildTurnSteps(parts: readonly TurnPart[], live: boolean): TurnS
       continue
     }
 
-    if (group.length > 0 && group[0].toolName !== call.toolName) {
+    if (group.length > 0 && groupKey(group[0]) !== groupKey(call)) {
       flush()
     }
 

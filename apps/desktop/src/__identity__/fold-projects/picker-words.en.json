@@ -1,0 +1,6 @@
+{
+  "existingTitle": "Choose a project folder",
+  "parentTitle": "Choose where to create the project",
+  "pickFailed": "Could not open the folder picker",
+  "createFailed": "Could not create the project folder"
+}

@@ -49,6 +49,7 @@ from agent.tool_dispatch_helpers import (
     _multimodal_text_summary,
     _append_subdir_hint_to_multimodal,
     _context_pruned_argument_paths,
+    _parallel_batch_timeout,
     _plan_tool_batch_segments,
     make_tool_result_message,
 )
@@ -1596,7 +1597,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         print(f"  ⚡ Concurrent: {num_tools} tool calls — {tool_names_str}")
 
     # Resolved before the batch is built so the start-order gate can clamp under the deadline.
-    timeout_s = _resolve_concurrent_tool_timeout()
+    timeout_s = _parallel_batch_timeout([pc.name for pc in parsed_calls], _resolve_concurrent_tool_timeout())
     batch = _ConcurrentBatch(agent, messages, effective_task_id, parsed_calls, timeout_s)
     agent._current_tool = tool_names_str
     agent._touch_activity(f"executing {num_tools} tools concurrently: {tool_names_str}")

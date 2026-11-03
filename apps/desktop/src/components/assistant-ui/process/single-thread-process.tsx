@@ -1,17 +1,25 @@
 'use client'
 
 import { useAuiState } from '@assistant-ui/react'
-import type { FC } from 'react'
+import { useStore } from '@nanostores/react'
+import { type FC, useMemo } from 'react'
 
+import { useSessionView } from '@/app/chat/session-view'
+import { ApexAvatar } from '@/components/apex-avatar'
 import { useStatusHint, useThreadSessionStatus } from '@/components/assistant-ui/thread/status'
-import { BrandMark } from '@/components/brand-mark'
 import { SCAFFOLD_GLYPH_CLASS, SCAFFOLD_META_CLASS } from '@/components/chat/scaffold-row'
 import { useI18n } from '@/i18n'
-import { useSingleThreadCopy } from '@/i18n/single-thread'
+import { useSingleThreadCopy, waitingLine } from '@/i18n/single-thread'
 import { cn } from '@/lib/utils'
 import { useSingleThreadMode } from '@/store/single-thread'
+import { useBotLook, useBotName, withBotName } from '@/store/single-thread-bots'
+import { ThreadActivityPresence } from '@/store/thread-signals'
+import { sessionWaitingAsk, type WaitingAsk } from '@/store/waiting-for-you'
 
 import { CreatorTipSlot } from './creator-tip'
+import { FoldedEditPreviews } from './file-step-contents'
+import { InterruptedTurnNotice } from './interrupted-turn'
+import { plainStageLine } from './plain-steps'
 import {
   FailureCard,
   LINE_CLASS,
@@ -23,7 +31,8 @@ import {
   StepsList,
   useDisclosure
 } from './process-block'
-import { wholeSeconds } from './turn-process'
+import { SingleThreadStopButton } from './single-thread-stop'
+import { type TurnProcess, wholeSeconds } from './turn-process'
 import { turnBounds, useTurnView } from './turn-state'
 
 /**
@@ -31,11 +40,13 @@ import { turnBounds, useTurnView } from './turn-state'
  *
  * Kael 2026-10-21 (decision 6): one line of status, and 「看过程」 under the
  * result. While the turn runs, its work is one activity line at the foot of the
- * conversation, the way Grok Bot and Muse show it: APEX's mark and what it is
- * doing now (「正在识别语音… 第 2 步」), 「等你决定」 while a question or an
- * approval waits. Once it is done the answer stands alone, with
- * 「用时 2 分 10 秒 · 看过程」 under it opening the same plain-language steps
- * and sources as the process block. Thoughts are not shown.
+ * conversation, the way Grok Bot and Muse show it: APEX's avatar, looking down
+ * at the work (hc-1064), and what it is doing now (「正在识别语音… 第 2 步」),
+ * 「等你决定」 while a question waits and 「等你确认」 while an approval does,
+ * the avatar then looking up at the user (hc-1107). Once it is done the answer
+ * stands alone, with 「用时 2 分 10 秒 · 看过程」 under it opening the same
+ * plain-language steps and sources as the process block. Thoughts are not
+ * shown.
  *
  * What protects the user stays: an approval bar for a command hangs off the
  * activity line exactly as it hangs off the process line, a stuck task keeps
@@ -48,17 +59,29 @@ const ACTIVITY_CLASS = cn(
   'flex min-w-0 max-w-full items-center gap-2 self-start text-(--conversation-scaffold-text)'
 )
 
+/** hc-1107: what the turn on screen waits on the user for — a yes/no or a choice — or null while it does not. */
+function useWaitingAsk(awaitingInput: boolean): null | WaitingAsk {
+  const runtimeId = useStore(useSessionView().$runtimeId)
+  const ask = useStore(useMemo(() => sessionWaitingAsk(runtimeId), [runtimeId]))
+
+  return ask ?? (awaitingInput ? 'choose' : null)
+}
+
 /** The activity line, in place of the tail's loading and activity rows. */
 export const SingleThreadActivityLine: FC = () => {
   const { t } = useI18n()
   const copy = useSingleThreadCopy()
   const { awaitingInput, busy, compacting } = useThreadSessionStatus()
+  const ask = useWaitingAsk(awaitingInput)
   // Only compaction is named: a provider's wait frame and a drafting tool's
   // verb come from the engine in its own words, which is the mechanism this
   // mode keeps out of sight.
   const compactingHint = useStatusHint(compacting, null, '')
   const messageRunning = useAuiState(s => s.message.status?.type === 'running')
   const view = useTurnView()
+  // hc-1077: the face and name of the assistant on screen.
+  const label = withBotName(copy.activity, useBotName())
+  const look = useBotLook()
 
   if (!busy && !messageRunning) {
     return null
@@ -70,23 +93,23 @@ export const SingleThreadActivityLine: FC = () => {
   const stepLine = line?.state === 'running' ? line : null
   const current = process && process.current !== null ? process.steps[process.current] : null
 
-  const text = awaitingInput
-    ? copy.waitingForYou
-    : compactingHint || (stepLine ? stepLine.text : processCopy.status.thinking)
+  const text = ask ? waitingLine(copy, ask) : compactingHint || (stepLine ? stepLine.text : processCopy.status.thinking)
 
-  const meta = awaitingInput || compactingHint || !stepLine ? [] : stepLine.meta
+  const meta = ask || compactingHint || !stepLine ? [] : stepLine.meta
 
   return (
     <div className="grid min-w-0 max-w-full gap-1" data-conversation-scaffold="" data-single-thread-activity="">
-      <div aria-label={copy.activity} aria-live="polite" className={ACTIVITY_CLASS} role="status">
-        <BrandMark aria-hidden="true" className="size-5 rounded-full motion-safe:animate-pulse" />
-        <span className={cn('min-w-0 truncate', !awaitingInput && 'shimmer')}>{text}</span>
+      <div aria-label={label} aria-live="polite" className={ACTIVITY_CLASS} role="status">
+        <ApexAvatar className="size-[1.375rem]" mood={ask ? 'waiting' : 'working'} {...look} />
+        <span className={cn('min-w-0 truncate', !ask && 'shimmer')}>{text}</span>
         {meta.map(item => (
           <span className={cn(SCAFFOLD_META_CLASS, 'text-[length:var(--conversation-caption-font-size)]')} key={item}>
             {item}
           </span>
         ))}
+        <SingleThreadStopButton />
       </div>
+      <StageLine process={process} />
       {process?.phase === 'running' && <PendingApproval process={process} />}
       {process && view && (
         <CreatorTipSlot
@@ -99,8 +122,20 @@ export const SingleThreadActivityLine: FC = () => {
           turnKey={view.key}
         />
       )}
+      <ThreadActivityPresence ask={ask} text={text} waiting={ask !== null} />
     </div>
   )
+}
+
+/** hc-1066: where a long task stands — 「已看完素材、生成好素材，正在剪辑」. */
+function StageLine({ process }: { process: null | TurnProcess }) {
+  const stage = process ? plainStageLine(process.steps) : null
+
+  return stage ? (
+    <p className={cn(NOTE_CLASS, 'm-0 ps-[1.875rem]')} data-single-thread-stage="">
+      {stage}
+    </p>
+  ) : null
 }
 
 interface TurnEndSlice {
@@ -118,14 +153,21 @@ export const SingleThreadProcessFooter: FC = () => {
     return Boolean(bounds) && state.thread.messages[bounds!.end]?.id === state.message.id
   })
 
-  return on && turnEnd ? <TurnProcessFooter /> : null
+  return on && turnEnd ? (
+    <>
+      <TurnProcessFooter />
+      <InterruptedTurnNotice />
+      <FoldedEditPreviews />
+    </>
+  ) : null
 }
 
 function TurnProcessFooter() {
   const { t } = useI18n()
   const copy = useSingleThreadCopy()
   const view = useTurnView()
-  const process = view?.process ?? null
+  // N10 (hc-1063): no 「用到的方法：…」 — it names the skills, the mechanism this mode keeps out of sight.
+  const process = view?.process ? { ...view.process, skills: [] } : null
   const stuck = process?.phase === 'failed' || process?.phase === 'stopped'
   const [open, toggle] = useDisclosure(`process:${view?.key ?? ''}`, stuck)
 
@@ -134,7 +176,7 @@ function TurnProcessFooter() {
   }
 
   const processCopy = t.assistant.tool.process
-  const hasProcess = process.steps.length > 0 || process.skills.length > 0
+  const hasProcess = process.steps.length > 0
 
   if (!hasProcess && process.phase !== 'failed') {
     return null

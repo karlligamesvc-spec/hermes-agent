@@ -4,6 +4,7 @@ import { type HermesOpenTarget, resolveHermesOpenPath } from '@/lib/hermes-open-
 import { persistString, storedString } from '@/lib/storage'
 
 import { $gateway } from './gateway'
+import { notificationTitle } from './notification-title'
 import { withinNativeNotifyBaseline } from './notify-baseline'
 import { $approvalRequests, answerApproval } from './prompts'
 import { clearApprovalRequest } from './prompts'
@@ -209,18 +210,21 @@ export function dispatchNativeNotification(input: NativeNotificationInput): bool
     return false
   }
 
+  const focusSessionId = input.sessionId ? (storedSessionIdForRuntimeId(input.sessionId) ?? undefined) : undefined
+
   void window.hermesDesktop?.notify({
     actions: input.actions,
     activate: input.activate,
     body: input.body,
-    focusSessionId: input.sessionId ? (storedSessionIdForRuntimeId(input.sessionId) ?? undefined) : undefined,
+    focusSessionId,
     icon: input.icon,
     kind: input.kind,
     notifyId: input.notifyId,
     sessionId: input.sessionId ?? undefined,
     silent: input.silent,
     tag: input.tag,
-    title: input.title
+    // hc-1077: whose conversation, once several assistants are on.
+    title: notificationTitle(input.title, focusSessionId)
   })
 
   return true

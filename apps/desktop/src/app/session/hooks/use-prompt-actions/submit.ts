@@ -48,6 +48,7 @@ import {
   isSessionBusyError,
   isSessionNotOwnedError,
   isTargetSessionBusy,
+  notifyPromptFailed,
   releaseSubmitInFlight,
   SessionRecoveryAborted,
   type SubmitTextOptions,
@@ -930,7 +931,7 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
         }
 
         if (targetIsCurrentView()) {
-          notifyError(err, copy.promptFailed)
+          notifyPromptFailed(err, copy.promptFailed)
         }
 
         return false

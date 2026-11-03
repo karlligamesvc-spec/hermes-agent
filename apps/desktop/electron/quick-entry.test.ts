@@ -5,6 +5,7 @@ import {
   DEFAULT_QUICK_ENTRY_SHORTCUT,
   type GlobalShortcutLike,
   parseQuickEntryShortcut,
+  QUICK_ENTRY_DEFAULT_ENABLED,
   quickEntryWindowBounds,
   sanitizeQuickEntrySettings
 } from './quick-entry'
@@ -73,12 +74,27 @@ describe('parseQuickEntryShortcut', () => {
 })
 
 describe('sanitizeQuickEntrySettings', () => {
-  it('defaults to enabled with the default shortcut', () => {
-    expect(sanitizeQuickEntrySettings(undefined)).toEqual({ enabled: true, shortcut: DEFAULT_QUICK_ENTRY_SHORTCUT })
-    expect(sanitizeQuickEntrySettings('not an object')).toEqual({
-      enabled: true,
-      shortcut: DEFAULT_QUICK_ENTRY_SHORTCUT
-    })
+  it('hc-1113: APEX ships it off; flipping that is a product call, made in QUICK_ENTRY_DEFAULT_ENABLED only', () => {
+    expect(QUICK_ENTRY_DEFAULT_ENABLED).toBe(false)
+  })
+
+  it.each([
+    ['no file (main reads it as null)', null],
+    ['nothing', undefined],
+    ['not an object', 'not an object'],
+    ['a file without `enabled`', { shortcut: 'alt+j' }],
+    ['an `enabled` that is not a boolean', { enabled: 'yes' }]
+  ])('hc-1113: %s takes the one default, so a missing file and a file that says nothing agree', (_label, raw) => {
+    expect(sanitizeQuickEntrySettings(raw).enabled).toBe(QUICK_ENTRY_DEFAULT_ENABLED)
+  })
+
+  it('falls back to the default shortcut when there is none', () => {
+    expect(sanitizeQuickEntrySettings(undefined).shortcut).toBe(DEFAULT_QUICK_ENTRY_SHORTCUT)
+    expect(sanitizeQuickEntrySettings('not an object').shortcut).toBe(DEFAULT_QUICK_ENTRY_SHORTCUT)
+  })
+
+  it('keeps a stored enable', () => {
+    expect(sanitizeQuickEntrySettings({ enabled: true }).enabled).toBe(true)
   })
 
   it('keeps an explicit disable and normalizes a stored shortcut', () => {
@@ -93,10 +109,6 @@ describe('sanitizeQuickEntrySettings', () => {
       enabled: true,
       shortcut: DEFAULT_QUICK_ENTRY_SHORTCUT
     })
-  })
-
-  it('treats a non-boolean enabled as off (only `true` opts in once present)', () => {
-    expect(sanitizeQuickEntrySettings({ enabled: 'yes' }).enabled).toBe(false)
   })
 })
 

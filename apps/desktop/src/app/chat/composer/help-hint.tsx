@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 
+import { useFoldedShortcuts } from '@/app/shell/product-fold'
 import { KbdCombo } from '@/components/ui/kbd'
 import { useI18n } from '@/i18n'
 
@@ -22,6 +23,8 @@ const COMPOSER_HOTKEY_ROWS = [
 export function HelpHint() {
   const { t } = useI18n()
   const c = t.composer
+  // hc-1109: ⌘/ opens 键盘快捷键, a developer section in product mode.
+  const folded = useFoldedShortcuts()
 
   return (
     <div className={COMPLETION_DRAWER_CLASS} data-slot="composer-completion-drawer" data-state="open" role="dialog">
@@ -32,7 +35,7 @@ export function HelpHint() {
       </Section>
 
       <Section title={c.hotkeys}>
-        {COMPOSER_HOTKEY_ROWS.map(row => (
+        {COMPOSER_HOTKEY_ROWS.filter(row => !folded.has(row.id)).map(row => (
           <HotkeyRow combos={[...row.combos]} description={c.hotkeyDescs[row.id] ?? ''} key={row.id} />
         ))}
       </Section>

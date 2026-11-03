@@ -13,7 +13,11 @@ jobs:
   workspaces:
     name: List npm workspaces
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 11 checks share this 4-core runner. apps/desktop check:test:ui alone runs
+    # about 10 to 18 minutes depending on the runner, and setup adds 1 to 5
+    # more, so a limit of 20 minutes cancelled runs before they could finish
+    # (hc-1076).
+    timeout-minutes: 30
     outputs:
       checks: ${{ steps.set-matrix.outputs.checks }}
     steps:

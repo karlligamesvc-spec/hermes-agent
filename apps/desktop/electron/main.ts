@@ -18,6 +18,7 @@ import {
   globalShortcut,
   ipcMain,
   Menu,
+  autoUpdater as nativeAutoUpdater,
   nativeTheme,
   powerMonitor,
   powerSaveBlocker,
@@ -77,10 +78,10 @@ import { isVersionedRuntimeRoot } from './apex-bundle-layout'
 import * as bundleMigrate from './apex-bundle-migrate'
 import { runBundledTool } from './apex-bundle-tool'
 import {
-  fetchClientConfig,
-  normalizeStoredClientConfig,
-  shouldApply as shouldApplyClientConfig
+  normalizeStoredClientConfig
 } from './apex-client-config'
+import { createClientConfigSync } from './apex-client-config-sync'
+import { registerCloudLoginHealth } from './apex-cloud-login'
 import { guardConfigYamlOnArrival } from './apex-config-arrival'
 import {
   bridgeResultUrl,
@@ -102,6 +103,8 @@ import {
 } from './apex-daemon'
 import { ensureApexDesktopSouls } from './apex-default-soul'
 import { clientConfigForRenderer } from './apex-desktop-features'
+import { stopEndingChildren, sweepEngineOnStop } from './apex-engine-children'
+import { gatewayKeyHolder, gatewayStatePath, holdsRelayKey, poolKeyHolders, primaryKeyHolder, reconcileRelayKeyAndEngines, StaleRelayKeyRestarts, stampKeyHolderProcess } from './apex-engine-relay-key'
 import {
   buildFeishuBackendEnv,
   feishuCredentialsUrl,
@@ -134,44 +137,33 @@ import {
   applyClientConfigYamlRespectingPreferences,
   buildManagedModelConfig,
   defaultModelPath,
-  ensurePluginsEnabledYaml,
-  ensureProductDefaultsYaml,
-  ensureSkillsDisabledYaml,
-  ensureWebGatewayYaml,
   googleStartUrl,
   isLoginStateTruthEnabled,
   isManagedEnabled,
-  MANAGED_PROVIDER_NAME,
-  managedCustomProviderEntryYaml,
   managedModelConfigYaml,
-  maskRelayKey,
-  migrateApexBudgetDefaultsYaml,
   MODEL_DISABLED_PROVIDERS,
   modelDisabledProvidersYaml,
   parseProvisionResponse,
-  persistRelayKeyToConfigYaml,
-  reconcileManagedRelayKey,
   renewedTokenFromHeaders,
   resolveApexEndpoints,
   SEED_PRODUCT_DEFAULTS_BLOCK,
   seedPluginsBlockYaml,
   seedSkillsBlockYaml,
-  seedWebGatewayBlockYaml,
-  syncManagedRelayConfigYaml
+  seedWebGatewayBlockYaml
 } from './apex-managed'
 import { ManagedCredentialLifetime, managedProvisionCommitToken, ManagedRelayRecoveryCoordinator, provisionManagedRelayForCurrentAccount } from './apex-managed-recovery'
 import { clearAccountPromptMirrors } from './apex-memory-ledger'
-import { applyDesktopFeatureSwitches, healManagedModelTier, modelTierStatus } from './apex-model-tiers'
+import { applyDesktopFeatureSwitches, modelTierStatus } from './apex-model-tiers'
 import { normalizeStoredPluginsState, syncPlatformPlugins } from './apex-platform-plugins'
-import {
-  applyPlatformSkills,
-  fetchPlatformSkills,
-  isPlatformSkillsEnabled,
-  normalizeStoredManifest,
-  removePlatformSkills,
-  shouldApplyManifest
-} from './apex-platform-skills'
+import { normalizeStoredManifest } from './apex-platform-skills'
+import { registerProfileSkillsSync, syncPlatformSkills } from './apex-platform-skills-sync'
 import { buildPlatformToolSpawnEnv, describePlatformToolSpawnEnv } from './apex-platform-tools'
+import { makeRoomInPool, poolAllBusyError, reapIdlePoolEngine, stampPoolEngine } from './apex-pool-engines'
+import { guardProductBlocksInHomes, persistRelayKeyInHome } from './apex-profile-config'
+import { registerProfileConfigIpc } from './apex-profile-config-ipc'
+import { isMultiBotActive, managedProfileHomes } from './apex-profile-homes'
+import { createQuitConfirm, ENGINE_IDLE_PATH, ENGINE_PROBE_DEADLINE_MS, localEnginesOf } from './apex-quit-confirm'
+import { fetchRelayModels, RelayTierMemo } from './apex-relay-tiers'
 import {
   checkForRuntimeUpdate,
   desktopMeetsMinVersion,
@@ -186,6 +178,10 @@ import {
 } from './apex-runtime-select'
 import { loadScenarioCatalog } from './apex-scenario-catalog'
 import { loginShellPathProbeArgs, parseLoginShellPath, resolveAugmentedPath } from './apex-shell-path'
+import { cleanUpAfterSignOut, revokePreviousAccountKey, sweepSignedOutRelayKeys } from './apex-sign-out'
+import { migrateStartupProfileIfMissing, readStoredDesktopProfile, startupProfileFor, startupProfileWritable } from './apex-startup-profile'
+import { registerTurnLedger, turnLedgerStoreIn } from './apex-turn-ledger'
+import { createDesktopVersionMirror } from './apex-version-state'
 import {
   cancelWorkflowDomainRun,
   completeWorkflowDomainProject,
@@ -221,6 +217,7 @@ import {
 } from './api-transport'
 import { resolveAppIcon } from './app-icon'
 import {
+  forceKillProcessTree,
   stopBackendChild as stopBackendChildImpl,
   stopBackendTreesForUpdate,
   waitForBackendExit as waitForBackendExitImpl
@@ -348,6 +345,7 @@ import {
   provisionDeviceBody,
   provisionKeyRevokeUrl,
   requireRevokedDeviceKey,
+  signOutFailureLine,
   signOutManagedDevice
 } from './desktop-device-key'
 import {
@@ -530,7 +528,6 @@ import {
   profileNameFromDeleteRequest,
   resolveRouteProfile
 } from './profile-delete-routing'
-import { migrateActiveProfileIfMissing as migrateActiveProfileIfMissingPure } from './profile-migration'
 import { prepareProfileRenameLifecycle, profileRenameFromRequest } from './profile-rename-routing'
 import {
   buildSidebarSessionSliceParams,
@@ -543,7 +540,8 @@ import {
   tagRegistrySessionResponse
 } from './profile-session-routing'
 import { createQuickEntryShortcut, quickEntryWindowBounds, sanitizeQuickEntrySettings } from './quick-entry'
-import { type ActiveWork, mergeActiveWork, normalizeActiveWork, quitPromptFor } from './quit-guard'
+import { createQuickEntryRelay } from './quick-entry-relay'
+import { type ActiveWork, mergeActiveWork, normalizeActiveWork } from './quit-guard'
 import { backendQuitNeedsWait, createQuitTeardownCoordinator } from './quit-teardown'
 import * as remoteLifecycle from './remote-lifecycle'
 import {
@@ -1801,6 +1799,7 @@ const localBackendLifecycle = createLocalBackendLifecycle<ReturnType<typeof spaw
     }
   },
   waitForExit: child => waitForBackendExit(child),
+  sweepOnStop: child => sweepEngineOnStop(child, rememberLog), // hc-1100/hc-1102: what an engine started outside its group
   cancelSetup: () => {
     firstRunSetupGate?.resetForRetry()
     bootstrapAbortController?.abort()
@@ -1858,10 +1857,10 @@ let desktopLogFlushTimer = null
 let desktopLogFlushPromise = Promise.resolve()
 
 let poolLimits = readPersistedPoolLimits(POOL_LIMITS_PATH, process.env, rememberLog)
-// Hard cap on local backends that are starting OR running (the LRU eviction
-// above is soft — it spares keepalive-fresh entries). Follows the live
-// preference: setPoolLimits() pushes a new max into the coordinator.
-const localBackendSpawnCoordinator = new LocalBackendSpawnCoordinator(poolLimits.maxBackends)
+// Hard cap on local backends that are starting OR running (the LRU eviction above is soft — it spares keepalive-fresh
+// entries). Follows the live preference: setPoolLimits() pushes a new max. hc-1093: a user open queued behind a
+// background dial (it joined that dial's claim) makes room the way an open that owns its dial does (hc-1080).
+const localBackendSpawnCoordinator = new LocalBackendSpawnCoordinator(poolLimits.maxBackends, { onForegroundWait: () => isMultiBotActive(process.env) && evictLruPoolBackends(poolMaxBackends() - 1, 'foreground') })
 // How long a spawn may wait for a free local slot. Must stay under the
 // renderer's BACKEND_BOOT_WAIT_TIMEOUT_MS (45s, src/lib/with-timeout.ts) so
 // the queued ticket fails before the renderer does and the user sees why.
@@ -3762,8 +3761,6 @@ let updateInFlight = false
 // set, window-all-closed calls app.quit() on every platform so the process
 // actually dies and the hand-off script can proceed immediately.
 let isQuittingForHandoff = false
-let quitPromptOpen = false
-let quitConfirmedWithActiveWork = false
 
 // Resolve the staged updater binary. The Tauri installer copies itself to
 // HERMES_HOME/hermes-setup.exe on a successful install (see
@@ -3891,31 +3888,6 @@ function killHermesOwnedVenvDaemons(updateRoot) {
       rememberLog(`[updates] stopping Hermes-owned venv daemon (hindsight) PID ${pid} before hand-off`)
       forceKillProcessTree(pid)
     }
-  }
-}
-
-// Force-kill the entire process TREE rooted at each PID. Node's child.kill()
-// only signals the direct child, so on Windows a backend `hermes.exe` that
-// spawned its own grandchildren (a `hermes` REPL, a pty terminal session, the
-// gateway) would survive and keep the venv shim locked. taskkill /T /F reaps
-// the whole tree synchronously. Windows-only: this is called solely from the
-// Windows shim-unlock path, and the backend is NOT spawned detached (so it's
-// not a process-group leader — a POSIX negative-pgid kill would be meaningless
-// here anyway). POSIX teardown stays with the existing before-quit SIGTERM.
-function forceKillProcessTree(pid) {
-  if (!IS_WINDOWS) {
-    return
-  }
-
-  if (!Number.isInteger(pid) || pid <= 0) {
-    return
-  }
-
-  try {
-    execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], hiddenWindowsChildOptions({ stdio: 'ignore' }))
-  } catch {
-    // Already gone, or no permission — best effort; the unlock wait below is
-    // the real gate.
   }
 }
 
@@ -4069,7 +4041,7 @@ async function stopOwnedBackend(identity) {
 const backendOwnership = createBackendOwnership({
   matchesIdentity: backendIdentityMatches,
   matchesParent: backendParentMatches,
-  stop: stopOwnedBackend,
+  stop: entry => stopEndingChildren(entry, () => processIdentityMatches(entry, REAP_PROBE_TIMEOUT_MS), () => stopOwnedBackend(entry), rememberLog), // hc-1102
   store: {
     read: () => {
       try {
@@ -7394,6 +7366,7 @@ function registerPowerResumeListeners() {
       powerMonitor,
       revalidate: () => revalidateSuspectPoolAfterResume()
     })
+    quitConfirm.watchSessionEnd({ updater: nativeAutoUpdater, workspace: IS_MAC ? systemPreferences : undefined }) // hc-1104
   } catch {
     // powerMonitor is unavailable before app 'ready' on some platforms; the
     // caller registers after 'ready', so this should not normally throw.
@@ -8624,7 +8597,7 @@ async function finalizeGatewayDownload(res, statusCode, headers, ctx: any = {}) 
   }
 
   const disposition = headers['content-disposition'] || headers['Content-Disposition']
-  const filename = filenameFromContentDisposition(disposition) || ctx.suggested || ctx.fallbackName
+  const filename = ctx.suggested || filenameFromContentDisposition(disposition) || ctx.fallbackName
 
   const result = await dialog.showSaveDialog(mainWindow, {
     defaultPath: filename,
@@ -10180,21 +10153,10 @@ async function saveRegistryConnection(input: any = {}) {
 
 // Returns the desktop's chosen profile name, or null when unset. "default" is
 // a valid stored value (pins the root HERMES_HOME explicitly); null means "no
-// preference" and preserves the legacy launch (no --profile flag).
+// preference" and preserves the legacy launch (no --profile flag). hc-1115:
+// APEX's while several assistants are off (apex-startup-profile.ts).
 function readActiveDesktopProfile() {
-  try {
-    const raw = fs.readFileSync(DESKTOP_PROFILE_CONFIG_PATH, 'utf8')
-    const parsed = JSON.parse(raw)
-    const name = parsed && typeof parsed.profile === 'string' ? parsed.profile.trim() : ''
-
-    if (name && (name === 'default' || PROFILE_NAME_RE.test(name))) {
-      return name
-    }
-  } catch {
-    // Missing or malformed → no preference.
-  }
-
-  return null
+  return startupProfileFor(readStoredDesktopProfile(DESKTOP_PROFILE_CONFIG_PATH, name => PROFILE_NAME_RE.test(name)), process.env)
 }
 
 function writeActiveDesktopProfile(name) {
@@ -10202,6 +10164,10 @@ function writeActiveDesktopProfile(name) {
 
   if (value && value !== 'default' && !PROFILE_NAME_RE.test(value)) {
     throw new Error(`Invalid profile name: ${value}`)
+  }
+
+  if (!startupProfileWritable(value, process.env, rememberLog)) {
+    return readActiveDesktopProfile()
   }
 
   fs.mkdirSync(path.dirname(DESKTOP_PROFILE_CONFIG_PATH), { recursive: true })
@@ -10248,10 +10214,11 @@ function isHermesProcess(pid) {
 // The stored JSON includes _migrated:true so the renderer can optionally surface
 // a one-time notification that the profile was auto-detected.
 //
-// Decision logic lives in profile-migration.ts (pure + unit-tested). This wrapper
+// Decision logic lives in profile-migration.ts (pure + unit-tested); hc-1115 skips
+// it while several assistants are off (apex-startup-profile.ts). This wrapper
 // just wires Electron/Node fs into a MigrationDeps bag and delegates.
 function migrateActiveProfileIfMissing() {
-  migrateActiveProfileIfMissingPure(DESKTOP_PROFILE_CONFIG_PATH, {
+  migrateStartupProfileIfMissing(DESKTOP_PROFILE_CONFIG_PATH, {
     legacyActivePath: path.join(HERMES_HOME, 'active_profile'),
     hermesHome: HERMES_HOME,
     profilesRoot: path.join(HERMES_HOME, 'profiles'),
@@ -10269,7 +10236,7 @@ function migrateActiveProfileIfMissing() {
       writeFileAtomic(target, JSON.stringify(decision, null, 2))
     },
     isValidProfileName: p => PROFILE_NAME_RE.test(p)
-  })
+  }, process.env, rememberLog)
 }
 
 // Sanitize a connection config into the renderer-facing shape. With no
@@ -11884,7 +11851,7 @@ async function ensureBackend(profile, opts: { passive?: boolean; spawnPriority?:
   // The hard slot is released only after the evicted child exits. Wait for
   // that teardown before entering the spawn queue; otherwise a successful
   // LRU choice still leaves this wake racing the old child for 30 seconds.
-  await evictLruPoolBackends(poolMaxBackends() - 1)
+  await evictLruPoolBackends(poolMaxBackends() - 1, spawnPriority)
 
   const entry = {
     process: null,
@@ -12063,7 +12030,7 @@ async function ensureRegistryBackend(
     }
 
     assertNotPassiveSpawn(passive, localRoute.poolKey)
-    await evictLruPoolBackends(poolMaxBackends() - 1)
+    await evictLruPoolBackends(poolMaxBackends() - 1, spawnPriority)
 
     const localEntry = {
       process: null,
@@ -12789,17 +12756,32 @@ function touchPoolBackend(profile) {
 // across N registered remote connections LRU-evict a REAL local backend that
 // was merely idle past the keepalive window. Descriptors are still reclaimed
 // by the idle reaper.
-async function evictLruPoolBackends(keep) {
+async function evictLruPoolBackends(keep, spawnPriority?: LocalBackendSpawnPriority) {
+  // hc-1080: with several assistants on, a user's open asks every engine (least recently used first)
+  // to retire, and fails with a clear result only when all are working (apex-pool-engines.ts).
+  if (spawnPriority === 'foreground' && isMultiBotActive(process.env)) {
+    const made = await makeRoomInPool({ entries: backendPool.entries(), keep, log: rememberLog, stop: stopPoolBackend,
+      post: entry => (route, body) => fetchJson(`http://127.0.0.1:${entry.port}${route}`, entry.token, { method: 'POST', body, timeoutMs: 5_000 }),
+      stillPooled: (key, entry) => backendPool.get(key) === entry })
+
+    if (!made.room) {throw poolAllBusyError(made, poolMaxBackends())}
+
+    return made.evicted
+  }
+
   return evictPoolEntries(
     backendPool.entries(),
     Math.max(0, keep),
     Date.now(),
     POOL_KEEPALIVE_FRESH_MS,
-    async profile => {
-      rememberLog(`Evicting idle profile backend "${profile}" (LRU cap ${poolMaxBackends()})`)
-      await stopPoolBackend(profile)
-    }
+    async profile => void (await reapIdlePoolEngine({ ...poolRetirement(profile), what: `Evicting idle profile backend "${profile}" (LRU cap ${poolMaxBackends()})` }))
   )
+}
+
+// hc-1080/hc-1102: a pooled engine is asked before the idle reaper or the LRU cap stops it; one still working (a turn, a background command) stays.
+function poolRetirement(profile: string, entry = backendPool.get(profile)) {
+  return { entry, label: profile, idleSeconds: Math.round(poolIdleMs() / 1000), log: rememberLog, stillPooled: () => backendPool.get(profile) === entry, stop: () => stopPoolBackend(profile),
+    post: (route, body) => fetchJson(`http://127.0.0.1:${entry.port}${route}`, entry.token, { method: 'POST', body, timeoutMs: 5_000 }) }
 }
 
 function startPoolIdleReaper() {
@@ -12812,8 +12794,8 @@ function startPoolIdleReaper() {
 
     for (const [profile, entry] of [...backendPool.entries()]) {
       if (now - (entry.lastActiveAt || 0) > poolIdleMs()) {
-        rememberLog(`Reaping idle profile backend "${profile}" (idle > ${Math.round(poolIdleMs() / 1000)}s)`)
-        stopPoolBackend(profile)
+        // hc-1080: a live engine is asked first, so a turn running with no window open survives.
+        void reapIdlePoolEngine(poolRetirement(profile, entry))
       }
     }
 
@@ -13079,6 +13061,7 @@ async function runPoolBackendStart(profile, entry, opts: { forceLocal?: boolean;
 
   entry.process = child
   entry.token = token
+  stampPoolEngine(entry, profile, resolveManagedConfig().key) // hc-1080
   // Buffer stdout+stderr from the instant of spawn (#93608): an early crash's
   // traceback must survive into the claim error and the before-ready exit
   // message instead of a bare exit code. rememberLog attaches later, after
@@ -13216,7 +13199,7 @@ async function stopAllPoolBackends() {
 }
 
 const backendShutdown = createBackendShutdownCoordinator(async () => {
-  const localShutdown = localBackendLifecycle.shutdown()
+  const localShutdown = localBackendLifecycle.shutdown() // hc-1100: each owned engine's stop also ends what it started (sweepOnStop)
   const primary = backendConnectionState.invalidate()
 
   stopBackendChild(primary)
@@ -13534,6 +13517,8 @@ async function runHermesStart() {
         stdio: ['ignore', 'pipe', 'pipe']
       })
     )
+
+    stampKeyHolderProcess(hermesProcess, resolveManagedConfig().key) // hc-1106: the key its env carries
 
     // Buffer stdout+stderr from the instant of spawn (#93608): an early
     // crash's traceback must survive into the claim error and the
@@ -14857,13 +14842,21 @@ function closeHudWindow() {
 // swallowed: a chord another app already owns comes back as `error: 'taken'`.
 const QUICK_ENTRY_CONFIG_PATH = path.join(app.getPath('userData'), 'quick-entry.json')
 let quickEntryWindow = null
-let quickEntryLastState = null
+
+// hc-1113: every submitted line is answered (delivered, or back in the window with why) and logged.
+const quickEntryRelay = createQuickEntryRelay({
+  log: line => rememberLog(line),
+  primary: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null),
+  quick: () => (quickEntryWindow && !quickEntryWindow.isDestroyed() ? quickEntryWindow.webContents : null),
+  hideQuick: () => hideQuickEntryWindow(),
+  showQuick: () => showQuickEntryWindow()
+})
 
 function readQuickEntrySettings() {
   try {
     return sanitizeQuickEntrySettings(JSON.parse(fs.readFileSync(QUICK_ENTRY_CONFIG_PATH, 'utf8')))
   } catch {
-    return sanitizeQuickEntrySettings({ enabled: false })
+    return sanitizeQuickEntrySettings(null)
   }
 }
 
@@ -14944,11 +14937,7 @@ function spawnQuickEntryWindow() {
       quickEntryWindow = null
     }
   })
-  win.webContents.on('did-finish-load', () => {
-    if (!win.isDestroyed() && quickEntryLastState) {
-      win.webContents.send('hermes:quick-entry:state', quickEntryLastState)
-    }
-  })
+  win.webContents.on('did-finish-load', () => !win.isDestroyed() && quickEntryRelay.replay(win.webContents))
 
   attachRendererConsoleCapture(win, 'quick-entry', rememberLog)
   loadWindowUrl(win, quickEntryUrl(), 'Quick entry')
@@ -14985,7 +14974,7 @@ function showQuickEntryWindow() {
   repositionQuickEntryWindow(quickEntryWindow)
   quickEntryWindow.show()
   quickEntryWindow.focus()
-  quickEntryWindow.webContents.send('hermes:quick-entry:shown')
+  quickEntryRelay.shown(quickEntryWindow.webContents)
 }
 
 function hideQuickEntryWindow() {
@@ -17446,6 +17435,10 @@ ipcMain.on('hermes:active-work', (event, payload) => {
   activeWorkByWebContents.set(id, normalizeActiveWork(payload))
   updateStreamThrottleFromActiveWork()
 })
+// hc-1100: which conversations a quit cuts off mid-turn (apex-turn-ledger.ts), and ⌘W's window close in
+// product mode (src/app/chat/close-window.ts), the red button's own path: 'close' fires, geometry is kept.
+registerTurnLedger(ipcMain, turnLedgerStoreIn(() => app.getPath('userData')), localBackendLifecycle.signal)
+ipcMain.on('hermes:close-window', event => BrowserWindow.fromWebContents(event.sender)?.close())
 
 ipcMain.on('hermes:titlebar-theme', (_event, payload) => {
   if (!payload || !isHexColor(payload.background) || !isHexColor(payload.foreground)) {
@@ -17619,27 +17612,9 @@ ipcMain.handle('hermes:quick-entry:settings:set', async (_event, patch) => {
   return applyQuickEntrySettings(next)
 })
 
-ipcMain.on('hermes:quick-entry:submit', (_event, payload) => {
-  hideQuickEntryWindow()
-  const text = typeof payload?.text === 'string' ? payload.text.trim() : ''
-
-  if (!text || !mainWindow || mainWindow.isDestroyed()) {
-    return
-  }
-
-  mainWindow.webContents.send('hermes:quick-entry:submit', {
-    target: typeof payload?.target === 'string' && payload.target ? payload.target : 'current',
-    text
-  })
-})
-
-ipcMain.on('hermes:quick-entry:state', (_event, payload) => {
-  quickEntryLastState = payload ?? null
-
-  if (quickEntryWindow && !quickEntryWindow.isDestroyed()) {
-    quickEntryWindow.webContents.send('hermes:quick-entry:state', payload)
-  }
-})
+ipcMain.on('hermes:quick-entry:submit', (_event, payload) => quickEntryRelay.submit(payload))
+ipcMain.on('hermes:quick-entry:receipt', (_event, receipt) => quickEntryRelay.receipt(receipt))
+ipcMain.on('hermes:quick-entry:state', (_event, payload) => quickEntryRelay.state(payload))
 
 ipcMain.on('hermes:quick-entry:dismiss', () => hideQuickEntryWindow())
 
@@ -18346,7 +18321,7 @@ if (!isPrimaryInstance) {
     }
 
     ensureMainWindow(mainWindow, {
-      isReady: app.isReady(),
+      isReady: app.isReady() && !clientConfigSync.holdingFirstWindow(), // hc-1127: that window is on its way
       createWindow,
       focusWindow,
       // deep-link delivery focuses a live window after its renderer is ready.
@@ -18394,23 +18369,19 @@ function initShellUpdater() {
     }
   }
 
-  createShellUpdater({
+  // hc-1095: the updater's events also keep <HERMES_HOME>/apex/desktop-version.json (what the engine says) current.
+  const versionMirror = createDesktopVersionMirror({ appVersion: app.getVersion(), enginePin: shippedEnginePin, hermesHome: HERMES_HOME, log: rememberLog, windows: () => BrowserWindow.getAllWindows() })
+  versionMirror.follow(createShellUpdater({
     autoUpdater,
     ipcMain,
     isPackaged: app.isPackaged && updatesAllowed,
     log: rememberLog,
     beforeInstall: () => runtimeSwitch.prepare(ACTIVE_HERMES_ROOT),
-    // hc-532 (gate 3): thread the shell version so the shell-update beacons
-    // carry app_version (createShellUpdater defaults it to null when omitted).
+    endLeftovers: runtimeSwitch.endLeftovers, // hc-1094
+    // hc-532 (gate 3): the shell-update beacons carry app_version (createShellUpdater defaults it to null).
     appVersion: app.getVersion(),
-    broadcast: (channel, payload) => {
-      for (const win of BrowserWindow.getAllWindows()) {
-        if (!win.isDestroyed()) {
-          win.webContents.send(channel, payload)
-        }
-      }
-    }
-  })
+    broadcast: versionMirror.broadcast
+  }).getState())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -19012,54 +18983,52 @@ function syncManagedRelayKeyToConfig(reason = 'sync') {
   const managed = resolveManagedConfig()
 
   if (!managed.key || !managed.baseUrl) {
+    sweepSignedOutRelayKeys({ root: HERMES_HOME, managedEnabled: isManagedEnabled(process.env), key: managed.key, credentialStored: fs.existsSync(DESKTOP_MANAGED_CONFIG_PATH), baseUrls: [resolveApexEndpoints(process.env).relayBaseUrl], log: rememberLog })
+
     return { ok: false, changed: false, reason: 'signed-out', model: 'absent', entries: { matched: 0, updated: 0 } }
   }
 
-  const configPath = path.join(HERMES_HOME, 'config.yaml')
+  // hc-1080: the root decides the result (the primary engine and every caller's
+  // gate read it); each managed profile follows, then every running engine still
+  // on the old key restarts once idle (hc-1106).
+  const [root, ...profiles] = apexConfigHomes(managed)
+  const result = persistRelayKeyInHome(root, managed, reason, rememberLog)
 
-  const result = persistRelayKeyToConfigYaml({
-    read: () => (fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null),
-    // In place, NOT writeFileAtomic: watchConfigYamlProductBlocks holds an
-    // fs.watch on this path, and a rename-over swaps the inode out from under
-    // it. Every other config.yaml writer here writes in place for the same
-    // reason; the read-back verification is what guards a torn write.
-    write: next => fs.writeFileSync(configPath, next, { encoding: 'utf8' }),
-    baseUrl: managed.baseUrl,
-    key: managed.key
-  })
-
-  if (result.ok && result.changed) {
-    // Per-anchor, by path — "custom_providers=0/0" was true on every one of
-    // Kael's boots and read as "nothing to do" rather than "I cannot see the
-    // entry I wrote myself".
-    const detail = (result.anchors || []).map(anchor => `${anchor.path}:${anchor.status}`).join(' ')
-    rememberLog(
-      `[apexnodes] config.yaml relay key refreshed (${reason}) to ${maskRelayKey(managed.key)} — ${detail || 'no anchors'}`
-    )
-  } else if (!result.ok) {
-    rememberLog(
-      `[apexnodes] config.yaml relay key write FAILED (${reason}): ${result.reason} — ` +
-        'chat will keep failing with 401 until this is resolved.'
-    )
-  }
+  profiles.forEach(home => persistRelayKeyInHome(home, managed, reason, rememberLog))
+  void restartEnginesOnStaleRelayKey(reason)
 
   return result
 }
 
-// Make the RUNNING backend authenticate with the key we just wrote. config.yaml
-// is read when an agent is constructed, and `POST /api/model/set` is documented
-// as "applies to new sessions only" — `prompt.submit` reuses the live session's
-// already-built client, so a live process keeps 401ing on the rotated key no
-// matter what is on disk. The desktop owns the backend child, so the
-// deterministic fix is the existing SOFT re-home: tear the primary down without
-// resetting boot UI, tell the renderer to re-dial, and let the respawn read the
-// fresh config.yaml. Sessions live in state.db and are resumed, so nothing is lost.
-//
-// No-op when no backend is live (the boot self-heal usually lands here — the
-// spawn that follows already reads the corrected file).
+// hc-1080: the homes the APEX config writers keep in step — the root, plus every
+// named profile on the managed relay (apex-profile-homes.ts).
+function apexConfigHomes(managed: { baseUrl?: string } = resolveManagedConfig()) {
+  return managedProfileHomes(HERMES_HOME, managed.baseUrl || resolveApexEndpoints(process.env).relayBaseUrl)
+}
+
+// hc-1106: every running engine and the messaging gateway keep the key they were spawned with; after any key
+// sync the ones on another key restart once idle (apex-engine-relay-key.ts). The primary restarts in place: its
+// socket drops and the renderer's reconnect keeps the open conversation, which a connection-switch broadcast wipes.
+const staleRelayKeys = new StaleRelayKeyRestarts({ log: rememberLog, relayKey: () => resolveManagedConfig().key, holders: () => [
+  ...poolKeyHolders(backendPool.entries(), { stop: stopPoolBackend, stillPooled: (key, entry) => backendPool.get(key) === entry,
+    post: entry => (route, body) => fetchJson(`http://127.0.0.1:${entry.port}${route}`, entry.token, { method: 'POST', body, timeoutMs: 5_000 }) }),
+  ...gatewayKeyHolder(() => (messagingGatewayChildAlive() ? messagingGatewayRuntime.process : null),
+    gatewayStatePath(HERMES_HOME, messagingGatewayRuntime.profile), { restart: restartMessagingGateway }),
+  ...primaryKeyHolder(() => backendConnectionState.getProcess(), primaryProfileKey(), { restart: () => teardownPrimaryBackendAndWait({ soft: true }).then(() => ensureBackend(primaryProfileKey())),
+    post: async (route, body) => fetchJsonForBackend(await backendConnectionState.getPromise(), route, { method: 'POST', body, timeoutMs: 5_000 }) })] })
+
+function restartEnginesOnStaleRelayKey(reason: string) {return staleRelayKeys.run(reason)}
+
+// Make the RUNNING backend authenticate with the key we just wrote: `POST /api/model/set` "applies to new sessions
+// only" and `prompt.submit` reuses the live session's client, so a live process keeps 401ing on a rotated key
+// whatever is on disk. The SOFT re-home tears the primary down without resetting boot UI, tells the renderer to
+// re-dial, and the respawn reads the fresh config.yaml; sessions resume from state.db. Unconditional (hc-1106's
+// stale-key restart asks the engine first). No-op when no backend is live.
 async function reloadBackendForRelayKey(reason) {
-  if (!backendConnectionState.getProcess()) {
-    return false
+  syncManagedRelayKeyToConfig(reason) // hc-1080: managed profiles and pooled engines too
+
+  if (!backendConnectionState.getProcess() || (reason === 'key-rotation' && holdsRelayKey(backendConnectionState.getProcess(), resolveManagedConfig().key))) {
+    return false // hc-1106: a re-provision's sign-in completion already moved the primary onto the new key
   }
 
   try {
@@ -19399,12 +19368,6 @@ function resolveManagedConfig() {
   }
 }
 
-// Just the decrypted relay key (or '') — thin wrapper for call sites that only
-// need to answer "is the user signed in to managed?".
-function resolveManagedRelayCredential() {
-  return resolveManagedConfig().key
-}
-
 // Persist the provision-key result. Pass null/empty to clear. `provisioned` may
 // carry an optional display-only `account` ({ email, name, plan }) captured from
 // the login response / JWT claims — stored in clear (it is not a secret) so the
@@ -19651,16 +19614,17 @@ function beginManagedKeyMutationRecovery(): () => void {
   }
 }
 
-// hc-529: slide the stored login JWT forward when the cloud hands back a renewed
-// one (X-Apex-Renewed-Token) on an authenticated response. Rewrites ONLY the
-// accessToken, preserving the encrypted relay key + baseUrl/model/account, so the
-// desktop's login token (used for provision-key / feishu-credentials /
-// platform-skills) never dies at the 7-day mark for an active user. Best-effort
-// and never throws — a persist hiccup must not fail the request the user made.
-// Skips when: managed isn't signed in (no stored key), there is no existing login
-// JWT to slide (env-key path stores none), or the token is unchanged.
+const cloudLogin = registerCloudLoginHealth(ipcMain, { currentToken: () => String(resolveManagedConfig().accessToken || '').trim(), log: message => rememberLog(message), windows: () => BrowserWindow.getAllWindows() })
+
+// hc-529: slide the stored login JWT forward when an authed response carries a
+// renewed one (X-Apex-Renewed-Token), rewriting ONLY accessToken. It only slides
+// when some JWT call lands in the token's last 3.5 days. Best-effort, never throws;
+// skips when managed isn't signed in, there is no JWT (env-key path) or it is
+// unchanged. hc-1073: every authed 2xx lands here, so it also tells cloudLogin the
+// stored JWT works; each transport's error branch reports the 401s.
 function persistRenewedLoginToken(token, requestBearer: string) {
   try {
+    cloudLogin.noteSuccess(requestBearer)
     const next = String(token || '').trim()
 
     if (!next) {
@@ -20663,52 +20627,22 @@ function writeClientConfigState(next) {
   writeFileAtomic(DESKTOP_CLIENT_CONFIG_PATH, JSON.stringify(next, null, 2))
 }
 
-// Fetch the platform config and store it when a NEWER version arrived.
-// Non-blocking by contract (callers `void` it), bounded (~5s), and never
-// throws — any error only logs and leaves the cached state untouched.
-async function refreshClientConfigFromPlatform(reason) {
-  try {
-    const stored = readClientConfigState()
-
-    const fetched = await fetchClientConfig({
-      apiBase: apexApiBase(),
-      fetchJson: fetchPublicJson,
-      knownVersion: stored.version,
-      timeoutMs: 5_000,
-      log: msg => rememberLog(msg)
-    })
-
-    if (!fetched) {
-      return
-    } // offline / 404 no-active-config / garbage → cache stands
-
-    if (fetched.unchanged) {
-      rememberLog(`[client-config] v${fetched.version} unchanged (${reason})`)
-
-      return
+// The cached config's sync, and the launch that has none yet (hc-1127).
+const clientConfigSync = createClientConfigSync({
+  apiBase: apexApiBase,
+  applySwitches: payload => applyDesktopFeatureSwitches(process.env, payload, rememberLog),
+  broadcast: state => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {win.webContents.send('hermes:clientConfig:arrived', clientConfigForRenderer(state, process.env))}
     }
+  },
+  fetchJson: fetchPublicJson,
+  log: msg => rememberLog(msg),
+  read: readClientConfigState,
+  write: writeClientConfigState
+})
 
-    if (!shouldApplyClientConfig(fetched.version, stored.version)) {
-      rememberLog(
-        `[client-config] fetched v${fetched.version} is not newer than cached v${stored.version}; ignoring (${reason})`
-      )
-
-      return
-    }
-
-    writeClientConfigState({
-      version: fetched.version,
-      payload: fetched.payload,
-      fetchedAt: Date.now(),
-      // Preserve what the renderer already applied — the gap between version
-      // and appliedVersion is exactly what triggers the next apply pass.
-      appliedVersion: stored.appliedVersion
-    })
-    rememberLog(`[client-config] stored platform config v${fetched.version} (${reason})`)
-  } catch (error: any) {
-    rememberLog(`[client-config] refresh failed (ignored): ${error && error.message ? error.message : error}`)
-  }
-}
+const refreshClientConfigFromPlatform = clientConfigSync.refresh
 
 function readPlatformSkillsState() {
   try {
@@ -20725,80 +20659,31 @@ function writePlatformSkillsState(next) {
   writeFileAtomic(DESKTOP_PLATFORM_SKILLS_PATH, JSON.stringify(next, null, 2))
 }
 
-// Pull the platform SKILL manifest and (re)install it when the hash changed.
+// Pull the platform SKILL manifest into the root skills/ and copy it into every
+// profile on the managed relay (apex-platform-skills-sync.ts, hc-1081).
 // Non-blocking by contract (callers `void` it), bounded (~12s), and never throws
 // — any error only logs and leaves the installed skills untouched.
 async function refreshPlatformSkillsFromPlatform(reason) {
   try {
-    const skillsRoot = path.join(HERMES_HOME, 'skills')
-
-    // Feature switch OFF → revert to the no-platform-SKILL state (idempotent)
-    // and clear the cache so a later re-enable re-pulls from scratch.
-    if (!isPlatformSkillsEnabled(process.env)) {
-      const { removed } = removePlatformSkills({ log: msg => rememberLog(msg), skillsRoot })
-
-      if (removed || readPlatformSkillsState().manifestHash) {
-        writePlatformSkillsState({ count: 0, installedAt: Date.now(), manifestHash: '' })
-      }
-
-      rememberLog(`[platform-skills] disabled via APEXNODES_PLATFORM_SKILLS; reverted (${reason})`)
-
-      return
-    }
-
-    const token = String(resolveManagedConfig().accessToken || '').trim()
-
-    if (!token) {
-      rememberLog(`[platform-skills] no login JWT on hand; skipping (${reason})`)
-
-      return
-    }
-
-    const stored = readPlatformSkillsState()
-
-    const fetched = await fetchPlatformSkills({
+    const result = await syncPlatformSkills({
+      ...platformSkillsHomes(),
       apiBase: apexApiBase(),
+      env: process.env,
       fetchJson: apexAuthGetJson,
-      knownHash: stored.manifestHash,
       log: msg => rememberLog(msg),
-      timeoutMs: 12_000,
-      token
+      reason,
+      stored: readPlatformSkillsState(),
+      token: () => resolveManagedConfig().accessToken
     })
 
-    if (!fetched) {
-      return
-    } // offline / 401 / garbage → installed set stands
-
-    if (fetched.unchanged) {
-      rememberLog(`[platform-skills] manifest ${fetched.manifestHash.slice(0, 12)} unchanged (${reason})`)
-
-      return
-    }
-
-    if (!shouldApplyManifest(fetched.manifestHash, stored.manifestHash)) {
-      rememberLog(`[platform-skills] manifest matches installed; no re-apply (${reason})`)
-
-      return
-    }
-
-    const result = applyPlatformSkills({ log: msg => rememberLog(msg), skills: fetched.skills, skillsRoot })
-    writePlatformSkillsState({
-      count: result.installed.length,
-      installedAt: Date.now(),
-      manifestHash: fetched.manifestHash
-    })
-    rememberLog(
-      `[platform-skills] installed ${result.installed.length} skill(s) manifest=${fetched.manifestHash.slice(0, 12)} (${reason})`
-    )
-
-    if (result.skippedUnsafe.length) {
-      rememberLog(
-        `[platform-skills] skipped ${result.skippedUnsafe.length} unsafe entr(ies): ${result.skippedUnsafe.slice(0, 5).join(', ')}`
-      )
-    }
+    if (result.newStored) {writePlatformSkillsState(result.newStored)}
   } catch (error: any) {
     rememberLog(`[platform-skills] refresh failed (ignored): ${error && error.message ? error.message : error}`)
   }
+}
+
+function platformSkillsHomes() {
+  return { homes: apexConfigHomes(), skillsRoot: path.join(HERMES_HOME, 'skills') }
 }
 
 function readPlatformPluginsState() {
@@ -20862,213 +20747,27 @@ async function refreshPlatformPluginsFromPlatform(reason) {
 function guardConfigYamlProductBlocks(reason) {
   keepSessionHistoryInEveryProfile(HERMES_HOME, rememberLog)
 
-  // A pass that finds the file changed under it between read and write yields
-  // rather than clobbering the other writer, and says so — recompute against
-  // the new content and try again. The healers are add-only and idempotent, so
-  // re-running on someone else's fresh file is always safe. Bounded: three
-  // losses in a row means a writer is hammering the file, and the live watcher
-  // will pick the heal back up on its next event.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (healConfigYamlProductBlocks(reason) !== 'stale') {
-      return
-    }
-  }
+  // hc-1080: the root, then every named profile on the managed relay, each with
+  // up to three compare-and-swap passes (apex-profile-config.ts).
+  const context = productBlocksContext()
 
-  rememberLog(`[config-guard] deferred to the watcher after 3 racing passes (${reason})`)
+  if (context) {guardProductBlocksInHomes(apexConfigHomes(context.managed), context, reason, rememberLog)}
 }
 
-function healConfigYamlProductBlocks(reason) {
-  // A Native restart must not let the YAML watcher bypass an unresolved
-  // server-side model write. The recovery path fences it before healing.
-  if (modelMutationMetadata.pending().length > 0) {return 'pending-model-writes'}
+// The heal context every home shares. Null while a Native model write is
+// unresolved: a restart must not let the YAML watcher bypass it, and the
+// recovery path fences it before healing.
+function productBlocksContext() {
+  if (modelMutationMetadata.pending().length > 0) {return null}
 
-  try {
-    const configPath = path.join(HERMES_HOME, 'config.yaml')
+  const managed = resolveManagedConfig()
 
-    if (!fs.existsSync(configPath)) {
-      return 'absent'
-    }
-
-    let raw = fs.readFileSync(configPath, 'utf8')
-    // What we based this pass on. The runtime saves config.yaml atomically
-    // (utils.atomic_yaml_write — temp file + rename), so we can never READ a
-    // half-written file; the live risk is the reverse, that it lands a whole
-    // new version between this read and our write and our plain writeFileSync
-    // silently reverts it.
-    const readBack = raw
-    const fixed = []
-
-    const managed = resolveManagedConfig()
-    const endpoints = resolveApexEndpoints(process.env)
-
-    // hc-705: upgrade/setting-save guard for the Windows 0.17.16 stale shape.
-    // Managed relay discovery is a platform invariant; endpoints on other URLs
-    // remain untouched because the helper requires the exact managed URL and
-    // current credential. This pass is live, so a settings full-record save
-    // cannot re-persist the collapsed one-model catalog for the rest of the run.
-    if (managed.key && managed.baseUrl) {
-      const relayHeal = syncManagedRelayConfigYaml(raw, managed.baseUrl, managed.key)
-
-      if (relayHeal.changed) {
-        raw = relayHeal.next
-
-        const keyAnchors = relayHeal.key.anchors
-          .filter(anchor => anchor.status !== 'in-sync')
-          .map(anchor => anchor.path)
-
-        const catalogAnchors = relayHeal.catalog.anchors
-          .filter(anchor => anchor.status !== 'in-sync')
-          .map(anchor => anchor.path)
-
-        if (keyAnchors.length) {
-          fixed.push(`managed-key(${keyAnchors.join(' ')})`)
-        }
-
-        if (catalogAnchors.length) {
-          fixed.push(`managed-discovery(${catalogAnchors.join(' ')})`)
-        }
-      }
-    }
-
-    // hc-602: rendered by the SAME producer the first-run seed uses. This healer
-    // used to hand-roll a column-0 list lead while the seed emitted a two-space
-    // one — both valid YAML, and the relay-key patcher understood only one of
-    // them, which is how Kael's custom_providers entry sat on a dead key for a
-    // week while every log line said the sync had succeeded.
-    const relayEntryLines = managedCustomProviderEntryYaml({
-      name: MANAGED_PROVIDER_NAME,
-      base_url: managed.baseUrl,
-      api_key: managed.key,
-      model: endpoints.modelDisplay
-    })
-
-    if (managed.key && managed.baseUrl && !/^custom_providers:/m.test(raw)) {
-      raw = raw.replace(/\n*$/, '\n') + 'custom_providers:\n' + relayEntryLines
-      fixed.push('custom_providers')
-    } else if (
-      managed.key &&
-      managed.baseUrl &&
-      // Header present but NO list entry under it (a wiper once left the bare
-      // header behind — the earlier existence check sailed right past it).
-      /^custom_providers:[ \t]*\n(?![ \t]|- )/m.test(raw)
-    ) {
-      raw = raw.replace(/^custom_providers:[ \t]*\n/m, 'custom_providers:\n' + relayEntryLines)
-      fixed.push('custom_providers(empty-header)')
-    }
-
-    // A /moa toggle has been observed persisting itself as the GLOBAL default
-    // (model.provider: moa + base_url: moa://local) — every new chat then
-    // opens on MoA (slow + expensive), violating selective routing, and the
-    // relay URL is clobbered. MoA is per-session only on managed installs:
-    // heal the model block back to the relay default.
-    if (managed.key && managed.baseUrl && /^model:[\s\S]*?^\s{2}provider:\s*moa\s*$/m.test(raw)) {
-      raw = raw
-        .replace(/^(\s{2}provider:\s*)moa\s*$/m, `$1custom`)
-        .replace(/^(\s{2}base_url:\s*)moa:\/\/local\s*$/m, `$1${managed.baseUrl}`)
-        .replace(/^(\s{2}default:\s*)\S.*$/m, `$1${endpoints.modelDisplay}`)
-      fixed.push('model(moa-global)')
-    }
-
-    raw = healManagedModelTier(raw, managed, endpoints.relayBaseUrl, process.env, fixed) // hc-960: old ids → Flash
-
-    // Skills: union the managed disabled names back in — add-only, so a user's
-    // enable-toggles (names they removed) survive. This is BOTH the "block was
-    // wiped entirely" heal AND the hc-406 UPGRADE path: an install seeded under
-    // v0.17 keeps its old 49-name skills.disabled after a bump to v0.18, so the
-    // newly-graded-OFF bundled skills (huggingface-hub / maps / plan) would ship
-    // ACTIVE without this reconcile. seedSkillsBlockYaml is the append when the
-    // block is wholly absent (ensureSkillsDisabledYaml delegates to it).
-    const skillsHeal = ensureSkillsDisabledYaml(raw)
-
-    if (skillsHeal.changed) {
-      raw = skillsHeal.next
-      fixed.push(`skills.disabled(+${skillsHeal.added.length})`)
-    }
-
-    // hc-837: APEX previously pinned lower 90/50 budgets than Hermes. Migrate
-    // only those exact legacy defaults once per config; custom values remain
-    // untouched and the version marker prevents the watcher from fighting a
-    // user who deliberately chooses 90/50 after the upgrade.
-    const budgetDefaultsMigration = migrateApexBudgetDefaultsYaml(raw)
-
-    if (budgetDefaultsMigration.changed) {
-      raw = budgetDefaultsMigration.next
-      fixed.push(
-        budgetDefaultsMigration.migrated.length
-          ? `budget-defaults(${budgetDefaultsMigration.migrated.join(' ')})`
-          : 'budget-defaults(version)'
-      )
-    }
-
-    // APEX product defaults as scalar keys (display.language,
-    // display.show_reasoning, agent.image_input_mode, timezone). Same add-only
-    // contract as the list healers: a key the file already carries is the
-    // user's answer and is never rewritten — this only fills keys the file
-    // does not mention, where the runtime's merged default would otherwise
-    // decide (config.yaml has no display.language → /api/config still answers
-    // `en`, and the shell's China-first fallback never fires). This is also the
-    // catch-up path for every install seedDefaultModelConfig never ran on: it
-    // fires only on the bootstrap-needed branch and bails when config.yaml
-    // already exists.
-    const defaultsHeal = ensureProductDefaultsYaml(raw)
-
-    if (defaultsHeal.changed) {
-      raw = defaultsHeal.next
-      fixed.push(`product-defaults(${defaultsHeal.added.join(' ')})`)
-    }
-
-    const webHeal = ensureWebGatewayYaml(raw)
-
-    if (webHeal.changed) {
-      raw = webHeal.next
-      fixed.push('web.search_backend')
-    }
-
-    // hc-392 China profile: losing model.disabled_providers silently re-enables
-    // the Copilot provider probe — GitHub is near-unreachable from the
-    // mainland, so its probe saturates the gateway RPC pool (slow model list,
-    // spinning @-completions). Re-pin it whenever the model block loses it.
-    if (/^model:/m.test(raw) && !/^\s{2}disabled_providers:/m.test(raw)) {
-      raw = raw.replace(/^(model:\n)/m, `$1${modelDisabledProvidersYaml()}`)
-      fixed.push('model.disabled_providers')
-    }
-
-    // Standalone plugins are opt-in: a config.yaml without (or with an
-    // emptied) plugins.enabled list silently disables apex-overlay + the
-    // apexnodes-* tool plugins on the next backend start. Union the managed
-    // names back in — add-only, so user-added plugin entries survive. This
-    // boot-time pass is also the UPGRADE path for installs seeded before the
-    // plugins block existed.
-    const pluginsHeal = ensurePluginsEnabledYaml(raw)
-
-    if (pluginsHeal.changed) {
-      raw = pluginsHeal.next
-      fixed.push(`plugins.enabled(+${pluginsHeal.added.length})`)
-    }
-
-    if (!fixed.length) {
-      return 'clean'
-    }
-
-    // Compare-and-swap against what we read: a file that changed under us makes
-    // `raw` stale, so drop this pass rather than overwrite whatever just
-    // landed. The caller recomputes on the new content.
-    if (fs.readFileSync(configPath, 'utf8') !== readBack) {
-      rememberLog(`[config-guard] config.yaml changed mid-pass; recomputing ${fixed.join(', ')} (${reason})`)
-
-      return 'stale'
-    }
-
-    fs.writeFileSync(configPath, raw, { encoding: 'utf8' })
-    rememberLog(`[config-guard] restored missing block(s): ${fixed.join(', ')} (${reason})`)
-
-    return 'healed'
-  } catch (err: any) {
-    rememberLog(`[config-guard] skipped: ${err && err.message ? err.message : err}`)
-
-    return 'error'
-  }
+  return { managed, endpoints: resolveApexEndpoints(process.env), env: process.env, entitled: relayTiers.of(managed.key) }
 }
+
+// hc-1080 / hc-1078: heal one just-created profile now instead of at the next guard pass.
+registerProfileConfigIpc(ipcMain, { root: HERMES_HOME, homes: managed => apexConfigHomes(managed), context: productBlocksContext,
+  afterHeal: reason => restartEnginesOnStaleRelayKey(reason), log: rememberLog })
 
 // Keep the guard live while the app runs: any writer (dashboard save, the
 // runtime itself) that drops a product block gets healed within seconds. The
@@ -21246,7 +20945,7 @@ function apexAuthPostJson(url, { body, bearer, method = 'POST', timeoutMs = 12_0
 
         if (statusCode >= 400) {
           const err: any = new Error(`${statusCode}: ${text || ''}`)
-          err.statusCode = statusCode
+          err.statusCode = cloudLogin.noteFailure(bearer, statusCode)
           reject(err)
 
           return
@@ -21288,8 +20987,8 @@ function apexAuthPostJson(url, { body, bearer, method = 'POST', timeoutMs = 12_0
 
 // Bearer-authed body-less JSON request (GET / DELETE) — the read/revoke
 // counterpart to apexAuthPostJson (same electronNet transport + explicit
-// timeout + statusCode on the rejection). A >=400 rejects with an Error
-// carrying `.statusCode` so the caller can distinguish 401 (expired JWT →
+// timeout). A >=400 rejects with an Error carrying `.statusCode` (reported to
+// cloudLogin on the way, hc-1073), so the caller can tell 401 (expired JWT →
 // re-login) from a transient failure.
 function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any = {}): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -21344,7 +21043,7 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
 
         if (statusCode >= 400) {
           const err: any = new Error(`${statusCode}: ${text || ''}`)
-          err.statusCode = statusCode
+          err.statusCode = cloudLogin.noteFailure(bearer, statusCode)
           reject(err)
 
           return
@@ -21474,7 +21173,7 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
 
         if (statusCode >= 400) {
           const err: any = new Error(`${statusCode}: ${body.toString('utf8').slice(0, 200)}`)
-          err.statusCode = statusCode
+          err.statusCode = cloudLogin.noteFailure(bearer, statusCode)
           reject(err)
 
           return
@@ -21489,83 +21188,16 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
   })
 }
 
-// Probe the relay's OpenAI-compatible model listing with a Bearer relay key —
-// the SAME `GET {base_url}/v1/models` the runtime's model picker calls to build
-// its live "APEX-NODES.COM" model group. We only need the status code: 401/403
-// means the stored relay key is dead (rotated out) and the picker list has
-// collapsed; that is the self-heal trigger. Returns { ok, statusCode }; on a
-// timeout / network error resolves { ok:false, statusCode:0 } (NOT an auth
-// failure — we must not re-provision on a transient outage). Mirrors
-// apexAuthPostJson's transport (electronNet + explicit timeout), GET + no body.
-//
-// base_url already ends at the relay `/v1` segment (see DEFAULT_RELAY_BASE_URL),
-// so the listing path is `${base_url}/models`.
-function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Promise<any> {
-  return new Promise(resolve => {
-    const base = String(baseUrl || '')
-      .trim()
-      .replace(/\/+$/, '')
+// The relay's model listing, the same `GET {base_url}/v1/models` the runtime's
+// picker calls (apex-relay-tiers.ts): 401/403 = the stored relay key is dead,
+// the self-heal trigger. A listing that names new tiers for this key re-runs the
+// config heal, so single-thread mode drops a tier the plan does not grant (hc-1072).
+async function apexRelayGetModels(baseUrl, key, options = {}) {
+  const probe = await fetchRelayModels(electronNet, baseUrl, key, options)
 
-    const relayKey = String(key || '').trim()
+  if (relayTiers.note(key, probe)) {guardConfigYamlProductBlocks('relay-tiers')}
 
-    if (!base || !relayKey) {
-      resolve({ ok: false, statusCode: 0 })
-
-      return
-    }
-
-    const url = `${base}/models`
-    let parsed
-
-    try {
-      parsed = new URL(url)
-    } catch {
-      resolve({ ok: false, statusCode: 0 })
-
-      return
-    }
-
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      resolve({ ok: false, statusCode: 0 })
-
-      return
-    }
-
-    let settled = false
-
-    const done = result => {
-      if (settled) {
-        return
-      }
-
-      settled = true
-      clearTimeout(timer)
-      resolve(result)
-    }
-
-    const request = electronNet.request({ method: 'GET', url, redirect: 'follow' })
-    request.setHeader('Authorization', `Bearer ${relayKey}`)
-    request.setHeader('Accept', 'application/json')
-
-    const timer = setTimeout(() => {
-      try {
-        request.abort()
-      } catch {
-        // already finished
-      }
-
-      done({ ok: false, statusCode: 0 })
-    }, timeoutMs)
-
-    request.on('response', res => {
-      const statusCode = res.statusCode || 0
-      // Drain so the socket can be reused/closed cleanly; body is irrelevant.
-      res.on('data', () => {})
-      res.on('end', () => done({ ok: statusCode >= 200 && statusCode < 400, statusCode }))
-    })
-    request.on('error', () => done({ ok: false, statusCode: 0 }))
-    request.end()
-  })
+  return probe
 }
 
 // Timestamp (ms) of the last self-heal re-provision ATTEMPT — module-level so the
@@ -21584,6 +21216,7 @@ let lastManagedReprovisionAttemptOwner: string | null = null
 // status: 'unknown' (never probed / not applicable) | 'ok' | 'unauthorized' |
 // 'unreachable'; checkedAt: ms timestamp of the last probe (0 = never).
 let lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }
+const relayTiers = new RelayTierMemo() // hc-1072: the tiers the relay last listed for a key
 
 // Relay-key self-heal: if the stored relay key is dead (relay /v1/models →
 // 401/403), re-provision it in place using the stored login JWT, write the fresh
@@ -21660,7 +21293,7 @@ async function reconcileCurrentManagedRelay(generation: number, scope: ModelMuta
     const owner = managedAccountId(managed.accessToken) || String(generation)
     const attemptAt = lastManagedReprovisionAttemptOwner === owner ? lastManagedReprovisionAttemptAt : 0
 
-    const outcome = await reconcileManagedRelayKey({
+    const outcome = await reconcileRelayKeyAndEngines({
       enabled: true,
       isCurrent,
       storedKey: managed.key,
@@ -21697,13 +21330,13 @@ async function reconcileCurrentManagedRelay(generation: number, scope: ModelMuta
       },
       applyToBackend: reason => reloadBackendForRelayKey(reason),
       log: rememberLog
-    })
+    }, restartEnginesOnStaleRelayKey, () => resolveManagedConfig().runtimePending) // hc-1106: and engines on an older key
 
     if (!isCurrent()) {
       return { ok: false, relayUnauthorized: false, healed: false, needsSignIn: false, probeStatus: 'unknown', generation }
     }
 
-    if (outcome.probeStatus === 'ok' && resolveManagedConfig().runtimePending) {
+    if (outcome.completeRuntime) {
       const target = await desktopModelMutations.resolveTarget(scope)
       completion = await finishManagedModelRuntime(target, isCurrent)
     }
@@ -21778,7 +21411,8 @@ async function finishManagedModelRuntime(target: ResolvedModelTarget, isCurrent:
         account: managed.account, accessToken: managed.accessToken, runtimePending: false, runtimeRecoveryOptOut: false }, true)
       broadcastManagedAccountChanged()
     }
-  })
+  }).then(completed => restartEnginesOnStaleRelayKey('managed-runtime-complete') // hc-1106: before the renderer probes the runtime
+    .catch(() => undefined).then(() => completed))
 }
 
 async function provisionManagedFromAccessToken(accessToken, account = null, isCurrent = managedAuthIntent.capture(),
@@ -21800,6 +21434,7 @@ async function provisionManagedFromAccessToken(accessToken, account = null, isCu
   const deviceBody = provisionDeviceBody(desktopDeviceInstanceId())
   const scope = capturedTarget || captureModelMutationScope()
 
+  await clientConfigSync.settleBeforeSignInFinishes() // hc-1127: the login screen still covers the shell
   // Provision rotates the cloud key. Finish this preflight BEFORE that
   // irreversible request, including every unknown HTTP outcome from a prior
   // Native process. A 404 is compatible only for the first, uncontended login.
@@ -21842,8 +21477,8 @@ async function provisionManagedFromAccessToken(accessToken, account = null, isCu
 
       // Recovery can retain a confirmed transport renewal. Explicit sign-in
       // must replace the old same-account JWT with the newly authenticated one.
-      const currentToken = resolveManagedConfig().accessToken
-      const commitToken = managedProvisionCommitToken(token, currentToken, purpose)
+      const previous = resolveManagedConfig()
+      const commitToken = managedProvisionCommitToken(token, previous.accessToken, purpose)
 
       // Once minted, keep the new credential even if Runtime recovery needs a
       // retry. Keeping the already-revoked old key would strand this login.
@@ -21859,6 +21494,8 @@ async function provisionManagedFromAccessToken(accessToken, account = null, isCu
       modelMutationMetadata.markCredentialRecovery(false)
       unpersistedManagedRotation = false
       onCommitted?.(generation)
+      void revokePreviousAccountKey({ previous, nextAccessToken: token, deviceInstanceId: deviceBody.device_instance_id, log: rememberLog,
+        post: (bearer, body) => apexAuthPostJson(provisionKeyRevokeUrl(endpoints.provisionKeyUrl), { bearer, body }) }) // hc-1114
 
       return generation
     }
@@ -22057,6 +21694,7 @@ async function startMessagingGateway(profile) {
 
     messagingGatewayRuntime.process = child
     messagingGatewayRuntime.profile = profile || null
+    stampKeyHolderProcess(child, resolveManagedConfig().key) // hc-1106: its platform tools read the key from this env
     child.stdout.on('data', rememberLog)
     child.stderr.on('data', rememberLog)
     child.once('exit', (code, signal) => {
@@ -22143,6 +21781,9 @@ async function reconcileMessagingGateway() {
   }
 }
 
+// The engine this package ships, only where it runs: applyResolvedRuntimeUpdate's offline branch, hc-1095's version file.
+const shippedEnginePin = () => (IS_PACKAGED && !IS_DIAGNOSTIC_TRIAL && !process.env.HERMES_DESKTOP_HERMES_ROOT ? bundledEnginePin(process.resourcesPath) : null)
+
 // ── R5/R6: desktop opt-in runtime update ────────────────────────────────────
 // version (R6): the installed engine version, read purely from the local
 // bootstrap marker. No network, no state change — so the About panel can show
@@ -22155,8 +21796,7 @@ registerRuntimeVersionIpc(ipcMain, {
   minEngineVersion: readDeclaredMinEngineVersion,
   updateDeferred: packagedDeferral.isDeferred,
   keptBack: () => packagedEngineKeptBack(ensurePackagedEngine.waitForPending(), () => readPackagedRuntime(process.resourcesPath).release, HERMES_HOME),
-  // Only where applyResolvedRuntimeUpdate takes its offline packaged branch, never the source installer.
-  bundledEnginePin: () => (IS_PACKAGED && !IS_DIAGNOSTIC_TRIAL && !process.env.HERMES_DESKTOP_HERMES_ROOT ? bundledEnginePin(process.resourcesPath) : null),
+  bundledEnginePin: shippedEnginePin,
   applyPin: applyResolvedRuntimeUpdate,
   log: rememberLog
 })
@@ -22260,7 +21900,7 @@ async function applyResolvedRuntimeUpdate(pin) {
         return { ok: true, applied: true, via: 'packaged', reloadRequired: true, latest: { version: pin.version, key: pin.key } }
       }
     } catch (error: any) {
-      return isRuntimeUpdateBusy(error) ? deferredRuntimeApply(pin) : { ok: false, error: error.message || String(error) }
+      return isRuntimeUpdateBusy(error) ? deferredRuntimeApply(pin, error, rememberLog) : { ok: false, error: error.message || String(error) }
     }
   }
 
@@ -22342,7 +21982,7 @@ async function applyResolvedRuntimeUpdate(pin) {
 
   // 3. Don't-brick pre-flight: confirm the new source tarball actually exists
   //    before we retarget. (No URL -> non-CN git path, which verifies itself.)
-  const deferred = await preflightApply(pin, runtimeSwitch.preflight)
+  const deferred = await preflightApply(pin, runtimeSwitch.preflight, rememberLog)
 
   if (deferred) {
     return deferred
@@ -22461,7 +22101,7 @@ function analysisUploadFile(url: string, bearer: string, filename: string, bytes
 
         if ((response.statusCode || 500) >= 400) {
           const error: any = new Error(text.slice(0, 300))
-          error.statusCode = response.statusCode
+          error.statusCode = cloudLogin.noteFailure(bearer, response.statusCode)
           reject(error)
 
           return
@@ -23689,10 +23329,9 @@ ipcMain.handle('hermes:managed:deepLinkSignIn', async (_event, payload) => {
   }
 })
 
-// signOut: revoke this install first, then forget the relay key. A network/JWT
-// failure leaves local state intact so the user can retry; silently clearing
-// while a server key stays active would be a security regression. Env-managed
-// keys are out-of-band and have no stored server session to revoke.
+// signOut: revoke this install first, then forget the relay key. A network/JWT failure leaves local state intact
+// so the user can retry; silently clearing while a server key stays active would be a security regression. Env-managed
+// keys are out-of-band and have no stored server session to revoke. hc-1114: no copy of a revoked key stays behind.
 ipcMain.handle('hermes:managed:signOut', async () => {
   const managed = resolveManagedConfig()
   const envKey = String(process.env.APEXNODES_RELAY_KEY || '').trim()
@@ -23700,7 +23339,7 @@ ipcMain.handle('hermes:managed:signOut', async () => {
   // Explicit logout stops background recovery before awaiting either fence.
   // A failed revoke/removal keeps that intent so self-heal cannot undo it.
   if (managed.accessToken && !envKey) {
-    try {deferManagedRuntimeRecovery()} catch {return { ok: false, message: 'SIGN_OUT_CLEAR_FAILED' }}
+    try {deferManagedRuntimeRecovery()} catch {rememberLog(signOutFailureLine('SIGN_OUT_CLEAR_FAILED')); return { ok: false, message: 'SIGN_OUT_CLEAR_FAILED' }}
   }
 
   const intent = managedAuthIntent.begin()
@@ -23711,8 +23350,9 @@ ipcMain.handle('hermes:managed:signOut', async () => {
   return signOutManagedDevice({
     accessToken: managed.accessToken,
     clearCredential: clearManagedRelayCredential,
+    afterClear: () => cleanUpAfterSignOut({ root: HERMES_HOME, managed, defaultRelayBaseUrl: endpoints.relayBaseUrl, restartHolders: restartEnginesOnStaleRelayKey }),
     deviceInstanceId: desktopDeviceInstanceId(),
-    envKey,
+    envKey, log: rememberLog,
     managedKey: managed.key,
     isCurrent,
     prepare: () => desktopModelMutations.fence(isCurrent),
@@ -23737,6 +23377,8 @@ ipcMain.handle('hermes:managed:signOut', async () => {
 })
 
 ipcMain.handle('hermes:managed:cancelPending', deferManagedRuntimeRecovery)
+// hc-1081: M2 calls this right after it creates an assistant (apex-platform-skills-sync.ts).
+registerProfileSkillsSync(ipcMain, () => ({ ...platformSkillsHomes(), env: process.env, log: msg => rememberLog(msg), manifestHash: readPlatformSkillsState().manifestHash }))
 
 // selfHeal: on-demand relay-key recovery, triggered by the renderer when a chat
 // turn fails with a relay auth error (HTTP 401/403). Runs the SAME gated probe +
@@ -24702,7 +24344,7 @@ app.on('open-url', (event, url) => {
   handleDeepLink(url, 'macos-open-url')
 })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   try {
     rememberLog(`[soul] ${ensureApexDesktopSouls(HERMES_HOME)}`)
   } catch (error) {
@@ -24797,6 +24439,7 @@ app.whenReady().then(() => {
   // its worker waits for the install marker to clear, then reopens every scope
   // captured by the original transaction before removing the journal entry.
   void resumeManagedSshRecoveries()
+  await clientConfigSync.settleBeforeFirstWindow() // hc-1127: the window and the engine read the switches
   createWindow()
 
   // Platform client-config sync: non-blocking boot check (contract: every boot
@@ -24871,55 +24514,26 @@ function configureSpellChecker() {
   }
 }
 
-// Ask before a quit kills a turn in flight. True when the quit was intercepted
-// and the confirmation is on screen; "Quit Anyway" re-enters before-quit with
-// the latch set and falls straight through to the teardown below.
-function heldQuitForActiveWork(event: Electron.Event): boolean {
-  if (SKIP_QUIT_CONFIRM || quitConfirmedWithActiveWork || quitPromptOpen) {
-    return false
-  }
-
-  const prompt = quitPromptFor(mergeActiveWork(activeWorkByWebContents.values()), isQuittingForHandoff)
-  const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
-
-  if (!prompt || !parent || parent.isDestroyed()) {
-    return false
-  }
-
-  event.preventDefault()
-  quitPromptOpen = true
-
-  void dialog
-    .showMessageBox(parent, {
-      buttons: ['Keep Running', 'Quit Anyway'],
-      cancelId: 0,
-      defaultId: 0,
-      detail: prompt.detail,
-      message: prompt.message,
-      type: 'question'
-    })
-    .then(({ response }) => {
-      quitPromptOpen = false
-
-      if (response === 1) {
-        quitConfirmedWithActiveWork = true
-        app.quit()
-      }
-    })
-    .catch(() => {
-      // A dialog we can't show must not become a quit we can't perform.
-      quitPromptOpen = false
-      quitConfirmedWithActiveWork = true
-      app.quit()
-    })
-
-  return true
-}
+// Ask before a quit kills a turn in flight: from the windows' reports, or, on macOS with no window open, from the
+// local engines (hc-1104, apex-quit-confirm.ts). "Quit Anyway" re-enters before-quit and falls through to the teardown.
+const quitConfirm = createQuitConfirm({
+  isMac: IS_MAC,
+  skip: () => SKIP_QUIT_CONFIRM || isQuittingForHandoff,
+  windowWork: () => ({ reporters: activeWorkByWebContents.size, work: mergeActiveWork(activeWorkByWebContents.values()) }),
+  parent: () => BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0],
+  engines: () => localEnginesOf({ connection: backendConnectionState.getPendingPromise() ? null : backendConnectionState.getPromise(),
+    owned: backendConnectionState.getProcess() !== null }, backendPool.values()),
+  probe: engine => fetchJson(`${engine.baseUrl}${ENGINE_IDLE_PATH}`, engine.token, { timeoutMs: ENGINE_PROBE_DEADLINE_MS }),
+  showMessageBox: (parent, options) => (parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options)),
+  focusApp: () => app.focus({ steal: true }),
+  quit: () => app.quit(),
+  log: rememberLog
+})
 
 app.on('before-quit', event => {
   // Runs ahead of every teardown below, so "Keep Running" leaves the app
   // exactly as it was.
-  if (heldQuitForActiveWork(event)) {
+  if (quitConfirm.hold(event)) {
     return
   }
 

@@ -1,12 +1,14 @@
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { $managedReSignIn, closeManagedReSignIn } from '@/store/managed-re-sign-in'
 import * as notifications from '@/store/notifications'
 import { makeOAuthProvider } from '@/test/oauth-provider'
 import type { OAuthProvider } from '@/types/hermes'
 
 import {
   $desktopOnboarding,
+  completeDesktopOnboarding,
   type DesktopOnboardingState,
   type OnboardingContext,
   refreshOnboarding,
@@ -82,8 +84,10 @@ function fallbackTimeoutGateway(): OnboardingContext['requestGateway'] {
 }
 
 describe('refreshOnboarding', () => {
-  it('ignores a late managed-status reply after explicit login takes over', async () => {
-    $desktopOnboarding.set(baseState())
+  // hc-1110: a re-sign-in is the auth gate's first-open screen, held outside this
+  // store, so nothing a late onboarding answer does can close or reword it.
+  it('keeps a re-sign-in asked for while a managed-status reply is still out', async () => {
+    $desktopOnboarding.set(baseState({ managedError: 'fixture stale line' }))
     let release!: (status: unknown) => void
     Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
@@ -92,12 +96,16 @@ describe('refreshOnboarding', () => {
     const pending = refreshOnboarding(onboardingContext(runtimeMismatchGateway()))
     await vi.waitFor(() => expect(release).toBeTypeOf('function'))
     requestManagedReSignIn('fixture newer login')
+    expect($desktopOnboarding.get().managedError).toBeNull()
     release({ enabled: true, signedIn: true })
     await expect(pending).resolves.toBe(false)
-    expect($desktopOnboarding.get()).toMatchObject({ configured: false, requested: true, managedAvailable: true, managedError: 'fixture newer login' })
+    expect($managedReSignIn.get()).toEqual({ notice: 'fixture newer login' })
+    expect($desktopOnboarding.get().managedAvailable).not.toBe(true)
+    completeDesktopOnboarding()
+    closeManagedReSignIn()
   })
 
-  it('does not let a late ready runtime dismiss a newer explicit managed login request', async () => {
+  it('does not let a late ready runtime dismiss a newer re-sign-in', async () => {
     $desktopOnboarding.set(baseState({ configured: true }))
     let resolveRuntime!: (value: never) => void
     const onCompleted = vi.fn()
@@ -111,9 +119,10 @@ describe('refreshOnboarding', () => {
 
     requestManagedReSignIn('fixture re-login')
     resolveRuntime({ ok: true } as never)
-    await expect(pending).resolves.toBe(false)
-    expect($desktopOnboarding.get()).toMatchObject({ configured: false, requested: true, managedAvailable: true, managedError: 'fixture re-login' })
-    expect(onCompleted).not.toHaveBeenCalled()
+    await pending
+    expect($desktopOnboarding.get().configured).toBe(true)
+    expect($managedReSignIn.get()).toEqual({ notice: 'fixture re-login' })
+    closeManagedReSignIn()
   })
 
   it('keeps onboarding work in its initiating lifetime and profile', async () => {

@@ -154,7 +154,12 @@ describe('它记得什么 settings (hc-1016)', () => {
   it.each(['zh', 'zh-hant', 'en', 'ja', 'ar'] as const)('has every key in %s', locale => {
     const copy = MEMORY_LEDGER_COPY[locale]
 
-    for (const value of [copy.settings.title, copy.settings.deleteNote, copy.noted.undo, copy.noted.line('x')]) {
+    for (const value of [
+      copy.settings.title,
+      copy.settings.deleteNote,
+      copy.noted.undo,
+      copy.noted.line('x', 'APEX')
+    ]) {
       expect(value.trim()).not.toBe('')
     }
 

@@ -4,6 +4,7 @@ import type { TranslucencyState } from '@hermes/shared/translucency'
 import type { DesktopBootstrapEvent, DesktopBootstrapState } from '../electron/bootstrap-types'
 import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
+import type { DesktopPlanUsageResult } from '../shared/apex-plan-usage'
 
 import type { AnalysisDocumentsBridge } from './app/business-workspace/analysis-types'
 import type { WakeIndicatorState } from './lib/wake-indicator'
@@ -13,7 +14,7 @@ import type {
   PetOverlayOpenRequest,
   PetOverlayStatePayload
 } from './store/pet-overlay'
-import type { QuickEntryStatePush, QuickEntryStatus, QuickEntrySubmitPayload } from './store/quick-entry'
+import type { QuickEntryDesktopApi } from './store/quick-entry'
 
 export type {
   DesktopBootstrapEvent,
@@ -180,34 +181,8 @@ declare global {
         onCursor: (callback: (point: { x: number; y: number } | null) => void) => () => void
         onGameOverlay: (callback: (state: { active: boolean; app: string }) => void) => () => void
       }
-      // Quick Entry: a global-hotkey mini composer window. Main owns the OS
-      // shortcut registration + the persisted preference (it must restore the
-      // shortcut on a cold launch without the renderer visiting Settings), so
-      // the renderer reads/writes it here and adopts the authoritative reply.
-      quickEntry: {
-        getSettings: () => Promise<QuickEntryStatus>
-        // Returns the resulting state — including `registered: false` +
-        // `error: 'taken'` when another app already owns the chord, so a failed
-        // registration surfaces in Settings instead of failing silently.
-        setSettings: (patch: { enabled?: boolean; shortcut?: string }) => Promise<QuickEntryStatus>
-        // Quick window → main: send this payload (main forwards it to the
-        // primary renderer, which routes it to the target session and submits
-        // through the normal prompt path) and hide.
-        submit: (payload: QuickEntrySubmitPayload) => void
-        // Quick window → main: hide without sending (Escape / blur).
-        dismiss: () => void
-        // Primary renderer → main → quick window: gateway connection state +
-        // the recent-session options. Main caches the latest push and replays
-        // it to a quick window spawned later.
-        pushState: (payload: QuickEntryStatePush) => void
-        // Quick window subscribes to those pushes.
-        onState: (callback: (payload: QuickEntryStatePush) => void) => () => void
-        // Primary renderer subscribes to submits captured by the quick window.
-        onSubmit: (callback: (payload: QuickEntrySubmitPayload | string) => void) => () => void
-        // Quick window subscribes to "you were just summoned" so it can reset
-        // its draft and re-focus the input on every open.
-        onShown: (callback: () => void) => () => void
-      }
+      // Quick Entry: a global-hotkey mini composer window (see store/quick-entry).
+      quickEntry: QuickEntryDesktopApi
       getBootProgress: () => Promise<DesktopBootProgress>
       getConnectionConfig: (profile?: null | string) => Promise<DesktopConnectionConfig>
       saveConnectionConfig: (payload: DesktopConnectionConfigInput) => Promise<DesktopConnectionConfig>
@@ -283,6 +258,15 @@ declare global {
         // cloud with the stored login JWT. Optional: an older main process may
         // not expose it (the account menu then shows no team line).
         team?: () => Promise<DesktopTeamResult>
+        // hc-1061: the plan and how much of its allowance is used, for the
+        // single-thread sidebar's account row. Optional: an older main process
+        // may not expose it (the row then shows the email).
+        planUsage?: () => Promise<DesktopPlanUsageResult>
+        // hc-1073: whether the cloud answered 401 to the stored login JWT, so
+        // platform skills and plugins stopped updating; onCloudLogin hears each
+        // change. Optional: an older main process may expose neither (no card).
+        cloudLogin?: () => Promise<DesktopCloudLoginState>
+        onCloudLogin?: (callback: (state: DesktopCloudLoginState) => void) => () => void
         // hc-991 first-use creator intake: the account's three answers, read or
         // written with the stored login JWT. Optional: an older main process may
         // not expose it (the Start page then shows no cards).
@@ -464,13 +448,12 @@ declare global {
         get: () => Promise<DesktopAgentProxyState>
         set: (payload: { mode: DesktopAgentProxyMode; customUrl?: string }) => Promise<DesktopAgentProxyState>
       }
-      // Platform client-config sync — the cloud serves a versioned client
-      // config the main process caches at boot / after sign-in and applies to
-      // config.yaml pre-gateway (main.cjs applyClientConfigToRuntime). `get`
-      // reads the cached state from disk (no network), informational only.
-      // Optional: an older main process may not expose the bridge yet.
+      // Platform client-config sync — cached by main at boot / after sign-in and
+      // applied to config.yaml pre-gateway (applyClientConfigToRuntime). `get` reads
+      // the cached state from disk (no network). Optional for an older main process.
       clientConfig?: {
         get: () => Promise<DesktopClientConfigState>
+        onArrived?: (callback: (state: DesktopClientConfigState) => void) => () => void
       }
       // Continuous auth gate: fires when a backend call returns 401 (login lost)
       // or 403 account_disabled (account abnormal). The renderer clears auth and
@@ -504,7 +487,10 @@ declare global {
       shellUpdate?: {
         getState: () => Promise<DesktopShellUpdateState>
         check: () => Promise<{ ok: boolean; error?: string; state: DesktopShellUpdateState }>
-        install: () => Promise<{ ok: boolean; error?: string; deferred?: boolean }>
+        install: () => Promise<{ ok: boolean; error?: string; deferred?: boolean; state?: DesktopShellUpdateState }>
+        endLeftovers?: (
+          holders: { pid: number; created: number }[]
+        ) => Promise<{ ok: boolean; error?: string; ended?: Record<string, string> }>
         onEvent: (callback: (state: DesktopShellUpdateState) => void) => () => void
       }
       updateCenter?: {
@@ -1730,6 +1716,15 @@ export interface DesktopTeamSummary {
   status: 'active' | 'pending'
 }
 
+// hc-1061 / hc-1062 (apex-nodes account_plan_usage router): electron/apex-plan-usage.ts.
+export type { DesktopPlanUsage, DesktopPlanUsageResult, DesktopWeeklyQuota } from '../shared/apex-plan-usage'
+
+/** hc-1073: main's view of the stored login JWT (electron/apex-cloud-login.ts). */
+export interface DesktopCloudLoginState {
+  rejected: boolean
+  since: null | number
+}
+
 export interface DesktopTeamResult {
   message?: 'FETCH_FAILED' | 'NOT_SIGNED_IN' | 'SESSION_EXPIRED'
   needsSignIn?: boolean
@@ -2483,7 +2478,7 @@ export interface DesktopRuntimeVersion {
 }
 
 export interface DesktopEngineKeptBack {
-  reason: 'newer-or-unknown' | 'upgrade-failed'
+  reason: 'busy' | 'newer-or-unknown' | 'upgrade-failed'
   /** The engine this app ships (calver+fork label). */
   bundledVersion: string
 }
@@ -2516,6 +2511,9 @@ export interface DesktopRuntimeUpdateExpectedTarget {
 
 export interface DesktopRuntimeUpdateApply {
   deferred?: boolean
+  // hc-1094: for a deferred apply, what it waits for and, for `engine_holders`, who holds the engine.
+  reason?: DesktopShellUpdateDeferralReason
+  holders?: DesktopEngineHolder[] | null
   ok: boolean
   applied?: boolean
   alreadyCurrent?: boolean
@@ -2554,9 +2552,24 @@ export type DesktopShellUpdateDeferralReason =
   | 'gateway_busy'
   | 'previous_worker'
 
+/**
+ * hc-1094: one process holding the engine (electron/engine-holders.ts). Only `endable` holders
+ * (APEX's own leftover gateway, engine or background command and what belongs to them) may be ended.
+ */
+export type DesktopEngineHolderKind = 'apex_running' | 'leftover_child' | 'leftover_engine' | 'leftover_gateway' | 'other' | 'terminal_hermes'
+
+export interface DesktopEngineHolder {
+  pid: number
+  kind: DesktopEngineHolderKind
+  name: string | null
+  created: number | null
+  endable: boolean
+}
+
 export interface DesktopShellUpdateState {
   deferred?: boolean
   deferredReason?: DesktopShellUpdateDeferralReason | null
+  deferredHolders?: DesktopEngineHolder[] | null
   phase: DesktopShellUpdatePhase
   // electron-updater 的裸 semver(如 0.16.1);idle/checking 阶段为 null。
   version: string | null

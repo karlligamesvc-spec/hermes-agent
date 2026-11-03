@@ -1,0 +1,38 @@
+{
+  "春季上新": {
+    "state": null,
+    "to": "/workflow-runs/run-running"
+  },
+  "门店活动": {
+    "state": null,
+    "to": "/workflow-runs/run-queued"
+  },
+  "品牌周报": {
+    "state": null,
+    "to": "/projects/project-review"
+  },
+  "竞品监控": {
+    "state": null,
+    "to": "/projects/project-failed"
+  },
+  "本周报告": {
+    "state": null,
+    "to": "/deliverables/deliverable-new"
+  },
+  "查看会话历史": {
+    "state": null,
+    "to": "/history"
+  },
+  "查看交付物": {
+    "state": null,
+    "to": "/deliverables"
+  },
+  "查看项目 0": {
+    "state": null,
+    "to": "/projects"
+  },
+  "查看项目 1": {
+    "state": null,
+    "to": "/projects"
+  }
+}

@@ -190,6 +190,16 @@ def print_fast_version_info(*, check_updates: bool = True) -> None:
     Every lazy block degrades gracefully — a broken/heavy import can never take the basic version
     output down.
     """
+    # hc-1103: in APEX Desktop's single-thread mode the version is APEX's (apex_overlay/apex_identity.py).
+    try:
+        from apex_overlay.apex_identity import desktop_version_reply
+
+        apex_reply = desktop_version_reply()
+    except ImportError:  # a tree without the APEX overlay: the engine's own text
+        apex_reply = None
+    if apex_reply:
+        print(apex_reply)
+        return
     # Registry-owned banner label (includes "· upstream <sha>" for git installs); banner.py keeps
     # rich/prompt_toolkit lazy, so this import is light.
     try:

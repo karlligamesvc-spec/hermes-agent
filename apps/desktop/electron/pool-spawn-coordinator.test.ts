@@ -503,6 +503,123 @@ test('promoting a queued background waiter lets it take the reserved foreground 
   assert.equal(coordinator.activeCount, 0)
 })
 
+// hc-1093: a foreground waiter the free slots cannot take asks the owner to make room.
+test('onForegroundWait runs once for a foreground waiter that has to queue, never for a granted or background one', async () => {
+  const waits: string[] = []
+  const coordinator = new LocalBackendSpawnCoordinator(2, { onForegroundWait: key => waits.push(key) })
+  const granted = await coordinator.request('granted', { priority: 'foreground' }).acquired
+  const background = coordinator.request('hydration', { priority: 'background' })
+  await flush()
+  assert.deepEqual(waits, [], 'the background request took a slot; nothing waited')
+
+  const queuedBackground = coordinator.request('queued-hydration', { priority: 'background' })
+  const queuedForeground = coordinator.request('click', { priority: 'foreground' })
+  await flush()
+
+  assert.equal(queuedBackground.queued, true)
+  assert.equal(queuedForeground.queued, true)
+  assert.deepEqual(waits, ['click'])
+
+  granted()
+  ;(await queuedForeground.acquired)()
+  ;(await background.acquired)()
+  ;(await queuedBackground.acquired)()
+  assert.deepEqual(waits, ['click'])
+})
+
+test('onForegroundWait runs when a queued background waiter is promoted and still cannot get a slot', async () => {
+  const waits: string[] = []
+  const coordinator = new LocalBackendSpawnCoordinator(3, { onForegroundWait: key => waits.push(key) })
+
+  const releases = await Promise.all([
+    coordinator.request('a', { priority: 'background' }).acquired,
+    coordinator.request('b', { priority: 'background' }).acquired,
+    coordinator.request('c', { priority: 'foreground' }).acquired
+  ])
+
+  const queued = coordinator.request('fourth', { priority: 'background' })
+  await flush()
+  assert.deepEqual(waits, [])
+
+  assert.equal(queued.promote('foreground'), true)
+  assert.equal(queued.promote('foreground'), false, 'already foreground: no second call')
+  await flush()
+  assert.deepEqual(waits, ['fourth'])
+
+  releases[0]()
+  ;(await queued.acquired)()
+  releases.slice(1).forEach(release => release())
+})
+
+test('a promotion that is granted on the spot asks nobody', async () => {
+  const waits: string[] = []
+  const coordinator = new LocalBackendSpawnCoordinator(3, { onForegroundWait: key => waits.push(key) })
+  const bg1 = await coordinator.request('bg-1', { priority: 'background' }).acquired
+  const bg2 = await coordinator.request('bg-2', { priority: 'background' }).acquired
+  const queued = coordinator.request('third', { priority: 'background' })
+
+  assert.equal(queued.promote('foreground'), true)
+  const release = await queued.acquired
+  await flush()
+
+  assert.deepEqual(waits, [])
+  release()
+  bg1()
+  bg2()
+})
+
+test('a rejected onForegroundWait fails that wait at once with the same error', async () => {
+  const refusal = new Error('APEX_POOL_ALL_BUSY {"busy":["a"],"limit":1}')
+  const coordinator = new LocalBackendSpawnCoordinator(1, { onForegroundWait: () => Promise.reject(refusal) })
+  const holder = await coordinator.acquire('a')
+  const queued = coordinator.request('b', { priority: 'foreground', timeoutMs: 30_000 })
+
+  await assert.rejects(queued.acquired, error => error === refusal)
+  assert.equal(coordinator.queuedCount, 0)
+  assert.equal(coordinator.activeCount, 1, 'the holder keeps its slot')
+  holder()
+})
+
+test('a hook that throws never throws out of request() or promote(): the wait fails instead', async () => {
+  const refusal = new Error('APEX_POOL_ALL_BUSY {"busy":["a"],"limit":1}')
+
+  const coordinator = new LocalBackendSpawnCoordinator(1, {
+    onForegroundWait: () => {
+      throw refusal
+    }
+  })
+
+  const holder = await coordinator.acquire('a')
+  const asked = coordinator.request('b', { priority: 'foreground' })
+  const promoted = coordinator.request('c', { priority: 'background' })
+
+  assert.equal(promoted.promote('foreground'), true)
+  await assert.rejects(asked.acquired, error => error === refusal)
+  await assert.rejects(promoted.acquired, error => error === refusal)
+  holder()
+})
+
+test('a refusal that comes after the waiter got its slot changes nothing', async () => {
+  let refuse!: (error: Error) => void
+
+  const coordinator = new LocalBackendSpawnCoordinator(1, {
+    onForegroundWait: () => new Promise((_resolve, reject) => (refuse = reject))
+  })
+
+  const holder = await coordinator.acquire('a')
+  const queued = coordinator.request('b', { priority: 'foreground' })
+  await flush()
+
+  holder()
+  const release = await queued.acquired
+  refuse(new Error('too late'))
+  await flush()
+
+  assert.equal(coordinator.activeCount, 1)
+  release()
+  assert.equal(coordinator.activeCount, 0)
+})
+
 // ── main.ts wiring ──────────────────────────────────────────────────────────
 // The coordinator is only as good as the timeout main.ts hands it. A queued
 // ticket that outlives the renderer's backend-boot budget holds the pool key
@@ -538,7 +655,7 @@ test('promoting a queued background waiter lets it take the reserved foreground 
     // Pool sizing is a live device preference (#92581); the hard cap must
     // follow it, otherwise raising the max in Settings would leave spawns
     // queued behind the launch-time value.
-    assert.match(mainSource, /new LocalBackendSpawnCoordinator\(poolLimits\.maxBackends\)/)
+    assert.match(mainSource, /new LocalBackendSpawnCoordinator\(poolLimits\.maxBackends[,)]/)
     assert.match(mainSource, /localBackendSpawnCoordinator\.setLimit\(poolLimits\.maxBackends\)/)
   })
 }

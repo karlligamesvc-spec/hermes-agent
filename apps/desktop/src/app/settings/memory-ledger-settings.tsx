@@ -42,8 +42,8 @@ function outcomeMessage(s: Settings, outcome: MemoryWriteOutcome): null | string
  * hc-1016 「它记得什么」: the account's memory ledger (关于你 / 最近发生的), shared
  * by the assistant on this computer and in IM. Every entry can be edited,
  * deleted (for real) and added. Renders nothing outside single-thread product
- * mode (`$singleThreadMode`), so with the switch off, or in 开发者模式, the
- * Personalization page is what it was.
+ * mode (`$singleThreadMode`). hc-1109: it is product mode's Settings › 记忆
+ * (product-settings-pages.tsx), no longer part of 个性化.
  */
 export function MemoryLedgerSettings() {
   const { locale } = useI18n()
@@ -64,7 +64,7 @@ export function MemoryLedgerSettings() {
   }
 
   return (
-    <div className="mt-6" data-memory-ledger-settings="">
+    <div data-memory-ledger-settings="">
       <SectionHeading icon={Brain} title={s.title} />
       <p className="p5-section-intro">{s.intro}</p>
       <p className="p5-section-intro">{s.deleteNote}</p>

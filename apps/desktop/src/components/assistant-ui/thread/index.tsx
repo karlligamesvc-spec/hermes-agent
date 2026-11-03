@@ -1,18 +1,20 @@
+import '@/app/single-thread/single-thread-chat.css'
+
 import { createContext, memo, useCallback, useContext, useMemo, useRef, useState } from 'react'
 
+import { UserMessage } from '@/app/single-thread/handoff/thread-slots'
 import { SingleThreadEmptyState } from '@/app/single-thread/thread-empty'
 import { AssistantMessage } from '@/components/assistant-ui/thread/assistant-message'
 import { ThreadMessageList } from '@/components/assistant-ui/thread/list'
 import { BackgroundResumeNotice, CenteredThreadSpinner } from '@/components/assistant-ui/thread/status'
 import { SystemMessage } from '@/components/assistant-ui/thread/system-message'
+import { useThreadCopy } from '@/components/assistant-ui/thread/thread-copy'
 import { ThreadTimeline } from '@/components/assistant-ui/thread/timeline'
 import { type RestoreMessageTarget } from '@/components/assistant-ui/thread/types'
 import { UserEditComposer } from '@/components/assistant-ui/thread/user-edit-composer'
-import { UserMessage } from '@/components/assistant-ui/thread/user-message'
 import { Intro, type IntroProps } from '@/components/chat/intro'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { HermesGateway } from '@/hermes'
-import { useI18n } from '@/i18n'
 import { notifyError } from '@/store/notifications'
 import { useSingleThreadMode } from '@/store/single-thread'
 
@@ -68,8 +70,8 @@ export const Thread = memo(function Thread({
   sessionId = null,
   sessionKey
 }: ThreadProps) {
-  const { t } = useI18n()
-  const copy = t.assistant.thread
+  // hc-1101: the start-over confirm reads 「从这条重新开始？」 in single-thread mode.
+  const copy = useThreadCopy()
   // hc-1014: one thread, so no "branch into a new chat", and an empty thread
   // greets in the conversation instead of showing the Start page.
   const singleThread = useSingleThreadMode()
@@ -194,9 +196,14 @@ export const Thread = memo(function Thread({
   // always correct.
   const loadingIndicator = useMemo(() => <BackgroundResumeNotice />, [])
 
+  // hc-1059: prototype v2's bubbles and centred column (single-thread-chat.css) key off this
+  // attribute, so developer mode and the switch off never carry it.
   return (
     <ThreadEditContext.Provider value={editContext}>
-      <div className="relative grid h-full min-h-0 max-w-full grid-rows-[minmax(0,1fr)] overflow-hidden bg-transparent contain-[layout_paint]">
+      <div
+        className="relative grid h-full min-h-0 max-w-full grid-rows-[minmax(0,1fr)] overflow-hidden bg-transparent contain-[layout_paint]"
+        data-single-thread-chat={singleThread ? '' : undefined}
+      >
         <ThreadMessageList
           clampToComposer={clampToComposer}
           components={messageComponents}

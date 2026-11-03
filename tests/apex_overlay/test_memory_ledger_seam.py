@@ -138,6 +138,9 @@ class _FakeGateway:
         self.reply = reply or {}
         self.error = error
 
+    def agent_api_key(self):
+        return "agent-key"
+
     def request_json(self, method, path, payload=None, **kwargs):
         self.calls.append((method, path, payload))
         if self.error is not None:
@@ -152,7 +155,10 @@ def gateway(monkeypatch, root):
 
     def install(**kwargs):
         fake = _FakeGateway(**kwargs)
+        fake.refreshes = []
         monkeypatch.setattr(memory_ledger, "_gateway", lambda: fake)
+        # hc-1097 re-reads the ledger in the background after a change; test_memory_ledger_live_seam covers it.
+        monkeypatch.setattr(memory_ledger, "refresh_mirror_soon", lambda: fake.refreshes.append(True))
         holder["fake"] = fake
         return fake
 
@@ -165,6 +171,7 @@ def test_add_posts_to_the_agent_key_route_and_returns_the_entry(gateway):
     fake = gateway(reply={"entry": entry, "created": True})
     result = json.loads(memory_ledger.handle({"action": "add", "kind": "about_you", "content": " 不露脸 "}))
     assert fake.calls == [("POST", "/api/v1/media/memory-ledger/entries", {"kind": "about_you", "content": "不露脸"})]
+    assert fake.refreshes == [True]
     assert result == {"ok": True, "action": "add", "created": True,
                       "entry": {"id": entry["id"], "ref": "3f2a9c1d", "kind": "about_you", "content": "不露脸"}}
 
@@ -173,6 +180,7 @@ def test_forget_deletes_by_ref(gateway):
     fake = gateway(reply={"deleted": "3f2a9c1d-0000-4000-8000-000000000001"})
     result = json.loads(memory_ledger.handle({"action": "forget", "ref": "3f2a9c1d"}))
     assert fake.calls == [("DELETE", "/api/v1/media/memory-ledger/entries/3f2a9c1d", None)]
+    assert fake.refreshes == [True]
     assert result == {"ok": True, "action": "forget", "deleted": "3f2a9c1d-0000-4000-8000-000000000001"}
 
 
@@ -189,7 +197,7 @@ def test_forget_deletes_by_ref(gateway):
 def test_bad_calls_never_reach_the_cloud(gateway, args):
     fake = gateway()
     result = json.loads(memory_ledger.handle(args))
-    assert "error" in result and fake.calls == []
+    assert "error" in result and fake.calls == [] and fake.refreshes == []
 
 
 @pytest.mark.parametrize("code", sorted(memory_ledger.REFUSALS))

@@ -12,6 +12,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuTrigger
@@ -20,6 +21,7 @@ import { type Translations, useI18n } from '@/i18n'
 import { hostPathLabel, hudForcesNativeLinks, normalizeExternalUrl, openExternalLink } from '@/lib/external-link'
 import { formatCombo } from '@/lib/keybinds/combo'
 import { isRemoteGateway } from '@/lib/media'
+import { menuCaptionFor } from '@/lib/message-menu-time'
 import { reachablePreviewUrl } from '@/lib/preview-reach'
 import { openCommandPalette } from '@/store/command-palette'
 import { openPreview } from '@/store/preview'
@@ -655,7 +657,7 @@ export function AppContextMenu() {
       }
 
       event.stopPropagation()
-      openDomContextMenu(event.clientX, event.clientY, target)
+      openDomContextMenu(event.clientX, event.clientY, target, menuCaptionFor(element))
     }
 
     window.addEventListener('contextmenu', onContextMenu, true)
@@ -699,6 +701,10 @@ export function AppContextMenu() {
         portalContainer={open.kind === 'dom' ? open.target.dialogPortalContainer : undefined}
         side="bottom"
       >
+        {open.kind === 'dom' && open.caption && (
+          // When the message was sent (hc-1101): read-only, above everything.
+          <DropdownMenuLabel className="font-normal tabular-nums">{open.caption}</DropdownMenuLabel>
+        )}
         {sections.map((section, index) => (
           // Sections are positional by construction, so the index IS the key.
           <div className="contents" key={index}>

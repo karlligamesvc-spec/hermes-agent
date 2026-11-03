@@ -14,6 +14,7 @@ import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import { AccountSurfaceHeader } from '../overlays/account-surface-header'
 import { OverlayView } from '../overlays/overlay-view'
 import { EmptyState } from '../settings/primitives'
+import { useProfilePlan } from '../single-thread/account-identity'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 个人资料 — the profile stats page (Claude Code Desktop profile layout).
@@ -22,7 +23,8 @@ import { EmptyState } from '../settings/primitives'
 //   • Header (avatar / name / @handle / plan): the managed-account store
 //     ($authState — email/name/plan from the desktop managed bridge). When not
 //     signed in (or on a managed-disabled/BYOK build with no account) it shows
-//     the 未登录 placeholder and hides handle + plan.
+//     the 未登录 placeholder and hides handle + plan. Product mode names the plan
+//     the way the account menu does (useProfilePlan), never by its code.
 //   • Stat cards, heatmap, insights, top plugins: GET /api/analytics/usage
 //     (getUsageAnalytics), served by the local backend off the profile's
 //     sessions DB (per-day token sums, per-model sums, skill-usage counters).
@@ -97,6 +99,7 @@ export function ProfileStatsView({ onClose, onOpenSettings }: ProfileStatsViewPr
   const { locale, t } = useI18n()
   const p = t.profileStats
   const { account, status } = useStore($authState)
+  const profilePlan = useProfilePlan()
 
   const [usage, setUsage] = useState<AnalyticsResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -127,7 +130,7 @@ export function ProfileStatsView({ onClose, onOpenSettings }: ProfileStatsViewPr
   const email = account.email.trim()
   const name = signedIn ? account.name.trim() || email.split('@')[0] || email : p.signedOut
   const handle = signedIn && email ? email.split('@')[0] : ''
-  const plan = signedIn ? account.plan.trim() : ''
+  const plan = signedIn ? profilePlan : ''
 
   return (
     <OverlayView

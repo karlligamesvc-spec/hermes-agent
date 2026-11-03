@@ -19,6 +19,7 @@ import { $clarifyRequests, setClarifyRequest } from '@/store/clarify'
 import { clearAllPrompts, setApprovalRequest } from '@/store/prompts'
 import { $activeSessionId, $gatewayState } from '@/store/session'
 import { $singleThreadFlag } from '@/store/single-thread'
+import { $threadActivity } from '@/store/thread-signals'
 import { clearDismissedToolRows } from '@/store/tool-dismiss'
 import { $toolDisclosureStates, setToolViewMode } from '@/store/tool-view'
 import {
@@ -226,12 +227,14 @@ describe('a finished task: only the question and the answer', () => {
       '下载了 1 个视频，1 分 43 秒，12.6 万赞',
       '识别语音',
       '来源：抖音公开链接里的这条作品。只读公开数据，没有登录你的账号。',
-      '用到的方法：视频脚本拆解、事实核验',
       '收起过程'
     ]) {
       expect(text).toContain(expected)
     }
 
+    // N10 (hc-1063): the methods line names the skills, which this mode keeps out of sight.
+    expect(text).not.toContain('用到的方法')
+    expect(text).not.toContain('视频脚本拆解')
     expectNoMechanism(text)
     expect(text).not.toMatch(/想了|想过了/)
 
@@ -252,7 +255,7 @@ describe('a finished task: only the question and the answer', () => {
 })
 
 describe('while a task runs: one activity line at the foot', () => {
-  it('names the step in progress next to APEX’s mark, and nothing else', async () => {
+  it('names the step in progress next to APEX looking down at the work, and nothing else', async () => {
     const { container } = renderZh(remixRunningTurn())
 
     const line = await waitFor(() => {
@@ -267,7 +270,7 @@ describe('while a task runs: one activity line at the foot', () => {
 
     expect(status.getAttribute('aria-label')).toBe('APEX 在做的事')
     expect(onScreen(status)).toBe('正在识别语音… 第 2 步')
-    expect(status.querySelector('img')).not.toBeNull()
+    expect(status.querySelector('[data-apex-avatar]')?.getAttribute('data-apex-avatar')).toBe('working')
     expect(container.querySelectorAll('[data-single-thread-activity]')).toHaveLength(1)
     // It is the thread's tail: after everything the turn has said so far.
     const tail = [...container.querySelectorAll('[data-slot="aui_assistant-message-content"]')].at(-1)!
@@ -292,7 +295,9 @@ describe('while a task runs: one activity line at the foot', () => {
       expect(bar?.closest('[hidden]')).toBeNull()
     })
 
-    expect(onScreen(activity(container)!.querySelector('[role="status"]')!)).toBe('等你决定')
+    // hc-1107: an approval is a yes/no — 「等你确认」, the face looking up at the user.
+    expect(onScreen(activity(container)!.querySelector('[role="status"]')!)).toBe('等你确认')
+    expect(activity(container)!.querySelector('[data-apex-avatar]')?.getAttribute('data-apex-avatar')).toBe('waiting')
   })
 
   it('says 「等你决定」 while a question card waits on the user', async () => {
@@ -309,6 +314,16 @@ describe('while a task runs: one activity line at the foot', () => {
     await waitFor(() => expect(activity(container)).not.toBeNull())
 
     expect(onScreen(activity(container)!.querySelector('[role="status"]')!)).toBe('等你决定')
+    // Waiting on the user, APEX looks up at them instead of down at the work (hc-1107's `waiting` face).
+    expect(activity(container)!.querySelector('[data-apex-avatar]')?.getAttribute('data-apex-avatar')).toBe('waiting')
+  })
+
+  it('tells the sidebar what it says, and stops when it goes away (hc-1061)', async () => {
+    const view = renderZh(remixRunningTurn())
+
+    await waitFor(() => expect($threadActivity.get()).toEqual({ text: '正在识别语音…', waiting: false }))
+    view.unmount()
+    expect($threadActivity.get()).toBeNull()
   })
 })
 

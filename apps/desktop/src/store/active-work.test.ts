@@ -26,18 +26,19 @@ beforeEach(() => {
 })
 
 describe('active work bridge', () => {
-  it('reports a busy session by title', () => {
+  // hc-1100: the stored ids also feed the main process's ledger of turns a quit cuts off.
+  it('reports a busy session by title and id', () => {
     $sessions.set([session('s1', 'Fix login'), session('s2', 'Idle chat')])
     publishSessionState('runtime-1', busy('s1', true))
 
-    expect(setActiveWork).toHaveBeenLastCalledWith({ count: 1, titles: ['Fix login'] })
+    expect(setActiveWork).toHaveBeenLastCalledWith({ count: 1, ids: ['s1'], titles: ['Fix login'] })
   })
 
   it('counts an untitled busy session without inventing a title', () => {
     $sessions.set([session('s1', null)])
     publishSessionState('runtime-1', busy('s1', true))
 
-    expect(setActiveWork).toHaveBeenLastCalledWith({ count: 1, titles: [] })
+    expect(setActiveWork).toHaveBeenLastCalledWith({ count: 1, ids: ['s1'], titles: [] })
   })
 
   it('drops back to nothing when the turn ends', () => {
@@ -45,7 +46,7 @@ describe('active work bridge', () => {
     publishSessionState('runtime-1', busy('s1', true))
     publishSessionState('runtime-1', busy('s1', false))
 
-    expect(setActiveWork).toHaveBeenLastCalledWith({ count: 0, titles: [] })
+    expect(setActiveWork).toHaveBeenLastCalledWith({ count: 0, ids: [], titles: [] })
   })
 
   it('does not re-send an unchanged summary', () => {

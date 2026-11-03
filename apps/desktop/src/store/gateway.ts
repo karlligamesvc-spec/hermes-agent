@@ -1725,17 +1725,17 @@ export function reconnectSecondaryGateways({ forceOpenSockets = false }: { force
   }
 }
 
-// How many non-primary backends currently hold an open socket. Hover-intent
-// prewarming consults this before spawning: a speculative spawn that pushes
-// the pool past its cap causes the Electron main to LRU-evict a warm backend
-// — often one the user is about to click — turning the prewarm into churn
-// (the #91545 evict/respawn cascade). The active gateway's backend is
-// primary-routed and never counts toward the pool cap.
-export function openSecondaryCount(): number {
+// How many non-primary backends hold an open socket; with `profile`, only that
+// profile's local pool socket (hc-1086 relay: is its engine up?). Hover-intent
+// prewarming consults this before spawning: a speculative spawn past the pool cap
+// makes Electron main LRU-evict a warm backend — often one the user is about to
+// click — turning the prewarm into churn (the #91545 evict/respawn cascade). The
+// active gateway's backend is primary-routed and never counts toward the pool cap.
+export function openSecondaryCount(profile?: string): number {
   let count = 0
 
   for (const entry of g.secondaries.values()) {
-    if (isOpen(entry.gateway)) {
+    if (isOpen(entry.gateway) && (profile === undefined || entry.scope === normKey(profile))) {
       count += 1
     }
   }

@@ -43,14 +43,32 @@ _SEAM_MODULES = (
     "user_profile_prompt",
     # hc-1016 the account's memory ledger: prompt section + apex_memory tool.
     "memory_ledger",
+    # hc-1097 a ledger change reaches every open session on its next turn.
+    "memory_ledger_live",
     # hc-1015 how APEX talks in single-thread mode.
     "single_thread_prompt",
+    # hc-1082 each assistant's own name and the apex_rename tool (several assistants on).
+    "assistant_name",
+    # hc-1088 relay between assistants: hand-over turn, 交回摘要 and the roster (relay on).
+    "handoff",
+    # hc-1071 ask first, next-step buttons and an offer after a finished piece (single-thread mode).
+    "proactive_prompt",
     # hc-1036 evidence levels and delivery honesty in every Desktop session.
     "honesty_prompt",
+    # hc-1131 product mode's chat delivers files as cards, not local paths in the reply.
+    "result_delivery_prompt",
     # hc-1032 relay stream byte deadline, keepalive and call id.
     "relay_stream_liveness",
     # hc-1034 one simple command per read-only check; stop and explain after a refusal.
     "approval_rules_prompt",
+    # hc-1095 the APEX version and update state, from Desktop's mirror (single-thread mode).
+    "desktop_version",
+    # hc-1065 native vision for the relay's Flash tier; direct, reasoning-free answers.
+    "vision_answer",
+    # hc-1103 APEX identity, cloud help line and /version on APEX surfaces.
+    "apex_identity",
+    # hc-1116 upstream wording (first-contact /help, Hermes in notices) on APEX surfaces.
+    "upstream_copy",
 )
 
 

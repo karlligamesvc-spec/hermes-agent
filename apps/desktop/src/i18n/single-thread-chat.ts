@@ -24,6 +24,8 @@ export interface SingleThreadChatCopy {
   newSegment: string
   /** Between days: `month` 1–12, `weekday` 0 = Sunday; `year` only when it is not this year. */
   day: (parts: { day: number; month: number; weekday: number; year: null | number }) => string
+  /** The centred time under a divider (`hhmm` is 24-hour `14:20`); `day` only above the thread's first turn. */
+  turnTime: (parts: { day: 'today' | 'yesterday' | null; hhmm: string }) => string
   earlierTitle: string
   earlierDescription: string
   earlierEmpty: string
@@ -56,6 +58,7 @@ const en: SingleThreadChatCopy = {
   newSegment: 'New',
   day: ({ day, month, weekday, year }) =>
     `${EN_WEEKDAYS[weekday] ?? ''}, ${EN_MONTHS[month - 1] ?? ''} ${day}${year === null ? '' : `, ${year}`}`,
+  turnTime: ({ day, hhmm }) => `${day === 'today' ? 'Today ' : day === 'yesterday' ? 'Yesterday ' : ''}${hhmm}`,
   earlierTitle: 'Earlier conversations',
   earlierDescription: 'Conversations from before the single chat. You can read them; new messages go to the main chat.',
   earlierEmpty: 'No earlier conversations.',
@@ -77,6 +80,7 @@ const zh: SingleThreadChatCopy = {
   newSegment: '新的一段',
   day: ({ day, month, weekday, year }) =>
     `${year === null ? '' : `${year} 年 `}${month} 月 ${day} 日 周${ZH_WEEKDAYS[weekday] ?? ''}`,
+  turnTime: ({ day, hhmm }) => `${day === 'today' ? '今天 ' : day === 'yesterday' ? '昨天 ' : ''}${hhmm}`,
   earlierTitle: '更早的对话',
   earlierDescription: '开始用一条对话之前的聊天记录，这里只能看；新消息都发到主对话里。',
   earlierEmpty: '没有更早的对话。',
@@ -98,6 +102,7 @@ const zhHant: SingleThreadChatCopy = {
   newSegment: '新的一段',
   day: ({ day, month, weekday, year }) =>
     `${year === null ? '' : `${year} 年 `}${month} 月 ${day} 日 週${ZH_WEEKDAYS[weekday] ?? ''}`,
+  turnTime: ({ day, hhmm }) => `${day === 'today' ? '今天 ' : day === 'yesterday' ? '昨天 ' : ''}${hhmm}`,
   earlierTitle: '更早的對話',
   earlierDescription: '開始用一條對話之前的聊天記錄，這裡只能看；新訊息都發到主對話裡。',
   earlierEmpty: '沒有更早的對話。',

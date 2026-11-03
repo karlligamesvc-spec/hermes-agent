@@ -9,6 +9,7 @@ import { useStore } from '@nanostores/react'
 import { type ComponentProps, type FC, type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { requestComposerSubmit } from '@/app/chat/composer/focus'
+import { HandoffPlanSlot } from '@/app/single-thread/handoff/plan-card'
 import { ClarifyTool } from '@/components/assistant-ui/clarify-tool'
 import { ConnectorExecution, ConnectorTool } from '@/components/assistant-ui/connector-tool'
 import { MarkdownText, MarkdownTextContent } from '@/components/assistant-ui/markdown-text'
@@ -174,6 +175,7 @@ const TimelineMarkdownText: FC<TimelineTextPartProps> = ({ completedAt, timestam
     <TimelineTimestamp className="mb-0.5 block" completedAt={completedAt} timestamp={timestamp} />
     <MarkdownText />
     <NextStepButtons />
+    <HandoffPlanSlot />
   </>
 )
 

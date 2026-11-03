@@ -13,6 +13,9 @@
  */
 
 import { applyHypihubApexSwitch, HYPIHUB_APEX_ACTIVE_ENV } from './apex-hypihub'
+import { applyMultiBotSwitch } from './apex-multi-bot'
+import { applyMultiBotHandoffSwitch, MULTI_BOT_HANDOFF_ACTIVE_ENV } from './apex-multi-bot-handoff'
+import { isMultiBotActive, MULTI_BOT_ACTIVE_ENV } from './apex-profile-homes'
 import { MANAGED_PROVIDER_NAME } from './apex-relay-key-anchors'
 import { applySingleThreadSwitch, isSingleThreadActive, SINGLE_THREAD_ACTIVE_ENV } from './apex-single-thread'
 
@@ -158,8 +161,9 @@ export function applyModelTierSwitches(
 }
 
 /** Every launch-time `desktop_features` switch main settles into the env: the
- *  tier switches above, hc-1015 single-thread (apex-single-thread.ts) and
- *  APEX-hosted Hypit generation (apex-hypihub.ts). */
+ *  tier switches above, hc-1015 single-thread (apex-single-thread.ts),
+ *  APEX-hosted Hypit generation (apex-hypihub.ts), hc-1077 several
+ *  assistants (apex-multi-bot.ts) and hc-1086 relay (apex-multi-bot-handoff.ts). */
 export function applyDesktopFeatureSwitches(
   env: Record<string, string | undefined>,
   clientConfigPayload: unknown,
@@ -168,33 +172,61 @@ export function applyDesktopFeatureSwitches(
   const set = applyModelTierSwitches(env, clientConfigPayload, log)
   const singleThread = applySingleThreadSwitch(env, clientConfigPayload, log) ? [SINGLE_THREAD_ACTIVE_ENV] : []
   const hosted = applyHypihubApexSwitch(env, clientConfigPayload, log) ? [HYPIHUB_APEX_ACTIVE_ENV] : []
+  const multiBot = applyMultiBotSwitch(env, clientConfigPayload, log) ? [MULTI_BOT_ACTIVE_ENV] : []
+  const handoff = applyMultiBotHandoffSwitch(env, clientConfigPayload, log) ? [MULTI_BOT_HANDOFF_ACTIVE_ENV] : []
 
-  return [...set, ...singleThread, ...hosted]
+  return [...set, ...singleThread, ...hosted, ...multiBot, ...handoff]
 }
 
 function trimTrailingSlash(value: string): string {
   return String(value || '').replace(/\/+$/, '')
 }
 
+/** The strongest tier at or below `alias` that the account's plan grants
+ *  (`entitled`: the relay's listing, apex-relay-tiers.ts), Flash when none is.
+ *  An unknown listing (null, or one naming no tier) keeps `alias`. */
+function cappedTierAlias(alias: string, entitled: null | readonly string[]): string {
+  const granted = new Set((entitled ?? []).map(model => model.toLowerCase()))
+
+  if (!MODEL_TIER_ALIASES.some(tier => granted.has(tier))) {
+    return alias
+  }
+
+  const fits = MODEL_TIER_ALIASES.slice(0, MODEL_TIER_ALIASES.indexOf(alias) + 1).filter(tier => granted.has(tier))
+
+  return fits.at(-1) ?? TIER_DEFAULT_MANAGED_MODEL
+}
+
 /**
- * Boot migration: with tiers on, an assistant still on a pre-tier managed id
- * (the `-APEX` seed, or a model picked from the old APEX shelf) moves to the
- * Flash alias, so the tier the UI shows is the tier the relay routes. Only the
- * top-level `model:` block is touched, and only when it points at the managed
- * relay (named custom provider, or bare `custom` on the relay base_url). The
- * user's own provider or endpoint is never rewritten.
+ * The managed main model a config heal settles on.
  *
- * `pinDefault` (hc-1015 single-thread mode, where no tier is shown): a Pro or
- * Max pick moves to the default alias too — the shell sends the default and
- * the platform decides the rest.
+ * Tier mode (hc-960): a pre-tier id (the `-APEX` seed, or a model picked from
+ * the old APEX shelf) moves to the Flash alias, so the tier the UI shows is the
+ * tier the relay routes; a tier alias stays as it is.
+ *
+ * Single-thread mode (hc-1072): a tier the user picked stays, unless the plan
+ * does not grant it (per `entitled`) — then it drops to the strongest one the
+ * plan does. A pre-tier id was never a tier pick, Pro-sounding or not (the
+ * 06-27..10-08 seed `deepseek-v4-pro-APEX` was the install default): it moves
+ * to Flash, as in tier mode.
  */
-export function migrateManagedModelToTierYaml(raw: string, relayBaseUrl: string, pinDefault = false) {
-  const unchanged = { changed: false, from: '', next: raw }
+export function settledManagedModel(current: string, singleThread: boolean, entitled: null | readonly string[] = null) {
+  if (!isModelTierAlias(current)) {
+    return TIER_DEFAULT_MANAGED_MODEL
+  }
+
+  return singleThread ? cappedTierAlias(current.toLowerCase(), entitled) : current
+}
+
+// The top-level `model:` block's `default:` when that block points at the
+// managed relay (named custom provider, or bare `custom` on the relay
+// base_url); null for the user's own provider or endpoint.
+function relayModelDefault(raw: string, relayBaseUrl: string) {
   const lines = raw.split('\n')
   const start = lines.findIndex(line => /^model:\s*$/.test(line))
 
   if (start < 0) {
-    return unchanged
+    return null
   }
 
   let end = start + 1
@@ -223,29 +255,97 @@ export function migrateManagedModelToTierYaml(raw: string, relayBaseUrl: string,
     provider === MANAGED_PROVIDER_SLUG ||
     (provider === MANAGED_PROVIDER && Boolean(relayBaseUrl) && baseUrl === trimTrailingSlash(relayBaseUrl))
 
-  const settled = pinDefault ? current?.value === TIER_DEFAULT_MANAGED_MODEL : isModelTierAlias(current?.value ?? '')
+  return onRelay && current && current.value ? { current, lines } : null
+}
 
-  if (!onRelay || !current || !current.value || settled) {
+/**
+ * Boot/watch migration of the managed main model (settledManagedModel). Only
+ * the top-level `model:` block is touched, and only when it points at the
+ * managed relay (named custom provider, or bare `custom` on the relay
+ * base_url). The user's own provider or endpoint is never rewritten.
+ * `follow` (hc-1080): a tier alias every managed profile other than the root
+ * takes instead — the one the root settled on.
+ */
+export function migrateManagedModelToTierYaml(
+  raw: string,
+  relayBaseUrl: string,
+  singleThread = false,
+  entitled: null | readonly string[] = null,
+  follow: null | string = null
+) {
+  const unchanged = { changed: false, from: '', next: raw, to: '' }
+  const model = relayModelDefault(raw, relayBaseUrl)
+
+  if (!model) {
+    return unchanged
+  }
+
+  const { current, lines } = model
+
+  const to = isModelTierAlias(follow)
+    ? String(follow).toLowerCase()
+    : settledManagedModel(current.value, singleThread, entitled)
+
+  if (to.toLowerCase() === current.value.toLowerCase()) {
     return unchanged
   }
 
   const next = [...lines]
-  next[current.index] = `  default: ${TIER_DEFAULT_MANAGED_MODEL}`
+  next[current.index] = `  default: ${to}`
 
-  return { changed: true, from: current.value, next: next.join('\n') }
+  return { changed: true, from: current.value, next: next.join('\n'), to }
+}
+
+/**
+ * hc-1080: the main-process switch under which the named profiles follow the
+ * root's tier: the several-assistants switch (apex-profile-homes.ts
+ * MULTI_BOT_ACTIVE_ENV). Unset — the default, and developer mode — leaves
+ * every profile settling on its own, unchanged.
+ */
+export const TIER_FOLLOW_ENV = MULTI_BOT_ACTIVE_ENV
+
+export function isTierFollowOn(env: Record<string, string | undefined> = {}): boolean {
+  return isMultiBotActive(env)
+}
+
+/**
+ * hc-1080: the account's tier as the root config.yaml holds it — the managed
+ * main model when it is a tier alias, tier following is on (isTierFollowOn)
+ * and the tier heal is on (tiers or single-thread mode, with a managed
+ * credential). Null otherwise: then each profile settles on its own, by the
+ * same rule.
+ */
+export function accountTierOfRoot(
+  rootRaw: string,
+  managed: { baseUrl?: string; key?: string },
+  relayBaseUrl: string,
+  env: Record<string, string | undefined>
+): null | string {
+  if (!isTierFollowOn(env) || !managed.key || (!isModelTiersEnabled(env) && !isSingleThreadActive(env))) {
+    return null
+  }
+
+  const value = relayModelDefault(rootRaw, managed.baseUrl || relayBaseUrl)?.current.value ?? ''
+
+  return isModelTierAlias(value) ? value.toLowerCase() : null
 }
 
 /**
  * The config heal's tier step (main.ts healConfigYamlProductBlocks): returns
  * the possibly-migrated source and records what moved in `fixed`. A no-op while
  * tiers and single-thread mode are both off, or without a managed credential.
+ * `entitled`: the tiers the relay last listed for this credential's key
+ * (apex-relay-tiers.ts RelayTierMemo), read only in single-thread mode.
+ * `follow`: the root's tier for a named profile (accountTierOfRoot), or null.
  */
 export function healManagedModelTier(
   raw: string,
   managed: { baseUrl?: string; key?: string },
   relayBaseUrl: string,
   env: Record<string, string | undefined>,
-  fixed: string[]
+  fixed: string[],
+  entitled: null | readonly string[] = null,
+  follow: null | string = null
 ): string {
   const singleThread = isSingleThreadActive(env)
 
@@ -253,10 +353,11 @@ export function healManagedModelTier(
     return raw
   }
 
-  const heal = migrateManagedModelToTierYaml(raw, managed.baseUrl || relayBaseUrl, singleThread)
+  const heal = migrateManagedModelToTierYaml(raw, managed.baseUrl || relayBaseUrl, singleThread, entitled, follow)
 
   if (heal.changed) {
-    fixed.push(`model(${singleThread ? 'single-thread' : 'tier'}:${heal.from}→flash)`)
+    const mode = isModelTierAlias(follow) ? 'account' : singleThread ? 'single-thread' : 'tier'
+    fixed.push(`model(${mode}:${heal.from}→${heal.to.replace(/^apex-/, '')})`)
   }
 
   return heal.next

@@ -1,0 +1,6 @@
+[System note: This is the user's very first message ever. If this message is itself a real request or task, DO THE TASK FIRST -- call whatever tools it needs -- and only then, in the closing sentences of that same reply, do what this note asks. Never let this note replace or skip work the user actually asked for. What this note asks: after a one-sentence introduction (mention /help shows commands), OFFER — do not assume — to build a short profile of them so you can be more useful, and explain they can decline or do it later. If and ONLY IF they accept:
+  1. Ask for whatever they're comfortable sharing (name, what they do, how they like you to work). Volunteered facts come first.
+  2. Before ANY external lookup, say what you intend to look up and get explicit consent for that step. Never read their connected accounts (email, calendar, etc.) silently — ask each time.
+  3. With consent, you may use web_search to confirm public details (e.g. employer, public profiles) from the data points they gave.
+  4. Save each confirmed, durable fact with the memory tool using target="user" — keep entries compact and high-signal.
+If they decline at any point, stop immediately and continue normally. Keep the whole exchange light and conversational, not an interrogation.]

@@ -25,6 +25,8 @@ export interface EngineKeptBackCopy {
 const en: EngineKeptBackCopy = {
   title: 'The AI engine was not updated',
   detail: {
+    busy: bundled =>
+      `The engine that ships with APEX (${bundled}) isn't in place yet because the current one is still in use. APEX switches by itself once it is free. To see what is using it, click "Use the built-in engine". Your chats and settings stay.`,
     'newer-or-unknown': bundled =>
       `APEX ships with ${bundled}, but it can't confirm the engine on this computer is older, so it kept that one in case you installed it yourself. If you didn't change the engine yourself, click "Use the built-in engine" to switch to ${bundled}. Your chats and settings stay.`,
     'upgrade-failed': bundled =>
@@ -38,6 +40,8 @@ const en: EngineKeptBackCopy = {
 const zh: EngineKeptBackCopy = {
   title: 'AI 引擎没有跟着更新',
   detail: {
+    busy: bundled =>
+      `APEX 自带的${bundled}还没换上，因为现在的引擎还被占用着，占用结束后会自动换。想知道是什么在占用，点「换成自带引擎」，对话和设置都会保留。`,
     'newer-or-unknown': bundled =>
       `APEX 自带的是${bundled}，但没法确认这台电脑上现在的引擎比它旧，为了不换掉你自己装的引擎，先保留了原来的。如果你没有自己换过引擎，点「换成自带引擎」就能用上${bundled}，对话和设置都会保留。`,
     'upgrade-failed': bundled =>
@@ -51,6 +55,8 @@ const zh: EngineKeptBackCopy = {
 const zhHant: EngineKeptBackCopy = {
   title: 'AI 引擎沒有跟著更新',
   detail: {
+    busy: bundled =>
+      `APEX 自帶的${bundled}還沒換上，因為現在的引擎還被佔用著，佔用結束後會自動換。想知道是什麼在佔用，點「換成自帶引擎」，對話和設定都會保留。`,
     'newer-or-unknown': bundled =>
       `APEX 自帶的是${bundled}，但沒法確認這台電腦上現在的引擎比它舊，為了不換掉你自己裝的引擎，先保留了原來的。如果你沒有自己換過引擎，點「換成自帶引擎」就能用上${bundled}，對話和設定都會保留。`,
     'upgrade-failed': bundled =>

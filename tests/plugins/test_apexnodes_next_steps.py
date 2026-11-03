@@ -62,6 +62,7 @@ def plugin(monkeypatch, tmp_path, caplog):
 
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "home"))
     monkeypatch.delenv("NEXT_STEPS_DISABLE", raising=False)
+    monkeypatch.delenv("APEX_SINGLE_THREAD_ACTIVE", raising=False)
     manager = PluginManager()
     monkeypatch.setattr(plugins_mod, "_plugin_manager", manager)
     module = _load_plugin()
@@ -81,10 +82,10 @@ def _agent(platform: str, session_id: str = "s1"):
     )
 
 
-def _transform(platform: str, session_id: str = "s1"):
+def _transform(platform: str, session_id: str = "s1", reply: str = REPLY):
     from agent.turn_finalizer import apply_llm_output_transform
 
-    final, transformed, _ = apply_llm_output_transform(_agent(platform, session_id), REPLY, turn_id="t1", platform=platform)
+    final, transformed, _ = apply_llm_output_transform(_agent(platform, session_id), reply, turn_id="t1", platform=platform)
     return final, transformed
 
 
@@ -126,6 +127,32 @@ def test_im_on_the_desktop_gateway_gets_numbered_text_and_the_number_maps_back(p
     assert context.startswith("【下一步】用户回复「２」，就是选了你上一条回复末尾编号里的第 2 项「写成脚本」")
     assert "等于用户说了这句话：\n把第 1 个选题写成 60 秒口播脚本\n" in context
     assert _pre_llm_context(platform, "2") == ""
+
+
+# hc-1089: a 「交给」 option hands the next step to another of this person's assistants on this
+# computer. The Desktop chat keeps it for the renderer; IM on the Desktop's own gateway has no
+# relay (K7: WeChat talks to APEX only), so the numbers skip it and a block of only that is dropped.
+HANDOFF_REPLY = (
+    "成片好了。\n\n<!-- apex:next\n"
+    "@剪辑助手 | 做成竖屏成片 | 把这条做成 30 秒竖屏成片\n"
+    "再剪一版 | 再剪一版更快的\n"
+    "-->"
+)
+
+
+def test_desktop_chat_keeps_a_handoff_option_for_the_renderer(plugin):
+    assert _transform("desktop", reply=HANDOFF_REPLY) == (HANDOFF_REPLY, False)
+
+
+@pytest.mark.parametrize("platform", ("weixin", "feishu", "wecom", "dingtalk", "qqbot"))
+def test_im_on_the_desktop_gateway_never_numbers_a_handoff_option(plugin, platform):
+    numbered = "成片好了。\n\n接下来可以：\n1. 再剪一版\n回复数字就行。"
+    assert _transform(platform, reply=HANDOFF_REPLY) == (numbered, True)
+    assert "第 1 项「再剪一版」" in _pre_llm_context(platform, "1")
+
+    only = "成片好了。\n\n<!-- apex:next\n@剪辑助手 | 做成竖屏成片 | 把这条做成 30 秒竖屏成片\n-->"
+    assert _transform(platform, session_id="s2", reply=only) == ("成片好了。", True)
+    assert _pre_llm_context(platform, "1", session_id="s2") == ""
 
 
 def test_api_server_only_loses_the_block(plugin):
@@ -170,6 +197,48 @@ def test_paid_clips_the_reply_never_showed_are_listed_before_the_block(plugin):
     listed = [line for line in final.splitlines() if line.startswith("- 视频：")]
     assert listed == [f"- 视频：/Users/u/.apexnodes/media/ai{n}.mp4" for n in range(1, 5)]
     assert final.index("ai4.mp4") < final.index("<!-- apex:next")
+
+
+# What the single-thread Desktop chat gets for two unshown clips (hc-1066); the renderer
+# test apps/desktop/src/lib/chat-messages/unshown-media-cards.test.ts reads the same text.
+CARDS_NOTE = (
+    "这一轮还生成了下面这些素材(都已计费)，上面没给你看：\n\n"
+    "MEDIA:/Users/u/.apexnodes/cache/media/竖屏口播_cf68f9ae.mp4\n\n"
+    "MEDIA:/Users/u/.apexnodes/cache/media/科技空镜 b-roll_9de0fb22.mp4"
+)
+
+
+def test_single_thread_desktop_gets_media_cards_not_cache_paths(plugin, monkeypatch):
+    """hc-1066: the 2026-10-26 reply ended in two raw ~/.apexnodes/cache/media paths. With the
+    single-thread switch the main process sets before the engine starts, each unshown clip is its
+    own MEDIA: paragraph, which the Desktop renderer draws as a playable card."""
+    from agent.inline_tool_executors import emit_terminal_post_tool_call
+    from agent.turn_finalizer import apply_llm_output_transform
+
+    monkeypatch.setenv("APEX_SINGLE_THREAD_ACTIVE", "1")
+    agent = _agent("desktop", "cards")
+    for name in ("竖屏口播_cf68f9ae.mp4", "科技空镜 b-roll_9de0fb22.mp4"):
+        path = f"/Users/u/.apexnodes/cache/media/{name}"
+        result = json.dumps({"video_url": "", "video_path": path, "media_tag": f"MEDIA:{path}"})
+        emit_terminal_post_tool_call(
+            agent, function_name="generate_video", function_args={"prompt": "p"}, result=result,
+            effective_task_id="task", tool_call_id=name, middleware_trace=[], status="ok", duration_ms=1,
+        )
+    reply = "做完了。\n\nMEDIA:/Users/u/Downloads/成片_43s.mp4\n\n<!-- apex:next\n再剪一版 | 用没用上的素材再剪一版\n-->"
+
+    final, transformed = apply_llm_output_transform(agent, reply, turn_id="t1", platform="desktop")[:2]
+
+    assert transformed is True
+    assert f"\n\n{CARDS_NOTE}\n\n<!-- apex:next" in final
+    assert "- 视频" not in final
+
+
+@pytest.mark.parametrize(("platform", "switch"), (("desktop", "0"), ("desktop", "true"), ("cli", "1"), ("weixin", "1")))
+def test_media_cards_need_the_desktop_chat_and_the_main_process_switch(plugin, monkeypatch, platform, switch):
+    monkeypatch.setenv("APEX_SINGLE_THREAD_ACTIVE", switch)
+
+    assert plugin.media_cards(platform) is False
+    assert plugin.media_cards("desktop") is (switch == "1")
 
 
 def test_desktop_config_example_enables_the_plugin():

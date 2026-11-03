@@ -52,7 +52,7 @@ const DOUYIN = {
 test('platformSkillsUrl: always advertises caps, adds known_hash when held, trims slash + encodes', () => {
   // caps=next-steps: this build renders the 「下一步」 block, so the server includes the skill
   // section that asks for it (an older build without it never gets that section).
-  const caps = '?caps=next-steps'
+  const caps = '?caps=next-steps,next-steps-handoff'
   assert.equal(platformSkillsUrl('https://api.apex-nodes.com'), `https://api.apex-nodes.com${PLATFORM_SKILLS_PATH}${caps}`)
   assert.equal(platformSkillsUrl('https://api.apex-nodes.com/'), `https://api.apex-nodes.com${PLATFORM_SKILLS_PATH}${caps}`)
   assert.equal(
@@ -307,7 +307,7 @@ test('fetchPlatformSkills: success → parsed, forwards bearer + known_hash', as
 
   assert.equal(parsed.manifestHash, 'm1')
   assert.equal(seen.options.bearer, 'jwt-123')
-  assert.match(seen.url, /\?caps=next-steps&known_hash=prev$/)
+  assert.match(seen.url, /\?caps=next-steps,next-steps-handoff&known_hash=prev$/)
 })
 
 test('fetchPlatformSkills: fetch throws (e.g. 401) → null, fail-soft', async () => {

@@ -1,5 +1,5 @@
 name: apexnodes-next-steps
-version: "0.2.0"
+version: "0.3.0"
 description: >-
   「下一步」块(协议 apex-next/1,docs/NEXT-STEPS-BLOCK-PROTOCOL.md)的文字层。
   创作者技能在结果末尾写 <!-- apex:next ... --> 块(最多 3 项「按钮字 | 那句话」,
@@ -12,6 +12,8 @@ description: >-
   NEXT_STEPS_DISABLE=1 只删块,不出编号、不注入。
   hc-1036:post_tool_call 记下本轮 generate_video / generate_image 花钱生成的文件，回复里没给
   用户看的,transform_llm_output 时列在正文后面、「下一步」之前(HONESTY_GUARDS_DISABLE=1 关)。
+  hc-1089:块里「@助手名字 | 按钮字 | 要它做什么」一行是「交给」项(多助手接力),桌面端画成
+  「交给 X」按钮;IM 和终端不接力，编号里去掉这一项，只剩它时只删块。
 hooks:
   - transform_llm_output
   - pre_llm_call

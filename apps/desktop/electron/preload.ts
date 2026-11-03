@@ -183,6 +183,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     submit: payload => ipcRenderer.send('hermes:quick-entry:submit', payload),
     dismiss: () => ipcRenderer.send('hermes:quick-entry:dismiss'),
     pushState: payload => ipcRenderer.send('hermes:quick-entry:state', payload),
+    // hc-1113: the primary renderer says what became of a submitted line.
+    receipt: receipt => ipcRenderer.send('hermes:quick-entry:receipt', receipt),
     onState: callback => {
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('hermes:quick-entry:state', listener)
@@ -196,7 +198,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
       return () => ipcRenderer.removeListener('hermes:quick-entry:submit', listener)
     },
     onShown: callback => {
-      const listener = () => callback()
+      const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('hermes:quick-entry:shown', listener)
 
       return () => ipcRenderer.removeListener('hermes:quick-entry:shown', listener)
@@ -253,11 +255,26 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     remember: name => ipcRenderer.invoke('hermes:profile:remember', name),
     set: name => ipcRenderer.invoke('hermes:profile:set', name)
   },
+  // hc-1081: after a new assistant's config is on the relay, copy the root's platform skills
+  // into that profile (apex-platform-skills-sync.ts); resolves { ok, filled }.
+  syncApexProfileSkills: profile => ipcRenderer.invoke('hermes:apex:syncProfileSkills', profile),
+  // hc-1131: main mirrors developer mode to a marker the engine reads (apex-developer-mode.ts).
+  syncDeveloperMode: on => ipcRenderer.invoke('hermes:apex:developerMode', on),
   // ApexNodes managed-LLM (zero-key) default path. See electron/apex-managed.cjs.
   managed: {
     status: () => ipcRenderer.invoke('hermes:managed:status'),
     // hc-971: the light team the signed-in account belongs to (apex-team.ts).
     team: () => ipcRenderer.invoke('hermes:managed:team'),
+    // hc-1061: the plan and its usage for the single-thread account row (apex-plan-usage.ts).
+    planUsage: () => ipcRenderer.invoke('hermes:managed:planUsage'),
+    // hc-1073: did the cloud reject the stored login JWT? (apex-cloud-login.ts)
+    cloudLogin: () => ipcRenderer.invoke('hermes:managed:cloudLogin'),
+    onCloudLogin: callback => {
+      const listener = (_event, state) => callback(state)
+      ipcRenderer.on('hermes:managed:cloud-login', listener)
+
+      return () => ipcRenderer.removeListener('hermes:managed:cloud-login', listener)
+    },
     // hc-991 first-use creator intake: read or write the account's three answers
     // (apex-creator-profile.ts); main keeps the local agent's prompt copy in step.
     creatorProfile: request => ipcRenderer.invoke('hermes:managed:creatorProfile', request),
@@ -284,6 +301,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     selfHeal: payload => ipcRenderer.invoke('hermes:managed:selfHeal', payload),
     cancelPending: () => ipcRenderer.invoke('hermes:managed:cancelPending')
   },
+  // hc-1080: heal a just-created profile's config.yaml now (relay key, APEX blocks, tier)
+  // instead of at the next guard pass (apex-profile-config-ipc.ts); resolves { ok, profile, reason?, fixed }.
+  healApexProfileConfig: profile => ipcRenderer.invoke('hermes:apex:healProfileConfig', profile),
   workflowDomain: {
     access: () => ipcRenderer.invoke('hermes:workflowDomain:access'),
     localVideoReadiness: () => ipcRenderer.invoke('hermes:workflowDomain:localVideoReadiness'),
@@ -414,7 +434,15 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // config (no network). Application happens in the MAIN process pre-gateway
   // (main.cjs applyClientConfigToRuntime); the renderer no longer applies.
   clientConfig: {
-    get: () => ipcRenderer.invoke('hermes:clientConfig:get')
+    get: () => ipcRenderer.invoke('hermes:clientConfig:get'),
+    // hc-1127: a launch that started with nothing cached, when its first config
+    // lands after the window opened. Never fires on an install with a cache.
+    onArrived: callback => {
+      const listener = (_event, state) => callback(state)
+      ipcRenderer.on('hermes:clientConfig:arrived', listener)
+
+      return () => ipcRenderer.removeListener('hermes:clientConfig:arrived', listener)
+    }
   },
   // Continuous auth gate: main broadcasts when a backend call returns 401
   // (login lost) or 403 account_disabled (account abnormal). The renderer
@@ -457,6 +485,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     getState: () => ipcRenderer.invoke('hermes:shell-update:get'),
     check: () => ipcRenderer.invoke('hermes:shell-update:check'),
     install: () => ipcRenderer.invoke('hermes:shell-update:install'),
+    // hc-1094: end the APEX leftovers (PID + start time) the user confirmed from a deferral.
+    endLeftovers: holders => ipcRenderer.invoke('hermes:shell-update:end-leftovers', holders),
     onEvent: callback => {
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('hermes:shell-update:event', listener)
@@ -515,6 +545,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   watchDirectory: dir => ipcRenderer.invoke('hermes:watchDirectory', dir),
   stopPreviewFileWatch: id => ipcRenderer.invoke('hermes:stopPreviewFileWatch', id),
   setActiveWork: payload => ipcRenderer.send('hermes:active-work', payload),
+  interruptedTurns: () => ipcRenderer.invoke('hermes:interrupted-turns'),
+  settleInterruptedTurns: ids => ipcRenderer.send('hermes:interrupted-turns:settle', ids),
+  closeWindow: () => ipcRenderer.send('hermes:close-window'),
   setTitleBarTheme: payload => ipcRenderer.send('hermes:titlebar-theme', payload),
   setNativeTheme: mode => ipcRenderer.send('hermes:native-theme', mode),
   setTranslucency: payload => ipcRenderer.send('hermes:translucency', payload),

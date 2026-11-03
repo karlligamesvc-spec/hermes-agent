@@ -260,11 +260,14 @@ nativeTest('a live engine holder defers a real native bundle transaction; releas
       catch (error) { reportBusy(); throw error }
     }
     options.beforeSwitch = check
+    const waiting: string[] = []
+
     const retry = createDeferredRuntimeUpdate({
       preflight: check,
       install: async () => (await installPackagedRuntime(options, true)).status === 'installed',
       activated: reportInstalled,
-      log: message => reportFailure(new Error(message)),
+      // hc-1094: a busy retry logs what it waits for, once per change; any other line means it stopped.
+      log: message => { if (message.startsWith('[bundled-engine] deferred upgrade still waiting')) {waiting.push(message)} else {reportFailure(new Error(message))} },
       retryMs: 25
     })
     let timeout: ReturnType<typeof setTimeout> | undefined
@@ -281,6 +284,8 @@ nativeTest('a live engine holder defers a real native bundle transaction; releas
       assert.equal(layout.readPointer(home).key, commit.slice(0, 12))
       assert.equal(fs.readFileSync(path.join(active, '.hermes-source-commit'), 'utf8').trim(), commit)
       assert.equal(fs.readFileSync(path.join(home, 'hermes-agent.legacy', 'old-engine.txt'), 'utf8'), 'old runtime is usable')
+      assert.equal(waiting.length, 1, 'the same holder is logged once, not on every retry')
+      assert.match(waiting[0]!, new RegExp(`^\\[bundled-engine\\] deferred upgrade still waiting: engine_holders: .*\\[${child.pid} node \\(.+\\) apex_running\\]$`))
     } finally {
       clearTimeout(timeout)
       retry.dispose()

@@ -1,0 +1,605 @@
+{
+  "_about": "hc-1088 (多助手二期 R3) with hc-1086 (R1): a job one assistant hands to another inside the user's own Desktop, and what comes back. Desktop composes the hand-over message (request) and submits it as a user message in the receiving assistant's 「APEX 主线」 (platform desktop); the engine (apex_overlay/handoff.py) knows that turn by the header on the message's first line, asks for a 交回摘要 block at the end of the reply (handback), and carries the block, or without one the start of the reply, into the sender's next turn once, through its return box (return_box). Desktop does not paste the summary into the sender's next message. Read by Desktop's tests (hc-1088 apps/desktop/src/app/single-thread/handoff-division-roster.test.ts for division and roster; hc-1086's for request and handback) and by tests/apex_overlay/test_handoff_cases.py; change it only together with both sides.",
+  "protocol": "apex-handoff/1",
+  "request": {
+    "_about": "The hand-over message. Parts, joined by one blank line: (1) the header line `<!-- apex:handoff v=1 id=<id> from=<profile> -->` and the line 【<from_name> 交来的活】; (2) 要你做： and the user's sentence; (3) only with a non-empty result: <from_name> 上一条结果： (or <from_name> 上一条结果（前 2,000 字，后面没带）： when cut) and the result's first 2,000 code points; (4) only with files or links: 里面的文件和链接： and one `- <item>` per line, files first, at most 20, blank items dropped; (5) 来源：<from_name> 的对话. Texts are cleaned first: line endings unified to \\n, leading blank lines and trailing whitespace dropped; the result has every apex:next and apex:handback block taken out before that (next-steps' visible text, then the handback reader's). The ask and the result are quoted line by line: `> line` with the line's trailing spaces dropped, `>` for a blank line. from_name is one line (runs of whitespace become one space, trimmed). id: 1-64 of [A-Za-z0-9_-]; from: the sender's profile id (default for APEX). Nothing about the user and no earlier conversation goes in: the memory ledger is shared and each assistant's 分工 is in its own SOUL.",
+    "result_max_chars": 2000,
+    "items_max": 20,
+    "cases": [
+      {
+        "about": "APEX hands its last result to another assistant: ask, result, files and links.",
+        "input": {
+          "id": "h-20261028-0001",
+          "from": "default",
+          "from_name": "APEX",
+          "ask": "把这条脚本剪成 30 秒，开头换成第 2 个镜头",
+          "result": "## 30 秒口播脚本\n\n1. 开头：三秒抓人\n2. 中段：讲清卖点\n\n结尾放联系方式。",
+          "files": [
+            "/Users/me/Movies/APEX/样片-01.mp4"
+          ],
+          "links": [
+            "https://www.douyin.com/video/7300000000000000000"
+          ]
+        },
+        "text": "<!-- apex:handoff v=1 id=h-20261028-0001 from=default -->\n【APEX 交来的活】\n\n要你做：\n> 把这条脚本剪成 30 秒，开头换成第 2 个镜头\n\nAPEX 上一条结果：\n> ## 30 秒口播脚本\n>\n> 1. 开头：三秒抓人\n> 2. 中段：讲清卖点\n>\n> 结尾放联系方式。\n\n里面的文件和链接：\n- /Users/me/Movies/APEX/样片-01.mp4\n- https://www.douyin.com/video/7300000000000000000\n\n来源：APEX 的对话"
+      },
+      {
+        "about": "An @ with nothing handed along: the ask and the source only. Another assistant can hand a job to APEX.",
+        "input": {
+          "id": "h2",
+          "from": "apex-bot-2",
+          "from_name": "小剪",
+          "ask": "这条成片的标题帮我写 3 个",
+          "result": null,
+          "files": [],
+          "links": []
+        },
+        "text": "<!-- apex:handoff v=1 id=h2 from=apex-bot-2 -->\n【小剪 交来的活】\n\n要你做：\n> 这条成片的标题帮我写 3 个\n\n来源：小剪 的对话"
+      },
+      {
+        "about": "Line endings are unified; leading blank lines and trailing spaces go; every apex:next and apex:handback block in the result is taken out first (next-steps' then the handback reader's visible text); a blank line in a quote is a bare >.",
+        "input": {
+          "id": "h_3",
+          "from": "apex-bot-3",
+          "from_name": "  文案  助手 ",
+          "ask": "\r\n把下面这段改成小红书笔记\r\n\r\n语气轻松一点  \r\n",
+          "result": "\r\n\r\n第一段正文\r\n第二段  \r\n\r\n<!-- apex:next\r\n出整条 | 出整条成片\r\n-->\r\n<!-- apex:handback\r\n上一棒的摘要\r\n文件：/Users/me/Movies/旧版.mp4\r\n-->\r\n",
+          "files": [],
+          "links": [
+            "  ",
+            "https://example.com/a"
+          ]
+        },
+        "text": "<!-- apex:handoff v=1 id=h_3 from=apex-bot-3 -->\n【文案 助手 交来的活】\n\n要你做：\n> 把下面这段改成小红书笔记\n>\n> 语气轻松一点\n\n文案 助手 上一条结果：\n> 第一段正文\n> 第二段\n\n里面的文件和链接：\n- https://example.com/a\n\n来源：文案 助手 的对话"
+      },
+      {
+        "about": "Only the first 2,000 characters of the result, counted in code points (an emoji is one): the label says the rest was left out.",
+        "input": {
+          "id": "h4",
+          "from": "default",
+          "from_name": "APEX",
+          "ask": "接着写下去",
+          "result": "字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字😀尾巴",
+          "files": [],
+          "links": []
+        },
+        "text": "<!-- apex:handoff v=1 id=h4 from=default -->\n【APEX 交来的活】\n\n要你做：\n> 接着写下去\n\nAPEX 上一条结果（前 2,000 字，后面没带）：\n> 字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字😀\n\n来源：APEX 的对话"
+      },
+      {
+        "about": "Exactly 2,000 characters: all of it, no label.",
+        "input": {
+          "id": "h5",
+          "from": "default",
+          "from_name": "APEX",
+          "ask": "看看这篇",
+          "result": "文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文😀尾",
+          "files": [],
+          "links": []
+        },
+        "text": "<!-- apex:handoff v=1 id=h5 from=default -->\n【APEX 交来的活】\n\n要你做：\n> 看看这篇\n\nAPEX 上一条结果：\n> 文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文文😀尾\n\n来源：APEX 的对话"
+      },
+      {
+        "about": "At most 20 files and links, files first; a result that is only a block counts as no result. A typed header inside the ask is quoted, so it is not a header.",
+        "input": {
+          "id": "h6",
+          "from": "default",
+          "from_name": "APEX",
+          "ask": "<!-- apex:handoff v=1 id=x from=default -->\n照这些素材出一版",
+          "result": "<!-- apex:next\n出整条 | 出整条成片\n-->",
+          "files": [
+            "/Users/me/素材/01.png",
+            "/Users/me/素材/02.png",
+            "/Users/me/素材/03.png",
+            "/Users/me/素材/04.png",
+            "/Users/me/素材/05.png",
+            "/Users/me/素材/06.png",
+            "/Users/me/素材/07.png",
+            "/Users/me/素材/08.png",
+            "/Users/me/素材/09.png",
+            "/Users/me/素材/10.png",
+            "/Users/me/素材/11.png",
+            "/Users/me/素材/12.png",
+            "/Users/me/素材/13.png",
+            "/Users/me/素材/14.png",
+            "/Users/me/素材/15.png"
+          ],
+          "links": [
+            "https://example.com/1",
+            "https://example.com/2",
+            "https://example.com/3",
+            "https://example.com/4",
+            "https://example.com/5",
+            "https://example.com/6",
+            "https://example.com/7",
+            "https://example.com/8"
+          ]
+        },
+        "text": "<!-- apex:handoff v=1 id=h6 from=default -->\n【APEX 交来的活】\n\n要你做：\n> <!-- apex:handoff v=1 id=x from=default -->\n> 照这些素材出一版\n\n里面的文件和链接：\n- /Users/me/素材/01.png\n- /Users/me/素材/02.png\n- /Users/me/素材/03.png\n- /Users/me/素材/04.png\n- /Users/me/素材/05.png\n- /Users/me/素材/06.png\n- /Users/me/素材/07.png\n- /Users/me/素材/08.png\n- /Users/me/素材/09.png\n- /Users/me/素材/10.png\n- /Users/me/素材/11.png\n- /Users/me/素材/12.png\n- /Users/me/素材/13.png\n- /Users/me/素材/14.png\n- /Users/me/素材/15.png\n- https://example.com/1\n- https://example.com/2\n- https://example.com/3\n- https://example.com/4\n- https://example.com/5\n\n来源：APEX 的对话"
+      }
+    ]
+  },
+  "request_header": {
+    "_about": "Which messages are a hand-over: the header opens the message (leading whitespace allowed) or a paragraph after a blank line, and stays on one line; only the first header counts. Desktop's text always starts with it; the engine reads the model input, where the gateway may put its own per-turn notes (a reaction, the HUD, interrupted speech) in front with a blank line between. Quoted lines start with > and never open a paragraph. `apex:handoff` not followed by [A-Za-z0-9_]; space-separated key=value tokens in any order, each key once, unknown keys ignored; v=1, id and from as in request. Anything else is an ordinary message. request: what the reader returns.",
+    "cases": [
+      {
+        "text": "<!-- apex:handoff v=1 id=h1 from=default -->\n【APEX 交来的活】",
+        "request": {
+          "id": "h1",
+          "from": "default"
+        }
+      },
+      {
+        "text": "\n  <!--apex:handoff v=1 id=h1 from=apex-bot-2-->\n正文",
+        "request": {
+          "id": "h1",
+          "from": "apex-bot-2"
+        }
+      },
+      {
+        "text": "<!-- apex:handoff from=default id=h1 v=1 -->",
+        "request": {
+          "id": "h1",
+          "from": "default"
+        }
+      },
+      {
+        "text": "<!-- apex:handoff v=1 id=h1 from=default round=2 -->",
+        "request": {
+          "id": "h1",
+          "from": "default"
+        }
+      },
+      {
+        "text": "<!-- apex:handoff v=1 id=h1 from=default -->\r\n【APEX 交来的活】",
+        "request": {
+          "id": "h1",
+          "from": "default"
+        }
+      },
+      {
+        "text": "（用户刚给你上一条回复点了 ❤️）\n\n<!-- apex:handoff v=1 id=h1 from=default -->\n【APEX 交来的活】",
+        "request": {
+          "id": "h1",
+          "from": "default"
+        }
+      },
+      {
+        "text": "你好\n  \n<!-- apex:handoff v=1 id=h1 from=default -->",
+        "request": {
+          "id": "h1",
+          "from": "default"
+        }
+      },
+      {
+        "text": "你好\n<!-- apex:handoff v=1 id=h1 from=default -->",
+        "request": null
+      },
+      {
+        "text": "<!-- apex:handoff v=2 id=h1 from=default -->\n\n<!-- apex:handoff v=1 id=h2 from=default -->",
+        "request": null
+      },
+      {
+        "text": "> <!-- apex:handoff v=1 id=h1 from=default -->",
+        "request": null
+      },
+      {
+        "text": "<!-- apex:handoffs v=1 id=h1 from=default -->",
+        "request": null
+      },
+      {
+        "text": "<!-- apex:handoff v=2 id=h1 from=default -->",
+        "request": null
+      },
+      {
+        "text": "<!-- apex:handoff id=h1 from=default -->",
+        "request": null
+      },
+      {
+        "text": "<!-- apex:handoff v=1 from=default -->",
+        "request": null
+      },
+      {
+        "text": "<!-- apex:handoff v=1 id=h1 -->",
+        "request": null
+      },
+      {
+        "text": "<!-- apex:handoff v=1 id=h1 from=Default -->",
+        "request": null
+      },
+      {
+        "text": "<!-- apex:handoff v=1 id=h1 from=../x -->",
+        "request": null
+      },
+      {
+        "text": "<!-- apex:handoff v=1 id=h.1 from=default -->",
+        "request": null
+      },
+      {
+        "text": "<!-- apex:handoff v=1 id=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa from=default -->",
+        "request": null
+      },
+      {
+        "text": "<!-- apex:handoff v=1 id=h1 id=h2 from=default -->",
+        "request": null
+      },
+      {
+        "text": "<!-- apex:handoff v=1 id=h1 from=default extra -->",
+        "request": null
+      },
+      {
+        "text": "<!-- apex:handoff v=1 id=h1\nfrom=default -->",
+        "request": null
+      },
+      {
+        "text": "<!-- apex:next\n出整条 | 出整条成片\n-->",
+        "request": null
+      }
+    ]
+  },
+  "handback": {
+    "_about": "The 交回摘要: an HTML comment block `<!-- apex:handback … -->` the receiving assistant ends its reply with. Lines, trimmed, blank ones skipped: after an optional list marker (-, *, •), a line starting with 文件 / 链接 / File(s) / Link(s) and a colon (：or :) is a file or a link (the value unwrapped from one pair of 「」“”\"\"''《》`` or <>, a Markdown link reduced to its URL; empty values and repeats dropped, at most 10 of each); every other line is the summary, joined by \\n and cut to 600 code points plus …. A block with no summary, file or link counts as none; the last usable block wins. visible: the reply with every such block taken out, a code fence left empty by that dropped, and an unfinished block at the end cut, then runs of 3+ newlines made 2 and the text trimmed; the reply as it was when nothing was taken out (apexnodes-next-steps' rules). An apex:next block stays for its own reader.",
+    "summary_max_chars": 600,
+    "items_max": 10,
+    "cases": [
+      {
+        "about": "The block at the end: one to three sentences, then 文件 / 链接 lines.",
+        "reply": "剪好了，30 秒版本在下面。\n\n<!-- apex:handback\n剪好了 30 秒版本，开头换成了第 2 个镜头，字幕已烧进去。\n文件：/Users/me/Movies/APEX/成片-30s.mp4\n链接：https://www.douyin.com/video/7300000000000000000\n-->",
+        "visible": "剪好了，30 秒版本在下面。",
+        "block": {
+          "summary": "剪好了 30 秒版本，开头换成了第 2 个镜头，字幕已烧进去。",
+          "files": [
+            "/Users/me/Movies/APEX/成片-30s.mp4"
+          ],
+          "links": [
+            "https://www.douyin.com/video/7300000000000000000"
+          ]
+        }
+      },
+      {
+        "about": "No block: nothing to hand back but the reply itself.",
+        "reply": "这个我需要你先告诉我视频放在哪里。",
+        "visible": "这个我需要你先告诉我视频放在哪里。",
+        "block": null
+      },
+      {
+        "about": "List markers, ASCII colons, English keys, wrappers (backticks, 「」, <>, a Markdown link) and repeats.",
+        "reply": "好了。\n<!-- apex:handback\n- 写好 3 个标题，第 1 个最稳。\n- 文件: `/Users/me/标题.md`\n- File：「/Users/me/标题 备选.md」\n- 文件：/Users/me/标题.md\n* Links: <https://example.com/a>\n• 链接：[抖音](https://www.douyin.com/video/1)\n-->",
+        "visible": "好了。",
+        "block": {
+          "summary": "- 写好 3 个标题，第 1 个最稳。",
+          "files": [
+            "/Users/me/标题.md",
+            "/Users/me/标题 备选.md"
+          ],
+          "links": [
+            "https://example.com/a",
+            "https://www.douyin.com/video/1"
+          ]
+        }
+      },
+      {
+        "about": "The last usable block wins; every block leaves the visible text, an empty one included.",
+        "reply": "第一版\n<!-- apex:handback\n第一版摘要\n-->\n第二版\n<!-- apex:handback\n第二版摘要\n-->\n<!-- apex:handback\n\n-->",
+        "visible": "第一版\n\n第二版",
+        "block": {
+          "summary": "第二版摘要",
+          "files": [],
+          "links": []
+        }
+      },
+      {
+        "about": "A block in a code fence: the fence it leaves empty goes too.",
+        "reply": "做完了。\n\n```\n<!-- apex:handback\n摘要\n-->\n```",
+        "visible": "做完了。",
+        "block": {
+          "summary": "摘要",
+          "files": [],
+          "links": []
+        }
+      },
+      {
+        "about": "An unfinished block at the end is cut from the visible text and hands nothing back.",
+        "reply": "做到一半\n<!-- apex:handback\n只写了一半",
+        "visible": "做到一半",
+        "block": null
+      },
+      {
+        "about": "A marker glued to letters is another block; an apex:next block stays for the next-steps reader.",
+        "reply": "正文\n<!-- apex:handbacks\n不是\n-->\n<!-- apex:next\n出整条 | 出整条成片\n-->",
+        "visible": "正文\n<!-- apex:handbacks\n不是\n-->\n<!-- apex:next\n出整条 | 出整条成片\n-->",
+        "block": null
+      },
+      {
+        "about": "CRLF; a summary longer than 600 characters is cut and ends in an ellipsis.",
+        "reply": "好\r\n<!-- apex:handback\r\n很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很\r\n-->\r\n",
+        "visible": "好",
+        "block": {
+          "summary": "很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很很…",
+          "files": [],
+          "links": []
+        }
+      },
+      {
+        "about": "Files only, no sentence: still a block.",
+        "reply": "<!-- apex:handback\n文件：/Users/me/a.png\n-->",
+        "visible": "",
+        "block": {
+          "summary": "",
+          "files": [
+            "/Users/me/a.png"
+          ],
+          "links": []
+        }
+      },
+      {
+        "about": "At most 10 files.",
+        "reply": "好\n<!-- apex:handback\n出了 12 张图\n文件：/Users/me/01.png\n文件：/Users/me/02.png\n文件：/Users/me/03.png\n文件：/Users/me/04.png\n文件：/Users/me/05.png\n文件：/Users/me/06.png\n文件：/Users/me/07.png\n文件：/Users/me/08.png\n文件：/Users/me/09.png\n文件：/Users/me/10.png\n文件：/Users/me/11.png\n文件：/Users/me/12.png\n-->",
+        "visible": "好",
+        "block": {
+          "summary": "出了 12 张图",
+          "files": [
+            "/Users/me/01.png",
+            "/Users/me/02.png",
+            "/Users/me/03.png",
+            "/Users/me/04.png",
+            "/Users/me/05.png",
+            "/Users/me/06.png",
+            "/Users/me/07.png",
+            "/Users/me/08.png",
+            "/Users/me/09.png",
+            "/Users/me/10.png"
+          ],
+          "links": []
+        }
+      }
+    ]
+  },
+  "return_box": {
+    "_about": "Engine-owned; Desktop may read, never write. When a hand-over turn ends with a non-empty reply, the receiving engine writes <root>/apex/handoff/returns/<from>/<id>.json: {v: 1, id, from, by (receiver profile), by_name, at (unix seconds), summary, files, links, has_summary}. Without a block, summary is the visible reply's first 300 code points and has_summary is false. The sender's engine takes each file once, at its next Desktop turn, and deletes it; one older than 7 days is dropped unread.",
+    "path": "apex/handoff/returns/{from}/{id}.json",
+    "head_max_chars": 300
+  },
+  "division": {
+    "_about": "What the engine reads from each assistant's SOUL.md 「分工」 (hc-1079 bot-intake-soul.ts): the section opens with one of headings on a line of its own and runs to the next `\\n## ` or the end; role is the text after the first line starting with one of role_prefixes, platforms after one of platform_prefixes unless the whole line is one of same_as_apex. copy: the bot-intake-copy.ts strings these come from, per locale (ja and ar read en).",
+    "headings": [
+      "## 分工",
+      "## What you handle"
+    ],
+    "role_prefixes": [
+      "- 主要帮用户：",
+      "- 主要幫用戶：",
+      "- Mainly help with: "
+    ],
+    "platform_prefixes": [
+      "- 主要给哪个平台做：",
+      "- 主要給哪個平台做：",
+      "- Main platform: "
+    ],
+    "same_as_apex": [
+      "- 主要给哪个平台做：跟 APEX 一样，按用户画像里的主要发布平台",
+      "- 主要給哪個平台做：跟 APEX 一樣，按用戶畫像裡的主要發佈平台",
+      "- Main platform: same as APEX, the platforms in the user profile"
+    ],
+    "copy": {
+      "zh": {
+        "heading": "## 分工",
+        "role_prefix": "- 主要帮用户：",
+        "platform_prefix": "- 主要给哪个平台做：",
+        "same_as_apex": "- 主要给哪个平台做：跟 APEX 一样，按用户画像里的主要发布平台"
+      },
+      "zh-hant": {
+        "heading": "## 分工",
+        "role_prefix": "- 主要幫用戶：",
+        "platform_prefix": "- 主要給哪個平台做：",
+        "same_as_apex": "- 主要給哪個平台做：跟 APEX 一樣，按用戶畫像裡的主要發佈平台"
+      },
+      "en": {
+        "heading": "## What you handle",
+        "role_prefix": "- Mainly help with: ",
+        "platform_prefix": "- Main platform: ",
+        "same_as_apex": "- Main platform: same as APEX, the platforms in the user profile"
+      }
+    },
+    "cases": [
+      {
+        "about": "zh, as hc-1079 writes it",
+        "soul": "You are 剪辑助手, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\n\nBody.\n\n## 分工\n\n用户第一次打开你时定的（用户这次说的不一样时以这次为准）：\n- 主要帮用户：剪辑出片\n- 说话风格：简短直接。先说结论，少铺垫。\n- 主要给哪个平台做：抖音、小红书\n",
+        "division": {
+          "role": "剪辑出片",
+          "platforms": "抖音、小红书"
+        }
+      },
+      {
+        "about": "zh-hant; the same platforms as APEX say nothing of their own",
+        "soul": "Body.\n\n## 分工\n\n用戶第一次打開你時定的（用戶這次說的不一樣時以這次為準）：\n- 主要幫用戶：標題和文案\n- 主要給哪個平台做：跟 APEX 一樣，按用戶畫像裡的主要發佈平台\n",
+        "division": {
+          "role": "標題和文案",
+          "platforms": null
+        }
+      },
+      {
+        "about": "en, CRLF",
+        "soul": "Body.\r\n\r\n## What you handle\r\n\r\nWhat the user picked the first time they opened you (if they ask for something different now, go with that):\r\n- Mainly help with: 直播切片 $& 二创\r\n- Main platform: Bilibili\r\n",
+        "division": {
+          "role": "直播切片 $& 二创",
+          "platforms": "Bilibili"
+        }
+      },
+      {
+        "about": "role only",
+        "soul": "## 分工\n\n用户第一次打开你时定的（用户这次说的不一样时以这次为准）：\n- 主要帮用户：带货脚本\n",
+        "division": {
+          "role": "带货脚本",
+          "platforms": null
+        }
+      },
+      {
+        "about": "style only: no role",
+        "soul": "## 分工\n\n- 说话风格：像朋友聊天。口语、轻松，别端着。\n",
+        "division": {
+          "role": null,
+          "platforms": null
+        }
+      },
+      {
+        "about": "no section",
+        "soul": "You are APEX, an intelligent AI assistant from ApexNodes HK.\n",
+        "division": {
+          "role": null,
+          "platforms": null
+        }
+      },
+      {
+        "about": "a heading inside a line is not the section",
+        "soul": "说明：## 分工\n- 主要帮用户：不算\n",
+        "division": {
+          "role": null,
+          "platforms": null
+        }
+      },
+      {
+        "about": "a longer heading is another section",
+        "soul": "## 分工表\n- 主要帮用户：不算\n",
+        "division": {
+          "role": null,
+          "platforms": null
+        }
+      },
+      {
+        "about": "the section ends at the next H2",
+        "soul": "## 分工\n- 说话风格：简短直接。先说结论，少铺垫。\n\n## 其他\n- 主要帮用户：不算\n",
+        "division": {
+          "role": null,
+          "platforms": null
+        }
+      },
+      {
+        "about": "an empty role",
+        "soul": "## 分工\n- 主要帮用户：\n- 主要给哪个平台做：抖音\n",
+        "division": {
+          "role": null,
+          "platforms": "抖音"
+        }
+      }
+    ]
+  },
+  "roster": {
+    "_about": "Who the engine lists as the user's assistants: the sidebar's roster (store/single-thread-bots.ts botRosterFrom). APEX (profile default) first, named ui_meta.apex.name or APEX; then every named profile with a SOUL.md that is not blank and not hidden through Bot Mode (ui_meta.hermes-bots.hidden true), by ui_meta.apex.created (else ui_meta.hermes-bots.created), undated ones last; named ui_meta.apex.name or the profile id. soul null = no SOUL.md. role and platforms: division above.",
+    "profiles": [
+      {
+        "profile": "default",
+        "ui_meta": {
+          "apex": {
+            "name": "小A"
+          }
+        },
+        "soul": "You are APEX, an intelligent AI assistant from ApexNodes HK.\n"
+      },
+      {
+        "profile": "apex-bot-3",
+        "ui_meta": {
+          "apex": {
+            "name": "文案",
+            "created": 300,
+            "origin": "product"
+          }
+        },
+        "soul": "You are 文案, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\n"
+      },
+      {
+        "profile": "apex-bot-2",
+        "ui_meta": {
+          "apex": {
+            "name": "小剪",
+            "created": 200,
+            "origin": "product"
+          }
+        },
+        "soul": "You are 小剪, an AI assistant from ApexNodes HK, working alongside APEX for the same person.\n\nBody.\n\n## 分工\n\n用户第一次打开你时定的（用户这次说的不一样时以这次为准）：\n- 主要帮用户：剪辑出片\n- 说话风格：简短直接。先说结论，少铺垫。\n- 主要给哪个平台做：抖音、小红书\n"
+      },
+      {
+        "profile": "dev-bot",
+        "ui_meta": {
+          "hermes-bots": {
+            "created": 250
+          }
+        },
+        "soul": "You are a research bot.\n"
+      },
+      {
+        "profile": "hidden-bot",
+        "ui_meta": {
+          "apex": {
+            "name": "藏起来",
+            "created": 100
+          },
+          "hermes-bots": {
+            "hidden": true
+          }
+        },
+        "soul": "Hidden.\n"
+      },
+      {
+        "profile": "no-soul",
+        "ui_meta": {
+          "apex": {
+            "name": "没灵魂",
+            "created": 150
+          }
+        },
+        "soul": null
+      },
+      {
+        "profile": "blank-soul",
+        "ui_meta": {
+          "apex": {
+            "name": "空白",
+            "created": 160
+          }
+        },
+        "soul": "  \n\n"
+      },
+      {
+        "profile": "undated",
+        "ui_meta": {
+          "apex": {
+            "name": "未注明"
+          }
+        },
+        "soul": "You are 未注明.\n"
+      }
+    ],
+    "expected": [
+      {
+        "profile": "default",
+        "name": "小A",
+        "role": null,
+        "platforms": null
+      },
+      {
+        "profile": "apex-bot-2",
+        "name": "小剪",
+        "role": "剪辑出片",
+        "platforms": "抖音、小红书"
+      },
+      {
+        "profile": "dev-bot",
+        "name": "dev-bot",
+        "role": null,
+        "platforms": null
+      },
+      {
+        "profile": "apex-bot-3",
+        "name": "文案",
+        "role": null,
+        "platforms": null
+      },
+      {
+        "profile": "undated",
+        "name": "未注明",
+        "role": null,
+        "platforms": null
+      }
+    ]
+  }
+}

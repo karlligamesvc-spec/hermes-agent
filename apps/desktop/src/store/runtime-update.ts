@@ -23,6 +23,7 @@ import type {
   DesktopRuntimeUpdateExpectedTarget,
   DesktopRuntimeVersion
 } from '@/global'
+import { noteRuntimeApply } from '@/store/update-wait'
 
 export const $runtimeVersion = atom<DesktopRuntimeVersion | null>(null)
 export const $runtimeUpdateCheck = atom<DesktopRuntimeUpdateCheck | null>(null)
@@ -122,6 +123,8 @@ export async function applyRuntimeUpdate(
 
   try {
     const result = await bridge.applyUpdate(expectedTarget)
+
+    noteRuntimeApply(result)
 
     if (!result.ok) {
       throw new Error(result.message || result.error || 'apply_failed')

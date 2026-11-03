@@ -9,8 +9,10 @@ import {
   noteMainThreadClaimed,
   resetMainThreadForTest
 } from '@/store/main-thread'
+import { $activeGatewayProfile } from '@/store/profile'
 import { $activeSessionId, $busy, $messages, $selectedStoredSessionId, $sessions } from '@/store/session'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
+import { $botIntent, setMultiBotFlagForTest } from '@/store/single-thread-bots'
 
 import {
   $pendingThreadClaim,
@@ -293,5 +295,57 @@ describe('hc-1014 composer middleware: segments of the thread', () => {
 
     expect(await startThreadSegment(request, 'idle')).toBe(false)
     expect(calls).toEqual([])
+  })
+})
+
+describe('hc-1077 a send while another assistant is being switched to', () => {
+  afterEach(() => {
+    setMultiBotFlagForTest(false)
+    $botIntent.set(null)
+    $activeGatewayProfile.set('default')
+  })
+
+  it.each([
+    ['in APEX’s thread', 'thread-root'],
+    ['on the empty draft the switch dropped to', null]
+  ])('stays in the composer %s: the thread on hand is the previous assistant’s', async (_label, selected) => {
+    setMultiBotFlagForTest(true)
+    noteMainThreadClaimed('default', 'thread-root')
+    $selectedStoredSessionId.set(selected)
+    $botIntent.set('writer')
+
+    const { calls, request } = gateway()
+
+    expect(await send('标题写 3 个', request)).toBeNull()
+    expect(notices).toEqual(['正在打开对话，稍等一下再发。'])
+    expect(calls).toEqual([])
+    expect($pendingThreadClaim.get()).toBeNull()
+  })
+
+  it('goes out once the assistant asked for is the one answering', async () => {
+    setMultiBotFlagForTest(true)
+    $activeGatewayProfile.set('writer')
+    noteMainThreadClaimed('writer', 'thread-root')
+    $selectedStoredSessionId.set('thread-root')
+    $sessions.set([])
+    $messages.set([message('m1', now() - 60)])
+
+    const sent = await singleThreadSend(
+      draft('标题写 3 个'),
+      () => gateway().request,
+      () => 'writer'
+    )
+
+    expect(sent?.text).toBe('标题写 3 个')
+  })
+
+  it('with the switch off, a pending profile change changes nothing here', async () => {
+    noteMainThreadClaimed('default', 'thread-root')
+    $selectedStoredSessionId.set('thread-root')
+    $botIntent.set('writer')
+    $sessions.set([])
+    $messages.set([message('m1', now() - 60)])
+
+    expect((await send('标题写 3 个', gateway().request))?.text).toBe('标题写 3 个')
   })
 })

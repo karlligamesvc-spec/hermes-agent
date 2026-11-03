@@ -10,6 +10,7 @@ import type {
 
 import { $runtimeUpdateCheck, applyRuntimeUpdate, checkRuntimeUpdate, loadRuntimeVersion } from './runtime-update'
 import { $shellUpdate, checkShellUpdate, initShellUpdateSubscription, installShellUpdate } from './shell-update'
+import { $runtimeUpdateWait } from './update-wait'
 
 export type DesktopUpdateStage = 'check' | 'restart' | 'runtime' | 'shell'
 
@@ -55,9 +56,12 @@ async function deferRuntimeUpdate(reload: () => void): Promise<void> {
   }, 30_000)
 }
 
-async function installShellWhenIdle(): Promise<void> {
+/** True when the install waits for idle instead of starting. */
+async function installShellWhenIdle(): Promise<boolean> {
   const result = await installShellUpdate()
   if (result.deferred) {setProgress({ active: false, currentStage: null, error: null })}
+
+  return Boolean(result.deferred)
 }
 
 export async function queueDeferredRuntimeUpdate(runtime: DesktopRuntimeUpdateCheck | null, options: {
@@ -101,8 +105,10 @@ function initDesktopUpdateProgressSubscription(): void {
     onRuntimeProgress(runtimeProgress => {
       const progress = $desktopUpdateProgress.get()
 
-      if (progress.active && progress.currentStage === 'runtime') {
-        setProgress({ runtimeProgress })
+      // A quiet retry stays down through preflight, download and verify: they all run ahead of the
+      // busy gate (electron/apex-bundle-install.ts). `activating` is the first event past it.
+      if (progress.currentStage === 'runtime' && (progress.active || runtimeProgress.phase === 'activating')) {
+        setProgress({ active: true, runtimeProgress })
       }
     })
   }
@@ -229,6 +235,26 @@ async function waitForShellRedownload(): Promise<void> {
   setProgress({ active: false, currentStage: null, error: null })
 }
 
+/** The running app is not the plan's shell yet: get to it. */
+async function continueToPlannedShell(plan: DesktopUpdatePlan, quiet: boolean): Promise<void> {
+  if (!plannedShellDownloaded(plan)) {
+    // hc-1030: this restart did not run the installer (a deferred install, an early
+    // quit, a failed hand-off) and the new process has not fetched the target yet.
+    // Fetch it now and let the update entry offer it again instead of failing.
+    await waitForShellRedownload()
+    void checkShellUpdate().catch(() => {})
+
+    return
+  }
+
+  // Ask for the downloaded target shell again; its install waits for idle.
+  const waits = await installShellWhenIdle()
+
+  if (quiet && !waits) {
+    setProgress({ active: true, currentStage: 'restart' })
+  }
+}
+
 /** A continuation the main process could not persist stops the update before anything restarts. */
 function requirePlanSaved(result: { error?: string; ok: boolean } | null | undefined): void {
   if (!result?.ok) {
@@ -281,7 +307,11 @@ export async function checkDesktopUpdates(): Promise<{
   return { runtime, shell }
 }
 
-export async function applyDesktopUpdates(options: { reload?: () => void } = {}): Promise<void> {
+/**
+ * Resolves to true when the update waits (`desktopUpdateWait` says for what) instead of going
+ * ahead, so whoever asked can tell the user; false when it went ahead.
+ */
+export async function applyDesktopUpdates(options: { reload?: () => void } = {}): Promise<boolean> {
   initDesktopUpdateProgressSubscription()
   const reload = options.reload ?? (() => window.location.reload())
   const runtime = $runtimeUpdateCheck.get()
@@ -325,9 +355,8 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
       requirePlanSaved(result)
 
       setProgress({ currentStage: 'restart' })
-      await installShellWhenIdle()
 
-      return
+      return await installShellWhenIdle()
     }
 
     let runtimeReloadRequired = false
@@ -337,7 +366,8 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
       const result = await applyRuntimeUpdate()
       if (result.deferred) {
         await queueDeferredRuntimeUpdate(runtime, { reload, targetShellVersion: needsShell ? shell?.version : null })
-        return
+
+        return true
       }
 
       runtimeReloadRequired = Boolean(result.reloadRequired)
@@ -361,21 +391,22 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
 
       requirePlanSaved(result)
 
-      await installShellWhenIdle()
-
-      return
+      return await installShellWhenIdle()
     }
 
     if (runtimeReloadRequired) {
       reload()
 
-      return
+      return false
     }
 
     setProgress({ active: false, completedStages: stages, currentStage: null })
+
+    return false
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
 
+    $runtimeUpdateWait.set(null)
     await transitionPlanSafely({
       lastError: message,
       phase: 'failed'
@@ -397,6 +428,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
   const reload = options.reload ?? (() => window.location.reload())
 
   resumePromise = (async () => {
+    initDesktopUpdateProgressSubscription()
     const bridge = window.hermesDesktop?.updateCenter
     const plan = await bridge?.getPlan()
 
@@ -423,8 +455,12 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
       // requires a durable attempt record.
     }
 
+    // hc-1118: a plan that only waits for the engine retries on its own, and most rounds just find
+    // it still busy. Such a round raises the overlay only once the switch really goes ahead.
+    const quiet = Boolean(options.automatic) && plan.lastError === 'runtime_update_busy'
+
     setProgress({
-      active: true,
+      active: !quiet,
       completedStages: ['check', 'shell'],
       currentStage: 'runtime',
       error: null,
@@ -437,18 +473,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
       const runningDesktop = await window.hermesDesktop?.getVersion?.()
 
       if (!shellMeetsPlan(runningDesktop?.appVersion, plan.targetShellVersion)) {
-        if (!plannedShellDownloaded(plan)) {
-          // hc-1030: this restart did not run the installer (a deferred install, an early
-          // quit, a failed hand-off) and the new process has not fetched the target yet.
-          // Fetch it now and let the update entry offer it again instead of failing.
-          await waitForShellRedownload()
-          void checkShellUpdate().catch(() => {})
-
-          return
-        }
-
-        // Ask for the downloaded target shell again; its install waits for idle.
-        await installShellWhenIdle()
+        await continueToPlannedShell(plan, quiet)
 
         return
       }
@@ -524,7 +549,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
         if (result.reloadRequired) {
           // Legacy bootstrap activates after reloading. Retain the durable
           // plan until the next renderer verifies the actual installed tree.
-          setProgress({ currentStage: 'restart', runtimeProgress: null })
+          setProgress({ active: true, currentStage: 'restart', runtimeProgress: null })
           reload()
 
           return
@@ -545,6 +570,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
 
+      $runtimeUpdateWait.set(null)
       await transitionPlanSafely({ lastError: message, phase: 'failed' })
       setProgress({
         active: false,
@@ -561,6 +587,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
 
 export function dismissDesktopUpdateError(): void {
   clearTimeout(deferredRetry)
+  $runtimeUpdateWait.set(null)
   $desktopUpdateProgress.set(EMPTY_PROGRESS)
 }
 

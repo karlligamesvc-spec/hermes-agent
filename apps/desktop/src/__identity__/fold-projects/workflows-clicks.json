@@ -1,0 +1,26 @@
+{
+  "tab 我的项目": {
+    "state": null,
+    "to": "/projects"
+  },
+  "tab 工作流库": {
+    "state": null,
+    "to": "/workflows"
+  },
+  "saved row": {
+    "state": {
+      "routeDrawer": {
+        "backgroundLocation": {
+          "hash": "",
+          "key": "default",
+          "pathname": "/workflows",
+          "search": "",
+          "state": null
+        }
+      }
+    },
+    "to": "/projects/project-failed"
+  },
+  "dialog 加入已有项目": "加入已有项目",
+  "dialog 新建项目并加入": "新建项目"
+}

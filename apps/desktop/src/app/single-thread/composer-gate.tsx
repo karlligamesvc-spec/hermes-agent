@@ -8,23 +8,32 @@
  *
  * Decision 10, decided by Kael on 2026-10-21: old sessions are read-only, and
  * their entry is in the avatar (account) menu.
+ *
+ * hc-1060 (N5): the Stop button moved to the activity line, so the composer
+ * publishes its halt for it (store/single-thread-stop.ts), and a message that
+ * is only 「停一下」 (or its kin, see stop-request.ts) sent while APEX works
+ * halts the turn the same way instead of reaching the model as a steer.
  */
 
 import { useStore } from '@nanostores/react'
-import type { ComponentProps } from 'react'
+import { type ComponentProps, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { useSingleThreadChatCopy } from '@/i18n/single-thread-chat'
+import { triggerHaptic } from '@/lib/haptics'
+import { parkQueuedPrompts } from '@/store/composer-queue'
 import { $mainThread, isMainThreadStoredId, type MainThreadState } from '@/store/main-thread'
 import { $sessions } from '@/store/session'
 import { $singleThreadMode } from '@/store/single-thread'
+import { publishThreadStop } from '@/store/single-thread-stop'
 import type { SessionInfo } from '@/types/hermes'
 
 import { ChatBarFallback, ChatBar as Composer } from '../chat/composer'
 import { NEW_CHAT_ROUTE, sessionRoute } from '../routes'
 
 import { $pendingThreadClaim } from './composer-middleware'
+import { steerWithStopRequests } from './stop-request'
 
 export { ChatBarFallback }
 
@@ -52,11 +61,38 @@ export function ChatBar(props: ComponentProps<typeof Composer>) {
   const thread = useStore($mainThread)
   const sessions = useStore($sessions)
   const claimPending = Boolean(useStore($pendingThreadClaim))
+  const onSteer = useThreadStop(singleThread, props)
 
   return isEarlierConversation(singleThread, props.queueSessionKey, thread, sessions, claimPending) ? (
     <EarlierConversationBar />
   ) : (
-    <Composer {...props} />
+    <Composer {...props} onSteer={onSteer} />
+  )
+}
+
+type StopProps = Pick<ComponentProps<typeof Composer>, 'onCancel' | 'onSteer' | 'queueSessionKey' | 'sessionId'>
+
+/**
+ * In single-thread mode: publish the halt for the activity line's 「停」, and
+ * return the composer's steer with a bare stop request turned into that halt.
+ * Otherwise the steer as given, and nothing published.
+ */
+function useThreadStop(
+  singleThread: boolean,
+  { onCancel, onSteer, queueSessionKey, sessionId }: StopProps
+): StopProps['onSteer'] {
+  // The composer's Stop and Esc park the queue too: a halt must not roll into the next queued turn.
+  const halt = useCallback(async () => {
+    parkQueuedPrompts(queueSessionKey || sessionId || null)
+    triggerHaptic('cancel')
+    await onCancel()
+  }, [onCancel, queueSessionKey, sessionId])
+
+  useEffect(() => (singleThread ? publishThreadStop(() => void halt()) : undefined), [halt, singleThread])
+
+  return useMemo(
+    () => (singleThread && onSteer ? steerWithStopRequests(onSteer, sessionId, halt) : onSteer),
+    [halt, onSteer, sessionId, singleThread]
   )
 }
 

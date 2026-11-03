@@ -12,6 +12,11 @@
  *
  * The title is an identity key, not copy: it never changes with the locale or
  * with the name the user gives the assistant.
+ *
+ * hc-1077 (several assistants): each assistant is a profile with its own
+ * thread under the same title. `$mainThread` stays the active profile's;
+ * `$mainThreadsByProfile` keeps every profile's last settled thread, so the
+ * sidebar can follow an assistant working in the background.
  */
 
 import { atom, computed } from 'nanostores'
@@ -41,6 +46,9 @@ const EMPTY: MainThreadState = { ids: [], profile: null, rootId: null, status: '
 
 export const $mainThread = atom<MainThreadState>(EMPTY)
 
+/** Every profile's thread as last settled in this window (the active one included). */
+export const $mainThreadsByProfile = atom<Readonly<Record<string, MainThreadState>>>({})
+
 type RequestGateway = <T>(method: string, params?: Record<string, unknown>) => Promise<T>
 
 interface TitleLookupRow {
@@ -66,6 +74,25 @@ function found(profile: string, rootId: string, tipId: string): MainThreadState 
   return { ids: [...new Set([rootId, tipId])], profile, rootId, status: 'found', tipId }
 }
 
+/** One title lookup for `profile`, through whichever gateway `request` reaches (it names the profile). */
+async function lookupMainThread(request: RequestGateway, profile: string): Promise<MainThreadState> {
+  try {
+    const result = await request<{ sessions?: TitleLookupRow[] }>('session.list', {
+      include_hidden: true,
+      limit: LOOKUP_LIMIT,
+      profile,
+      title: MAIN_THREAD_TITLE
+    })
+
+    const row = (result?.sessions ?? []).find(isMainThreadRow)
+    const rootId = String(row?.id || '')
+
+    return rootId ? found(profile, rootId, String(row?.resolved_id || rootId)) : { ...EMPTY, profile, status: 'absent' }
+  } catch {
+    return { ...EMPTY, profile, status: 'error' }
+  }
+}
+
 /**
  * Look the thread up for `profile`. Resolves to the settled state; only the
  * newest lookup lands, so a profile switch mid-read cannot publish the old
@@ -80,23 +107,7 @@ export async function resolveMainThread(request: RequestGateway, profile: string
     $mainThread.set({ ...$mainThread.get(), status: 'loading' })
   }
 
-  let next: MainThreadState
-
-  try {
-    const result = await request<{ sessions?: TitleLookupRow[] }>('session.list', {
-      include_hidden: true,
-      limit: LOOKUP_LIMIT,
-      profile,
-      title: MAIN_THREAD_TITLE
-    })
-
-    const row = (result?.sessions ?? []).find(isMainThreadRow)
-    const rootId = String(row?.id || '')
-
-    next = rootId ? found(profile, rootId, String(row?.resolved_id || rootId)) : { ...EMPTY, profile, status: 'absent' }
-  } catch {
-    next = { ...EMPTY, profile, status: 'error' }
-  }
+  const next = await lookupMainThread(request, profile)
 
   if (serial !== lookupSerial) {
     return $mainThread.get()
@@ -117,6 +128,40 @@ export async function resolveMainThread(request: RequestGateway, profile: string
 function mergeIds(state: MainThreadState, extra: readonly string[]): MainThreadState {
   return { ...state, ids: [...new Set([...state.ids, ...extra])] }
 }
+
+/**
+ * hc-1077: look up the thread of an assistant that is not the active one, for
+ * its sidebar row. Lands only in `$mainThreadsByProfile`, and like the active
+ * lookup never downgrades a thread this window already holds.
+ */
+export async function resolveProfileThread(request: RequestGateway, profile: string): Promise<MainThreadState> {
+  const next = await lookupMainThread(request, profile)
+
+  recordProfileThread(next)
+
+  return $mainThreadsByProfile.get()[profile] ?? next
+}
+
+function recordProfileThread(state: MainThreadState): void {
+  const profile = state.profile
+
+  if (!profile || state.status === 'loading' || state.status === 'unknown') {
+    return
+  }
+
+  const held = $mainThreadsByProfile.get()[profile]
+
+  if (held?.status === 'found' && state.status !== 'found') {
+    return
+  }
+
+  const next = state.status === 'found' && held?.rootId === state.rootId ? mergeIds(state, held.ids) : state
+
+  $mainThreadsByProfile.set({ ...$mainThreadsByProfile.get(), [profile]: next })
+}
+
+// The active profile's thread is every profile's too.
+$mainThread.listen(recordProfileThread)
 
 /** The first message of a brand-new thread created this stored session and titled it. */
 export function noteMainThreadClaimed(profile: string, storedId: string): void {
@@ -155,6 +200,13 @@ $activeSessionStoredIdRotation.listen(rotation => {
 
   if (rotation && state.status === 'found' && state.ids.includes(rotation.previousStoredSessionId)) {
     $mainThread.set({ ...mergeIds(state, [rotation.nextStoredSessionId]), tipId: rotation.nextStoredSessionId })
+  }
+
+  // hc-1077: a background assistant's thread rotates too.
+  for (const held of Object.values($mainThreadsByProfile.get())) {
+    if (rotation && held.status === 'found' && held.ids.includes(rotation.previousStoredSessionId)) {
+      recordProfileThread({ ...mergeIds(held, [rotation.nextStoredSessionId]), tipId: rotation.nextStoredSessionId })
+    }
   }
 })
 
@@ -209,6 +261,7 @@ export function recordSegmentStart(rootId: string, atSeconds: number): void {
 export function resetMainThreadForTest(): void {
   lookupSerial += 1
   $mainThread.set(EMPTY)
+  $mainThreadsByProfile.set({})
   $segmentStarts.set({})
   writeJson(SEGMENT_STARTS_KEY, null)
 }

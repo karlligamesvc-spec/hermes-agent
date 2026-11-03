@@ -51,6 +51,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import { notarizeMacRuntimePayload, signMacRuntimePayload, verifyNotarizedMacExecutable } from './mac-runtime-payload.mjs'
+import { writeRuntimeArchive } from './runtime-bundle-archive.mjs'
 import { probeBundledBackend, probeBundledTui, removeOwnedRuntimeTree, runtimeSmokeEnvironment } from './runtime-bundle-offline-smoke.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -632,7 +633,10 @@ async function cmdBuild(args) {
   const archivePath = path.join(outDir, `${bundleBase}.tar.gz`)
   rmrf(archivePath)
   log('creating archive (this can take a few minutes)...')
-  run(tarBin(), ['-czf', archivePath, '-C', stage, '.'])
+  // hc-1058: deterministic, block-diffable archive (see runtime-bundle-archive.mjs);
+  // `tar -czf` made every release re-download the whole engine.
+  const written = writeRuntimeArchive(stage, archivePath)
+  log(`archived ${written.entries} entries in ${written.segments} gzip segments`)
   const archiveSha = sha256File(archivePath)
   const archiveSize = fs.statSync(archivePath).size
   fs.writeFileSync(path.join(outDir, `${bundleBase}.tar.gz.sha256`), `${archiveSha}  ${bundleBase}.tar.gz\n`)

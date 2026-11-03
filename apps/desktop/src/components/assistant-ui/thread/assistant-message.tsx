@@ -16,6 +16,7 @@ import {
   SingleThreadActivityLine,
   SingleThreadProcessFooter
 } from '@/components/assistant-ui/process/single-thread-process'
+import { AssistantErrorMessage } from '@/components/assistant-ui/thread/assistant-error-message'
 import { ChangedFilesCard } from '@/components/assistant-ui/thread/changed-files-card'
 import {
   contentHasVisibleText,
@@ -23,9 +24,11 @@ import {
   pickPrimaryPreviewTarget
 } from '@/components/assistant-ui/thread/content'
 import { MemoryNotedLine } from '@/components/assistant-ui/thread/memory-noted-line'
+import { useMessageMenuTime, useReplyCopyMenu } from '@/components/assistant-ui/thread/message-menu'
 import { MESSAGE_PARTS_COMPONENTS } from '@/components/assistant-ui/thread/message-parts'
 import { ReactionPicker } from '@/components/assistant-ui/thread/message-reactions'
 import { ResponseLoadingIndicator, TurnActivityIndicator } from '@/components/assistant-ui/thread/status'
+import { useThreadCopy } from '@/components/assistant-ui/thread/thread-copy'
 import { MessageTimelineTimestamp } from '@/components/assistant-ui/thread/timeline-timestamp'
 import { useMessageReactions, useTapbackDoubleClick } from '@/components/assistant-ui/thread/use-message-reactions'
 import { AGENT_MESSAGE_RE } from '@/components/assistant-ui/thread/user-message'
@@ -54,8 +57,8 @@ import {
   VolumeXIcon,
   XIcon
 } from '@/lib/icons'
-import { stripNextStepBlocks } from '@/lib/next-steps'
 import { extractPreviewTargets } from '@/lib/preview-targets'
+import { visibleReplyText } from '@/lib/reply-markers'
 import { markAssistantIdSpoken } from '@/lib/spoken-reply'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
@@ -214,7 +217,7 @@ const AssistantMessageBody: FC<AssistantMessageProps & { collapsedNotice?: null 
 
   // Copy and read-aloud take the reply without its 「下一步」 block (those are buttons, not text).
   const getMessageText = useCallback(
-    () => stripNextStepBlocks(messageContentText(messageRuntime.getState().content)),
+    () => visibleReplyText(messageContentText(messageRuntime.getState().content)),
     [messageRuntime]
   )
 
@@ -233,14 +236,21 @@ const AssistantMessageBody: FC<AssistantMessageProps & { collapsedNotice?: null 
   // are off, so the root carries no listener at all.
   const onDoubleClick = useTapbackDoubleClick(messageId, 'assistant')
 
+  // hc-1101: single-thread mode's right-click on a reply is its time, then 「复制」 (message-menu.ts).
+  const copyMenu = useReplyCopyMenu(getMessageText)
+  const menuTime = useMessageMenuTime()
+
   return (
     <MessagePrimitive.Root
       className={cn(
         'group flex w-full min-w-0 max-w-full flex-col gap-0 self-start overflow-hidden',
         collapsedNotice && 'pb-(--conversation-turn-gap)'
       )}
+      data-context-menu-skip={copyMenu && ''}
+      data-message-at={menuTime}
       data-role="assistant"
       data-slot="aui_assistant-message-root"
+      onContextMenu={copyMenu}
       // Collapsed inter-agent rows never carried the tapback listener; keeping
       // that exact truth table means gating it on the notice rather than on
       // whether the hook returned a handler.
@@ -269,7 +279,7 @@ const AssistantMessageBody: FC<AssistantMessageProps & { collapsedNotice?: null 
                   </span>
                   <div className="min-w-0 flex-1">
                     <ErrorLayerLabel />
-                    <ErrorPrimitive.Message className="mt-0.5 block min-w-0 text-(--ui-text-secondary)" />
+                    <AssistantErrorMessage />
                   </div>
                   {onDismissError && (
                     <TooltipIconButton
@@ -432,7 +442,10 @@ const SettledChangedFiles: FC = () => {
     return s.message.status?.type === 'running' || !isLastMessage ? EMPTY_PARTS : s.message.parts
   })
 
-  return <ChangedFilesCard parts={settledParts} />
+  // hc-1130: in product mode what the turn changed lives in the process area.
+  const productMode = useSingleThreadMode()
+
+  return productMode ? null : <ChangedFilesCard parts={settledParts} />
 }
 
 /**
@@ -704,7 +717,8 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
   onBranchInNewChat
 }) => {
   const { t } = useI18n()
-  const copy = t.assistant.thread
+  // hc-1101: 「重新回答」, not 「刷新」, in single-thread mode.
+  const copy = useThreadCopy()
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const { enabled: reactionsEnabled, react, reactions: shownReactions } = useMessageReactions(messageId, 'assistant')

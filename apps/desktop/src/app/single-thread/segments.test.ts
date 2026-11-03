@@ -8,9 +8,11 @@ import {
   isSlashNew,
   lastActivitySeconds,
   localDayKey,
+  relativeDay,
   segmentBoundary,
   turnDivider,
-  turnDividerKey
+  turnDividerKey,
+  turnTimeLine
 } from './segments'
 
 /** Local wall-clock time in epoch seconds (the tests run in the machine's own zone). */
@@ -95,5 +97,54 @@ describe('hc-1014 the line above a turn', () => {
     expect(dividerDateParts('date:2026-10-22', 2026)).toEqual({ day: 22, month: 10, weekday: 4, year: null })
     expect(dividerDateParts('date:2025-12-31', 2026)).toEqual({ day: 31, month: 12, weekday: 3, year: 2025 })
     expect(dividerDateParts('segment', 2026)).toBeNull()
+  })
+})
+
+describe('hc-1059 the time line under a divider', () => {
+  const NOW = at(10, 26, 16)
+
+  it.each([
+    ['earlier today', at(10, 26, 0, 5), 'today'],
+    ['yesterday, just before midnight', at(10, 25, 23, 59), 'yesterday'],
+    ['two days ago', at(10, 24, 23, 59), null],
+    ['yesterday across a month boundary', at(10, 31, 20), 'yesterday', at(11, 1, 9)]
+  ] as const)('%s', (_label, when, expected, now = NOW) => {
+    expect(relativeDay(when, now)).toBe(expected)
+  })
+
+  it.each([
+    [
+      'first turn today: 「今天」, standing in for the date',
+      null,
+      at(10, 26, 14, 20),
+      [],
+      { at: at(10, 26, 14, 20), day: 'today' }
+    ],
+    ['first turn yesterday: 「昨天」', null, at(10, 25, 14, 52), [], { at: at(10, 25, 14, 52), day: 'yesterday' }],
+    [
+      'first turn last week: the date stays, the time goes under it',
+      null,
+      at(10, 20, 14),
+      [],
+      { at: at(10, 20, 14), day: null }
+    ],
+    [
+      "a later day: the time under that day's date",
+      at(10, 25, 14),
+      at(10, 26, 9, 10),
+      [],
+      { at: at(10, 26, 9, 10), day: null }
+    ],
+    [
+      'a new segment: the time under 「新的一段」',
+      at(10, 26, 8),
+      at(10, 26, 14, 5),
+      [],
+      { at: at(10, 26, 14, 5), day: null }
+    ],
+    ['minutes later on the same day: no line', at(10, 26, 14, 20), at(10, 26, 14, 40), [], null],
+    ['no timestamp on the turn', at(10, 26, 8), null, [], null]
+  ])('%s', (_label, prev, when, starts, expected) => {
+    expect(turnTimeLine(prev, when, starts, NOW)).toEqual(expected)
   })
 })

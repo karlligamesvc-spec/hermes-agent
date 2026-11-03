@@ -22,6 +22,7 @@ import {
 } from './desktop-update'
 import { $runtimeUpdateCheck } from './runtime-update'
 import { $shellUpdate } from './shell-update'
+import { $runtimeUpdateWait } from './update-wait'
 
 const RUNTIME_UPDATE: DesktopRuntimeUpdateCheck = {
   current: { key: 'old', version: 'v2026.7.1' },
@@ -195,6 +196,110 @@ describe('desktop update orchestration', () => {
 
     expect(install).toHaveBeenCalledTimes(1)
     expect($desktopUpdateProgress.get()).toMatchObject({ active: false, currentStage: null, error: null })
+  })
+
+  describe('hc-1117: telling the caller the update waits, and for what', () => {
+    const CHILD = { pid: 4242, kind: 'leftover_child', name: 'python3.14', created: 7.5, endable: true } as const
+    const updateCenter = { setShellOnly: vi.fn(async () => ({ ok: true })), setRuntimeAfterShell: vi.fn(async () => ({ ok: true })), transitionPlan: vi.fn(async () => ({ ok: true })) }
+
+    beforeEach(() => $runtimeUpdateWait.set(null))
+
+    it('a deferred app install answers true, and the store holds the wait even before its event arrives', async () => {
+      $shellUpdate.set(SHELL_UPDATE)
+      const state = { ...SHELL_UPDATE, deferred: true, deferredReason: 'engine_holders', deferredHolders: [CHILD] }
+
+      window.hermesDesktop = {
+        shellUpdate: { install: vi.fn(async () => ({ ok: true, deferred: true, state })) },
+        updateCenter
+      } as unknown as typeof window.hermesDesktop
+
+      await expect(applyDesktopUpdates({ reload: vi.fn() })).resolves.toBe(true)
+      expect($shellUpdate.get()).toEqual(state)
+    })
+
+    it('an app install that goes ahead answers false', async () => {
+      $shellUpdate.set(SHELL_UPDATE)
+      window.hermesDesktop = { shellUpdate: { install: vi.fn(async () => ({ ok: true })) }, updateCenter } as unknown as typeof window.hermesDesktop
+
+      await expect(applyDesktopUpdates({ reload: vi.fn() })).resolves.toBe(false)
+      expect($shellUpdate.get()).toEqual(SHELL_UPDATE)
+    })
+
+    it('a shell required first answers what its install does', async () => {
+      $shellUpdate.set(SHELL_UPDATE)
+      $runtimeUpdateCheck.set({ ...RUNTIME_UPDATE, updateAvailable: false, desktopUpgradeRequired: { minDesktopVersion: '0.18.0', currentDesktopVersion: '0.17.14' } })
+      window.hermesDesktop = { shellUpdate: { install: vi.fn(async () => ({ ok: true, deferred: true })) }, updateCenter } as unknown as typeof window.hermesDesktop
+
+      await expect(applyDesktopUpdates({ reload: vi.fn() })).resolves.toBe(true)
+    })
+
+    it('a deferred engine switch answers true and keeps what the gate named', async () => {
+      vi.useFakeTimers()
+      $runtimeUpdateCheck.set(RUNTIME_UPDATE)
+      window.hermesDesktop = {
+        runtime: { applyUpdate: async () => ({ ok: true, applied: false, deferred: true, reason: 'engine_holders', holders: [CHILD] }) },
+        updateCenter
+      } as unknown as typeof window.hermesDesktop
+
+      await expect(applyDesktopUpdates({ reload: vi.fn() })).resolves.toBe(true)
+      expect($runtimeUpdateWait.get()).toEqual({ reason: 'engine_holders', holders: [CHILD] })
+    })
+
+    it('a deferred engine switch that names nothing still reads as a wait', async () => {
+      vi.useFakeTimers()
+      $runtimeUpdateCheck.set(RUNTIME_UPDATE)
+      window.hermesDesktop = {
+        runtime: { applyUpdate: async () => ({ ok: true, applied: false, deferred: true }) },
+        updateCenter
+      } as unknown as typeof window.hermesDesktop
+
+      await applyDesktopUpdates({ reload: vi.fn() })
+      expect($runtimeUpdateWait.get()).toEqual({ reason: 'active_work', holders: null })
+    })
+
+    it('an engine switch that goes ahead ends the wait and answers false', async () => {
+      $runtimeUpdateCheck.set(RUNTIME_UPDATE)
+      $runtimeUpdateWait.set({ reason: 'engine_holders', holders: [CHILD] })
+      const reload = vi.fn()
+
+      window.hermesDesktop = {
+        runtime: { applyUpdate: async () => ({ ok: true, applied: true, reloadRequired: true }) },
+        updateCenter
+      } as unknown as typeof window.hermesDesktop
+
+      await expect(applyDesktopUpdates({ reload })).resolves.toBe(false)
+      expect($runtimeUpdateWait.get()).toBeNull()
+      expect(reload).toHaveBeenCalledTimes(1)
+    })
+
+    it('a failed update ends the wait', async () => {
+      $runtimeUpdateCheck.set(RUNTIME_UPDATE)
+      $runtimeUpdateWait.set({ reason: 'engine_holders', holders: [CHILD] })
+      window.hermesDesktop = {
+        runtime: { applyUpdate: async () => { throw new Error('bridge gone') } },
+        updateCenter
+      } as unknown as typeof window.hermesDesktop
+
+      await expect(applyDesktopUpdates({ reload: vi.fn() })).rejects.toThrow('bridge gone')
+      expect($runtimeUpdateWait.get()).toBeNull()
+    })
+
+    it('a failed automatic resume ends the wait', async () => {
+      $runtimeUpdateWait.set({ reason: 'engine_holders', holders: [CHILD] })
+      window.hermesDesktop = {
+        getVersion: vi.fn(async () => { throw new Error('bridge gone') }),
+        updateCenter: { ...updateCenter, getPlan: vi.fn(async () => updatePlan()) }
+      } as unknown as typeof window.hermesDesktop
+
+      await resumeDesktopUpdatePlan({ reload: vi.fn() })
+      expect($runtimeUpdateWait.get()).toBeNull()
+    })
+
+    it('dismissing the update ends the wait', () => {
+      $runtimeUpdateWait.set({ reason: 'gateway_busy', holders: null })
+      dismissDesktopUpdateError()
+      expect($runtimeUpdateWait.get()).toBeNull()
+    })
   })
 
   it('resuming a plan whose downloaded shell is not running yet asks for that shell again', async () => {
@@ -1034,4 +1139,330 @@ describe('desktop update orchestration', () => {
       }
     }
   )
+})
+
+describe('a plan waiting for the engine retries out of the way (hc-1118)', () => {
+  type Progress = { phase: 'activating' | 'complete' | 'downloading' | 'preflight' | 'verifying' }
+
+  // What each apply answers, in the order main sends it: everything before the gate fires on every
+  // round, busy or not (electron/apex-bundle-install.ts, pinned by apex-bundle-install.test.ts).
+  const PAST_THE_GATE = ['preflight', 'downloading', 'verifying', 'activating', 'complete'] as const
+  const STOPPED_AT_THE_GATE = ['preflight', 'downloading', 'verifying'] as const
+  const BUSY = { ok: true, applied: false, deferred: true, reason: 'engine_holders', holders: [] }
+
+  async function harness(options: {
+    activeKey?: string
+    appVersion?: string
+    answers?: { events?: readonly Progress['phase'][]; result: Record<string, unknown> }[]
+    kind?: DesktopUpdatePlan['kind']
+    updateDeferred?: boolean
+    waiting?: boolean
+  } = {}) {
+    vi.useFakeTimers()
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-quiet-retry-'))
+    const file = path.join(home, 'plan.json')
+    writeDesktopUpdatePlan(file, updatePlan({ kind: options.kind ?? 'runtime-after-shell' }))
+
+    if (options.waiting !== false) {
+      transitionDesktopUpdatePlan(file, { lastError: 'runtime_update_busy', phase: 'resuming' })
+    }
+
+    // A real reload loses every module latch and subscription; so does this.
+    vi.resetModules()
+    const store = await import('./desktop-update')
+    const shell = await import('./shell-update')
+    const wait = await import('./update-wait')
+    const actives: boolean[] = []
+    const activeAtPhase: Partial<Record<Progress['phase'], boolean>> = {}
+    const answers = [...(options.answers ?? [])]
+
+    let activeKey = options.activeKey ?? 'old'
+
+    let emit: (progress: Progress) => void = () => {}
+
+    const applyUpdate = vi.fn(async () => {
+      const answer = answers.shift()
+
+      if (!answer) {
+        throw new Error('unexpected apply')
+      }
+
+      for (const phase of answer.events ?? []) {
+        emit({ phase })
+        activeAtPhase[phase] = store.$desktopUpdateProgress.get().active
+      }
+
+      if ((answer.result as { applied?: boolean }).applied) {
+        activeKey = 'new'
+      }
+
+      return answer.result
+    })
+
+    store.$desktopUpdateProgress.listen(progress => actives.push(progress.active))
+    window.hermesDesktop = {
+      getVersion: async () => ({ appVersion: options.appVersion ?? '0.18.0' }),
+      runtime: {
+        getVersion: async () => ({ ok: true, key: activeKey, version: 'v2026.8.8', treeMatchesMarker: true, updateDeferred: options.updateDeferred ?? false }),
+        checkUpdate: async () => RUNTIME_UPDATE,
+        applyUpdate,
+        onUpdateProgress: (callback: (progress: Progress) => void) => {
+          emit = callback
+
+          return () => {}
+        }
+      },
+      shellUpdate: {
+        check: async () => ({ ok: true, state: SHELL_UPDATE }),
+        getState: async () => SHELL_UPDATE,
+        install: vi.fn(async () => ({ ok: true })),
+        onEvent: () => () => {}
+      },
+      updateCenter: {
+        getPlan: async () => readDesktopUpdatePlan(file),
+        setRuntimeAfterShell: async (input: Parameters<typeof writeDesktopUpdatePlan>[1]) => {
+          writeDesktopUpdatePlan(file, { ...input, kind: 'runtime-after-shell' })
+
+          return { ok: true }
+        },
+        transitionPlan: async (payload: Parameters<typeof transitionDesktopUpdatePlan>[1]) => ({
+          ok: true,
+          plan: transitionDesktopUpdatePlan(file, payload)
+        }),
+        clearPlan: async () => {
+          clearDesktopUpdatePlan(file)
+
+          return { ok: true }
+        }
+      }
+    } as unknown as typeof window.hermesDesktop
+
+    return { actives, activeAtPhase, applyUpdate, file, home, shell, store, wait }
+  }
+
+  it('stays down through every busy round, then shows the switch and finishes the plan', async () => {
+    const { actives, activeAtPhase, applyUpdate, file, home, store, wait } = await harness({
+      answers: [
+        { events: STOPPED_AT_THE_GATE, result: BUSY },
+        { events: STOPPED_AT_THE_GATE, result: BUSY },
+        { events: PAST_THE_GATE, result: { ok: true, applied: true, reloadRequired: false } }
+      ]
+    })
+
+    const reload = vi.fn()
+
+    try {
+      await store.resumeDesktopUpdatePlan({ automatic: true, reload })
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(applyUpdate).toHaveBeenCalledTimes(2)
+      expect(actives).not.toContain(true)
+      expect(activeAtPhase.verifying).toBe(false)
+      // The wait stays readable for the dialog that says what the update waits for.
+      expect(wait.$runtimeUpdateWait.get()).toEqual({ reason: 'engine_holders', holders: [] })
+      expect(readDesktopUpdatePlan(file)).toMatchObject({ lastError: 'runtime_update_busy', phase: 'resuming' })
+
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(applyUpdate).toHaveBeenCalledTimes(3)
+      expect(activeAtPhase).toMatchObject({ verifying: false, activating: true, complete: true })
+      expect(actives.at(-1)).toBe(false)
+      expect(store.$desktopUpdateProgress.get()).toMatchObject({
+        active: false,
+        completedStages: ['check', 'shell', 'runtime', 'restart'],
+        currentStage: null,
+        error: null,
+        runtimeProgress: null
+      })
+      expect(wait.$runtimeUpdateWait.get()).toBeNull()
+      expect(readDesktopUpdatePlan(file)).toBeNull()
+      expect(reload).not.toHaveBeenCalled()
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it('shows the switch that answers without progress events, before the reload that runs it', async () => {
+    // The packaged path: the gate is its preflight, and the answer is the first sign it let us through.
+    const { actives, file, home, store } = await harness({
+      answers: [{ result: BUSY }, { result: { ok: true, applied: true, reloadRequired: true } }]
+    })
+
+    const atReload: unknown[] = []
+    const reload = vi.fn(() => atReload.push(store.$desktopUpdateProgress.get()))
+
+    try {
+      await store.resumeDesktopUpdatePlan({ automatic: true, reload })
+      expect(actives).not.toContain(true)
+
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(reload).toHaveBeenCalledTimes(1)
+      expect(atReload[0]).toMatchObject({ active: true, currentStage: 'restart', error: null })
+      // The next renderer verifies the tree before the plan goes away.
+      expect(readDesktopUpdatePlan(file)).not.toBeNull()
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it('still shows a retry that fails, naming the stage that failed', async () => {
+    const { actives, file, home, store, wait } = await harness({
+      answers: [{ result: { ok: false, error: 'owned install failure' } }]
+    })
+
+    try {
+      await store.resumeDesktopUpdatePlan({ automatic: true, reload: vi.fn() })
+
+      expect(actives).not.toContain(true)
+      expect(store.$desktopUpdateProgress.get()).toMatchObject({
+        active: false,
+        completedStages: ['check', 'shell'],
+        currentStage: null,
+        error: 'owned install failure',
+        stages: ['check', 'shell', 'runtime', 'restart'],
+        targetVersion: 'v2026.8.8'
+      })
+      expect(wait.$runtimeUpdateWait.get()).toBeNull()
+      expect(readDesktopUpdatePlan(file)).toMatchObject({ lastError: 'owned install failure', phase: 'failed' })
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    { deferred: true, active: false, currentStage: null },
+    { deferred: false, active: true, currentStage: 'restart' }
+  ])('a retry that hands over to the app install (deferred=$deferred)', async ({ active, currentStage, deferred }) => {
+    const { actives, home, shell, store } = await harness({ appVersion: '0.17.14' })
+
+    shell.$shellUpdate.set(SHELL_UPDATE)
+    vi.mocked(window.hermesDesktop.shellUpdate!.install).mockResolvedValue({ ok: true, deferred })
+
+    try {
+      await store.resumeDesktopUpdatePlan({ automatic: true, reload: vi.fn() })
+
+      expect(window.hermesDesktop.shellUpdate!.install).toHaveBeenCalledTimes(1)
+      expect(actives.includes(true)).toBe(active)
+      expect(store.$desktopUpdateProgress.get()).toMatchObject({ active, currentStage })
+
+      if (!deferred) {
+        // Only stage `restart` hears the native hand-off fail after the IPC answer.
+        shell.$shellUpdate.set({ ...SHELL_UPDATE, error: 'native install failed', phase: 'error' })
+        expect(store.$desktopUpdateProgress.get()).toMatchObject({ active: false, error: 'native install failed' })
+      }
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it('a manual retry that hands over to the app install keeps the stage it always showed', async () => {
+    const { home, shell, store } = await harness({ appVersion: '0.17.14' })
+
+    shell.$shellUpdate.set(SHELL_UPDATE)
+
+    try {
+      await store.retryDesktopUpdate({ reload: vi.fn() })
+
+      expect(window.hermesDesktop.shellUpdate!.install).toHaveBeenCalledTimes(1)
+      expect(store.$desktopUpdateProgress.get()).toMatchObject({ active: true, currentStage: 'runtime' })
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it('a retry whose app still has to be fetched again stays down', async () => {
+    const { actives, file, home, store } = await harness({ appVersion: '0.17.14' })
+
+    try {
+      await store.resumeDesktopUpdatePlan({ automatic: true, reload: vi.fn() })
+
+      expect(actives).not.toContain(true)
+      expect(window.hermesDesktop.shellUpdate!.install).not.toHaveBeenCalled()
+      expect(readDesktopUpdatePlan(file)).toMatchObject({ lastError: 'shell_target_redownloading', phase: 'resuming' })
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it('a retry that the boot gate still holds back stays down and keeps waiting', async () => {
+    const { actives, applyUpdate, file, home, store } = await harness({ updateDeferred: true })
+
+    try {
+      await store.resumeDesktopUpdatePlan({ automatic: true, reload: vi.fn() })
+      await vi.advanceTimersByTimeAsync(30_000)
+
+      expect(applyUpdate).not.toHaveBeenCalled()
+      expect(actives).not.toContain(true)
+      expect(readDesktopUpdatePlan(file)).toMatchObject({ lastError: 'runtime_update_busy', phase: 'resuming' })
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    { completedStages: ['check', 'shell', 'runtime', 'restart'], kind: 'runtime-after-shell' },
+    { completedStages: ['check', 'shell', 'restart'], kind: 'shell-only' }
+  ] as const)('a retry that finds the target already active ends the $kind plan without showing anything', async ({ completedStages, kind }) => {
+    const { actives, applyUpdate, file, home, store } = await harness({ activeKey: 'new', kind })
+
+    try {
+      await store.resumeDesktopUpdatePlan({ automatic: true, reload: vi.fn() })
+
+      expect(applyUpdate).not.toHaveBeenCalled()
+      expect(actives).not.toContain(true)
+      expect(readDesktopUpdatePlan(file)).toBeNull()
+      expect(store.$desktopUpdateProgress.get()).toMatchObject({ active: false, completedStages })
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it('the first click raises at once and answers that it waits; only its retries stay down', async () => {
+    const { actives, home, store } = await harness({
+      answers: [
+        { events: STOPPED_AT_THE_GATE, result: BUSY },
+        { events: STOPPED_AT_THE_GATE, result: BUSY }
+      ],
+      waiting: false
+    })
+
+    const { $runtimeUpdateCheck: runtimeCheck } = await import('./runtime-update')
+
+    runtimeCheck.set(RUNTIME_UPDATE)
+
+    try {
+      const clicked = store.applyDesktopUpdates({ reload: vi.fn() })
+
+      expect(store.$desktopUpdateProgress.get().active).toBe(true)
+      await expect(clicked).resolves.toBe(true)
+      expect(store.$desktopUpdateProgress.get().active).toBe(false)
+
+      actives.length = 0
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(window.hermesDesktop.runtime.applyUpdate).toHaveBeenCalledTimes(2)
+      expect(actives).not.toContain(true)
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    { name: 'a manual retry of a waiting plan', waiting: true, run: 'retry' },
+    { name: 'the automatic resume of a plan that has not waited yet', waiting: false, run: 'automatic' }
+  ] as const)('$name raises at once, as before', async ({ run, waiting }) => {
+    const { actives, activeAtPhase, home, store } = await harness({
+      answers: [{ events: STOPPED_AT_THE_GATE, result: BUSY }],
+      waiting
+    })
+
+    try {
+      await (run === 'retry'
+        ? store.retryDesktopUpdate({ reload: vi.fn() })
+        : store.resumeDesktopUpdatePlan({ automatic: true, reload: vi.fn() }))
+
+      expect(activeAtPhase.preflight).toBe(true)
+      expect(actives.at(-1)).toBe(false)
+      expect(store.$desktopUpdateProgress.get()).toMatchObject({ active: false, currentStage: null, error: null })
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
 })

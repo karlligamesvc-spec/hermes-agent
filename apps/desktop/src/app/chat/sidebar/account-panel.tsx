@@ -21,9 +21,13 @@ import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
 import { dismissNarrowSidebarOverlay } from '@/store/layout'
 import { notify } from '@/store/notifications'
 import { requestManagedReSignIn } from '@/store/onboarding'
+import { useSingleThreadMode } from '@/store/single-thread'
 
 import { ASSISTANT_ROUTE, CRON_ROUTE, DELIVERABLES_ROUTE, HISTORY_ROUTE, PROFILE_STATS_ROUTE, PROJECTS_ROUTE, SETTINGS_ROUTE } from '../../routes'
 import { useSingleThreadNavLabels } from '../../single-thread/nav-labels'
+
+import { CloudLoginNotice } from './cloud-login-notice'
+import { SessionExpiredCard } from './session-expired-card'
 
 // The signed-in display name: prefer an explicit name, else the email's local
 // part, else a generic fallback ("账户"). The avatar shows its first letter.
@@ -70,8 +74,8 @@ function initialOf(name: string): string {
 // no plan badge or phone icon. The business rail adds a menu caret. Click →
 // a popover menu with the account's team when it has one (hc-971), 个人资料, 设置,
 // 项目, 定时运行, 连接助手, 历史会话, 交付物, optional real usage, and 退出登录. These destinations share one information-architecture group
-// instead of spending permanent sidebar height on additional rows. Rendered
-// only on managed builds when signed in (the auth gate handles the signed-out
+// instead of spending permanent sidebar height on additional rows. Product mode
+// has no 项目 (hc-1123) and no 交付物 (hc-1129). Rendered only on managed builds when signed in (the auth gate handles the signed-out
 // case); on a managed-disabled build the panel stays hidden.
 export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), onNavigateBusiness }: {
   businessChrome?: boolean
@@ -80,6 +84,7 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
   const { t } = useI18n()
   const a = t.auth.account
   const nav = useSingleThreadNavLabels(t.sidebar.nav)
+  const productMode = useSingleThreadMode()
   const navigate = useNavigate()
   const { account, accountId, enabled, status } = useStore($authState)
   const team = teamFor(useStore($accountTeam), accountId)
@@ -128,8 +133,8 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
       }
     } finally {
       setSigningOut(false)
-
-      if (isCurrent()) {setOpen(false)}
+      // Always: this row stays mounted behind the login screen, and an open menu would be back after the next sign-in.
+      setOpen(false)
     }
   }
 
@@ -146,26 +151,11 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
   // actionable single source of truth for a dead relay session.
   if (status === 'expired') {
     return (
-      <button
-        className={cn(
-          'flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors',
-          'hover:bg-(--ui-control-hover-background)'
-        )}
+      <SessionExpiredCard
+        action={a.sessionExpiredAction}
         onClick={() => requestManagedReSignIn(t.auth.login.sessionExpired)}
-        type="button"
-      >
-        <span
-          aria-hidden
-          className="grid size-7 shrink-0 place-items-center rounded-full text-white"
-          style={{ backgroundColor: 'var(--theme-danger, #d9534f)' }}
-        >
-          <Codicon name="warning" size="0.875rem" />
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col leading-tight">
-          <span className="truncate text-[0.8125rem] font-medium text-foreground">{a.sessionExpiredTitle}</span>
-          <span className="truncate text-[0.6875rem] text-(--ui-text-tertiary)">{a.sessionExpiredAction}</span>
-        </span>
-      </button>
+        title={a.sessionExpiredTitle}
+      />
     )
   }
 
@@ -181,7 +171,7 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
   // one-line change.
   const usageLabel: null | string = null
 
-  return (
+  const row = (
     <DropdownMenu onOpenChange={onMenuOpenChange} open={open}>
       <DropdownMenuTrigger asChild>
         <button
@@ -221,10 +211,12 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
           <span>{a.settings}</span>
         </DropdownMenuItem>
         {businessChrome && <>
-          <DropdownMenuItem onSelect={() => { openBusinessDestination('projects', PROJECTS_ROUTE) }}>
-            <Codicon name="folder" size="0.875rem" />
-            <span>{nav.projects}</span>
-          </DropdownMenuItem>
+          {!productMode && (
+            <DropdownMenuItem onSelect={() => { openBusinessDestination('projects', PROJECTS_ROUTE) }}>
+              <Codicon name="folder" size="0.875rem" />
+              <span>{nav.projects}</span>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onSelect={() => { openBusinessDestination('scheduled-runs', CRON_ROUTE) }}>
             <Codicon name="calendar" size="0.875rem" />
             <span>{nav['scheduled-runs']}</span>
@@ -238,10 +230,12 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
           <Codicon name="history" size="0.875rem" />
           <span>{nav.history}</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => navigate(DELIVERABLES_ROUTE)}>
-          <Codicon name="files" size="0.875rem" />
-          <span>{nav.deliverables}</span>
-        </DropdownMenuItem>
+        {!productMode && (
+          <DropdownMenuItem onSelect={() => navigate(DELIVERABLES_ROUTE)}>
+            <Codicon name="files" size="0.875rem" />
+            <span>{nav.deliverables}</span>
+          </DropdownMenuItem>
+        )}
         {usageLabel ? (
           <DropdownMenuItem onSelect={() => navigate(`${SETTINGS_ROUTE}`)}>
             <Codicon name="graph" size="0.875rem" />
@@ -264,5 +258,13 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), on
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+
+  // hc-1073: while the cloud rejects the login JWT, the 「登录已失效」 card sits above the row.
+  return (
+    <>
+      <CloudLoginNotice />
+      {row}
+    </>
   )
 }

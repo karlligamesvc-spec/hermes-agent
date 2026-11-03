@@ -1,0 +1,148 @@
+{
+  "nothing": {
+    "env": {},
+    "lines": [],
+    "set": []
+  },
+  "single-thread alone": {
+    "env": {
+      "APEX_SINGLE_THREAD_ACTIVE": "1"
+    },
+    "lines": [
+      "[client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)"
+    ],
+    "set": [
+      "APEX_SINGLE_THREAD_ACTIVE"
+    ]
+  },
+  "several assistants from the platform": {
+    "env": {
+      "APEX_MULTI_BOT_ACTIVE": "1",
+      "APEX_SINGLE_THREAD_ACTIVE": "1"
+    },
+    "lines": [
+      "[client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)",
+      "[client-config] APEX_MULTI_BOT_ACTIVE=1 (desktop_features.multi_bot)"
+    ],
+    "set": [
+      "APEX_SINGLE_THREAD_ACTIVE",
+      "APEX_MULTI_BOT_ACTIVE"
+    ]
+  },
+  "relay from the platform, several assistants off": {
+    "env": {
+      "APEX_SINGLE_THREAD_ACTIVE": "1"
+    },
+    "lines": [
+      "[client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)"
+    ],
+    "set": [
+      "APEX_SINGLE_THREAD_ACTIVE"
+    ]
+  },
+  "relay from the platform, single-thread off": {
+    "env": {},
+    "lines": [],
+    "set": []
+  },
+  "relay from the platform, both off": {
+    "env": {},
+    "lines": [],
+    "set": []
+  },
+  "relay off on this install, everything on": {
+    "env": {
+      "APEX_MULTI_BOT_ACTIVE": "1",
+      "APEX_SINGLE_THREAD_ACTIVE": "1",
+      "APEXNODES_MULTI_BOT_HANDOFF": "0"
+    },
+    "lines": [
+      "[client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)",
+      "[client-config] APEX_MULTI_BOT_ACTIVE=1 (desktop_features.multi_bot)"
+    ],
+    "set": [
+      "APEX_SINGLE_THREAD_ACTIVE",
+      "APEX_MULTI_BOT_ACTIVE"
+    ]
+  },
+  "relay on this install, several assistants off": {
+    "env": {
+      "APEX_SINGLE_THREAD_ACTIVE": "1",
+      "APEXNODES_MULTI_BOT_HANDOFF": "1"
+    },
+    "lines": [
+      "[client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)"
+    ],
+    "set": [
+      "APEX_SINGLE_THREAD_ACTIVE"
+    ]
+  },
+  "relay on this install, several assistants off on this install": {
+    "env": {
+      "APEX_SINGLE_THREAD_ACTIVE": "1",
+      "APEXNODES_MULTI_BOT": "0",
+      "APEXNODES_MULTI_BOT_HANDOFF": "1"
+    },
+    "lines": [
+      "[client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)"
+    ],
+    "set": [
+      "APEX_SINGLE_THREAD_ACTIVE"
+    ]
+  },
+  "relay on this install, single-thread off on this install": {
+    "env": {
+      "APEXNODES_MULTI_BOT_HANDOFF": "1",
+      "APEXNODES_SINGLE_THREAD": "0"
+    },
+    "lines": [],
+    "set": []
+  },
+  "a non-literal true": {
+    "env": {
+      "APEX_MULTI_BOT_ACTIVE": "1",
+      "APEX_SINGLE_THREAD_ACTIVE": "1"
+    },
+    "lines": [
+      "[client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)",
+      "[client-config] APEX_MULTI_BOT_ACTIVE=1 (desktop_features.multi_bot)"
+    ],
+    "set": [
+      "APEX_SINGLE_THREAD_ACTIVE",
+      "APEX_MULTI_BOT_ACTIVE"
+    ]
+  },
+  "an unreadable install value, platform off": {
+    "env": {
+      "APEX_MULTI_BOT_ACTIVE": "1",
+      "APEX_SINGLE_THREAD_ACTIVE": "1",
+      "APEXNODES_MULTI_BOT_HANDOFF": "maybe"
+    },
+    "lines": [
+      "[client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)",
+      "[client-config] APEX_MULTI_BOT_ACTIVE=1 (desktop_features.multi_bot)"
+    ],
+    "set": [
+      "APEX_SINGLE_THREAD_ACTIVE",
+      "APEX_MULTI_BOT_ACTIVE"
+    ]
+  },
+  "tiers and hosted Hypit beside the relay": {
+    "env": {
+      "APEX_HYPIHUB_ACTIVE": "1",
+      "APEX_SINGLE_THREAD_ACTIVE": "1",
+      "APEXNODES_MODEL_TIERS": "1",
+      "APEXNODES_MULTI_BOT_HANDOFF": "1"
+    },
+    "lines": [
+      "[client-config] APEXNODES_MODEL_TIERS=1 from platform desktop_features",
+      "[client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)",
+      "[client-config] APEX_HYPIHUB_ACTIVE=1 (desktop_features.hypihub_apex)"
+    ],
+    "set": [
+      "APEXNODES_MODEL_TIERS",
+      "APEX_SINGLE_THREAD_ACTIVE",
+      "APEX_HYPIHUB_ACTIVE"
+    ]
+  }
+}

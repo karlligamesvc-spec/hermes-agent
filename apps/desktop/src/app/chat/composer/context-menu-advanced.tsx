@@ -30,6 +30,10 @@ export interface ComposerAdvanced {
   /** Absent while the scenario catalog is switched off, and in single-thread mode. */
   onOpenScenarios?: () => void
   voice: VoiceMenuItemsProps
+  /** hc-1060 single-thread mode (N7): the menu keeps attach, generate and
+   *  语音设置 only. No 高级 fold, so no skills or connectors: the user never
+   *  manages skills here. */
+  voiceOnly?: boolean
 }
 
 const ROW = 'text-[length:var(--conversation-tool-font-size)] focus:bg-(--ui-bg-tertiary)'
@@ -77,6 +81,10 @@ export function AttachRows({ onPickFiles, onPickFolders, onPickImages }: Compose
 export function AdvancedSubmenu({ advanced, children }: { advanced: ComposerAdvanced; children: ReactNode }) {
   const copy = useComposerSimpleCopy()
 
+  if (advanced.voiceOnly) {
+    return <VoiceSettingsSubmenu voice={advanced.voice} />
+  }
+
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger className={ROW} data-slot="composer-advanced">
@@ -91,17 +99,25 @@ export function AdvancedSubmenu({ advanced, children }: { advanced: ComposerAdva
           </DropdownMenuItem>
         )}
         {!advanced.hideApprovals && <ApprovalSubmenu />}
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger className={ROW}>
-            <AudioLines />
-            <span className="min-w-0 flex-1 truncate">{copy.voiceSettings}</span>
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="min-w-52">
-            <VoiceMenuItems {...advanced.voice} />
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
+        <VoiceSettingsSubmenu voice={advanced.voice} />
         <DropdownMenuSeparator />
         {children}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  )
+}
+
+function VoiceSettingsSubmenu({ voice }: { voice: VoiceMenuItemsProps }) {
+  const copy = useComposerSimpleCopy()
+
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className={ROW}>
+        <AudioLines />
+        <span className="min-w-0 flex-1 truncate">{copy.voiceSettings}</span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="min-w-52">
+        <VoiceMenuItems {...voice} />
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   )

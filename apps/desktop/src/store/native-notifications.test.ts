@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createClientSessionState } from '@/lib/chat-runtime'
 
+import { botNotificationTitle } from './bot-notifications'
 import { $gateway } from './gateway'
+import { $mainThreadsByProfile, resetMainThreadForTest } from './main-thread'
 import {
   clearPluginNotifyHandlers,
   dispatchNativeNotification,
@@ -15,11 +17,14 @@ import {
   setNativeNotifyEnabled,
   setNativeNotifyKind
 } from './native-notifications'
+import { setNotificationTitleNamer } from './notification-title'
 import { __resetNativeNotifyBaselineForTests, markNativeNotifyBaseline } from './notify-baseline'
 import { $approvalRequest, setApprovalRequest } from './prompts'
 import { markSessionGone, resetBackgroundPollingGuard } from './runtime-gone'
 import { $activeSessionId, setActiveSessionId } from './session'
 import { dropSessionState, publishSessionState } from './session-states'
+import { setSingleThreadFlagForTest } from './single-thread'
+import { botRosterFrom, resetBotRosterForTest, setMultiBotFlagForTest } from './single-thread-bots'
 
 const desktopWindow = window as unknown as { hermesDesktop?: Window['hermesDesktop'] }
 const initialHermesDesktop = desktopWindow.hermesDesktop
@@ -367,5 +372,57 @@ describe('respondToApprovalAction', () => {
     await respondToApprovalAction('bg', 'approve')
 
     expect(request).not.toHaveBeenCalled()
+  })
+})
+
+describe('hc-1077 several assistants: the title says whose conversation', () => {
+  afterEach(() => {
+    setNotificationTitleNamer(null)
+    setMultiBotFlagForTest(false)
+    setSingleThreadFlagForTest(false)
+    resetBotRosterForTest()
+    resetMainThreadForTest()
+  })
+
+  function notifyFrom(storedId: string, title: string) {
+    const runtimeId = freshSession()
+
+    publishSessionState(runtimeId, createClientSessionState(storedId))
+
+    try {
+      // An attention kind: it fires for a background session too (completions only for the active one).
+      dispatchNativeNotification({ kind: 'input', sessionId: runtimeId, title })
+
+      return notify.mock.calls.at(-1)?.[0]?.title
+    } finally {
+      dropSessionState(runtimeId)
+    }
+  }
+
+  beforeEach(() => {
+    // What the single-thread shell installs while several assistants are on (use-multi-bot-shell.ts).
+    setNotificationTitleNamer(botNotificationTitle)
+    resetBotRosterForTest(
+      botRosterFrom([{ name: 'writer', ui_meta: { apex: { created: 1, name: '小红书文案' } } }], () => true)
+    )
+    $mainThreadsByProfile.set({
+      default: { ids: ['apex-root'], profile: 'default', rootId: 'apex-root', status: 'found', tipId: 'apex-root' },
+      writer: { ids: ['writer-root'], profile: 'writer', rootId: 'writer-root', status: 'found', tipId: 'writer-root' }
+    })
+  })
+
+  it('with one assistant the title is as it was', () => {
+    expect(notifyFrom('writer-root', '需要输入')).toBe('需要输入')
+  })
+
+  it.each([
+    ['an assistant in the background', 'writer-root', '小红书文案 · 需要输入'],
+    ['APEX', 'apex-root', 'APEX · 需要输入'],
+    ['a conversation that is no assistant’s thread', 'earlier-chat', '需要输入']
+  ])('names %s', (_label, storedId, title) => {
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(true)
+
+    expect(notifyFrom(storedId, '需要输入')).toBe(title)
   })
 })

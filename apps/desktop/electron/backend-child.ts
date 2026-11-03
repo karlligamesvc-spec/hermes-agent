@@ -20,6 +20,10 @@
  * the function body.
  */
 
+import { execFileSync } from 'node:child_process'
+
+import { hiddenWindowsChildOptions } from './windows-child-options'
+
 export interface StopBackendChildDeps {
   /** Defaults to the real platform check; injectable for tests. */
   isWindows?: boolean
@@ -54,6 +58,31 @@ export interface WaitableChild extends KillableChild {
   signalCode: string | null
   once: (event: 'exit', listener: () => void) => unknown
   removeListener: (event: 'exit', listener: () => void) => unknown
+}
+
+// Force-kill the entire process TREE rooted at each PID. Node's child.kill()
+// only signals the direct child, so on Windows a backend `hermes.exe` that
+// spawned its own grandchildren (a `hermes` REPL, a pty terminal session, the
+// gateway) would survive and keep the venv shim locked. taskkill /T /F reaps
+// the whole tree synchronously. Windows-only: the backend is NOT spawned
+// detached there (so it's not a process-group leader — a POSIX negative-pgid
+// kill would be meaningless). On POSIX the group SIGTERM above covers the
+// engine's own group, and apex-engine-children.ts what it started outside it.
+export function forceKillProcessTree(pid: number, isWindows: boolean = process.platform === 'win32'): void {
+  if (!isWindows) {
+    return
+  }
+
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return
+  }
+
+  try {
+    execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], hiddenWindowsChildOptions({ stdio: 'ignore' }))
+  } catch {
+    // Already gone, or no permission — best effort; the unlock wait below is
+    // the real gate.
+  }
 }
 
 /** Graceful exit, SIGKILL escalation, then a bounded wait for the escalation. */

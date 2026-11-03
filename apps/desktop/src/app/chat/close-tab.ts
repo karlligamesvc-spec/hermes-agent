@@ -65,8 +65,14 @@ export function closeWorkspaceTab(loadSessionIntoWorkspace?: (storedSessionId: s
  *
  * Steps 2-4 follow the same focused zone ⌘1…⌘9 indexes, so a second chat zone
  * with its own tab strip closes ITS tab instead of main's.
+ *
+ * `lastRung` replaces step 4: single-thread product mode on macOS closes the
+ * window there (close-window.ts, hc-1100).
  */
-export function closeActiveTab(loadSessionIntoWorkspace?: (storedSessionId: string) => void): boolean {
+export function closeActiveTab(
+  loadSessionIntoWorkspace?: (storedSessionId: string) => void,
+  lastRung: (loadSessionIntoWorkspace?: (storedSessionId: string) => void) => boolean = closeWorkspaceTab
+): boolean {
   if (isFocusWithin('[data-terminal]')) {
     closeActiveTerminal()
 
@@ -85,5 +91,5 @@ export function closeActiveTab(loadSessionIntoWorkspace?: (storedSessionId: stri
     return true
   }
 
-  return closeWorkspaceTab(loadSessionIntoWorkspace)
+  return lastRung(loadSessionIntoWorkspace)
 }

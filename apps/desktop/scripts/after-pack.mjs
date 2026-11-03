@@ -25,6 +25,7 @@ import { Arch } from 'electron-builder'
 
 import { stampExeIdentity } from './set-exe-identity.mjs'
 import { assertBundledRuntimePackage } from './bundled-runtime-package.mjs'
+import { storeEngineInMacUpdateZip } from './assert-update-engine-stored.mjs'
 
 function plistString(plist, key) {
   const match = plist.match(new RegExp(`<key>\\s*${key}\\s*</key>\\s*<string>([^<]+)</string>`))
@@ -61,6 +62,9 @@ export default async function afterPack(context) {
   }
 
   if (context.electronPlatformName === 'darwin') {
+    // hc-1058: the update zip is written after this hook by Info-ZIP `zip`, which
+    // reads ZIPOPT; storing the engine archive keeps it block-diffable.
+    storeEngineInMacUpdateZip(process.env)
     assertMacVersionIdentity({
       appOutDir: context.appOutDir,
       productName,

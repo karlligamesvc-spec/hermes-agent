@@ -5,6 +5,7 @@ import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 import { $activeGatewayProfile, $profiles, normalizeProfileKey, refreshProfiles } from '@/store/profile'
 import { $settingsScopeOverride, setSettingsScope } from '@/store/settings-scope'
+import { useMultiBotMode } from '@/store/single-thread-bots'
 
 // The same chip affordance the Gateway page uses for its per-profile
 // connection overrides (gateway-settings ScopeChip). That one stays local to
@@ -32,13 +33,21 @@ export function ScopeChip({ active, label, onSelect }: { active: boolean; label:
  *  Messaging overlay. Backed by one nanostore ($settingsScopeOverride) so the
  *  selection persists across pages. Hidden with fewer than two profiles, so
  *  single-profile users never see it and every request keeps its unscoped
- *  default shape. */
+ *  default shape.
+ *
+ *  hc-1098: hidden too while several assistants are on (single-thread product
+ *  mode). The page's title already says whose settings these are (「X 的设置」,
+ *  hc-1077) and the model / tier page says it edits the account's; the chips
+ *  named profile directories (apex-bot-2) and a click reached another
+ *  assistant's config. Another assistant's settings open from that assistant,
+ *  picked in the sidebar. */
 export function SettingsProfileScope({ className }: { className?: string }) {
   const { t } = useI18n()
   const scope = t.settings.profileScope
   const override = useStore($settingsScopeOverride)
   const active = useStore($activeGatewayProfile)
   const profiles = useStore($profiles)
+  const multiBot = useMultiBotMode()
 
   // Refresh lazily so a profile created elsewhere shows up; the cached list
   // paints immediately. Best-effort — a failure keeps the cached roster.
@@ -46,7 +55,7 @@ export function SettingsProfileScope({ className }: { className?: string }) {
     void refreshProfiles().catch(() => undefined)
   }, [])
 
-  if (profiles.length < 2) {
+  if (profiles.length < 2 || multiBot) {
     return null
   }
 

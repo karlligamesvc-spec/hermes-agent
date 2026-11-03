@@ -161,13 +161,15 @@ describe('hc-1014 switch on, product mode: one conversation', () => {
     expect((await renderEmptyThread()).querySelector('[data-single-thread-empty]')).toBeNull()
   })
 
-  it('has no session list, no 开始 / ⌘N row and no "+": one row opens the conversation', () => {
+  it('has no session list, no 开始 / ⌘N row and no "+": one APEX row opens the conversation', () => {
     const { container } = renderSidebar()
 
-    expect([...container.querySelectorAll('[data-single-thread-nav]')].map(row => row.textContent)).toEqual([
-      '对话',
-      '沉浸式分析'
-    ])
+    // hc-1061: the one assistant row is the only nav row. hc-1070: single-thread mode has no 沉浸式分析 at all.
+    expect(
+      [...container.querySelectorAll('[data-single-thread-nav]')].map(row => row.getAttribute('data-single-thread-nav'))
+    ).toEqual(['thread'])
+    expect(container.querySelector('[data-single-thread-nav="thread"]')?.textContent).toMatch(/^APEX/)
+    expect(screen.queryByText('沉浸式分析')).toBeNull()
     expect(container.querySelector('[data-apex-business-nav="start"]')).toBeNull()
     expect(screen.queryByText('开始')).toBeNull()
     expect(screen.queryByText('选题：换季收纳')).toBeNull()
@@ -181,8 +183,13 @@ describe('hc-1014 switch on, product mode: one conversation', () => {
 
     expect(items).toContain('更早的对话')
     expect(items).not.toContain('历史会话')
+    // hc-1123, hc-1129: and no 项目 or 交付物. Everything else stays in the golden's order.
+    expect(items).not.toContain('项目')
+    expect(items).not.toContain('交付物')
     expect(items.filter(item => item !== '更早的对话')).toEqual(
-      (JSON.parse(golden('account-menu.json')) as string[]).filter(item => item !== '历史会话')
+      (JSON.parse(golden('account-menu.json')) as string[]).filter(
+        item => item !== '历史会话' && item !== '项目' && item !== '交付物'
+      )
     )
   })
 
@@ -225,9 +232,7 @@ describe('hc-1014 the seams stay wired', () => {
   it('the sidebar surface swaps in the single-thread sidebar and the chat surface mounts the shell', () => {
     const surfaces = source('app', 'contrib', 'surfaces.tsx')
 
-    expect(surfaces).toContain(
-      '<SingleThreadSidebar currentView={currentView} onNavigate={latestActions.onNavigate} />'
-    )
+    expect(surfaces).toContain('<SingleThreadSidebar currentView={currentView} />')
     expect(surfaces).toContain('useSingleThreadShell(actions.requestGateway)')
   })
 

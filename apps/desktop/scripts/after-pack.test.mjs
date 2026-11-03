@@ -1,10 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
 import afterPack, { assertMacVersionIdentity } from './after-pack.mjs'
+import { MAC_ZIP_STORED_SUFFIXES } from './assert-update-engine-stored.mjs'
 
 const tempRoots = []
 
@@ -66,5 +67,22 @@ describe('afterPack macOS version identity gate', () => {
     expect(() => assertMacVersionIdentity(macFixture({ runtimeVersion: '0.21.0' }))).toThrow(
       /version identity mismatch/
     )
+  })
+})
+
+describe('afterPack macOS update zip seam (hc-1058)', () => {
+  it('sets ZIPOPT so Info-ZIP stores the engine archive in the update zip', async () => {
+    const version = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8')).version
+    const { appOutDir } = macFixture({ infoVersion: version, packageVersion: version, runtimeVersion: version })
+    const before = process.env.ZIPOPT
+
+    delete process.env.ZIPOPT
+
+    try {
+      await afterPack({ electronPlatformName: 'darwin', appOutDir, packager: { appInfo: { productFilename: 'APEX', version } } })
+      expect(process.env.ZIPOPT).toBe(`-n ${MAC_ZIP_STORED_SUFFIXES}`)
+    } finally {
+      if (before === undefined) {delete process.env.ZIPOPT} else {process.env.ZIPOPT = before}
+    }
   })
 })

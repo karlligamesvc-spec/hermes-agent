@@ -1,3 +1,4 @@
+import { describeRuntimeUpdateBusy } from './engine-holders'
 import type { PackagedRuntimeResult } from './packaged-runtime'
 import { isRuntimeUpdateBusy } from './runtime-update-busy'
 
@@ -12,6 +13,7 @@ export function createDeferredRuntimeUpdate(deps: {
   let timer: ReturnType<typeof setTimeout> | undefined
   let running = false
   let disposed = false
+  let lastDeferral: null | string = null
 
   function schedule() {
     if (timer || disposed) {return}
@@ -34,7 +36,14 @@ export function createDeferredRuntimeUpdate(deps: {
         schedule()
       }
     } catch (error) {
-      if (isRuntimeUpdateBusy(error)) {schedule()}
+      if (isRuntimeUpdateBusy(error)) {
+        // hc-1094: say what the upgrade waits for, once per change, as the shell install does.
+        const deferral = describeRuntimeUpdateBusy(error)
+
+        if (deferral !== lastDeferral) {deps.log(`[bundled-engine] deferred upgrade still waiting: ${deferral}`)}
+        lastDeferral = deferral
+        schedule()
+      }
       else {deps.log(`[bundled-engine] deferred upgrade stopped: ${String(error)}`)}
     } finally {
       running = false
@@ -95,7 +104,7 @@ export function createPackagedEngineDeferral(deps: {
       deferred = isRuntimeUpdateBusy(error) && usable()
 
       if (deferred) {
-        deps.log('[bundled-engine] deferred while existing work finishes; keeping the current engine usable')
+        deps.log(`[bundled-engine] deferred while existing work finishes; keeping the current engine usable: ${describeRuntimeUpdateBusy(error)}`)
         retry.schedule()
       }
 

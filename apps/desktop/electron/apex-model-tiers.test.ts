@@ -19,16 +19,19 @@ import {
   resolveApexEndpoints
 } from './apex-managed'
 import {
+  accountTierOfRoot,
   applyModelTierSwitches,
   healManagedModelTier,
   isModelTierAlias,
   isModelTierMaxEnabled,
   isModelTiersEnabled,
+  isTierFollowOn,
   migrateManagedModelToTierYaml,
   MODEL_TIER_ALIASES,
   modelTierStatus,
   modelTierSwitchesFromClientConfig,
-  TIER_DEFAULT_MANAGED_MODEL
+  TIER_DEFAULT_MANAGED_MODEL,
+  TIER_FOLLOW_ENV
 } from './apex-model-tiers'
 
 const RELAY = DEFAULT_RELAY_BASE_URL
@@ -210,6 +213,73 @@ describe('the boot migration to Flash', () => {
   })
 })
 
+describe('hc-1080: named profiles follow the root tier', () => {
+  const ST = { APEX_SINGLE_THREAD_ACTIVE: '1', APEX_MULTI_BOT_ACTIVE: '1' }
+
+  test('following is off unless the multi-bot switch hc-1077 settles is exactly 1', () => {
+    assert.equal(TIER_FOLLOW_ENV, 'APEX_MULTI_BOT_ACTIVE', 'the name hc-1077 sets and the engine (hc-1082) reads')
+    assert.equal(isTierFollowOn({}), false)
+    assert.equal(isTierFollowOn({ APEX_MULTI_BOT_ACTIVE: 'true' }), false)
+    assert.equal(isTierFollowOn({ APEX_MULTI_BOT_ACTIVE: '1' }), true)
+  })
+
+  const relayModel = (model: string) =>
+    `model:\n  default: ${model}\n  provider: custom\n  base_url: ${RELAY}\n  api_key: sk-test\n`
+
+  test.each([
+    ['a tier alias on the relay, single-thread on', relayModel('APEX-Pro'), { key: 'sk-test' }, ST, 'apex-pro'],
+    [
+      'a tier alias on the relay, tiers on',
+      relayModel('apex-max'),
+      { key: 'sk-test' },
+      { APEXNODES_MODEL_TIERS: '1', APEX_MULTI_BOT_ACTIVE: '1' },
+      'apex-max'
+    ],
+    ['an old id (the root heal has not settled it)', relayModel('deepseek-v4-pro-APEX'), { key: 'sk-test' }, ST, null],
+    ['the root on BYOK', 'model:\n  default: apex-pro\n  provider: deepseek\n', { key: 'sk-test' }, ST, null],
+    ['signed out', relayModel('apex-pro'), {}, ST, null],
+    [
+      'tiers and single-thread both off',
+      relayModel('apex-pro'),
+      { key: 'sk-test' },
+      { APEX_MULTI_BOT_ACTIVE: '1' },
+      null
+    ],
+    [
+      'several assistants off (the default, and developer mode)',
+      relayModel('apex-pro'),
+      { key: 'sk-test' },
+      { APEX_SINGLE_THREAD_ACTIVE: '1' },
+      null
+    ]
+  ])('accountTierOfRoot: %s', (_label, raw, managed, env, expected) => {
+    assert.equal(accountTierOfRoot(raw, managed, RELAY, env), expected)
+  })
+
+  test('a followed tier replaces the profile pick, an old id or a tier alike; a non-tier follow is ignored', () => {
+    const fixed: string[] = []
+
+    assert.match(
+      healManagedModelTier(relayModel('apex-max'), { key: 'sk-test' }, RELAY, ST, fixed, null, 'apex-pro'),
+      /^ {2}default: apex-pro$/m
+    )
+    assert.match(
+      healManagedModelTier(relayModel('deepseek-v4-pro-APEX'), { key: 'sk-test' }, RELAY, ST, fixed, null, 'apex-pro'),
+      /^ {2}default: apex-pro$/m
+    )
+    assert.deepEqual(fixed, ['model(account:apex-max→pro)', 'model(account:deepseek-v4-pro-APEX→pro)'])
+    assert.equal(
+      migrateManagedModelToTierYaml(relayModel('apex-max'), RELAY, true, null, 'deepseek-v4-pro').changed,
+      false
+    )
+    assert.equal(
+      healManagedModelTier(relayModel('apex-max'), { key: 'sk-test' }, RELAY, {}, [], null, 'apex-pro'),
+      relayModel('apex-max'),
+      'no tier heal at all with both modes off'
+    )
+  })
+})
+
 describe('main.ts wiring', () => {
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
 
@@ -229,10 +299,42 @@ describe('main.ts wiring', () => {
     assert.match(body, /^\s+\.\.\.modelTierStatus\(process\.env\),/m)
   })
 
-  test('runs the Flash migration step in the boot/watch config heal', () => {
-    const heal = main.slice(main.indexOf('function healConfigYamlProductBlocks('))
-    const body = heal.slice(0, heal.indexOf('\nfunction '))
+  test('runs the tier step in the boot/watch config heal, with the tiers the relay listed for this key', () => {
+    // hc-1080: the heal runs per profile home from apex-profile-config.ts; main hands it the context.
+    const slice = (signature: string) => {
+      const from = main.slice(main.indexOf(signature))
 
-    assert.match(body, /^\s+raw = healManagedModelTier\(raw, managed, endpoints\.relayBaseUrl, process\.env, fixed\)/m)
+      return from.slice(0, from.indexOf('\n}\n'))
+    }
+
+    const heal = readFileSync(join(__dirname, 'apex-profile-config.ts'), 'utf8')
+
+    assert.match(
+      slice('function productBlocksContext('),
+      /^\s+return \{ managed, endpoints: resolveApexEndpoints\(process\.env\), env: process\.env, entitled: relayTiers\.of\(managed\.key\) \}$/m
+    )
+    assert.match(
+      slice('function guardConfigYamlProductBlocks('),
+      /^\s+if \(context\) \{guardProductBlocksInHomes\(apexConfigHomes\(context\.managed\), context, reason, rememberLog\)\}$/m
+    )
+    assert.match(
+      heal,
+      /^\s+const follow = ctx\.accountTier \?\? null\n\n\s+return healManagedModelTier\(raw, managed, endpoints\.relayBaseUrl, ctx\.env, fixed, ctx\.entitled, follow\)$/m
+    )
+  })
+
+  test('hc-1072: every relay listing probe feeds the memo and re-heals when the tiers change', () => {
+    const strip = (source: string) => source.replace(/^\s*\/\/.*$/gm, '')
+    const code = strip(main)
+    const probe = code.slice(code.indexOf('async function apexRelayGetModels('))
+    const body = probe.slice(0, probe.indexOf('\n}\n'))
+
+    assert.equal(code.split('function apexRelayGetModels(').length, 2, 'one probe, not a second copy')
+    assert.match(body, /const probe = await fetchRelayModels\(electronNet, baseUrl, key, options\)/)
+    assert.match(body, /if \(relayTiers\.note\(key, probe\)\) \{guardConfigYamlProductBlocks\('relay-tiers'\)\}/)
+    assert.match(body, /return probe\s*$/)
+    // Nothing else reads the listing around the memo.
+    assert.equal(code.match(/fetchRelayModels\(/g)?.length, 1)
+    assert.equal(code.match(/\$\{base\}\/models`/g), null)
   })
 })

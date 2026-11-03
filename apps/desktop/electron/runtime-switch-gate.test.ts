@@ -7,9 +7,10 @@ import { isRuntimeUpdateBusy, RuntimeUpdateBusy } from './runtime-update-busy'
 // runtime-gateway-retirement.test.ts, the psutil idle scan in packaged-runtime.test.ts.
 const retire = vi.hoisted(() => vi.fn())
 const assertIdle = vi.hoisted(() => vi.fn())
+const endHolders = vi.hoisted(() => vi.fn())
 
 vi.mock('./runtime-gateway-retirement', () => ({ retirePackagedGateways: retire }))
-vi.mock('./packaged-runtime', () => ({ assertPackagedRuntimeIdle: assertIdle }))
+vi.mock('./packaged-runtime', () => ({ assertPackagedRuntimeIdle: assertIdle, endEngineHolders: endHolders }))
 
 interface Child {
   exitCode: null | number
@@ -51,6 +52,7 @@ function harness(
 beforeEach(() => {
   retire.mockReset().mockResolvedValue([])
   assertIdle.mockReset().mockResolvedValue({})
+  endHolders.mockReset().mockImplementation(async (_root: string, targets: { pid: number }[]) => Object.fromEntries(targets.map(target => [target.pid, 'terminated'])))
 })
 
 describe('preflight', () => {
@@ -169,5 +171,57 @@ describe('prepare', () => {
 
     await expect(gate.prepare('/verified')).rejects.toSatisfy(isRuntimeUpdateBusy)
     expect(fence.release).toHaveBeenCalledOnce()
+  })
+})
+
+describe('endLeftovers (hc-1094)', () => {
+  const gateway = { name: 'python3.11', ppid: 1, exe: '/engine/venv/bin/python', argv: [], created: 7.5, kind: 'leftover_gateway', endable: true }
+
+  const busyWith = (holders: Record<number, unknown>) =>
+    Object.assign(new RuntimeUpdateBusy('Waiting for engine workers', 'engine_holders'), { idleProof: { holders } })
+
+  it('rescans without exemptions and ends only confirmed leftovers, leftover roots first', async () => {
+    assertIdle.mockRejectedValue(
+      busyWith({
+        1400: { ...gateway, name: 'node', exe: '/usr/bin/node', created: 9.5, leftover: 1347 },
+        1347: gateway,
+        2001: { ...gateway, created: 8.5, kind: 'terminal_hermes', endable: false },
+        2100: { ...gateway, created: 3.5 }
+      })
+    )
+    const { deps, gate } = harness()
+
+    const ended = await gate.endLeftovers([
+      { pid: 1347, created: 7.5 },
+      { pid: 1400, created: 9.5 },
+      { pid: 2001, created: 8.5 },
+      { pid: 2100, created: 4.5 }
+    ])
+
+    expect(assertIdle).toHaveBeenCalledExactlyOnceWith('/engine', '/engine')
+    expect(endHolders).toHaveBeenCalledExactlyOnceWith('/engine', [
+      { pid: 1347, created: 7.5, exe: '/engine/venv/bin/python', kind: 'leftover_gateway', leftover: undefined },
+      { pid: 1400, created: 9.5, exe: '/usr/bin/node', kind: 'leftover_gateway', leftover: 1347 }
+    ])
+    expect(ended).toEqual({ 1347: 'terminated', 1400: 'terminated' })
+    expect(deps.log).toHaveBeenCalledExactlyOnceWith(
+      '[engine-holders] end requested for 1347, 1400, 2001, 2100: 1347 leftover_gateway terminated; 1400 leftover_gateway of 1347 terminated; left alone: 2001 terminal_hermes; 2100 leftover_gateway'
+    )
+  })
+
+  it('ends nothing when the engine is already idle', async () => {
+    const { deps, gate } = harness()
+
+    await expect(gate.endLeftovers([{ pid: 1347, created: 7.5 }])).resolves.toEqual({})
+    expect(endHolders).toHaveBeenCalledExactlyOnceWith('/engine', [])
+    expect(deps.log).toHaveBeenCalledExactlyOnceWith('[engine-holders] end requested for 1347: nothing endable')
+  })
+
+  it('a scan that fails without being busy fails the request and ends nothing', async () => {
+    assertIdle.mockRejectedValue(new Error('Could not verify existing engine workers.'))
+    const { gate } = harness()
+
+    await expect(gate.endLeftovers([{ pid: 1347, created: 7.5 }])).rejects.toThrow('Could not verify existing engine workers.')
+    expect(endHolders).not.toHaveBeenCalled()
   })
 })

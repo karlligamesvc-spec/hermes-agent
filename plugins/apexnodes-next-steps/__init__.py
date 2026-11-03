@@ -30,10 +30,16 @@
 
 * ``post_tool_call`` + ``transform_llm_output``(hc-1036):这一轮 generate_video / generate_image
   花钱生成的文件，回复里没给用户看的，列在正文后面、「下一步」之前(见下面 hc-1036 一节)。
+  hc-1066:桌面端开着单线程模式时画成素材卡片，不把本机缓存路径写给用户。
 
 同一份文件逐字节复制在 hermes-agent fork 的 ``plugins/apexnodes-next-steps/``:
 APEX Desktop 的聊天(选题库路径)和本机网关接的 IM(编号)都靠那份。
 apex-nodes ``tests/test_next_steps_block.py`` 在 CI 里比对两份字节相同。
+
+hc-1089「交给」项:块里一行写成 ``@助手名字 | 按钮字 | 要它做什么``,是提议把下一步交给
+本机另一个助手(多助手接力)。解析出来是三元组 ``(按钮字, 要它做什么, 助手名字)``,普通项仍是
+``(按钮字, 那句话)``。桌面端渲染层画成「交给 X」按钮;IM 和终端不接力(微信只接 APEX),编号里
+没有这一项,只剩它的块也只删不编号。
 
 开关:``NEXT_STEPS_DISABLE=1`` 时只删块,不出编号、不注入任何文字。
 """
@@ -58,6 +64,9 @@ MAX_LABEL_CHARS = 16
 MAX_MESSAGE_CHARS = 300
 MAX_TITLE_CHARS = 20
 DEFAULT_FAILED_TITLE = "刚才那一步"
+# hc-1089:「交给」项的助手名字上限 = APEX Desktop 助手名字上限(fork store/single-thread-bot-ops.ts BOT_NAME_MAX)。
+MAX_TARGET_CHARS = 12
+_HANDOFF_MARKS = ("@", "＠")
 
 # 桌面端聊天:块原样留给渲染层画成按钮。
 RENDERED_PLATFORMS = frozenset({"desktop"})
@@ -122,22 +131,40 @@ def _unwrap(text: str) -> str:
     return value
 
 
-def _split_option(line: str) -> Optional[tuple[str, str]]:
-    cuts = [line.find(sep) for sep in ("|", "｜") if sep in line]
-    if not cuts:
+def _first_cut(text: str) -> int:
+    cuts = [text.find(sep) for sep in ("|", "｜") if sep in text]
+    return min(cuts) if cuts else -1
+
+
+def _split_option(line: str) -> Optional[tuple[str, ...]]:
+    """``按钮字 | 那句话`` → ``(按钮字, 那句话)``;``@助手名字 | 按钮字 | 要它做什么`` → 三元组(hc-1089)。"""
+    cut = _first_cut(line)
+    if cut < 0:
         return None
-    cut = min(cuts)
     label = _unwrap(_LIST_MARKER_RE.sub("", line[:cut].strip()))
-    message = _unwrap(line[cut + 1 :])
+    message = line[cut + 1 :]
+    target = None
+    if label.startswith(_HANDOFF_MARKS):
+        target = _unwrap(label[1:])
+        cut = _first_cut(message)
+        if cut < 0 or not 1 <= len(target) <= MAX_TARGET_CHARS:
+            return None
+        label, message = _unwrap(message[:cut]), message[cut + 1 :]
+    message = _unwrap(message)
     if not (1 <= len(label) <= MAX_LABEL_CHARS and 1 <= len(message) <= MAX_MESSAGE_CHARS):
         return None
-    return label, message
+    return (label, message) if target is None else (label, message, target)
+
+
+def is_handoff(option: tuple[str, ...]) -> bool:
+    """「交给」项(hc-1089):第三个元素是助手名字。"""
+    return len(option) == 3
 
 
 def _parse_body(body: str) -> Optional[dict]:
-    """块内文字 → ``{"failed": 标题或 None, "options": [(按钮字, 那句话), ...]}``;没有可用内容返回 None。"""
-    options: list[tuple[str, str]] = []
-    seen: set[str] = set()
+    """块内文字 → ``{"failed": 标题或 None, "options": [(按钮字, 那句话[, 助手名字]), ...]}``;没有可用内容返回 None。"""
+    options: list[tuple[str, ...]] = []
+    seen: set[tuple[str, ...]] = set()
     for raw in body.split("\n"):
         line = raw.strip()
         if not line:
@@ -147,9 +174,11 @@ def _parse_body(body: str) -> Optional[dict]:
             title = _unwrap(failed.group("title"))[:MAX_TITLE_CHARS] or DEFAULT_FAILED_TITLE
             return {"failed": title, "options": []}
         option = _split_option(line)
-        if option is None or option[0] in seen:
+        # 同一个按钮只留第一个:交给不同助手的同名按钮是不同的按钮。
+        key = (option[0], *option[2:]) if option else ()
+        if option is None or key in seen:
             continue
-        seen.add(option[0])
+        seen.add(key)
         options.append(option)
         if len(options) == MAX_OPTIONS:
             break
@@ -186,14 +215,14 @@ def parse_next_steps(text: str) -> tuple[str, Optional[dict]]:
 
 
 def block_language(block: dict) -> str:
-    sample = block["failed"] or "".join(label for label, _ in block["options"])
+    sample = block["failed"] or "".join(option[0] for option in block["options"] if not is_handoff(option))
     return "zh" if _has_cjk(sample) else "en"
 
 
 def options_for(block: dict) -> list[tuple[str, str]]:
-    """按钮(或编号)要显示的选项;失败块换成 hc-973 的三项。"""
+    """编号要显示的选项;失败块换成 hc-973 的三项。「交给」项不在里面:IM 和终端不接力(hc-1089)。"""
     if block["failed"] is None:
-        return list(block["options"])
+        return [option for option in block["options"] if not is_handoff(option)]
     title = block["failed"]
     return [(label, message.format(title=title)) for label, message in FAILURE_OPTIONS[block_language(block)]]
 
@@ -287,6 +316,10 @@ def _reset_state() -> None:
 # generate_video / generate_image 成功产出的每个文件，transform_llm_output 时回复里没出现它的
 # 路径、文件名或链接，就列出来：桌面端和终端列本机路径，其余出口列链接(没有链接就单独一行 MEDIA:)。
 # 开关：HONESTY_GUARDS_DISABLE=1(和 apexnodes-honesty-tools 的 hc-1036 钩子共用)。
+#
+# hc-1066:桌面端开着单线程模式(Desktop 主进程启动引擎前写 APEX_SINGLE_THREAD_ACTIVE=1)时，每个文件
+# 单独一段 MEDIA:,桌面渲染层画成能直接播放的素材卡片;用户不再读到 ~/.apexnodes/cache/... 这种内部路径。
+# 云端容器不设这个变量，开关关着的桌面端也照旧列路径。
 
 PAID_MEDIA_TOOLS = {"generate_video": ("视频", "Video"), "generate_image": ("图片", "Image")}
 LOCAL_PATH_PLATFORMS = frozenset({"desktop", "cli"})
@@ -295,6 +328,11 @@ UNSHOWN_CHROME = {
     "zh": "这一轮还生成了下面这些素材(都已计费)，上面没给你看，放在这里：",
     "en": "This turn also made the files below (already billed); they were not shown above:",
 }
+UNSHOWN_CARDS_CHROME = {
+    "zh": "这一轮还生成了下面这些素材(都已计费)，上面没给你看：",
+    "en": "This turn also made the files below (already billed); they were not shown above:",
+}
+SINGLE_THREAD_ENV = "APEX_SINGLE_THREAD_ACTIVE"
 
 _paid_outputs: OrderedDict[str, list[dict]] = OrderedDict()
 
@@ -334,6 +372,11 @@ def _record_paid_outputs(session_id: str, outputs: list[dict]) -> None:
             _paid_outputs.popitem(last=False)
 
 
+def media_cards(platform: str) -> bool:
+    """hc-1066:单线程模式的桌面端把素材画成卡片，不列本机路径。"""
+    return platform == "desktop" and os.getenv(SINGLE_THREAD_ENV, "").strip() == "1"
+
+
 def unshown_media_note(session_id: str, text: str, platform: str) -> str:
     """把本会话记下的产出取走;回复里没提到的列成一段，都提到了(或没有)返回 ""。"""
     with _state_lock:
@@ -342,13 +385,19 @@ def unshown_media_note(session_id: str, text: str, platform: str) -> str:
     if not unshown:
         return ""
     zh = _has_cjk(text) or not text.strip()
+    more = len(unshown) - MAX_LISTED_OUTPUTS
+    if media_cards(platform):
+        cards = [f"MEDIA:{output['path'] or output['url']}" for output in unshown[:MAX_LISTED_OUTPUTS]]
+        tail = [(f"……还有 {more} 个" if zh else f"…and {more} more")] if more > 0 else []
+        _log_event("unshown_media", platform=platform, count=len(unshown), cards=True)
+        # 每张卡片单独一段：桌面端只认独占一行的 MEDIA:。
+        return "\n\n".join([UNSHOWN_CARDS_CHROME["zh" if zh else "en"], *cards, *tail])
     lines = [UNSHOWN_CHROME["zh" if zh else "en"]]
     for output in unshown[:MAX_LISTED_OUTPUTS]:
         label = PAID_MEDIA_TOOLS[output["tool"]][0 if zh else 1]
         where = output["path"] or output["url"] if platform in LOCAL_PATH_PLATFORMS else output["url"]
         # 没有链接的 IM 出口：MEDIA: 单独一行，网关把文件直接发过去。
         lines.append(f"- {label}{'：' if zh else ': '}{where}" if where else f"- {label}\nMEDIA:{output['path']}")
-    more = len(unshown) - MAX_LISTED_OUTPUTS
     if more > 0:
         lines.append(f"- ……还有 {more} 个" if zh else f"- …and {more} more")
     _log_event("unshown_media", platform=platform, count=len(unshown))
@@ -391,13 +440,20 @@ def _on_transform_llm_output(
     if visible == response_text and not note:
         return None
     visible = "\n\n".join(part for part in (visible, note) if part)
-    if _disabled() or platform in NON_INTERACTIVE_PLATFORMS or block is None:
-        _log_event("stripped", platform=platform, had_block=block is not None)
+    options = options_for(block) if block is not None else []
+    handoffs = sum(map(is_handoff, block["options"])) if block is not None else 0
+    if _disabled() or platform in NON_INTERACTIVE_PLATFORMS or not options:
+        _log_event("stripped", platform=platform, had_block=block is not None, handoffs=handoffs or None)
         return visible or None
-    options = options_for(block)
     if session_id:
         _remember(session_id, options)
-    _log_event("numbered", platform=platform, count=len(options), failed=block["failed"] is not None)
+    _log_event(
+        "numbered",
+        platform=platform,
+        count=len(options),
+        failed=block["failed"] is not None,
+        handoffs=handoffs or None,
+    )
     return render_numbered(visible, block)
 
 

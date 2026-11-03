@@ -114,14 +114,19 @@ describe('记下了 line (hc-1016)', () => {
     $memoryLedger.set({ accountId: 'acc-1', ledger: LEDGER, status: 'ready' })
     const { baseElement } = renderThread()
 
-    expect(await screen.findByText(copy.line('never shows face'))).toBeTruthy()
+    expect(await screen.findByText(copy.line('never shows face', 'APEX'))).toBeTruthy()
     expect(baseElement.querySelectorAll('[data-memory-noted] p')).toHaveLength(1)
+    // hc-1063 (prototype v2): 「✓ APEX 记下了：…」, the check gone once it is undone.
+    expect(screen.getByText('APEX noted: never shows face')).toBeTruthy()
+    expect(MEMORY_LEDGER_COPY.zh.noted.line('不露脸', 'APEX')).toBe('APEX 记下了：不露脸')
+    expect(baseElement.querySelectorAll('[data-memory-noted] p > svg')).toHaveLength(1)
     // The engine wrote through its own key: the page and prompt copy are re-read once.
     await waitFor(() => expect(bridge).toHaveBeenCalledWith({ action: 'get' }))
 
     fireEvent.click(screen.getByRole('button', { name: copy.undo }))
 
     expect(await screen.findByText(copy.undone('never shows face'))).toBeTruthy()
+    expect(baseElement.querySelectorAll('[data-memory-noted] p > svg')).toHaveLength(0)
     expect(bridge).toHaveBeenCalledWith({ action: 'remove', id: ID })
     expect(screen.queryByRole('button', { name: copy.undo })).toBeNull()
   })
@@ -153,7 +158,7 @@ describe('记下了 line (hc-1016)', () => {
       install(bridge)
       $memoryLedger.set({ accountId: 'acc-1', ledger: LEDGER, status: 'ready' })
       const on = renderThread()
-      await screen.findByText(copy.line('never shows face'))
+      await screen.findByText(copy.line('never shows face', 'APEX'))
       const line = on.baseElement.querySelector('[data-memory-noted]')
 
       expect(line).not.toBeNull()

@@ -6,6 +6,9 @@ import type { ChatMessage } from '@/lib/chat-messages'
 import { type CommandsCatalogLike, filterDesktopCommandsCatalog } from '@/lib/desktop-slash-commands'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import type { ComposerAttachment } from '@/store/composer'
+import { notifyError } from '@/store/notifications'
+import { isSingleThreadMode } from '@/store/single-thread'
+import { publishSubmitsInFlight } from '@/store/submits-in-flight'
 
 import { registerRecoveredRuntime, singleFlightSessionResume, takeRecoveredRuntime } from './single-flight-resume'
 
@@ -381,6 +384,7 @@ export function isSubmitInFlight(key: string, now = Date.now()): boolean {
 
   if (now - acquiredAt >= SUBMIT_IN_FLIGHT_TTL_MS) {
     _submitInFlightAt.delete(key)
+    publishSubmitsInFlight(_submitInFlightAt)
 
     return false
   }
@@ -395,16 +399,30 @@ export function acquireSubmitInFlight(key: string, now = Date.now()): boolean {
   }
 
   _submitInFlightAt.set(key, now)
+  publishSubmitsInFlight(_submitInFlightAt)
 
   return true
 }
 
 export function releaseSubmitInFlight(key: string): void {
   _submitInFlightAt.delete(key)
+  publishSubmitsInFlight(_submitInFlightAt)
 }
 
 export function clearSubmitInFlight(): void {
   _submitInFlightAt.clear()
+  publishSubmitsInFlight(_submitInFlightAt)
+}
+
+/**
+ * hc-1101: a send that failed already says so in the thread, as an error card
+ * with its ways on. Single-thread mode drops the toast that said it a second
+ * time; elsewhere it stays.
+ */
+export function notifyPromptFailed(error: unknown, fallback: string): void {
+  if (!isSingleThreadMode()) {
+    notifyError(error, fallback)
+  }
 }
 
 export function base64FromDataUrl(dataUrl: string): string {

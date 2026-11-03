@@ -1,7 +1,8 @@
 import { type BackendOwnershipEntry, parseBackendOwnershipDetailed } from './backend-ownership'
-import { assertPackagedRuntimeIdle } from './packaged-runtime'
+import { type ClassifiedHolder, endableTargets, type EngineHolderIdentity } from './engine-holders'
+import { assertPackagedRuntimeIdle, endEngineHolders } from './packaged-runtime'
 import { retirePackagedGateways } from './runtime-gateway-retirement'
-import { RuntimeUpdateBusy } from './runtime-update-busy'
+import { isRuntimeUpdateBusy, RuntimeUpdateBusy } from './runtime-update-busy'
 
 interface OwnedChild {
   exitCode: null | number
@@ -106,5 +107,34 @@ export function createRuntimeSwitchGate<Fence extends UpdateFence>(deps: Runtime
     }
   }
 
-  return { preflight, prepare }
+  /**
+   * hc-1094: end the APEX leftovers a user confirmed (PID + start time) after a fresh scan proves
+   * they still are leftovers; whatever else holds the engine is left alone and only logged. The
+   * caller retries its install or switch afterwards, through the usual gate.
+   */
+  async function endLeftovers(confirmed: EngineHolderIdentity[]) {
+    let holders: Record<string, ClassifiedHolder | undefined> = {}
+
+    try {
+      await assertPackagedRuntimeIdle(deps.activeRoot, deps.activeRoot)
+    } catch (error) {
+      if (!isRuntimeUpdateBusy(error)) {
+        throw error
+      }
+
+      holders = (error as { idleProof?: { holders?: typeof holders } }).idleProof?.holders ?? {}
+    }
+
+    const targets = endableTargets(holders, confirmed)
+    const ended = await endEngineHolders(deps.activeRoot, targets)
+    const left = Object.entries(holders).filter(([pid]) => !(pid in ended)).map(([pid, detail]) => `${pid} ${detail?.kind ?? 'other'}`)
+
+    deps.log(`[engine-holders] end requested for ${confirmed.map(item => item.pid).join(', ') || 'none'}: ${
+      targets.map(target => `${target.pid} ${target.kind}${target.leftover ? ` of ${target.leftover}` : ''} ${ended[target.pid]}`).join('; ') || 'nothing endable'
+    }${left.length ? `; left alone: ${left.join('; ')}` : ''}`)
+
+    return ended
+  }
+
+  return { preflight, prepare, endLeftovers }
 }

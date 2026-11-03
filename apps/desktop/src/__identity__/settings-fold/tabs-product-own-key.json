@@ -1,0 +1,177 @@
+{
+  "/settings": {
+    "location": "/settings",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=config:personalization": {
+    "location": "/settings?tab=config:personalization",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=config:model": {
+    "location": "/settings?tab=config:model",
+    "page": "config-model",
+    "rail": "config:personalization config:memory config:voice notifications config:appearance im usage *config:model providers about"
+  },
+  "/settings?tab=config:chat": {
+    "location": "/settings?tab=config:chat",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=config:appearance": {
+    "location": "/settings?tab=config:appearance",
+    "page": "appearance-view",
+    "rail": "config:personalization config:memory config:voice notifications *config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=config:workspace": {
+    "location": "/settings?tab=config:workspace",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=config:safety": {
+    "location": "/settings?tab=config:safety",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=config:browser": {
+    "location": "/settings?tab=config:browser",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=config:memory": {
+    "location": "/settings?tab=config:memory",
+    "page": "记忆登录 APEX 账号后，这里会列出它记得的事，每条都能改、删、加。",
+    "rail": "config:personalization *config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=config:voice": {
+    "location": "/settings?tab=config:voice",
+    "page": "config-voice",
+    "rail": "config:personalization config:memory *config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=config:advanced": {
+    "location": "/settings?tab=config:advanced",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=config:nothing": {
+    "location": "/settings?tab=config:nothing",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=providers": {
+    "location": "/settings?tab=providers",
+    "page": "providers-view-accounts",
+    "rail": "config:personalization config:memory config:voice notifications config:appearance im usage config:model *providers *pview:accounts pview:keys pview:custom-endpoints about"
+  },
+  "/settings?tab=providers&pview=keys": {
+    "location": "/settings?tab=providers&pview=keys",
+    "page": "providers-view-keys",
+    "rail": "config:personalization config:memory config:voice notifications config:appearance im usage config:model *providers pview:accounts *pview:keys pview:custom-endpoints about"
+  },
+  "/settings?tab=providers&pview=custom-endpoints": {
+    "location": "/settings?tab=providers&pview=custom-endpoints",
+    "page": "providers-view-custom-endpoints",
+    "rail": "config:personalization config:memory config:voice notifications config:appearance im usage config:model *providers pview:accounts pview:keys *pview:custom-endpoints about"
+  },
+  "/settings?tab=providers&pview=local": {
+    "location": "/settings?tab=providers&pview=local",
+    "page": "providers-view-local",
+    "rail": "config:personalization config:memory config:voice notifications config:appearance im usage config:model *providers pview:accounts pview:keys pview:custom-endpoints about"
+  },
+  "/settings?tab=gateway": {
+    "location": "/settings?tab=gateway",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=connections": {
+    "location": "/settings?tab=connections",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=keybinds": {
+    "location": "/settings?tab=keybinds",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=keys": {
+    "location": "/settings?tab=keys",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=keys&kview=settings": {
+    "location": "/settings?tab=keys&kview=settings",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=keys&key=TAVILY_API_KEY": {
+    "location": "/settings?tab=keys&key=TAVILY_API_KEY",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=vault": {
+    "location": "/settings?tab=vault",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=vault&kind=login&label=GitHub": {
+    "location": "/settings?tab=vault&kind=login&label=GitHub",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=notifications": {
+    "location": "/settings?tab=notifications",
+    "page": "notifications-view",
+    "rail": "config:personalization config:memory config:voice *notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=sessions": {
+    "location": "/settings?tab=sessions",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=sessions&session=s-archived": {
+    "location": "/settings?tab=sessions&session=s-archived",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=about": {
+    "location": "/settings?tab=about",
+    "page": "about-view",
+    "rail": "config:personalization config:memory config:voice notifications config:appearance im usage config:model providers *about"
+  },
+  "/settings?tab=billing": {
+    "location": "/settings?tab=billing",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=im": {
+    "location": "/settings?tab=im",
+    "page": "连接微信和飞书让 AI 助手在你常用的聊天软件里替你回消息——扫一下码就能连上一个渠道。连接异常重试",
+    "rail": "config:personalization config:memory config:voice notifications config:appearance *im usage config:model providers about"
+  },
+  "/settings?tab=usage": {
+    "location": "/settings?tab=usage",
+    "page": "用量你的套餐，和这个周期用了多少。还没读到用量。登录 APEX 账号后，这里会显示套餐和用了多少。查看使用记录",
+    "rail": "config:personalization config:memory config:voice notifications config:appearance im *usage config:model providers about"
+  },
+  "/settings?tab=mcp": {
+    "location": "/skills?tab=mcp",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=plugins&plugin=demo": {
+    "location": "/skills?tab=plugins&plugin=demo",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  },
+  "/settings?tab=config:model&aux=vision": {
+    "location": "/settings?tab=config:model&aux=vision",
+    "page": "config-model",
+    "rail": "config:personalization config:memory config:voice notifications config:appearance im usage *config:model providers about"
+  },
+  "/settings?tab=config:advanced&field=agent.max_turns": {
+    "location": "/settings?tab=config:advanced&field=agent.max_turns",
+    "page": "personalization-view",
+    "rail": "*config:personalization config:memory config:voice notifications config:appearance im usage config:model providers about"
+  }
+}

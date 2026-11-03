@@ -275,6 +275,16 @@ export interface QuickEntrySettings {
 }
 
 /**
+ * Whether Quick Entry is on when quick-entry.json does not say: a fresh
+ * install, an install that never touched the setting, or an unreadable file.
+ * Off in APEX. The window arrived with the Hermes v0.20 merge (hc-684), which
+ * switched it off on a missing file, and hc-1001 kept it off; upstream ships it
+ * on. Turning it on reaches every install without the file at its next launch,
+ * so it is a product call (hc-1113 PR), made here and nowhere else.
+ */
+export const QUICK_ENTRY_DEFAULT_ENABLED = false
+
+/**
  * Raw persisted JSON → usable settings. A malformed/absent file, or a shortcut
  * that no longer validates (hand-edited, or from a future build), falls back to
  * the default shortcut rather than leaving the feature un-summonable.
@@ -284,8 +294,8 @@ export function sanitizeQuickEntrySettings(raw: unknown): QuickEntrySettings {
   const parsed = parseQuickEntryShortcut(record.shortcut)
 
   return {
-    // Default ON: the feature is inert until the shortcut is pressed.
-    enabled: record.enabled === undefined ? true : record.enabled === true,
+    // Only a stored true/false decides; anything else is the default.
+    enabled: typeof record.enabled === 'boolean' ? record.enabled : QUICK_ENTRY_DEFAULT_ENABLED,
     shortcut: parsed.ok ? parsed.accelerator : DEFAULT_QUICK_ENTRY_SHORTCUT
   }
 }

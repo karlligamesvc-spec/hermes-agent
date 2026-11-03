@@ -43,6 +43,12 @@ _PARALLEL_SAFE_TOOLS = frozenset({
     "web_search",
 })
 
+# Long tools that run side by side with calls of THE SAME tool only, at most this many, under
+# their own registered deadline (never widening a batch of other work). Each generate_video is
+# its own paid platform job with its own Idempotency-Key, and the platform queues renders in
+# per-user slots (APEX hc-1068), so running two only overlaps their waits.
+_PARALLEL_SAME_TOOL_LIMITS = {"generate_video": 2}
+
 # Filesystem tools admitted by path overlap: readers may share a subtree, a writer conflicts
 # with ANY overlapping reservation (so a batched read never observes pre-mutation state).
 _PATH_SCOPED_READERS = frozenset({"read_file", "search_files"})
@@ -199,7 +205,11 @@ def _batch_admission(tool_call, execution_cwd: Optional[Path]) -> tuple[str, lis
         return None
 
     name, args = _peel_bridge_call(tool_name, function_args)
-    if name in _NEVER_PARALLEL_TOOLS or _requires_extended_tool_deadline(name):
+    if name in _NEVER_PARALLEL_TOOLS:
+        return None
+    if name in _PARALLEL_SAME_TOOL_LIMITS:
+        return name, [], False
+    if _requires_extended_tool_deadline(name):
         return None
     if name in _PATH_SCOPED_TOOLS:
         scoped = _extract_parallel_scope_paths(name, args, execution_cwd=execution_cwd)
@@ -217,12 +227,14 @@ def _plan_tool_batch_segments(tool_calls, *, execution_cwd: Optional[Path] = Non
     ``_NEVER_PARALLEL_TOOLS``, unparseable/non-dict args, anything not parallel-safe.
     Path-scoped tools join a run only if they don't conflict with its reservations:
     reader↔reader overlap stays parallel; any overlap involving a writer closes the run so
-    the call starts a NEW run after the conflicting one lands. Runs shorter than two calls
-    demote to sequential (it owns the richer inline dispatch); adjacent sequential merge.
+    the call starts a NEW run after the conflicting one lands. A ``_PARALLEL_SAME_TOOL_LIMITS``
+    tool runs only beside calls of itself, at most its limit per run. Runs shorter than two
+    calls demote to sequential (it owns the richer inline dispatch); adjacent sequential merge.
     """
     segments: list[tuple] = []
     current: list = []
     reserved_paths: list[tuple[Path, bool]] = []  # (canonical_path, is_writer) for the current run
+    current_only: str | None = None  # the tool a same-tool run holds
 
     def _extend_sequential(calls: list) -> None:
         if segments and segments[-1][0] == "sequential":
@@ -231,12 +243,12 @@ def _plan_tool_batch_segments(tool_calls, *, execution_cwd: Optional[Path] = Non
             segments.append(("sequential", list(calls)))
 
     def _close_parallel() -> None:
-        nonlocal current, reserved_paths
+        nonlocal current, reserved_paths, current_only
         if len(current) >= 2:
             segments.append(("parallel", current))
         elif current:
             _extend_sequential(current)
-        current, reserved_paths = [], []
+        current, reserved_paths, current_only = [], [], None
 
     for tool_call in tool_calls:
         admission = _batch_admission(tool_call, execution_cwd)
@@ -244,8 +256,8 @@ def _plan_tool_batch_segments(tool_calls, *, execution_cwd: Optional[Path] = Non
             _close_parallel()
             _extend_sequential([tool_call])
             continue
-        _name, scoped_paths, is_writer = admission
-        if any(
+        name, scoped_paths, is_writer = admission
+        if _starts_new_run(current_only, len(current), name) or any(
             (is_writer or existing_is_writer) and _paths_overlap(scoped_path, existing)
             for scoped_path in scoped_paths
             for existing, existing_is_writer in reserved_paths
@@ -253,9 +265,26 @@ def _plan_tool_batch_segments(tool_calls, *, execution_cwd: Optional[Path] = Non
             _close_parallel()
         reserved_paths.extend((p, is_writer) for p in scoped_paths)
         current.append(tool_call)
+        current_only = name if name in _PARALLEL_SAME_TOOL_LIMITS else None
 
     _close_parallel()
     return segments
+
+
+def _starts_new_run(run_only: str | None, run_size: int, name: str) -> bool:
+    """Whether ``name`` must open a new parallel run: a same-tool run takes only more of its
+    own tool, up to the tool's limit, and nothing joins it from outside."""
+    if run_only is None and name not in _PARALLEL_SAME_TOOL_LIMITS:
+        return False
+    return run_size > 0 and not (name == run_only and run_size < _PARALLEL_SAME_TOOL_LIMITS[name])
+
+
+def _parallel_batch_timeout(names: list[str], default: float | None) -> float | None:
+    """A concurrent batch's deadline: a same-tool run waits its tool's own registered deadline,
+    which the planner made every call's; any other batch keeps the shared default."""
+    if names and len(set(names)) == 1 and names[0] in _PARALLEL_SAME_TOOL_LIMITS:
+        return _extend_tool_timeout(names[0], default)
+    return default
 
 
 def _should_parallelize_tool_batch(tool_calls) -> bool:
@@ -602,6 +631,7 @@ __all__ = [
     "_DESTRUCTIVE_PATTERNS",
     "_NEVER_PARALLEL_TOOLS",
     "_PARALLEL_SAFE_TOOLS",
+    "_PARALLEL_SAME_TOOL_LIMITS",
     "_PATH_SCOPED_READERS",
     "_PATH_SCOPED_TOOLS",
     "_PATH_SCOPED_WRITERS",
@@ -619,6 +649,7 @@ __all__ = [
     "_is_multimodal_tool_result",
     "_maybe_append_elision_notice",
     "_multimodal_text_summary",
+    "_parallel_batch_timeout",
     "_paths_overlap",
     "_plan_tool_batch_segments",
     "_should_parallelize_tool_batch",

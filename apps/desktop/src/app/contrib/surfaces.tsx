@@ -42,14 +42,14 @@ import {
   routeDrawerBackgroundLocation,
   ROUTES_AREA,
   sessionRoute,
-  workflowRunIdForPath,
-  WORKFLOWS_ROUTE
+  workflowRunIdForPath
 } from '../routes'
 import { useStatusSnapshot } from '../shell/hooks/use-status-snapshot'
 import { useStatusbarItems } from '../shell/hooks/use-statusbar-items'
 import { ModelMenuPanel } from '../shell/model-menu-panel'
 import { ReasoningMenuPanel } from '../shell/reasoning-menu-panel'
 import { StatusbarControls } from '../shell/statusbar-controls'
+import { ProductRouteGate, useRunDrawerHome } from '../single-thread/product-route-gate'
 import { SingleThreadSidebar } from '../single-thread/sidebar'
 import { useSingleThreadShell } from '../single-thread/use-single-thread-shell'
 
@@ -168,7 +168,7 @@ function WorkflowRunRouteDrawer() {
   const { t } = useI18n()
 
   return (
-    <RouteDrivenDrawer compact deepLinkFallback={WORKFLOWS_ROUTE} title={t.businessWorkspace.workflowDomain.run.title}>
+    <RouteDrivenDrawer compact deepLinkFallback={useRunDrawerHome()} title={t.businessWorkspace.workflowDomain.run.title}>
       <Suspense fallback={null}>
         <WorkflowRunView />
       </Suspense>
@@ -215,7 +215,7 @@ export const SidebarSurface = memo(function SidebarSurface({
   const singleThread = useSingleThreadMode()
 
   return singleThread ? (
-    <SingleThreadSidebar currentView={currentView} onNavigate={latestActions.onNavigate} />
+    <SingleThreadSidebar currentView={currentView} />
   ) : (
     <ChatSidebar currentView={currentView} {...latestActions} />
   )
@@ -293,13 +293,14 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
   const workflowRunOpen = workflowRunIdForPath(location.pathname) !== null
   const projectDetailOpen = projectIdForPath(location.pathname) !== null
   const deliverableDetailOpen = deliverableIdForPath(location.pathname) !== null
+  const runDrawerHome = useRunDrawerHome()
   const objectRouteOpen = workflowRunOpen || projectDetailOpen || deliverableDetailOpen
   const backgroundLocation = objectRouteOpen ? routeDrawerBackgroundLocation(location.state) : null
 
   const pageLocation = objectRouteOpen
     ? (backgroundLocation ?? {
         hash: '',
-        pathname: projectDetailOpen ? PROJECTS_ROUTE : deliverableDetailOpen ? DELIVERABLES_ROUTE : WORKFLOWS_ROUTE,
+        pathname: projectDetailOpen ? PROJECTS_ROUTE : deliverableDetailOpen ? DELIVERABLES_ROUTE : runDrawerHome,
         search: '',
         state: null
       })
@@ -368,7 +369,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
         <Route element={page(<SkillsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="skills" />
         <Route element={page(<MessagingView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="messaging" />
         <Route element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="artifacts" />
-        <Route element={page(<AccountWorkspace><DeliverablesView /></AccountWorkspace>)} path={DELIVERABLES_ROUTE.slice(1)} />
+        <Route element={<ProductRouteGate>{page(<AccountWorkspace><DeliverablesView /></AccountWorkspace>)}</ProductRouteGate>} path={DELIVERABLES_ROUTE.slice(1)} />
         <Route
           element={page(
             <CronView onOpenSession={actions.onResumeSession} setStatusbarItemGroup={setStatusbarItemGroup} />
@@ -389,9 +390,9 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
         />
         <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="search" />
         <Route element={page(<AccountWorkspace><HistoryView /></AccountWorkspace>)} path={HISTORY_ROUTE.slice(1)} />
-        <Route element={page(<AccountWorkspace><ProjectsView /></AccountWorkspace>)} path="projects" />
-        <Route element={page(<AccountWorkspace><AnalysisRouteView actions={actions} /></AccountWorkspace>)} path={ANALYSIS_ROUTE.slice(1)} />
-        <Route element={page(<AccountWorkspace><WorkflowsView /></AccountWorkspace>)} path="workflows" />
+        <Route element={<ProductRouteGate>{page(<AccountWorkspace><ProjectsView /></AccountWorkspace>)}</ProductRouteGate>} path="projects" />
+        <Route element={<ProductRouteGate>{page(<AccountWorkspace><AnalysisRouteView actions={actions} /></AccountWorkspace>)}</ProductRouteGate>} path={ANALYSIS_ROUTE.slice(1)} />
+        <Route element={<ProductRouteGate>{page(<AccountWorkspace><WorkflowsView /></AccountWorkspace>)}</ProductRouteGate>} path="workflows" />
         <Route element={null} path="agents" />
         <Route element={null} path="profile" />
         <Route element={null} path="command-center" />
@@ -425,12 +426,12 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
       )}
       {projectDetailOpen && (
         <Routes>
-          <Route element={<AccountWorkspace><ProjectDetailRouteDrawer /></AccountWorkspace>} path="projects/:projectId" />
+          <Route element={<ProductRouteGate><AccountWorkspace><ProjectDetailRouteDrawer /></AccountWorkspace></ProductRouteGate>} path="projects/:projectId" />
         </Routes>
       )}
       {deliverableDetailOpen && (
         <Routes>
-          <Route element={<AccountWorkspace><DeliverableDetailRouteDrawer /></AccountWorkspace>} path="deliverables/:deliverableId" />
+          <Route element={<ProductRouteGate><AccountWorkspace><DeliverableDetailRouteDrawer /></AccountWorkspace></ProductRouteGate>} path="deliverables/:deliverableId" />
         </Routes>
       )}
     </>

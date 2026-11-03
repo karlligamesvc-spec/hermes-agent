@@ -276,10 +276,17 @@ const PICKER_CONSUMERS: ReadonlyArray<readonly [symbol: RegExp, files: Record<st
     /<ModelPill\b/,
     {
       'app/chat/composer/controls.tsx': 'the pill returns null in tier mode (model-pill.tsx gate)',
-      'app/business-workspace/components/business-goal-launcher.tsx': 'the same self-gating pill on the Start input'
+      'app/business-workspace/components/business-goal-launcher.tsx': 'the same self-gating pill on the Start input',
+      'app/chat/composer/single-thread-actions.tsx': 'the same self-gating pill in the single-thread row (hc-1060)'
     }
   ],
-  [/<ReasoningPill\b/, { 'app/chat/composer/controls.tsx': 'the pill returns null in tier mode' }],
+  [
+    /<ReasoningPill\b/,
+    {
+      'app/chat/composer/controls.tsx': 'the pill returns null in tier mode',
+      'app/chat/composer/single-thread-actions.tsx': 'the same pill in the single-thread row (hc-1060)'
+    }
+  ],
   [
     /<ModelMenuPanel\b/,
     {

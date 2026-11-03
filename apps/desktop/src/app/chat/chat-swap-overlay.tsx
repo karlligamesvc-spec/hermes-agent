@@ -4,10 +4,12 @@ import { useOnboardingChatActive } from '@/components/onboarding-chat/assembly'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
+import { botSwapLabel } from '@/store/single-thread-bots'
 
 // Shown over the conversation while the live gateway swaps to another profile's
 // backend (lazily spawned). Keeps the last profile name through the fade-out so
-// the label doesn't blank. Purely visual — pointer-events-none.
+// the label doesn't blank. Purely visual — pointer-events-none. hc-1077: with
+// several assistants on, it names the assistant rather than its profile.
 export function ChatSwapOverlay({ profile }: { profile: string | null }) {
   const { t } = useI18n()
   const onboarding = useOnboardingChatActive()
@@ -46,7 +48,7 @@ export function ChatSwapOverlay({ profile }: { profile: string | null }) {
             `paused` restores the old "no ticking once the swap is done"
             behaviour while the overlay fades out still mounted. */}
         <GlyphSpinner className="w-3 justify-start text-(--ui-accent)" paused={!profile} spinner="braille" />
-        {t.composer.wakingProfile(label ?? '')}
+        {t.composer.wakingProfile(botSwapLabel(label))}
       </div>
     </div>
   )

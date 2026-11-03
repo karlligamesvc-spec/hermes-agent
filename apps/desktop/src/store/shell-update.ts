@@ -13,7 +13,7 @@
 
 import { atom } from 'nanostores'
 
-import type { DesktopShellUpdateState } from '@/global'
+import type { DesktopEngineHolder, DesktopShellUpdateState } from '@/global'
 
 export const $shellUpdate = atom<DesktopShellUpdateState | null>(null)
 
@@ -72,7 +72,7 @@ export async function checkShellUpdate(): Promise<DesktopShellUpdateState | null
  * 触发 quitAndInstall。成功路径上应用直接退出重装,promise 通常没有然后;
  * 失败(极少)时抛错,由胶囊回退成可再点的状态。
  */
-export async function installShellUpdate(): Promise<{ deferred?: boolean }> {
+export async function installShellUpdate(): Promise<{ deferred?: boolean; state?: DesktopShellUpdateState }> {
   const bridge = window.hermesDesktop?.shellUpdate
 
   if (!bridge) {
@@ -84,5 +84,31 @@ export async function installShellUpdate(): Promise<{ deferred?: boolean }> {
   if (!result.ok) {
     throw new Error(result.error || 'install_failed')
   }
+
+  // hc-1117: the answer carries the deferral, so whoever reads the store next knows what it waits for.
+  if (result.state) {
+    $shellUpdate.set(result.state)
+  }
+
   return result
+}
+
+/**
+ * hc-1094: end the APEX leftovers among `holders`, each named by PID and start time, so the main
+ * process ends only the processes the user saw. The caller retries its install or switch after.
+ */
+export async function endEngineLeftovers(
+  holders: DesktopEngineHolder[]
+): Promise<{ ok: boolean; error?: string; ended?: Record<string, string> }> {
+  const bridge = window.hermesDesktop?.shellUpdate
+
+  if (!bridge?.endLeftovers) {
+    return { ok: false, error: 'unsupported' }
+  }
+
+  return bridge.endLeftovers(
+    holders.flatMap(holder =>
+      holder.endable && holder.created !== null ? [{ pid: holder.pid, created: holder.created }] : []
+    )
+  )
 }

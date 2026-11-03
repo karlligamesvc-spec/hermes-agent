@@ -11,6 +11,8 @@
  *
  * one option per line (`button text | the sentence a click sends`, at most 3), or,
  * when the result failed, `<!-- apex:next failed=生成视频 -->` (the hc-973 three).
+ * hc-1089: a line `@助手名字 | 按钮字 | 要它做什么` offers to hand the next step to another of
+ * this person's assistants (multi-bot relay); it parses to an option with `to` set.
  * An HTML comment never renders in Markdown, so a build without this module shows
  * nothing rather than the raw block.
  *
@@ -26,10 +28,15 @@ const MAX_LABEL_CHARS = 16
 const MAX_MESSAGE_CHARS = 300
 const MAX_TITLE_CHARS = 20
 const DEFAULT_FAILED_TITLE = '刚才那一步'
+// hc-1089: a 「交给」 option's assistant name, as long as a name may be (store/single-thread-bot-ops BOT_NAME_MAX).
+const MAX_TARGET_CHARS = 12
+const HANDOFF_MARKS = ['@', '＠']
 
 export interface NextStepOption {
   label: string
   message: string
+  /** hc-1089 「交给」 option: the assistant the click hands `message` to, as the model wrote it. */
+  to?: string
 }
 
 export type NextStepsBlock = { failed: null; options: NextStepOption[] } | { failed: string; options: [] }
@@ -73,16 +80,38 @@ function unwrap(text: string): string {
   return value
 }
 
-function splitOption(line: string): NextStepOption | null {
-  const cuts = ['|', '｜'].map(separator => line.indexOf(separator)).filter(index => index >= 0)
+function firstCut(text: string): number {
+  const cuts = ['|', '｜'].map(separator => text.indexOf(separator)).filter(index => index >= 0)
 
-  if (cuts.length === 0) {
+  return cuts.length === 0 ? -1 : Math.min(...cuts)
+}
+
+/** `按钮字 | 那句话`, or hc-1089's `@助手名字 | 按钮字 | 要它做什么`. */
+function splitOption(line: string): NextStepOption | null {
+  let cut = firstCut(line)
+
+  if (cut < 0) {
     return null
   }
 
-  const cut = Math.min(...cuts)
-  const label = unwrap(line.slice(0, cut).trim().replace(LIST_MARKER_RE, ''))
-  const message = unwrap(line.slice(cut + 1))
+  let label = unwrap(line.slice(0, cut).trim().replace(LIST_MARKER_RE, ''))
+  let rest = line.slice(cut + 1)
+  let to: string | undefined
+
+  if (HANDOFF_MARKS.some(mark => label.startsWith(mark))) {
+    to = unwrap(label.slice(1))
+    cut = firstCut(rest)
+    const toChars = charCount(to)
+
+    if (cut < 0 || toChars < 1 || toChars > MAX_TARGET_CHARS) {
+      return null
+    }
+
+    label = unwrap(rest.slice(0, cut))
+    rest = rest.slice(cut + 1)
+  }
+
+  const message = unwrap(rest)
   const labelChars = charCount(label)
   const messageChars = charCount(message)
 
@@ -90,8 +119,23 @@ function splitOption(line: string): NextStepOption | null {
     return null
   }
 
-  return { label, message }
+  return to === undefined ? { label, message } : { label, message, to }
 }
+
+/** hc-1089: an option that hands the next step to another assistant rather than saying it here. */
+export function isHandoff(option: NextStepOption): option is NextStepOption & { to: string } {
+  return option.to !== undefined
+}
+
+/** hc-1091: one 「交给」 line on its own (a relay plan's batons are written the same way); null for any other line. */
+export function parseHandoffLine(line: string): (NextStepOption & { to: string }) | null {
+  const option = splitOption(line.trim())
+
+  return option && isHandoff(option) ? option : null
+}
+
+// One button per label, and per assistant for 「交给」 options (a newline never occurs inside a line).
+const optionKey = (option: NextStepOption) => (isHandoff(option) ? `${option.label}\n${option.to}` : option.label)
 
 function parseBody(body: string): NextStepsBlock | null {
   const options: NextStepOption[] = []
@@ -114,11 +158,11 @@ function parseBody(body: string): NextStepsBlock | null {
 
     const option = splitOption(line)
 
-    if (!option || seen.has(option.label)) {
+    if (!option || seen.has(optionKey(option))) {
       continue
     }
 
-    seen.add(option.label)
+    seen.add(optionKey(option))
     options.push(option)
 
     if (options.length === MAX_OPTIONS) {

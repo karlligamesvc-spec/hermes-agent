@@ -1,6 +1,6 @@
 {
   "protocol": "apex-next/1",
-  "note": "「下一步」块解析的共用样例。apex-nodes 插件(Python)和 APEX Desktop 渲染层(fork apps/desktop/src/lib/next-steps.fixtures.json,逐字节相同)都必须对每一条给出同样的 visible 与 block。期望值是手写的,不是用实现跑出来的。",
+  "note": "「下一步」块解析的共用样例。apex-nodes 插件(Python)和 APEX Desktop 渲染层(fork apps/desktop/src/lib/next-steps.fixtures.json,逐字节相同)都必须对每一条给出同样的 visible 与 block。期望值是手写的,不是用实现跑出来的。hc-1089:「@助手名字 | 按钮字 | 要它做什么」一行是「交给」项,block 里写成 [按钮字, 要它做什么, 助手名字] 三个元素,普通项仍是两个。",
   "cases": [
     {
       "id": "three-options",
@@ -306,6 +306,198 @@
       "text": "正文\n\n```\n```\n",
       "visible": "正文\n\n```\n```\n",
       "block": null
+    },
+    {
+      "id": "handoff-option-alongside-plain-ones",
+      "text": "标题写好了：\n1. 不打孔也能装的收纳架\n\n<!-- apex:next\n@剪辑助手 | 做成 30 秒竖屏 | 把第 1 个标题做成 30 秒竖屏成片\n再写 3 个 | 再写 3 个标题\n-->",
+      "visible": "标题写好了：\n1. 不打孔也能装的收纳架",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "做成 30 秒竖屏",
+            "把第 1 个标题做成 30 秒竖屏成片",
+            "剪辑助手"
+          ],
+          [
+            "再写 3 个",
+            "再写 3 个标题"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "handoff-only-block",
+      "text": "成片好了。\n<!-- apex:next\n@小红书文案 | 写成笔记 | 把这条成片写成小红书笔记\n-->",
+      "visible": "成片好了。",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成笔记",
+            "把这条成片写成小红书笔记",
+            "小红书文案"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "handoff-fullwidth-mark-separators-list-marker-and-quotes",
+      "text": "正文\n<!-- apex:next\n1. ＠「小红书文案」｜「写成笔记」｜「把这条成片写成小红书笔记」\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成笔记",
+            "把这条成片写成小红书笔记",
+            "小红书文案"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "handoff-quoted-mark-and-name-with-a-space",
+      "text": "Done.\n<!-- apex:next\n\"@Captions 2\" | Add subtitles | Add burned-in subtitles to this cut\n-->",
+      "visible": "Done.",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "Add subtitles",
+            "Add burned-in subtitles to this cut",
+            "Captions 2"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "handoff-without-a-third-field-dropped",
+      "text": "正文\n<!-- apex:next\n@剪辑助手 | 把它剪成片\n写成脚本 | 把它写成脚本\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成脚本",
+            "把它写成脚本"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "handoff-name-twelve-kept-thirteen-or-empty-dropped",
+      "text": "正文\n<!-- apex:next\n@名字一共有十三个字的助手啊 | 剪成片 | 把它剪成片\n@ | 剪成片 | 把它剪成片\n@十二个字的名字刚好能放下 | 剪成片 | 把它剪成片\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "剪成片",
+            "把它剪成片",
+            "十二个字的名字刚好能放下"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "handoff-empty-label-or-message-dropped",
+      "text": "正文\n<!-- apex:next\n@剪辑助手 |  | 把它剪成片\n@剪辑助手 | 剪成片 | \n写成脚本 | 把它写成脚本\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成脚本",
+            "把它写成脚本"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "handoff-separator-inside-message-splits-at-the-first-two",
+      "text": "正文\n<!-- apex:next\n@剪辑助手 | 拼成一条 | 把 A|B 两段拼成一条\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "拼成一条",
+            "把 A|B 两段拼成一条",
+            "剪辑助手"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "handoff-same-label-kept-once-per-assistant",
+      "text": "正文\n<!-- apex:next\n做成成片 | 你自己把它做成成片\n@剪辑助手 | 做成成片 | 把它做成成片\n@剪辑助手 | 做成成片 | 换个说法也只留第一个\n@小剪 | 做成成片 | 把它做成成片\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "做成成片",
+            "你自己把它做成成片"
+          ],
+          [
+            "做成成片",
+            "把它做成成片",
+            "剪辑助手"
+          ],
+          [
+            "做成成片",
+            "把它做成成片",
+            "小剪"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "handoff-counts-toward-the-three",
+      "text": "正文\n<!-- apex:next\n一 | 甲\n@剪辑助手 | 二 | 乙\n三 | 丙\n@小剪 | 四 | 丁\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "一",
+            "甲"
+          ],
+          [
+            "二",
+            "乙",
+            "剪辑助手"
+          ],
+          [
+            "三",
+            "丙"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "failed-ignores-handoff-lines",
+      "text": "没剪出来。\n<!-- apex:next failed=剪辑\n@剪辑助手 | 剪成片 | 把它剪成片\n-->",
+      "visible": "没剪出来。",
+      "block": {
+        "failed": "剪辑",
+        "options": []
+      }
+    },
+    {
+      "id": "at-sign-inside-a-message-is-a-plain-option",
+      "text": "正文\n<!-- apex:next\n写成脚本 | 写成脚本，写完 @剪辑助手 再剪\n-->",
+      "visible": "正文",
+      "block": {
+        "failed": null,
+        "options": [
+          [
+            "写成脚本",
+            "写成脚本，写完 @剪辑助手 再剪"
+          ]
+        ]
+      }
     }
   ]
 }

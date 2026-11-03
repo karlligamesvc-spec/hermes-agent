@@ -53,8 +53,33 @@ _CN_IM_SEAMS = (
 )
 
 
-def _apply_cn_im_seams() -> None:
-    for name, warning in _CN_IM_SEAMS:
+# Tool seams, applied last in this order (register() is at its complexity cap, so new plain seams go here).
+_TOOL_SEAMS = (
+    (
+        "vision_answer",
+        "apex-overlay: hc-1065 vision answer seam did not fully apply "
+        "(see prior error). vision_analyze asks the auxiliary model to "
+        "describe everything again, and may return its private reasoning "
+        "or a cut-off answer as if it were complete.",
+    ),
+    (
+        "apex_identity",
+        "apex-overlay: hc-1103 APEX identity seam did not fully apply (see "
+        "prior error). Subagents may call themselves Hermes Agent by Nous "
+        "Research, a cloud assistant may say it runs on Hermes Agent, and "
+        "/version in IM may print the engine's banner instead of APEX's version.",
+    ),
+    (
+        "upstream_copy",
+        "apex-overlay: hc-1116 upstream wording seam did not fully apply (see "
+        "prior error). A new assistant's first reply may point to /help, and IM "
+        "notices may name Hermes or tell the user to run hermes commands.",
+    ),
+)
+
+
+def _apply_seams(seams) -> None:
+    for name, warning in seams:
         try:
             if not importlib.import_module(f"apex_overlay.{name}").apply():
                 logger.warning(warning)
@@ -78,16 +103,50 @@ _CONTEXT_SEAMS = (
         "and the agent cannot write to it.",
     ),
     (
+        "memory_ledger_live",
+        "apex-overlay: hc-1097 live memory ledger seam did not register (see "
+        "prior warning). A session already open keeps the 记忆底账 of its "
+        "first turn: what another assistant or the 「它记得什么」 page noted "
+        "since does not reach it.",
+    ),
+    (
         "single_thread_prompt",
         "apex-overlay: hc-1015 single-thread prompt section did not "
         "register (see prior warning). With desktop_features.single_thread "
         "on, answers may name tools, skills and models again.",
     ),
     (
+        "assistant_name",
+        "apex-overlay: hc-1082 assistant name seam did not register (see "
+        "prior warning). With several assistants on, 「以后叫你小李」 has no "
+        "tool to rename this assistant on screen, and a session renamed from "
+        "the sidebar keeps the name its prompt was built with.",
+    ),
+    (
+        "handoff",
+        "apex-overlay: hc-1088 relay seam did not register (see prior "
+        "warning). With relay on, a job handed over from another assistant "
+        "is not recognised and nothing is handed back, and assistants cannot "
+        "offer a job to the one whose 分工 it is.",
+    ),
+    (
+        "proactive_prompt",
+        "apex-overlay: hc-1071 proactive prompt section did not register "
+        "(see prior warning). With desktop_features.single_thread on, APEX "
+        "may start without asking for facts only the user knows, and results "
+        "may end without next-step buttons or an offer of the next job.",
+    ),
+    (
         "honesty_prompt",
         "apex-overlay: hc-1036 evidence and delivery honesty section did "
         "not register (see prior warning). Desktop sessions will not carry "
         "the evidence levels, the provenance rule or the no-unasked-switch rule.",
+    ),
+    (
+        "result_delivery_prompt",
+        "apex-overlay: hc-1131 result delivery prompt section did not register "
+        "(see prior warning). In product mode, replies may write local paths "
+        "under the result cards again.",
     ),
     (
         "relay_stream_liveness",
@@ -101,6 +160,13 @@ _CONTEXT_SEAMS = (
         "(see prior warning). Read-only checks may be bundled into lines that "
         "need approval again, and a declined or unanswered approval may not be "
         "explained to the user.",
+    ),
+    (
+        "desktop_version",
+        "apex-overlay: hc-1095 Desktop version seam did not fully apply (see "
+        "prior warning). Asked which version it is, APEX may look up the "
+        "open-source engine's releases, say it runs on Hermes Agent and offer "
+        "to upgrade it, instead of naming the APEX version and how to update.",
     ),
 )
 
@@ -286,7 +352,7 @@ def register(ctx) -> None:
     except Exception:
         logger.warning("apex-overlay: stt_no_lazy_install seam failed to load", exc_info=True)
 
-    _apply_cn_im_seams()
+    _apply_seams(_CN_IM_SEAMS)
 
     try:
         from apex_overlay import cn_mirror_env
@@ -313,3 +379,5 @@ def register(ctx) -> None:
             )
     except Exception:
         logger.warning("apex-overlay: im_passthrough seam failed to load", exc_info=True)
+
+    _apply_seams(_TOOL_SEAMS)

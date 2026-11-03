@@ -1,7 +1,8 @@
 import { applyDocumentLocale } from '@hermes/shared/i18n'
 import { useEffect, useReducer, useRef } from 'react'
 
-import { QUICK_ENTRY_COPY, useQuickEntryLocale } from '@/i18n/quick-entry'
+import { QUICK_ENTRY_COPY, useQuickEntryAssistant, useQuickEntryLocale } from '@/i18n/quick-entry'
+import { withBotName } from '@/lib/assistant-name'
 import { isSubmitEnter } from '@/lib/ime'
 import {
   initialQuickComposerState,
@@ -9,7 +10,8 @@ import {
   QUICK_TARGET_NEW,
   type QuickComposerEvent,
   quickComposerReducer,
-  type QuickComposerState
+  type QuickComposerState,
+  type QuickEntryStatePush
 } from '@/store/quick-entry'
 
 /**
@@ -32,11 +34,17 @@ import {
  * no I18nProvider here, and a hard-coded English string is exactly what hc-1001
  * removed — `quick-entry-identity.test.tsx` renders this at zh and fails on any
  * English word or on Hermes.
+ *
+ * hc-1113: the assistant it names comes with each push and each summon (main
+ * hands over the latest), localStorage only covers the first paint. A line that
+ * did not land comes back the same way: into the input, with why under it.
  */
 export function QuickEntryApp() {
   const inputRef = useRef<HTMLInputElement>(null)
   const locale = useQuickEntryLocale()
   const copy = QUICK_ENTRY_COPY[locale].window
+  // hc-1077: with several assistants on, the one a capture reaches (the main window's on-screen one).
+  const storedAssistant = useQuickEntryAssistant()
 
   // The reducer returns { send, state }; this wrapper performs the side effect
   // (hand the payload to the shell, ask to hide) and stores the next state, so
@@ -60,18 +68,30 @@ export function QuickEntryApp() {
   useEffect(() => {
     const api = window.hermesDesktop?.quickEntry
 
-    const offShown = api?.onShown(() => {
+    const adopt = (payload: null | QuickEntryStatePush | undefined) => {
+      if (!payload) {
+        return
+      }
+
+      dispatch({
+        assistant: payload.assistant,
+        connected: payload.connected === true,
+        sessions: Array.isArray(payload.sessions) ? payload.sessions : [],
+        type: 'state'
+      })
+
+      if (payload.failure) {
+        dispatch({ failure: payload.failure, type: 'failed' })
+      }
+    }
+
+    const offShown = api?.onShown(payload => {
       dispatch({ type: 'shown' })
+      adopt(payload)
       requestAnimationFrame(() => inputRef.current?.focus())
     })
 
-    const offState = api?.onState(payload => {
-      dispatch({
-        connected: payload?.connected === true,
-        sessions: Array.isArray(payload?.sessions) ? payload.sessions : [],
-        type: 'state'
-      })
-    })
+    const offState = api?.onState(adopt)
 
     inputRef.current?.focus()
 
@@ -84,6 +104,18 @@ export function QuickEntryApp() {
   // index.html ships `lang="en"`; a screen reader reading Chinese under it
   // speaks it with the wrong voice.
   useEffect(() => applyDocumentLocale(locale), [locale])
+
+  const assistant = state.assistant?.name ?? storedAssistant
+  const failure = state.failure
+
+  const failureText = failure
+    ? failure.reason === 'no-window'
+      ? copy.notDelivered.noWindow
+      : withBotName(
+          copy.notDelivered[failure.reason === 'busy' || failure.reason === 'switch' ? failure.reason : 'retry'],
+          failure.name
+        )
+    : null
 
   return (
     <div
@@ -145,7 +177,7 @@ export function QuickEntryApp() {
                 dispatch({ type: 'dismiss' })
               }
             }}
-            placeholder={state.connected ? copy.placeholder : copy.disconnected}
+            placeholder={state.connected ? withBotName(copy.placeholder, assistant) : copy.disconnected}
             ref={inputRef}
             spellCheck={false}
             style={{
@@ -162,6 +194,15 @@ export function QuickEntryApp() {
             value={state.draft}
           />
         </div>
+        {failureText && (
+          <p
+            data-quick-entry-failure={failure?.reason}
+            role="alert"
+            style={{ color: 'var(--destructive, #e5484d)', fontSize: 12, lineHeight: 1.4, margin: 0 }}
+          >
+            {failureText}
+          </p>
+        )}
         <div style={{ alignItems: 'center', display: 'flex', gap: 8 }}>
           <label
             htmlFor="quick-entry-target"

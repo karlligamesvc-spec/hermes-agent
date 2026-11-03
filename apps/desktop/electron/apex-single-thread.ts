@@ -15,8 +15,9 @@
  *  - the engine: apex-overlay's `apex.single-thread` prompt section (no tool,
  *    skill or model names, one question with a default, the name APEX) is on
  *    only while it is 1 (apex_overlay/single_thread_prompt.py);
- *  - the config heal: the managed model is pinned to the default tier alias,
- *    since nothing on screen lets the user pick another (apex-model-tiers.ts).
+ *  - the config heal: the managed tier the user picked is kept; an old id moves
+ *    to Flash, and a tier the plan does not grant drops to the strongest one it
+ *    does (hc-1072, apex-model-tiers.ts settledManagedModel).
  *
  * The engine does not see the renderer's developer mode; the prompt rules stay
  * on there too (developer mode only adds technical detail on screen). Electron-free.

@@ -198,3 +198,34 @@ export async function evaluateRuntimeReadiness(
 
   return interpretRuntimeReadiness(signals, options)
 }
+
+export interface RuntimeReadinessWait {
+  /** Stop asking after this long and report what the last probe saw. */
+  timeoutMs: number
+  retryMs: number
+  /** False once nobody wants the answer any more. */
+  isCurrent?: () => boolean
+}
+
+/**
+ * evaluateRuntimeReadiness across an engine restart. A `fallback` result means
+ * neither probe reached the engine (hc-1121: the socket is down while the primary
+ * restarts for a new relay key), which says nothing about whether it is ready, so
+ * ask again until it answers or the time runs out. An answer from the engine,
+ * ready or not, is final.
+ */
+export async function waitForRuntimeReadiness(
+  requestGateway: RuntimeReadinessRequester,
+  options: RuntimeReadinessOptions,
+  { isCurrent = () => true, retryMs, timeoutMs }: RuntimeReadinessWait
+): Promise<RuntimeReadinessResult> {
+  const deadline = Date.now() + timeoutMs
+  let result = await evaluateRuntimeReadiness(requestGateway, options)
+
+  while (result.source === 'fallback' && Date.now() < deadline && isCurrent()) {
+    await new Promise(resolve => setTimeout(resolve, retryMs))
+    result = await evaluateRuntimeReadiness(requestGateway, options)
+  }
+
+  return result
+}

@@ -376,7 +376,7 @@ def _localize_gateway_image(result: dict[str, Any], prompt: str) -> str:
         if not url:
             continue
         try:
-            local_path = _gateway.download_media(url, filename_hint=f"{prompt[:30] or 'image'}_{index}")
+            local_path = _gateway.download_media(url, filename_hint=f"{_gateway.media_title_hint(prompt) or 'image'}_{index}")
         except _gateway.GatewayError:
             continue
         image["image_path"] = str(local_path)

@@ -1,9 +1,10 @@
 import { getApiRequestConnection, getApiRequestProfile } from '@/api/client'
 import { setModelAssignment } from '@/hermes'
-import { translateNow } from '@/i18n'
+import { managedRecoveryCopyNow } from '@/i18n/managed-recovery'
 import type { GatewayEventPayload } from '@/lib/chat-messages'
 import { captureManagedAuthRecoveryScope, clearRelayAuthExpiry, handleRelayAuthExpired } from '@/store/auth'
 import { $gateway } from '@/store/gateway'
+import { RE_SIGN_IN_TOAST_ID } from '@/store/managed-re-sign-in'
 import { notify } from '@/store/notifications'
 import { requestManagedReSignIn } from '@/store/onboarding'
 
@@ -153,8 +154,8 @@ export async function runManagedRelayRecovery(
         notify({
           id: 'managed-relay-healed',
           kind: 'info',
-          title: translateNow('managedRecovery.healed.title'),
-          message: translateNow('managedRecovery.healed.retrying')
+          title: managedRecoveryCopyNow().healedTitle,
+          message: managedRecoveryCopyNow().healedRetrying
         })
         await activeTurnResend()
       } else {
@@ -163,8 +164,8 @@ export async function runManagedRelayRecovery(
         notify({
           id: 'managed-relay-healed',
           kind: 'info',
-          title: translateNow('managedRecovery.healed.title'),
-          message: translateNow('managedRecovery.healed.resend')
+          title: managedRecoveryCopyNow().healedTitle,
+          message: managedRecoveryCopyNow().healedResend
         })
       }
 
@@ -191,12 +192,12 @@ export async function runManagedRelayRecovery(
 
     if (!args.silentHeal) {
       notify({
-        id: 'managed-relay-signin',
+        id: RE_SIGN_IN_TOAST_ID,
         kind: 'error',
-        title: translateNow('managedRecovery.signInRequired.title'),
-        message: translateNow('managedRecovery.signInRequired.message')
+        title: managedRecoveryCopyNow().signInRequiredTitle,
+        message: managedRecoveryCopyNow().signInRequiredMessage
       })
-      requestManagedReSignIn(translateNow('managedRecovery.signInRequired.reason'))
+      requestManagedReSignIn(managedRecoveryCopyNow().signInRequiredReason)
     }
 
     return { owned: true, healed: false }

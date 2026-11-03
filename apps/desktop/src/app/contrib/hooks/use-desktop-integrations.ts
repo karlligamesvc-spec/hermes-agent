@@ -1,7 +1,7 @@
 import { useStore } from '@nanostores/react'
 import { useEffect, useRef } from 'react'
 
-import { closeActiveTab } from '@/app/chat/close-tab'
+import { closeActiveTabOrWindow } from '@/app/chat/close-window'
 import { commandFocusedPreview } from '@/app/chat/right-rail/preview-nav'
 import { openSession } from '@/app/open-session'
 import { resolveDeepLinkAction } from '@/lib/deeplink-routes'
@@ -355,7 +355,7 @@ export function useDesktopIntegrations({
   // path is the `view.closeTab` keybind (use-keybinds), sharing closeActiveTab.
   useEffect(() => {
     const unsubscribe = window.hermesDesktop?.onClosePreviewRequested?.(
-      () => void closeActiveTab(id => navigate(sessionRoute(id)))
+      () => void closeActiveTabOrWindow(id => navigate(sessionRoute(id)))
     )
 
     return () => unsubscribe?.()

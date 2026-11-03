@@ -4,6 +4,7 @@ import { useStore } from '@nanostores/react'
 import { type FC, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
+import { plainApprovalSentence } from '@/components/assistant-ui/process/plain-steps'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -30,6 +31,7 @@ import {
   sessionApprovalInlineVisible,
   sessionApprovalRequest
 } from '@/store/prompts'
+import { useSingleThreadMode } from '@/store/single-thread'
 
 import type { ToolPart } from './fallback-model'
 
@@ -67,8 +69,22 @@ export const PendingToolApproval: FC<{ part: ToolPart }> = ({ part }) => {
 
 const InlineApprovalBar: FC<{ request: ApprovalRequest }> = ({ request }) => {
   useEffect(() => registerApprovalInlineAnchor(request.sessionId), [request.sessionId])
+  const plain = useSingleThreadMode()
 
-  return <ApprovalBar request={request} surface="inline" />
+  if (!plain) {
+    return <ApprovalBar request={request} surface="inline" />
+  }
+
+  // hc-1066: single-thread product mode says what the command is for above
+  // the buttons; the command itself stays one click away under 「命令」.
+  return (
+    <div className="grid min-w-0" data-slot="tool-approval-explained">
+      <p className="m-0 mt-1 ps-5 text-xs leading-snug text-(--ui-text-secondary)" data-slot="tool-approval-explain">
+        {plainApprovalSentence(request.command, request.description)}
+      </p>
+      <ApprovalBar request={request} surface="inline" />
+    </div>
+  )
 }
 
 export const PendingApprovalFallback: FC = () => {
@@ -78,6 +94,7 @@ export const PendingApprovalFallback: FC = () => {
   const $inlineVisible = useMemo(() => sessionApprovalInlineVisible(sessionId), [sessionId])
   const request = useStore($request)
   const inlineVisible = useStore($inlineVisible)
+  const plain = useSingleThreadMode()
 
   if (!request || inlineVisible) {
     return null
@@ -93,8 +110,14 @@ export const PendingApprovalFallback: FC = () => {
         <div className="flex min-w-0 items-center gap-2 text-sm text-primary">
           <AlertCircle className="size-4 shrink-0" />
           <span className="shrink-0 font-medium">{t.assistant.approval.jumpToApproval}</span>
-          {request.description && (
-            <span className="min-w-0 truncate text-(--ui-text-tertiary)">{request.description}</span>
+          {plain ? (
+            <span className="min-w-0 truncate text-(--ui-text-tertiary)" data-slot="tool-approval-explain">
+              {plainApprovalSentence(request.command, request.description)}
+            </span>
+          ) : (
+            request.description && (
+              <span className="min-w-0 truncate text-(--ui-text-tertiary)">{request.description}</span>
+            )
           )}
         </div>
         <ApprovalBar request={request} surface="floating" />

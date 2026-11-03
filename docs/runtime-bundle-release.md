@@ -2,12 +2,14 @@
 
 ## Engines embedded in Desktop installers
 
-The synchronized Desktop release builds a complete native engine for Mac arm64,
-Mac x64 and Windows x64 before packaging the shell. The engine source is pinned
-by `apps/desktop/bundled-runtime.json`; it can intentionally differ from the
-Desktop shell's source commit. All three installers must carry the same full
-engine commit and release label. Changing the pin does not change the Cloud
-default runtime.
+The Desktop release (`desktop-release.yml`) builds a complete native engine for
+Mac arm64 before packaging the shell. Mac x64 stopped after 0.17.63 and Windows
+x64 is paused after 0.17.66; `desktop-windows.yml` still builds a Windows engine
+and installer when dispatched directly, as diagnostic artifacts only. The engine
+source is pinned by `apps/desktop/bundled-runtime.json`; it can intentionally
+differ from the Desktop shell's source commit. Every installer must carry the
+pinned full engine commit and release label. Changing the pin does not change
+the Cloud default runtime.
 
 The pin's `supersedes` map (full commit -> release label) lists engines the pin
 descends from. On start, the shell replaces an installed engine whose source
@@ -48,8 +50,8 @@ and Gatekeeper gates.
 `beforePack`, `afterPack` and the native workflows independently check the actual
 resource archive's size, SHA256, native target, full source stamp and required
 executables. Missing, unlocked, wrong-source or wrong-architecture payloads
-reject packaging. The final synchronized job also compares the embedded engine
-commit and label across both platform workflows.
+reject packaging. The release's final job also compares the embedded engine
+commit and label with the pin.
 
 An installed engine is never a frontend build tree: Desktop keeps the previous one
 for rollback, and reinstalling a version already on disk re-verifies every file

@@ -2,10 +2,10 @@ import { skillInvocationText } from '@hermes/shared'
 import { parseCommandDispatch, parseSlashCommand } from '@hermes/shared'
 import { type MutableRefObject, useCallback, useRef } from 'react'
 
+import { modelSlashHintNow } from '@/app/single-thread/bot-names'
 import { getProfiles } from '@/hermes'
 import type { Translations } from '@/i18n'
 import { modelTierCopyNow } from '@/i18n/model-tier'
-import { singleThreadCopyNow } from '@/i18n/single-thread'
 import { type ChatMessage, toChatMessages } from '@/lib/chat-messages'
 import { sessionTitle } from '@/lib/chat-runtime'
 import {
@@ -1211,7 +1211,7 @@ export function useSlashCommand(deps: SlashCommandDeps) {
           MODEL_TIER_BLOCKED_SLASH_COMMANDS.has(canonicalDesktopSlashCommand(`/${name}`))
         ) {
           const resolved = await withSlashOutput(ctx)
-          resolved?.render($modelTierMode.get() ? modelTierCopyNow().slashHint : singleThreadCopyNow().modelSlashHint)
+          resolved?.render($modelTierMode.get() ? modelTierCopyNow().slashHint : modelSlashHintNow())
 
           return
         }

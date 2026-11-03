@@ -141,6 +141,65 @@ describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restorat
     }
   })
 
+  it('shows nothing while a waiting plan retries, and the update card once the switch starts (hc-1118)', async () => {
+    const desktop = stubDesktop()
+
+    let activeKey = 'old'
+    let emit: (progress: { phase: string }) => void = () => {}
+
+    let finish: (result: Record<string, unknown>) => void = () => {}
+
+    const applyUpdate = vi.fn(async () => {
+      emit({ phase: 'verifying' })
+
+      return new Promise(resolve => {
+        finish = resolve
+      })
+    })
+
+    Object.assign(window.hermesDesktop!, {
+      getVersion: async () => ({ appVersion: '0.18.0' }),
+      runtime: {
+        getVersion: async () => ({ ok: true, key: activeKey, version: 'old', treeMatchesMarker: true }),
+        checkUpdate: async () => ({ ok: true, updateAvailable: true, current: { key: 'old' }, latest: { key: 'new', version: 'v2026.8.8' } }),
+        applyUpdate,
+        onUpdateProgress: (callback: typeof emit) => {
+          emit = callback
+
+          return () => {}
+        }
+      },
+      updateCenter: {
+        getPlan: async () => ({
+          planId: 'overlay-waiting-plan',
+          kind: 'runtime-after-shell',
+          lastError: 'runtime_update_busy',
+          targetShellVersion: '0.18.0',
+          targetRuntimeKey: 'new',
+          targetRuntimeVersion: 'v2026.8.8'
+        }),
+        transitionPlan: async () => ({ ok: true }),
+        clearPlan: async () => ({ ok: true })
+      }
+    })
+
+    try {
+      const view = render(<DesktopInstallOverlay />)
+
+      await waitFor(() => expect(applyUpdate).toHaveBeenCalledTimes(1))
+      expect(view.container.innerHTML).toBe('')
+
+      act(() => emit({ phase: 'activating' }))
+      expect(screen.getByText('Updating to Engine 2026.8.8')).toBeTruthy()
+
+      activeKey = 'new'
+      await act(async () => finish({ ok: true, applied: true, reloadRequired: false }))
+      await waitFor(() => expect(view.container.innerHTML).toBe(''))
+    } finally {
+      desktop.restore()
+    }
+  })
+
   it('reuses the install progress surface for one app + engine update', async () => {
     const desktop = stubDesktop()
 

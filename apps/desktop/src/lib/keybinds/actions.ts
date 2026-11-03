@@ -198,6 +198,10 @@ export interface KeybindContribution {
   defaults?: readonly string[]
   label: string
   run: () => void
+  /** Its default combos win over a built-in's default on the same combo for
+   *  as long as it is registered (dispatch is first-wins, see `$comboIndex`).
+   *  hc-1060: the single-thread composer's ⌘D dictation over `profile.default`. */
+  claims?: boolean
 }
 
 export function contributedKeybinds(): KeybindContribution[] {
@@ -207,16 +211,19 @@ export function contributedKeybinds(): KeybindContribution[] {
     .filter(k => Boolean(k?.id && k.label) && typeof k?.run === 'function' && !ACTION_BY_ID.has(k.id))
 }
 
-/** Built-ins + contributed, one metadata list (panel, bindings, conflicts). */
+function contributedMeta(k: KeybindContribution): KeybindActionMeta {
+  return { id: k.id, category: k.category ?? 'view', defaults: k.defaults ?? [], label: k.label }
+}
+
+/** Built-ins + contributed, one metadata list (panel, bindings, conflicts).
+ *  Claiming contributions go first, so their combos win dispatch. */
 export function allKeybindActions(): KeybindActionMeta[] {
+  const contributed = contributedKeybinds()
+
   return [
+    ...contributed.filter(k => k.claims).map(contributedMeta),
     ...KEYBIND_ACTIONS,
-    ...contributedKeybinds().map(k => ({
-      id: k.id,
-      category: k.category ?? ('view' as const),
-      defaults: k.defaults ?? [],
-      label: k.label
-    }))
+    ...contributed.filter(k => !k.claims).map(contributedMeta)
   ]
 }
 

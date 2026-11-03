@@ -79,6 +79,30 @@ def test_idle_proof_reads_the_real_cron_and_human_input_ledgers():
     assert idle_proof()["idle"] is True
 
 
+def test_a_running_background_command_keeps_the_backend_busy(tmp_path):
+    """hc-1102: a background command (``terminal(background=true)``, a long render) outlives the turn
+    that started it, in a session of its own. While it runs the backend is not idle: the retirement
+    fence refuses, so the Desktop's reap or eviction keeps the engine instead of stopping it under
+    the command. Once the command is gone the backend is idle again."""
+    from hermes_cli.backend_retirement import RetirementFence
+    from tools.process_registry import process_registry
+
+    assert idle_proof()["idle"] is True
+
+    session = process_registry.spawn_local("sleep 60", cwd=str(tmp_path), task_id="idle-proof-background")
+    try:
+        assert idle_proof() == {"idle": False, "reason": "turn_in_flight", "detail": "processes:1"}
+        assert RetirementFence().prepare() == {"ok": False, "idle": False}
+    finally:
+        process_registry.kill_process(session.id, source="test")
+
+    deadline = time.monotonic() + 10
+    while process_registry.count_running() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert idle_proof()["idle"] is True
+    assert RetirementFence().prepare()["ok"] is True
+
+
 def test_queued_prompts_and_unwinding_workers_are_not_idle(monkeypatch):
     from tui_gateway import server
 

@@ -69,10 +69,10 @@ export const CREATOR_INTAKE_COPY: Record<Locale, CreatorIntakeCopy> = {
     otherPlaceholder: '其他（自己写）',
     platforms: { douyin: '抖音', xiaohongshu: '小红书', channels: '视频号', kuaishou: '快手', bilibili: 'B 站' },
     painPoints: {
-      no_topic: '没选题',
-      no_script: '不会写脚本',
-      no_editing: '不会剪',
-      no_traffic: '没流量',
+      no_topic: '不知道拍什么',
+      no_script: '不会写文案',
+      no_editing: '剪辑太费时间',
+      no_traffic: '拍了没人看',
       no_shooting: '不会拍'
     },
     skip: '先跳过',
@@ -120,10 +120,10 @@ export const CREATOR_INTAKE_COPY: Record<Locale, CreatorIntakeCopy> = {
     otherPlaceholder: '其他（自己寫）',
     platforms: { douyin: '抖音', xiaohongshu: '小紅書', channels: '視頻號', kuaishou: '快手', bilibili: 'B 站' },
     painPoints: {
-      no_topic: '沒選題',
-      no_script: '不會寫腳本',
-      no_editing: '不會剪',
-      no_traffic: '沒流量',
+      no_topic: '不知道拍什麼',
+      no_script: '不會寫文案',
+      no_editing: '剪輯太費時間',
+      no_traffic: '拍了沒人看',
       no_shooting: '不會拍'
     },
     skip: '先跳過',
@@ -185,11 +185,11 @@ export const CREATOR_INTAKE_COPY: Record<Locale, CreatorIntakeCopy> = {
       bilibili: 'Bilibili'
     },
     painPoints: {
-      no_topic: 'Finding topics',
-      no_script: 'Writing scripts',
-      no_editing: 'Editing',
-      no_traffic: 'Getting views',
-      no_shooting: 'Filming'
+      no_topic: 'Not knowing what to shoot',
+      no_script: 'Writing the script',
+      no_editing: 'Editing takes too long',
+      no_traffic: 'Nobody watches',
+      no_shooting: 'Shooting it'
     },
     skip: 'Skip for now',
     continueLabel: 'Continue',
@@ -252,10 +252,10 @@ export const CREATOR_INTAKE_COPY: Record<Locale, CreatorIntakeCopy> = {
       bilibili: 'bilibili'
     },
     painPoints: {
-      no_topic: 'ネタがない',
+      no_topic: '何を撮ればいいか分からない',
       no_script: '台本が書けない',
-      no_editing: '編集できない',
-      no_traffic: '再生されない',
+      no_editing: '編集に時間がかかりすぎる',
+      no_traffic: '撮っても見てもらえない',
       no_shooting: '撮影できない'
     },
     skip: 'あとで',
@@ -311,11 +311,11 @@ export const CREATOR_INTAKE_COPY: Record<Locale, CreatorIntakeCopy> = {
       bilibili: 'Bilibili'
     },
     painPoints: {
-      no_topic: 'إيجاد الأفكار',
-      no_script: 'كتابة النص',
-      no_editing: 'المونتاج',
-      no_traffic: 'الحصول على مشاهدات',
-      no_shooting: 'التصوير'
+      no_topic: 'لا أعرف ماذا أصوّر',
+      no_script: 'لا أعرف كتابة النص',
+      no_editing: 'المونتاج يأخذ وقتًا طويلًا',
+      no_traffic: 'لا أحد يشاهد ما أصوّره',
+      no_shooting: 'لا أعرف التصوير'
     },
     skip: 'تخطَّ الآن',
     continueLabel: 'متابعة',

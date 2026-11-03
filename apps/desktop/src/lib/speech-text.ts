@@ -1,4 +1,4 @@
-import { stripNextStepBlocks } from '@/lib/next-steps'
+import { visibleReplyText } from '@/lib/reply-markers'
 
 const EMOJI_RE = /(?:[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]|[\u{FE0F}\u{200D}]|[\u{E0020}-\u{E007F}])+/gu
 
@@ -155,7 +155,7 @@ function normalizeLineBreaks(text: string): string {
 
 export function sanitizeTextForSpeech(text: string): string {
   // The 「下一步」 block is buttons on screen, never something to read out.
-  return normalizeLineBreaks(stripMarkdownTables(stripNextStepBlocks(text)))
+  return normalizeLineBreaks(stripMarkdownTables(visibleReplyText(text)))
     .replace(FENCED_CODE_RE, CODE_BLOCK_SUMMARY)
     .replace(THINKING_PREFIX_RE, ' ')
     .replace(MARKDOWN_LINK_RE, '$1')
