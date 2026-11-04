@@ -54,8 +54,10 @@ CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 # v13(hc-1054):新增 video_highlights、video_moment_search(长视频挑段、按描述找画面),
 # 两条腿都走 /tools/v1/video/{highlights,moments}/jobs;网关腿多一个直传签名端点。新行为：提交带
 # Idempotency-Key 再跟进、结果文件本机可用、按描述只认英文、网关腿本机转 480p 小样直传。
-EXPECTED_CONTRACT_SHA256 = "e3cc710970362dab57f344006ede579cfa1cb59986a00d931ac74f251e1941bb"
-EXPECTED_CONTRACT_VERSION = 13
+# v14(hc-1143):新工具 social_api(TikHub 长尾接口按「平台 + 接口名 + 参数」聚合调用),端点族
+# /data/social/api 与 /tools/v1/social/{platform}/api,行为沿用 platform_arg_required。
+EXPECTED_CONTRACT_SHA256 = "d2cfe41599ae98f1e1411be69c3d2f81c51d3c8827796ff66b781536e7801749"
+EXPECTED_CONTRACT_VERSION = 14
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -85,6 +87,8 @@ PROBES: dict[str, dict] = {
     "social_audience": {"platform": "douyin", "keyword": "猫粮"},
     "social_creator_discovery": {"platform": "douyin", "keyword": "猫粮"},
     "social_product": {"platform": "tiktok", "keyword": "cat food"},
+    # hc-1143:聚合工具,平台 + 接口名 + 参数。
+    "social_api": {"platform": "douyin", "endpoint": "app/v3/fetch_hashtag_detail", "params": {"ch_id": "1"}},
     "generate_video": {"prompt": "一只猫在弹钢琴"},
     # hc-1054: a media: handle (the legacy leg's source); GatewayHarness swaps in a local file.
     "video_highlights": {"source": "media:" + "b" * 32 + "/long.mp4"},
@@ -439,7 +443,7 @@ def test_contract_covers_exactly_the_shared_tool_surface():
     assert contract_tools == {t for tools in CONTRACT["plugins"].values() for t in tools}
     # hc-563 冻结在 14;hc-600 有意加入四个洞察工具(contract_version 3)。这个数字是
     # 漂移绊线,只能与 contract_version 一起动 —— 与 cloud 侧同一断言保持一致。
-    assert len(contract_tools) == 20
+    assert len(contract_tools) == 21  # hc-1143 adds social_api (v14)
     assert set(PROBES) == contract_tools
 
 

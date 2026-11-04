@@ -145,6 +145,7 @@ export const zhHantAssistantTool: AssistantToolOverrides = {
     social_batch_submit: { done: '已提交批次下載轉寫', pending: '正在提交批次下載轉寫', pendingAction: '正在提交' },
     social_batch_status: { done: '已查看批次進度', pending: '正在查看批次進度', pendingAction: '正在查看' },
     creator_top_posts: { done: '已查看創作者熱門作品', pending: '正在查看創作者熱門作品', pendingAction: '正在查看' },
+    social_api: { done: '已查社群資料', pending: '正在查社群資料', pendingAction: '正在查' },
     social_audience: { done: '已查看受眾輪廓', pending: '正在查看受眾輪廓', pendingAction: '正在查看' },
     social_captions: { done: '已取得影片字幕', pending: '正在取得影片字幕', pendingAction: '正在取得' },
     social_comments: { done: '已查看評論', pending: '正在查看評論', pendingAction: '正在查看' },

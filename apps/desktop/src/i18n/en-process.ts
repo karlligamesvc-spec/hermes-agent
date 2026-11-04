@@ -83,6 +83,11 @@ export const enProcess: ProcessCopy = {
     ),
     social_batch_status: step('Checking the batch', 'Check batch', said('Checked')),
     creator_top_posts: step("Finding the creator's top posts", 'Find top posts', found('post'), publicData),
+    social_api: step('Looking up platform data', 'Platform data', found('item'), facts =>
+      facts.platform
+        ? `Public data on ${facts.platform}, via a third-party data service`
+        : 'Public platform data, via a third-party data service'
+    ),
     social_audience: step(
       'Looking at the audience',
       'Audience profile',
