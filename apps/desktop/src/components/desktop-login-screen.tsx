@@ -5,6 +5,7 @@ import { ManagedRuntimeRecovery } from '@/components/managed-runtime-recovery'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
 import { useManagedSignInCopy } from '@/i18n/managed-sign-in'
+import { useSignOutCopy } from '@/i18n/sign-out'
 import { Loader2 } from '@/lib/icons'
 import { markManagedUnavailable } from '@/store/auth'
 import { closeManagedReSignIn } from '@/store/managed-re-sign-in'
@@ -184,6 +185,31 @@ export function DesktopLoginScreen({
           </Button>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+/**
+ * hc-1142: product mode's 「正在退出登录…」, from the click until the server has
+ * answered. The login screen's own surface and logo, so the sign-out reads as
+ * one move into it; a failure takes it away and leaves the app as it was.
+ */
+export function DesktopSignOutCover() {
+  const copy = useSignOutCopy()
+
+  return (
+    <div
+      aria-busy="true"
+      className="fixed inset-0 z-1400 flex flex-col items-center justify-center bg-(--ui-chat-surface-background) p-6 [-webkit-app-region:drag]"
+      data-apex-sign-out-cover=""
+      data-glass-opaque
+      role="status"
+    >
+      <img alt="" aria-hidden className="mb-6 size-16 rounded-[1.125rem]" src={assetPath(LOGO_ASSET)} />
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" />
+        {copy.signingOut}
+      </p>
     </div>
   )
 }

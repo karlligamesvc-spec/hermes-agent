@@ -23,8 +23,10 @@ from tools.registry import tool_error, tool_result
 
 try:  # 网关客户端(fork 内共用);导入失败时插件退回 legacy 路径,绝不拖垮装载。
     from plugins import apexnodes_gateway as _gateway
+    from plugins import apexnodes_media_catalog as _media_catalog
 except Exception:  # pragma: no cover - 仅在裸拷贝部署等异常形态出现
     _gateway = None  # type: ignore[assignment]
+    _media_catalog = None  # type: ignore[assignment]
 
 
 def _use_gateway() -> bool:
@@ -167,7 +169,11 @@ RETIRED_IMAGE_MODELS = {"agnes-image-2.5-flash": "gpt-image-2.5-flare"}
 
 
 def _desktop_image_model() -> str | None:
-    """Read the Desktop picker preference at call time, including live changes."""
+    """Read the Desktop picker preference at call time, including live changes.
+
+    hc-1046: while the picker is hidden (``apex.generation_model_choice: assistant``) the
+    saved value is the hidden default, not a choice, so the assistant's model stands.
+    Whether a saved id is still a model is checked against the served catalog."""
     from hermes_cli.config import (
         get_config_path,
         load_config_readonly,
@@ -187,13 +193,12 @@ def _desktop_image_model() -> str | None:
         apex = config["apex"]
         if not isinstance(apex, dict):
             raise RuntimeError(_say("media_setting_malformed", "当前图片模型设置格式无效"))
-        if "generation_image_model" not in apex:
+        if "generation_image_model" not in apex or (_media_catalog and _media_catalog.assistant_picks(apex)):
             return None
         model = apex["generation_image_model"]
         if isinstance(model, str):
-            model = RETIRED_IMAGE_MODELS.get(model, model)
-        allowed = GENERATE_IMAGE_SCHEMA["parameters"]["properties"]["model"]["enum"]
-        if not isinstance(model, str) or model not in allowed:
+            model = RETIRED_IMAGE_MODELS.get(model, model).strip()
+        if not isinstance(model, str) or not model:
             raise RuntimeError(_say("media_setting_unknown", "当前图片模型设置不是可用的模型"))
         return model
     except (OSError, ValueError, RuntimeError) as exc:
@@ -243,16 +248,15 @@ GENERATE_IMAGE_SCHEMA = {
             },
             "model": {
                 "type": "string",
-                "enum": [
-                    "qwen-image-3.0-pro",
-                    "gemini-2.5-flash-image",
-                    "gpt-image-2.5-flare",
-                    "gpt-image-2.5-sunburst",
-                ],
+                # hc-1046: no enum: the platform serves the model catalog and the tool
+                # checks a model against it, so a model added there needs no release.
                 "description": (
-                    "用户在 APEX 中选择的图片模型。名称依次为 Qwen Image 3.0 Pro、"
-                    "Gemini Image 2.5、GPT Image 2.5 Flare、"
-                    "GPT Image 2.5 Sunburst。Desktop 当前选择的图片模型始终优先。"
+                    "Optional model id from the platform's image model catalog. Choose it per the "
+                    "image-generation skill's model guide (text inside the picture, editing a picture, "
+                    "cheap drafts); leave empty for the platform default. An id the catalog does not "
+                    "list, or one switched off right now, is refused before anything is spent, with "
+                    "the ids that work. When the APEX Desktop shows its model picker, the user's "
+                    "choice there wins."
                 ),
             },
             "provider": {
@@ -405,9 +409,19 @@ def _handle_generate_image(args: dict, **_kwargs) -> str:
     if not prompt:
         return tool_error(_say("media_missing_prompt", "请提供图片描述"))
     try:
-        selected_model = _desktop_image_model() or str(args.get("model") or "").strip() or None
+        saved_model = _desktop_image_model()
     except RuntimeError as exc:
         return tool_error(_say("media_failed", "图片生成失败: {reason}", reason=exc))
+    selected_model = saved_model or str(args.get("model") or "").strip() or None
+    # hc-1046: one read of the check: the served catalog, then the leg's health.
+    section = _media_catalog.read_check(_leg_health) if _media_catalog else None
+    problem = _media_catalog and _media_catalog.model_problem(
+        "image", section, selected_model, saved=bool(saved_model),
+        saved_unknown=_say("media_setting_unknown", "当前图片模型设置不是可用的模型"),
+        english=_gateway.ui_language() == "en",
+    )
+    if problem:
+        return tool_error(problem)
     payload = {
         "prompt": prompt,
         "aspect_ratio": str(args.get("aspect_ratio") or "square").strip() or "square",
@@ -429,7 +443,7 @@ def _handle_generate_image(args: dict, **_kwargs) -> str:
         _gateway.media_unavailable_reason(
             _gateway.MEDIA_IMAGE,
             selected_model,
-            _leg_health,
+            lambda: section,
             provider=payload["provider"],
             purpose=payload["purpose"],
             title=payload["title"],

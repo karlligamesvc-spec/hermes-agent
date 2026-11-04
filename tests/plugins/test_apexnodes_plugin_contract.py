@@ -54,8 +54,14 @@ CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 # v13(hc-1054):新增 video_highlights、video_moment_search(长视频挑段、按描述找画面),
 # 两条腿都走 /tools/v1/video/{highlights,moments}/jobs;网关腿多一个直传签名端点。新行为：提交带
 # Idempotency-Key 再跟进、结果文件本机可用、按描述只认英文、网关腿本机转 480p 小样直传。
-EXPECTED_CONTRACT_SHA256 = "e3cc710970362dab57f344006ede579cfa1cb59986a00d931ac74f251e1941bb"
-EXPECTED_CONTRACT_VERSION = 13
+# v14(hc-1143):新工具 social_api(TikHub 长尾接口按「平台 + 接口名 + 参数」聚合调用),端点族
+# /data/social/api 与 /tools/v1/social/{platform}/api,行为沿用 platform_arg_required。
+# v15(hc-1136):apexnodes-video-tools 加 video_breakdown(复刻卡),两条腿各一个看图端点
+# (/media/shot-labels、/tools/v1/video/shot-labels)。
+# v16(hc-1046):generate_video 的 model 不再列 id,按服务端下发的媒体模型目录查;两条新行为
+# model_checked_against_served_catalog、hidden_picker_lets_the_assistant_pick(两条腿)。
+EXPECTED_CONTRACT_SHA256 = "3f2b5a5182b4882d8e992d7488d7b40c1201d3b771686f1c340c3ef5198460f4"
+EXPECTED_CONTRACT_VERSION = 16
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -85,12 +91,36 @@ PROBES: dict[str, dict] = {
     "social_audience": {"platform": "douyin", "keyword": "猫粮"},
     "social_creator_discovery": {"platform": "douyin", "keyword": "猫粮"},
     "social_product": {"platform": "tiktok", "keyword": "cat food"},
+    # hc-1143:聚合工具,平台 + 接口名 + 参数。
+    "social_api": {"platform": "douyin", "endpoint": "app/v3/fetch_hashtag_detail", "params": {"ch_id": "1"}},
     "generate_video": {"prompt": "一只猫在弹钢琴"},
     # hc-1054: a media: handle (the legacy leg's source); GatewayHarness swaps in a local file.
     "video_highlights": {"source": "media:" + "b" * 32 + "/long.mp4"},
     "video_moment_search": {"source": "media:" + "b" * 32 + "/long.mp4", "query": "a red suitcase"},
+    "video_breakdown": {"video_path": "/probe/原片.mp4"},
 }
 ANALYSIS_TOOLS = ("video_highlights", "video_moment_search")
+
+# A 1×1 JPEG: the keyframe a probe sends for labels.
+_PROBE_JPEG = (
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAx"
+    "NDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAI"
+    "AQEAAD8AKp//2Q=="
+)
+
+
+def _probe_build(video_path, *, label_fn, **_kwargs):
+    """video_breakdown's local steps (ffmpeg, files) stand still in the endpoint probes: only
+    the labels request is the plugin's call to the platform. tests/plugins/
+    test_apexnodes_video_breakdown.py runs the real steps."""
+    shot = {"n": 1, "start": 0.0, "end": 1.0, "speech": "", "frames": [_PROBE_JPEG]}
+    answer = label_fn({"video": {"duration": 1.0, "shot_count": 1}, "shots": [shot]})
+    return {"package_dir": "/probe/复刻包", "shot_count": 1, "labels_from": answer.get("labels_from") or "none"}
+
+
+def stub_breakdown(monkeypatch, handler) -> None:
+    """Make a video_breakdown handler's local steps stand still (see _probe_build)."""
+    monkeypatch.setattr(handler.__globals__["_BREAKDOWN"], "build", _probe_build)
 
 
 # ── 插件装载(PluginManager 命名约定;注册面经 FakeCtx 捕获)────────────────────
@@ -253,6 +283,7 @@ class LegacyHarness:
             return _Response(answer)
 
         monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+        stub_breakdown(monkeypatch, REGISTRY["video_breakdown"]["handler"])
 
     @staticmethod
     def _canned(path: str) -> dict:
@@ -326,6 +357,7 @@ class GatewayHarness:
         # 桌面最保守形态:无 ffmpeg → 抽音轨失败 → 原文件上传(hc-560 已知语境)。
         monkeypatch.setattr(gateway_module, "extract_audio_for_asr", lambda _p, **_kw: None)
         self._install_analysis_fakes(monkeypatch, gateway_module)
+        stub_breakdown(monkeypatch, REGISTRY["video_breakdown"]["handler"])
 
     def _install_analysis_fakes(self, monkeypatch, gateway_module):
         """hc-1054: the proxy and the PUT stand in for ffmpeg and storage; each records."""
@@ -439,7 +471,7 @@ def test_contract_covers_exactly_the_shared_tool_surface():
     assert contract_tools == {t for tools in CONTRACT["plugins"].values() for t in tools}
     # hc-563 冻结在 14;hc-600 有意加入四个洞察工具(contract_version 3)。这个数字是
     # 漂移绊线,只能与 contract_version 一起动 —— 与 cloud 侧同一断言保持一致。
-    assert len(contract_tools) == 20
+    assert len(contract_tools) == 22  # hc-1143 adds social_api (v14), hc-1136 video_breakdown (v15)
     assert set(PROBES) == contract_tools
 
 
@@ -930,6 +962,72 @@ def _check_local_source_proxy_upload(h, tool_name, _spec):
     assert "error" in result and not h.proxied and not [c for c in calls if c.method == "POST"]
 
 
+# hc-1046: the served model catalog, as the video block of the check carries it.
+_CATALOG_SECTION = {
+    "ok": True,
+    "configured": True,
+    "serving": True,
+    "api_key_configured": True,
+    "model": "doubao-seedance-2-0-mini-260615",
+    "catalog": {
+        "default_model": "doubao-seedance-2-0-mini-260615",
+        "models": [
+            {"model": "doubao-seedance-2-0-mini-260615", "leg": "chinaapi:doubao-seedance-2-0-mini-260615", "configured": True},
+            {"model": "MiniMax-H3", "leg": "chinaapi:MiniMax-H3", "configured": True},
+            {"model": "grok-imagine-video", "leg": "hypit:grok-imagine-video", "configured": False,
+             "unavailable_reason": "Grok Imagine Video 暂不可用(平台没有开放这条线路)。"},
+        ],
+    },
+    "legs": {"hypit:grok-imagine-video": {"configured": False, "serving": False}},
+}
+
+
+def _serve_catalog(h, section):
+    """The check answers ``section`` (or none); everything else as the leg's canned answers."""
+    canned = type(h)._canned
+
+    def answer(path):
+        if path == "/tools/v1/check":
+            return {"ok": True, "video": section} if section is not None else {"ok": True}
+        if path.endswith("/media/video/check"):
+            return section if section is not None else {"ok": True}
+        return canned(path)
+
+    h._canned = answer
+
+
+def _sent_model(calls):
+    generate = [c for c in calls if c.method == "POST" and isinstance(c.body, dict)]
+    return generate[-1].body.get("model") if generate else None
+
+
+def _check_model_checked_against_served_catalog(h, tool_name, _spec):
+    _serve_catalog(h, _CATALOG_SECTION)
+    for model, words in (("midjourney-video", "midjourney-video"), ("grok-imagine-video", "暂不可用")):
+        result, calls = h.invoke(tool_name, {"prompt": "x", "model": model})
+        assert "error" in result and words in result["error"] and "MiniMax-H3" in result["error"], result
+        assert all(c.method == "GET" for c in calls), "refused before the generate call"
+    _result, calls = h.invoke(tool_name, {"prompt": "x", "model": "MiniMax-H3"})
+    assert _sent_model(calls) == "MiniMax-H3"
+    _serve_catalog(h, None)  # a check without a catalog: the server validates the name
+    _result, calls = h.invoke(tool_name, {"prompt": "x", "model": "anything-new"})
+    assert _sent_model(calls) == "anything-new"
+
+
+def _check_hidden_picker_lets_the_assistant_pick(h, tool_name, _spec):
+    _serve_catalog(h, _CATALOG_SECTION)
+    home = h.tmp_path / "hermes-home"
+    home.mkdir(exist_ok=True)
+    h.monkeypatch.setenv("HERMES_HOME", str(home))
+    for choice, sent in (("assistant", "MiniMax-H3"), ("user", "doubao-seedance-2-0-mini-260615")):
+        (home / "config.yaml").write_text(
+            f"apex:\n  generation_video_model: doubao-seedance-2-0-mini-260615\n  generation_model_choice: {choice}\n",
+            encoding="utf-8",
+        )
+        _result, calls = h.invoke(tool_name, {"prompt": "x", "model": "MiniMax-H3"})
+        assert _sent_model(calls) == sent, choice
+
+
 # name → callable;跑腿集合 = 契约行为声明的 legs(fork 双腿都在场)。
 BEHAVIOR_CHECKS = {
     "routed_intent_passthrough": _check_routed_intent_passthrough,
@@ -958,6 +1056,9 @@ BEHAVIOR_CHECKS = {
     "result_files_usable_here": _check_result_files_usable_here,
     "query_must_be_english": _check_query_must_be_english,
     "local_source_proxy_upload": _check_local_source_proxy_upload,
+    # hc-1046: the served model catalog and who picks the model.
+    "model_checked_against_served_catalog": _check_model_checked_against_served_catalog,
+    "hidden_picker_lets_the_assistant_pick": _check_hidden_picker_lets_the_assistant_pick,
 }
 
 BEHAVIOR_CASES = [

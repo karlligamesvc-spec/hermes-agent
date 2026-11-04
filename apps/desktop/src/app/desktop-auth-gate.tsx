@@ -1,12 +1,13 @@
 import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
 
-import { DesktopLoginScreen } from '@/components/desktop-login-screen'
+import { DesktopLoginScreen, DesktopSignOutCover } from '@/components/desktop-login-screen'
 import { useI18n } from '@/i18n'
-import { $authState, handleAuthGate, refreshAuthStatus } from '@/store/auth'
+import { $authState, $signingOut, handleAuthGate, refreshAuthStatus } from '@/store/auth'
 import { $managedReSignIn } from '@/store/managed-re-sign-in'
 import { reconcileRelayAuthState } from '@/store/managed-recovery'
 import type { OnboardingContext } from '@/store/onboarding'
+import { useSingleThreadMode } from '@/store/single-thread'
 
 interface DesktopAuthGateProps {
   /** True once the local backend/env is ready (gatewayState === 'open'), mirroring
@@ -30,6 +31,15 @@ export function DesktopAuthGate({ enabled, onSignedIn, requestGateway }: Desktop
   const { enabled: managedEnabled, gateReason, loginTruth, status } = useStore($authState)
   const reSignIn = useStore($managedReSignIn)
   const [startupReconcileDone, setStartupReconcileDone] = useState(false)
+  const productMode = useSingleThreadMode()
+  const signingOut = useStore($signingOut)
+  const [wasReady, setWasReady] = useState(enabled)
+
+  useEffect(() => {
+    if (enabled) {
+      setWasReady(true)
+    }
+  }, [enabled])
 
   // Continuous auth gate: subscribe once to the main-process broadcast so a lost
   // login / disabled account anywhere in the app returns the user here. Mounted
@@ -76,7 +86,17 @@ export function DesktopAuthGate({ enabled, onSignedIn, requestGateway }: Desktop
   // the boot/env overlays cover the pre-ready phase, and a signed-in user goes
   // straight to chat. hc-1110: until that user asks to sign in again, which
   // shows this same screen over the app, with a way back.
-  if (!enabled) {
+  //
+  // hc-1142, product mode only: 「退出登录」 covers the window from the click
+  // until the server has answered. And every sign-out restarts the engine, so
+  // its gateway drops for a few seconds right after: a window that has been
+  // ready keeps a signed-out gate up through that, instead of showing the app
+  // it just left until the engine is back.
+  if (productMode && signingOut) {
+    return <DesktopSignOutCover />
+  }
+
+  if (!enabled && !(productMode && wasReady && status !== 'signed-in' && status !== 'expired')) {
     return null
   }
 

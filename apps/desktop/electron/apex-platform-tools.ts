@@ -113,8 +113,8 @@ export const PLATFORM_TOOL_PLUGINS: readonly PlatformToolPlugin[] = Object.freez
   }),
   Object.freeze({
     id: 'apexnodes-video-tools',
-    capability: '视频生成 / 长视频分析',
-    tools: Object.freeze(['generate_video', 'video_highlights', 'video_moment_search'])
+    capability: '视频生成 / 长视频分析 / 复刻卡',
+    tools: Object.freeze(['generate_video', 'video_highlights', 'video_moment_search', 'video_breakdown'])
   }),
   Object.freeze({
     id: 'apexnodes-live-tools',
@@ -143,7 +143,8 @@ export const PLATFORM_TOOL_PLUGINS: readonly PlatformToolPlugin[] = Object.freez
       'social_trending',
       'social_posts',
       'social_captions',
-      'creator_top_posts'
+      'creator_top_posts',
+      'social_api'
     ])
   })
 ]) as readonly PlatformToolPlugin[]

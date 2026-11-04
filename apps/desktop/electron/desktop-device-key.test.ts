@@ -180,6 +180,8 @@ describe('the sign-out line and the clean-up after it (hc-1114)', () => {
 
         return 'relay key removed from 3 local file(s); engines still on it restart once idle'
       },
+      // A clock that stands still: every stage that ran reads 0 ms (the stepping one is below).
+      now: () => 0,
       ...overrides
     })
 
@@ -195,7 +197,7 @@ describe('the sign-out line and the clean-up after it (hc-1114)', () => {
     assert.deepEqual(calls, ['revoke', 'clear', 'afterClear'])
     assert.deepEqual(log, [
       "[managed] signed out: the server revoked this computer's relay key and the stored credential is deleted; " +
-        'relay key removed from 3 local file(s); engines still on it restart once idle'
+        'relay key removed from 3 local file(s); engines still on it restart once idle; took 0 ms: revoke 0, clear 0, clean-up 0'
     ])
   })
 
@@ -208,7 +210,7 @@ describe('the sign-out line and the clean-up after it (hc-1114)', () => {
 
     assert.equal((await run).ok, false)
     assert.deepEqual(calls, [])
-    assert.deepEqual(log, ['[managed] sign-out failed (HTTP 401); the local credential stays so it can be retried'])
+    assert.deepEqual(log, ['[managed] sign-out failed (HTTP 401); the local credential stays so it can be retried; took 0 ms: revoke 0'])
   })
 
   test('a server answer that is not a revocation proof fails the same way', async () => {
@@ -218,19 +220,21 @@ describe('the sign-out line and the clean-up after it (hc-1114)', () => {
 
     assert.equal((await run).ok, false)
     assert.deepEqual(calls, [])
-    assert.deepEqual(log, ['[managed] sign-out failed (DESKTOP_KEY_NOT_REVOKED); the local credential stays so it can be retried'])
+    assert.deepEqual(log, [
+      '[managed] sign-out failed (DESKTOP_KEY_NOT_REVOKED); the local credential stays so it can be retried; took 0 ms: revoke 0'
+    ])
   })
 
   test.each([
-    ['no login token', { accessToken: null }, 'SIGN_OUT_REQUIRES_SIGN_IN'],
-    ['a newer sign-in in between', { isCurrent: () => false }, 'MODEL_MUTATION_SUPERSEDED'],
-    ['the credential file cannot be removed', { clearCredential: () => { throw new Error('EPERM') } }, 'SIGN_OUT_CLEAR_FAILED']
-  ])('%s: logged as a failure, no clean-up', async (_name, overrides, code) => {
+    ['no login token', { accessToken: null }, 'SIGN_OUT_REQUIRES_SIGN_IN', ''],
+    ['a newer sign-in in between', { isCurrent: () => false }, 'MODEL_MUTATION_SUPERSEDED', ''],
+    ['the credential file cannot be removed', { clearCredential: () => { throw new Error('EPERM') } }, 'SIGN_OUT_CLEAR_FAILED', ': revoke 0, clear 0']
+  ])('%s: logged as a failure, no clean-up', async (_name, overrides, code, stages) => {
     const { calls, log, run } = signOut(overrides)
 
     assert.equal((await run).ok, false)
     assert.equal(calls.includes('afterClear'), false)
-    assert.deepEqual(log, [`[managed] sign-out failed (${code}); the local credential stays so it can be retried`])
+    assert.deepEqual(log, [`[managed] sign-out failed (${code}); the local credential stays so it can be retried; took 0 ms${stages}`])
   })
 
   test('an env key is not ours to revoke or scrub', async () => {
@@ -239,7 +243,7 @@ describe('the sign-out line and the clean-up after it (hc-1114)', () => {
     assert.deepEqual(await run, { ok: true })
     assert.deepEqual(calls, ['clear'])
     assert.deepEqual(log, [
-      '[managed] signed out: the stored credential is deleted; the relay key comes from APEXNODES_RELAY_KEY, so nothing was revoked'
+      '[managed] signed out: the stored credential is deleted; the relay key comes from APEXNODES_RELAY_KEY, so nothing was revoked; took 0 ms: clear 0'
     ])
   })
 
@@ -248,7 +252,7 @@ describe('the sign-out line and the clean-up after it (hc-1114)', () => {
 
     assert.deepEqual(await run, { ok: true })
     assert.deepEqual(calls, ['clear'])
-    assert.deepEqual(log, ['[managed] signed out: no credential was stored'])
+    assert.deepEqual(log, ['[managed] signed out: no credential was stored; took 0 ms: clear 0'])
   })
 
   test('a clean-up that throws does not undo a confirmed sign-out', async () => {
@@ -260,7 +264,7 @@ describe('the sign-out line and the clean-up after it (hc-1114)', () => {
 
     assert.deepEqual(await run, { ok: true })
     assert.equal(log.length, 1)
-    assert.ok(log[0].endsWith('; local clean-up failed (EIO)'), log[0])
+    assert.ok(log[0].endsWith('; local clean-up failed (EIO); took 0 ms: revoke 0, clear 0, clean-up 0'), log[0])
   })
 
   test('the line for a failure before the revoke reads like every other failure', () => {
@@ -268,6 +272,48 @@ describe('the sign-out line and the clean-up after it (hc-1114)', () => {
       signOutFailureLine('SIGN_OUT_CLEAR_FAILED'),
       '[managed] sign-out failed (SIGN_OUT_CLEAR_FAILED); the local credential stays so it can be retried'
     )
+  })
+
+  // hc-1142: one line still, now with how long each part the window waited for took.
+  test('the line says how long each stage took, the capabilities read apart from the revoke', async () => {
+    let clock = 1000
+
+    const { log, run } = signOut({
+      now: () => clock,
+      prepare: async () => {clock += 3},
+      revoke: async (_body: unknown, stage: <T>(name: 'capabilities', work: Promise<T>) => Promise<T>) => {
+        await stage('capabilities', Promise.resolve().then(() => {clock += 120}))
+        clock += 800
+      },
+      clearCredential: () => {clock += 2},
+      afterClear: () => {
+        clock += 15
+
+        return 'relay key removed from 1 local file(s); engines still on it restart once idle'
+      }
+    })
+
+    assert.deepEqual(await run, { ok: true })
+    assert.deepEqual(log, [
+      "[managed] signed out: the server revoked this computer's relay key and the stored credential is deleted; " +
+        'relay key removed from 1 local file(s); engines still on it restart once idle; ' +
+        'took 940 ms: fence 3, capabilities 120, revoke 800, clear 2, clean-up 15'
+    ])
+  })
+
+  test('a failure says how long it waited, and hands the renderer the HTTP status', async () => {
+    let clock = 0
+
+    const { log, run } = signOut({
+      now: () => clock,
+      revoke: async () => {
+        clock += 805
+        throw Object.assign(new Error('500: {"detail":"down"}'), { statusCode: 500 })
+      }
+    })
+
+    assert.deepEqual(await run, { ok: false, message: '500: {"detail":"down"}', statusCode: 500 })
+    assert.deepEqual(log, ['[managed] sign-out failed (HTTP 500); the local credential stays so it can be retried; took 805 ms: revoke 805'])
   })
 
   test('no line carries the key or the login token', async () => {

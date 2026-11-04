@@ -394,30 +394,71 @@ export function returnToManagedLogin() {
   patch({ enabled: true, status: 'signed-out', accountId: null, account: EMPTY_ACCOUNT, gateReason: null })
 }
 
-// User chose "退出登录" (logout) in the account panel. The main process first
-// revokes this installation's server key and only then clears the encrypted
-// local key. Preserve renderer state when that proof fails so every shell is
-// fail-closed instead of merely looking signed out while a key remains active.
-export async function signOutAccount(): Promise<boolean> {
+/** What a sign-out came to; a failure carries main's reason and, when the server answered, its HTTP status. */
+export interface SignOutOutcome {
+  ok: boolean
+  message?: string
+  statusCode?: number
+}
+
+/** hc-1142: a sign-out the server has not answered yet. Product mode covers the window with it (DesktopAuthGate). */
+export const $signingOut = atom(false)
+
+let signOutInFlight: null | Promise<SignOutOutcome> = null
+
+async function runSignOut(): Promise<SignOutOutcome> {
   const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
   const generation = authGeneration
   const owner = $authState.get().accountId
+  let outcome: SignOutOutcome
 
   try {
-    const result = await bridge?.signOut()
-
-    if (!result?.ok) {
-      return false
-    }
+    outcome = (await bridge?.signOut()) ?? { ok: false }
   } catch {
-    return false
+    return { ok: false }
   }
 
-  if (generation !== authGeneration || owner !== $authState.get().accountId) {return false}
+  if (!outcome.ok) {
+    return outcome
+  }
+
+  if (generation !== authGeneration || owner !== $authState.get().accountId) {return { ok: false, message: 'SUPERSEDED' }}
 
   invalidateAuthRefresh()
   writeCachedSignedIn(false)
   patch({ accountId: null, account: EMPTY_ACCOUNT, gateReason: null, status: 'signed-out' })
 
-  return true
+  return outcome
+}
+
+// User chose "退出登录" (logout) in the account panel. The main process first
+// revokes this installation's server key and only then clears the encrypted
+// local key. Preserve renderer state when that proof fails so every shell is
+// fail-closed instead of merely looking signed out while a key remains active.
+export async function signOutAccount(): Promise<boolean> {
+  return (await runSignOut()).ok
+}
+
+/**
+ * hc-1142, product mode's account menu: the same sign-out, one at a time (a
+ * second click while one runs gets the same outcome), with `$signingOut` set
+ * meanwhile and the reason when it fails.
+ */
+export function signOutAccountWithReason(): Promise<SignOutOutcome> {
+  if (!signOutInFlight) {
+    $signingOut.set(true)
+    signOutInFlight = runSignOut().finally(() => {
+      signOutInFlight = null
+      $signingOut.set(false)
+    })
+  }
+
+  return signOutInFlight
+}
+
+/** hc-1142: the account menu opened; main reads what the sign-out needs from the server ahead of the click. */
+export function prepareSignOut() {
+  if (typeof window !== 'undefined') {
+    void window.hermesDesktop?.managed?.prepareSignOut?.().catch(() => undefined)
+  }
 }

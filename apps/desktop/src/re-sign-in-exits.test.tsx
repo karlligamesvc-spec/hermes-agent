@@ -148,7 +148,8 @@ describe('who opens a sign-in', () => {
       'app/chat/sidebar/cloud-login-notice.tsx': 1,
       'app/im-entry/binding-dialog.tsx': 1,
       'app/settings/product-account-settings.tsx': 1,
-      'app/single-thread/sidebar-account.tsx': 1,
+      // hc-1142: the product menu's failed sign-out toast, handled after the menu has closed.
+      'app/single-thread/sign-out.ts': 1,
       'store/managed-recovery.ts': 1,
       'store/onboarding.ts': 1
     })

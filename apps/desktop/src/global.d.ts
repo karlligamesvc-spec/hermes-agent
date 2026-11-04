@@ -287,15 +287,15 @@ declare global {
         // self-heal chain before reporting.
         relayCatalog?: (opts?: { refresh?: boolean }) => Promise<DesktopRelayCatalogState>
         signIn: (payload: { email: string; password: string; target?: DesktopManagedModelTarget }) => Promise<DesktopManagedSignInResult>
-        // Browser (loopback) sign-in: "用 Google 登录" / "用 APEX 登录". Opens
-        // the system browser, catches the loopback redirect, and resolves with
-        // the same managed assignment shape the email/password flow returns.
+        // Browser (loopback) sign-in: "用 Google 登录" / "用 APEX 登录". Opens the system browser, catches
+        // the loopback redirect, and resolves with the same managed assignment shape the email/password flow returns.
         browserSignIn: (payload: { provider: 'apex' | 'google'; target?: DesktopManagedModelTarget }) => Promise<DesktopManagedSignInResult>
         // hc-530: web handoff sign-in. Exchange the one-time code delivered via the
         // apexnodes://login deep link for the same managed assignment shape.
         // Optional: an older main process may not expose it.
         deepLinkSignIn?: (payload: { code: string; target?: DesktopManagedModelTarget }) => Promise<DesktopManagedSignInResult>
-        signOut: () => Promise<{ ok: boolean }>
+        signOut: () => Promise<{ ok: boolean; message?: string; statusCode?: number }> // hc-1142: why it failed, HTTP status if any
+        prepareSignOut?: () => Promise<void>
         // On-demand relay-key self-heal after a chat turn hit a relay auth error
         // (HTTP 401/403). Optional: an older main process may not expose it.
         selfHeal?: (payload?: { target: DesktopManagedModelTarget }) => Promise<DesktopManagedSelfHealResult>

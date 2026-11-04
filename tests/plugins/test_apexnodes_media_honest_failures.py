@@ -436,8 +436,9 @@ def test_the_picked_models_leg_decides(_hermes_home, desktop_env, server, media)
     result = _generate(media)
 
     assert result["error"] == (
-        f"你选的{media.label}模型最近连续几次都没生成成功，平台先暂停了它，大约 2 分钟后可以再试；"
-        f"现在也可以在输入框的「+」菜单里换一个{media.label}模型。"
+        # hc-1046: the assistant may have picked it, and the product shell hides the "+" picker.
+        f"这次用的{media.label}模型最近连续几次都没生成成功，平台先暂停了它，大约 2 分钟后可以再试；"
+        f"现在也可以换一个{media.label}模型。"
     )
     assert server.requests == [("GET", "/tools/v1/check")]
 

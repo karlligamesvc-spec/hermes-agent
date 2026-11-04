@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { PASTE_ACTIONS } from '@/app/chat/composer/paste-actions'
 import { englishWords } from '@/test/zh-copy'
 
 import { TRANSLATIONS } from './catalog'
@@ -102,11 +103,32 @@ describe('the chip labels Kael set (2026-10-20)', () => {
   })
 
   it('reads 转逐字稿 / 拆它为什么火 / 仿写成我的脚本 in zh', () => {
-    expect(COMPOSER_SIMPLE_COPY.zh.paste.labels).toEqual({
+    expect(COMPOSER_SIMPLE_COPY.zh.paste.labels).toMatchObject({
       breakdown: '拆它为什么火',
       remix: '仿写成我的脚本',
       transcribe: '转逐字稿'
     })
+  })
+})
+
+describe('the fourth chip (hc-1137)', () => {
+  it('reads 复刻成我的 in zh and 複刻成我的 in zh-hant, after the other three', () => {
+    expect(PASTE_ACTIONS).toEqual(['transcribe', 'breakdown', 'remix', 'remake'])
+    expect(COMPOSER_SIMPLE_COPY.zh.paste.labels.remake).toBe('复刻成我的')
+    expect(COMPOSER_SIMPLE_COPY['zh-hant'].paste.labels.remake).toBe('複刻成我的')
+  })
+
+  // short-video-studio routes on these words: 复刻 sends 路径五 (a shot-by-shot
+  // card, then one question), 仿写 stays a script for video-script-breakdown.
+  it('says 复刻 and never 仿写, so the request reaches the remake path, not the script rewrite', () => {
+    for (const locale of ['zh', 'zh-hant'] as const) {
+      const paste = COMPOSER_SIMPLE_COPY[locale].paste
+
+      for (const sentence of [paste.linkSentence.remake('抖音視頻'), paste.videoSentence.remake]) {
+        expect(sentence).toMatch(/[复複]刻成我的/)
+        expect(sentence).not.toMatch(/仿[写寫]|脚本|腳本/)
+      }
+    }
   })
 })
 
