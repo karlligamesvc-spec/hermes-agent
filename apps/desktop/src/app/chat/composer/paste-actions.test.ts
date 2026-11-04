@@ -254,7 +254,8 @@ describe('pasteActionRequest', () => {
   it.each([
     ['transcribe', '把这条抖音视频转成逐字稿：https://v.douyin.com/iRNBho6u/'],
     ['breakdown', '拆解这条抖音视频为什么火：https://v.douyin.com/iRNBho6u/'],
-    ['remix', '照这条抖音视频的结构和节奏，仿写一个我的口播脚本：https://v.douyin.com/iRNBho6u/']
+    ['remix', '照这条抖音视频的结构和节奏，仿写一个我的口播脚本：https://v.douyin.com/iRNBho6u/'],
+    ['remake', '把这条抖音视频复刻成我的：https://v.douyin.com/iRNBho6u/']
   ] as const)('%s: one sentence and the link, the share padding left out', (action, request) => {
     expect(pasteActionRequest(action, douyin(), zh, { draft: DOUYIN_SHARE, pasted: DOUYIN_SHARE })).toBe(request)
   })
@@ -302,6 +303,7 @@ describe('pasteActionRequest', () => {
     expect(pasteActionRequest('remix', { kind: 'video' }, zh, { draft: '口吻轻松一点' })).toBe(
       '照这个视频的结构和节奏，仿写一个我的口播脚本\n口吻轻松一点'
     )
+    expect(pasteActionRequest('remake', { kind: 'video' }, zh, { draft: '' })).toBe('把这个视频复刻成我的')
   })
 
   it('leaves a 视频号 share text out once its video stands in for it', () => {
