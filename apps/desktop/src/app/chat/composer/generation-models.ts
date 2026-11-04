@@ -136,6 +136,20 @@ export function saveVideoGenerationModel(id: string): Promise<GenerationModel> {
   return saveGenerationModel('video', id)
 }
 
+/**
+ * hc-1046: tells the media tools who picks the generation model. With the
+ * pickers hidden (tier mode, single-thread product mode) the saved model is the
+ * hidden default, not a choice, so the assistant's pick for the task stands;
+ * with them shown, the user's saved pick wins as before.
+ */
+export async function saveGenerationModelChoice(pickersHidden: boolean): Promise<void> {
+  const result = await saveHermesConfig({ apex: { generation_model_choice: pickersHidden ? 'assistant' : 'user' } })
+
+  if (!result.ok) {
+    throw new Error('Could not save who picks the generation model')
+  }
+}
+
 export function generationStarter(starter: string, model: GenerationModel): string {
   const base = starter.trimEnd()
 

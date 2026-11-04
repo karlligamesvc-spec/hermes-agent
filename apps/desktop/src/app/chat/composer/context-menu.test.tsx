@@ -250,6 +250,18 @@ describe('ContextMenu — generation rows in tier mode', () => {
     expect(saveHermesConfig).not.toHaveBeenCalledWith({ apex: { generation_image_model: 'qwen-image-3.0-pro' } })
   })
 
+  // hc-1046: with the pickers hidden the saved default is not a choice, so the
+  // media tools let the assistant's model for the task stand.
+  it('tells the media tools the assistant picks while the pickers are hidden', async () => {
+    setTierMode()
+    renderMenu({ folded: true })
+
+    await waitFor(() =>
+      expect(saveHermesConfig).toHaveBeenCalledWith({ apex: { generation_model_choice: 'assistant' } })
+    )
+    expect(saveHermesConfig).not.toHaveBeenCalledWith({ apex: { generation_model_choice: 'user' } })
+  })
+
   // The twin: outside tier mode (switch off, or the user's own key) the pickers,
   // their model names and a saved pick all stay.
   it('keeps the pickers and the saved pick outside tier mode', async () => {
@@ -265,6 +277,8 @@ describe('ContextMenu — generation rows in tier mode', () => {
 
     expect(image.getAttribute('aria-haspopup')).toBe('menu')
     expect(image.textContent).toContain('Qwen Image 3.0 Pro')
+    expect(saveHermesConfig).toHaveBeenCalledWith({ apex: { generation_model_choice: 'user' } })
+    expect(saveHermesConfig).not.toHaveBeenCalledWith({ apex: { generation_model_choice: 'assistant' } })
   })
 })
 

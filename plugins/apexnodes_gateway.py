@@ -108,6 +108,8 @@ from typing import Any
 
 import httpx
 
+from plugins import apexnodes_media_catalog as _media_catalog
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -461,10 +463,10 @@ _COPY: dict[str, tuple[str, str]] = {
         "The {label} generation service sent an answer that could not be read; there is no result this time.",
     ),
     "media_paused_model": (
-        "你选的{label}模型最近连续几次都没生成成功，平台先暂停了它，{when}；"
-        "现在也可以在输入框的「+」菜单里换一个{label}模型。",
-        "The {label} model you picked failed several times in a row and the platform paused it; "
-        "{when}. You can also pick another {label} model from the \"+\" menu in the input box now.",
+        "这次用的{label}模型最近连续几次都没生成成功，平台先暂停了它，{when}；"
+        "现在也可以换一个{label}模型。",
+        "The {label} model for this call failed several times in a row and the platform paused it; "
+        "{when}. You can also switch to another {label} model now.",
     ),
     "media_paused": (
         "{label}生成最近连续几次都没成功，平台先暂停了它，{when}。",
@@ -1028,8 +1030,7 @@ def media_error_message(media: str, status: int | None, code: str | None, detail
 def tools_check(*, timeout: float = 5) -> dict[str, Any] | None:
     """``GET /tools/v1/check``; None when it cannot be read.
 
-    A check that cannot be read never stops a generation: the call goes ahead and
-    reports its own outcome."""
+    An unreadable check never stops a generation: the call goes ahead and reports its own outcome."""
     try:
         return request_json("GET", "/tools/v1/check", timeout=timeout)
     except GatewayError:
@@ -1062,14 +1063,14 @@ def _leg_view(
 ) -> tuple[Any, Any]:
     """The (entry, health) pair that describes the leg this call will use.
 
-    A selected model is its own leg (``legs["chinaapi:<model>"]``, health fields at
-    the top). A video call without a model renders on the default leg, which the
-    section describes flat (``serving`` on /tools/v1/check, ``ok`` on the legacy
-    check, health under ``health``). An image call without a model reads the leg its
-    provider or purpose lands on (hc-984)."""
+    A selected model is its own leg, health fields at the top (hc-1046: the served
+    catalog names it, ``hypit:<model>`` for a Hypit model). A video call without a model
+    renders on the default leg, described flat (``serving`` on /tools/v1/check, ``ok`` on
+    the legacy check, health under ``health``); an image call without one reads the leg
+    its provider or purpose lands on (hc-984)."""
     legs = section.get("legs")
     if model:
-        entry = legs.get(f"chinaapi:{model}") if isinstance(legs, dict) else None
+        entry = legs.get(_media_catalog.leg_of(section, model)) if isinstance(legs, dict) else None
         return entry, entry
     if media == MEDIA_VIDEO:
         return section, section.get("health")

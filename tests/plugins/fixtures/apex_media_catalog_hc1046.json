@@ -1,0 +1,404 @@
+{
+ "_source": "apex-nodes app/services/media_model_catalog.catalog_view (hc-1046), CHINAAPI and HYPIT on, as production 2026-11-02",
+ "image": {
+  "default_provider": "chinaapi",
+  "default_model": "gpt-image-2.5-flare",
+  "models": [
+   {
+    "provider": "chinaapi",
+    "label": "Qwen Image 3.0 Pro",
+    "model": "qwen-image-3.0-pro",
+    "kind": "image",
+    "leg": "chinaapi:qwen-image-3.0-pro",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_image",
+     "image_edit",
+     "reference_images",
+     "person_reference"
+    ],
+    "reference_images_max": 3,
+    "resolutions": []
+   },
+   {
+    "provider": "chinaapi",
+    "label": "Gemini Image 2.5",
+    "model": "gemini-2.5-flash-image",
+    "kind": "image",
+    "leg": "chinaapi:gemini-2.5-flash-image",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_image",
+     "image_edit",
+     "reference_images",
+     "person_reference"
+    ],
+    "reference_images_max": 3,
+    "resolutions": []
+   },
+   {
+    "provider": "chinaapi",
+    "label": "GPT Image 2.5 Flare",
+    "model": "gpt-image-2.5-flare",
+    "kind": "image",
+    "leg": "chinaapi:gpt-image-2.5-flare",
+    "configured": true,
+    "default": true,
+    "capabilities": [
+     "text_to_image",
+     "image_edit",
+     "reference_images",
+     "person_reference"
+    ],
+    "reference_images_max": 4,
+    "resolutions": []
+   },
+   {
+    "provider": "chinaapi",
+    "label": "GPT Image 2.5 Sunburst",
+    "model": "gpt-image-2.5-sunburst",
+    "kind": "image",
+    "leg": "chinaapi:gpt-image-2.5-sunburst",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_image",
+     "image_edit",
+     "reference_images",
+     "person_reference"
+    ],
+    "reference_images_max": 4,
+    "resolutions": []
+   },
+   {
+    "provider": "hypit",
+    "label": "Nano Banana 2 Lite",
+    "model": "nano-banana-2-lite",
+    "kind": "image",
+    "leg": "hypit:nano-banana-2-lite",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_image",
+     "image_edit",
+     "reference_images",
+     "person_reference"
+    ],
+    "reference_images_max": 3,
+    "resolutions": []
+   },
+   {
+    "provider": "hypit",
+    "label": "Nano Banana 2",
+    "model": "nano-banana-2",
+    "kind": "image",
+    "leg": "hypit:nano-banana-2",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_image",
+     "image_edit",
+     "reference_images",
+     "person_reference"
+    ],
+    "reference_images_max": 3,
+    "resolutions": [
+     "1k",
+     "2k",
+     "4k"
+    ]
+   },
+   {
+    "provider": "hypit",
+    "label": "Nano Banana Pro",
+    "model": "nano-banana-pro",
+    "kind": "image",
+    "leg": "hypit:nano-banana-pro",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_image",
+     "image_edit",
+     "reference_images",
+     "person_reference"
+    ],
+    "reference_images_max": 3,
+    "resolutions": [
+     "1k",
+     "2k",
+     "4k"
+    ]
+   },
+   {
+    "provider": "hypit",
+    "label": "Seedream 5 Lite",
+    "model": "seedream-5-lite",
+    "kind": "image",
+    "leg": "hypit:seedream-5-lite",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_image"
+    ],
+    "reference_images_max": 0,
+    "resolutions": []
+   },
+   {
+    "provider": "hypit",
+    "label": "Seedream 5 Pro",
+    "model": "seedream-5-pro",
+    "kind": "image",
+    "leg": "hypit:seedream-5-pro",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_image"
+    ],
+    "reference_images_max": 0,
+    "resolutions": [],
+    "qualities": [
+     "basic",
+     "high"
+    ]
+   },
+   {
+    "provider": "hypit",
+    "label": "GPT Image 2",
+    "model": "gpt-image-2",
+    "kind": "image",
+    "leg": "hypit:gpt-image-2",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_image",
+     "image_edit",
+     "reference_images",
+     "person_reference"
+    ],
+    "reference_images_max": 4,
+    "resolutions": [
+     "1k",
+     "2k",
+     "4k"
+    ]
+   }
+  ]
+ },
+ "video": {
+  "default_provider": "chinaapi",
+  "default_model": "doubao-seedance-2-0-mini-260615",
+  "models": [
+   {
+    "provider": "chinaapi",
+    "label": "Seedance 2.5",
+    "model": "doubao-seedance-2-5-260628",
+    "kind": "video",
+    "leg": "chinaapi:doubao-seedance-2-5-260628",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_video",
+     "image_to_video",
+     "first_last_frame",
+     "reference_images"
+    ],
+    "reference_images_max": 9,
+    "seconds_range": [
+     4,
+     15
+    ],
+    "resolutions": [
+     "480p",
+     "720p"
+    ]
+   },
+   {
+    "provider": "chinaapi",
+    "label": "Seedance 2.0",
+    "model": "doubao-seedance-2-0-260128",
+    "kind": "video",
+    "leg": "chinaapi:doubao-seedance-2-0-260128",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_video",
+     "image_to_video",
+     "first_last_frame",
+     "reference_images"
+    ],
+    "reference_images_max": 9,
+    "seconds_range": [
+     4,
+     15
+    ],
+    "resolutions": [
+     "480p",
+     "720p"
+    ]
+   },
+   {
+    "provider": "chinaapi",
+    "label": "Seedance 2.0 Fast",
+    "model": "doubao-seedance-2-0-fast-260128",
+    "kind": "video",
+    "leg": "chinaapi:doubao-seedance-2-0-fast-260128",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_video",
+     "image_to_video",
+     "first_last_frame",
+     "reference_images"
+    ],
+    "reference_images_max": 9,
+    "seconds_range": [
+     4,
+     15
+    ],
+    "resolutions": [
+     "480p",
+     "720p"
+    ]
+   },
+   {
+    "provider": "chinaapi",
+    "label": "Seedance 2.0 Mini",
+    "model": "doubao-seedance-2-0-mini-260615",
+    "kind": "video",
+    "leg": "chinaapi:doubao-seedance-2-0-mini-260615",
+    "configured": true,
+    "default": true,
+    "capabilities": [
+     "text_to_video",
+     "image_to_video",
+     "first_last_frame",
+     "reference_images"
+    ],
+    "reference_images_max": 9,
+    "seconds_range": [
+     4,
+     15
+    ],
+    "resolutions": [
+     "480p",
+     "720p"
+    ]
+   },
+   {
+    "provider": "chinaapi",
+    "label": "MiniMax H3",
+    "model": "MiniMax-H3",
+    "kind": "video",
+    "leg": "chinaapi:MiniMax-H3",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_video",
+     "image_to_video",
+     "reference_images",
+     "person_reference"
+    ],
+    "reference_images_max": 9,
+    "seconds_range": [
+     4,
+     15
+    ],
+    "resolutions": [
+     "768p"
+    ]
+   },
+   {
+    "provider": "hypit",
+    "label": "Grok Imagine Video",
+    "model": "grok-imagine-video",
+    "kind": "video",
+    "leg": "hypit:grok-imagine-video",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_video",
+     "image_to_video"
+    ],
+    "reference_images_max": 0,
+    "seconds_range": [
+     5,
+     15
+    ],
+    "resolutions": [
+     "480p",
+     "720p",
+     "1080p"
+    ]
+   },
+   {
+    "provider": "hypit",
+    "label": "Grok Imagine Video 1.5",
+    "model": "grok-imagine-video-1.5-preview",
+    "kind": "video",
+    "leg": "hypit:grok-imagine-video-1.5-preview",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_video"
+    ],
+    "reference_images_max": 0,
+    "seconds_range": [
+     5,
+     15
+    ],
+    "resolutions": [
+     "480p",
+     "720p"
+    ]
+   },
+   {
+    "provider": "hypit",
+    "label": "PixVerse V6",
+    "model": "pixverse/v6",
+    "kind": "video",
+    "leg": "hypit:pixverse/v6",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_video"
+    ],
+    "reference_images_max": 0,
+    "seconds_range": [
+     5,
+     10
+    ],
+    "resolutions": [
+     "360p",
+     "540p",
+     "720p",
+     "1080p"
+    ]
+   },
+   {
+    "provider": "hypit",
+    "label": "PixVerse C1",
+    "model": "pixverse/c1",
+    "kind": "video",
+    "leg": "hypit:pixverse/c1",
+    "configured": true,
+    "default": false,
+    "capabilities": [
+     "text_to_video"
+    ],
+    "reference_images_max": 0,
+    "seconds_range": [
+     5,
+     10
+    ],
+    "resolutions": [
+     "360p",
+     "540p",
+     "720p",
+     "1080p"
+    ]
+   }
+  ]
+ }
+}

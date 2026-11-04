@@ -33,8 +33,10 @@ from tools.registry import tool_error, tool_result
 
 try:  # 网关客户端(fork 内共用);导入失败时插件退回 legacy 路径,绝不拖垮装载。
     from plugins import apexnodes_gateway as _gateway
+    from plugins import apexnodes_media_catalog as _media_catalog
 except Exception:  # pragma: no cover - 仅在裸拷贝部署等异常形态出现
     _gateway = None  # type: ignore[assignment]
+    _media_catalog = None  # type: ignore[assignment]
 
 try:  # hc-1054: long-video analysis (video_highlights, video_moment_search); needs the gateway client.
     from plugins import apexnodes_video_analysis as _analysis
@@ -218,17 +220,15 @@ GENERATE_VIDEO_SCHEMA = {
             },
             "model": {
                 "type": "string",
-                "enum": [
-                    "doubao-seedance-2-5-260628",
-                    "doubao-seedance-2-0-260128",
-                    "doubao-seedance-2-0-fast-260128",
-                    "doubao-seedance-2-0-mini-260615",
-                    "MiniMax-H3",
-                ],
+                # hc-1046: no enum: the platform serves the model catalog and the tool
+                # checks a model against it, so a model added there needs no release.
                 "description": (
-                    "用户在 APEX 中选择的视频模型。名称依次为 Seedance 2.5、Seedance 2.0、"
-                    "Seedance 2.0 Fast、Seedance 2.0 Mini、MiniMax H3。"
-                    "Desktop 当前选择的视频模型始终优先;未指定时使用平台默认模型(Seedance 2.0 Mini)。"
+                    "Optional model id from the platform's video model catalog. Choose it per the "
+                    "video-generation skill's model guide (cheap drafts, a real person's photo, a "
+                    "first/last-frame transition); leave empty for the platform default. An id the "
+                    "catalog does not list, or one switched off right now, is refused before anything "
+                    "is spent, with the ids that work. When the APEX Desktop shows its model picker, "
+                    "the user's choice there wins."
                 ),
             },
             "provider": {
@@ -309,6 +309,10 @@ def _desktop_video_model() -> str | None:
     ``_desktop_image_model``: the saved choice wins over the LLM's argument, an
     absent preference keeps the platform default, and a malformed or unknown value
     fails before any request instead of silently falling back.
+
+    hc-1046: while the picker is hidden (``apex.generation_model_choice: assistant``)
+    the saved Mini is the hidden default, not a choice, so the assistant's model stands.
+    Whether a saved id is still a model is checked against the served catalog.
     """
     from hermes_cli.config import (
         get_config_path,
@@ -329,13 +333,12 @@ def _desktop_video_model() -> str | None:
         apex = config["apex"]
         if not isinstance(apex, dict):
             raise RuntimeError(_say("media_setting_malformed", "当前视频模型设置格式无效"))
-        if "generation_video_model" not in apex:
+        if "generation_video_model" not in apex or (_media_catalog and _media_catalog.assistant_picks(apex)):
             return None
         model = apex["generation_video_model"]
-        allowed = GENERATE_VIDEO_SCHEMA["parameters"]["properties"]["model"]["enum"]
-        if not isinstance(model, str) or model not in allowed:
+        if not isinstance(model, str) or not model.strip():
             raise RuntimeError(_say("media_setting_unknown", "当前视频模型设置不是可用的模型"))
-        return model
+        return model.strip()
     except (OSError, ValueError, RuntimeError) as exc:
         raise RuntimeError(f"{_say('media_setting_unreadable', '无法读取当前视频模型设置')}: {exc}") from exc
 
@@ -373,13 +376,23 @@ def _handle_generate_video(args: dict, **_kwargs) -> str:
     if not prompt:
         return tool_error(_say("media_missing_prompt", "请提供视频描述"))
     try:
-        selected_model = _desktop_video_model() or str(args.get("model") or "").strip() or None
+        saved_model = _desktop_video_model()
     except RuntimeError as exc:
         return tool_error(_say("media_failed", "视频生成失败: {reason}", reason=exc))
+    selected_model = saved_model or str(args.get("model") or "").strip() or None
+    # hc-1046: one read of the check: the served catalog, then the leg's health.
+    section = _media_catalog.read_check(_leg_health) if _media_catalog else None
+    problem = _media_catalog and _media_catalog.model_problem(
+        "video", section, selected_model, saved=bool(saved_model),
+        saved_unknown=_say("media_setting_unknown", "当前视频模型设置不是可用的模型"),
+        english=_gateway.ui_language() == "en",
+    )
+    if problem:
+        return tool_error(problem)
     # hc-969: a leg the server reports switched off or failing is said now, instead of
     # a render request that waits minutes to fail.
     unavailable = (
-        _gateway.media_unavailable_reason(_gateway.MEDIA_VIDEO, selected_model, _leg_health)
+        _gateway.media_unavailable_reason(_gateway.MEDIA_VIDEO, selected_model, lambda: section)
         if _gateway
         else None
     )
