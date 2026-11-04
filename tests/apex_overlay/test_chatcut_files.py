@@ -210,9 +210,12 @@ def test_each_file_goes_to_the_scheduler_with_the_apex_key_only(scheduler, tmp_p
 
 
 def test_only_media_files_by_absolute_path_under_the_limit(scheduler, tmp_path, monkeypatch):
+    """Each refused file breaks exactly one rule, so each rule is what refuses it."""
     monkeypatch.setattr(chatcut_files, "MAX_BYTES", 10)
+    monkeypatch.chdir(tmp_path)
     keys = tmp_path / "id_rsa"
-    keys.write_text("-----BEGIN KEY-----")
+    keys.write_text("KEY")
+    media(tmp_path, "relative.mp4", b"take")
     empty = media(tmp_path, "empty.mp4", b"")
     big = media(tmp_path, "big.mp4", b"x" * 11)
     ok = media(tmp_path, "ok.mp4", b"take")
@@ -221,7 +224,13 @@ def test_only_media_files_by_absolute_path_under_the_limit(scheduler, tmp_path, 
 
     assert result["status"] == "partial"
     assert [a["file"] for a in result["assets"]] == ["ok.mp4"]
-    assert [f["file"] for f in result["failed"]] == ["id_rsa", "relative.mp4", "missing.mp4", "empty.mp4", "big.mp4"]
+    assert result["failed"] == [
+        {"file": "id_rsa", "error": "不是视频、音频或图片文件"},
+        {"file": "relative.mp4", "error": "不是绝对路径"},
+        {"file": "missing.mp4", "error": "找不到这个文件"},
+        {"file": "empty.mp4", "error": "文件是空的"},
+        {"file": "big.mp4", "error": "文件太大了，一个文件最多 1 GB"},
+    ]
     assert [u["body"] for u in scheduler.uploads] == [b"take"]
 
 
