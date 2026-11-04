@@ -235,6 +235,8 @@ export interface StaleKeyRestartResult {
 export const STALE_KEY_RETRY_MS = 30_000
 /** One hour of 30 s retries; the next key sync or 401 starts over. */
 export const STALE_KEY_MAX_RETRIES = 120
+/** How long a sign-in waits for an engine restart already under way (settled). */
+export const STALE_KEY_SETTLE_MS = 20_000
 
 export interface StaleRelayKeyRestartDeps {
   holders: () => RelayKeyHolder[]
@@ -263,6 +265,24 @@ export class StaleRelayKeyRestarts {
     this.tail = next.catch(() => undefined)
 
     return next
+  }
+
+  /**
+   * hc-1142: resolves once every run queued so far has finished, or after
+   * `timeoutMs`. A sign-in right after a sign-out waits here: the sign-out's
+   * run is still stopping the primary engine, and a sign-in that talks to it
+   * meanwhile loses its request with the process (ECONNRESET), signed in on
+   * the server and half done here. Its own run then moves the engine onto the
+   * new key. Bounded, so a respawn that hangs delays a sign-in, never blocks it.
+   */
+  settled(timeoutMs = STALE_KEY_SETTLE_MS): Promise<'settled' | 'timed-out'> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const timedOut = new Promise<'timed-out'>(resolve => {
+      timer = setTimeout(() => resolve('timed-out'), timeoutMs)
+    })
+
+    return Promise.race([this.tail.then(() => 'settled' as const), timedOut]).finally(() => clearTimeout(timer))
   }
 
   private async once(reason: string, retry: boolean): Promise<StaleKeyRestartResult> {

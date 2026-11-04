@@ -103,3 +103,35 @@ describe('a sign-in as another account', () => {
     assert.match(provision, /managedProvisionCommitToken\(token, previous\.accessToken, purpose\)/)
   })
 })
+
+// hc-1142: what the window waited for after 「退出登录」, and the sign-in that can now start sooner.
+describe('the sign-out the window waits for', () => {
+  const handler = block("ipcMain.handle('hermes:managed:signOut', async () => {")
+  const provision = block('async function provisionManagedFromAccessToken(', '\n}\n')
+
+  test('every capabilities read goes through the one kept per run', () => {
+    assert.deepEqual([...code.matchAll(/\/capabilities`/g)].length, 0, 'no GET of its own left in main.ts')
+    assert.deepEqual(owners(/\bprovisionKeyCapabilities\(/g), ['provisionManagedFromAccessToken', '(module scope)'])
+    assert.match(
+      handler,
+      /\n\s+capabilities: \(\) => stage\('capabilities', provisionKeyCapabilities\(endpoints\.provisionKeyUrl, managed\.accessToken, apexAuthBodylessJson\)\),\n/
+    )
+    assert.match(provision, /\n\s+capabilities: \(\) => provisionKeyCapabilities\(endpoints\.provisionKeyUrl, token, apexAuthBodylessJson\),\n/)
+  })
+
+  test('opening the account menu reads them ahead, for the stored login', () => {
+    assert.match(
+      code,
+      /\nipcMain\.handle\('hermes:managed:prepareSignOut', \(\) => warmProvisionKeyCapabilities\(resolveApexEndpoints\(process\.env\)\.provisionKeyUrl, resolveManagedConfig\(\)\.accessToken, apexAuthBodylessJson\)\)\n/
+    )
+  })
+
+  test('a sign-in waits for an engine restart under way before it touches the engine or the server', () => {
+    const wait = provision.indexOf("purpose === 'sign-in' && staleRelayKeys.settled()")
+    const prepare = provision.indexOf('prepareManagedModelMutation(')
+
+    assert.ok(wait >= 0, 'the sign-in waits for the restart queue')
+    assert.ok(wait < prepare, 'before the engine is asked anything, or a key is minted')
+    assert.match(provision, /\n {2}await Promise\.all\(\[clientConfigSync\.settleBeforeSignInFinishes\(\), purpose === 'sign-in' && staleRelayKeys\.settled\(\)\]\)\n/)
+  })
+})

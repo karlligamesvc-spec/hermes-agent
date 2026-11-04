@@ -27,6 +27,60 @@ export class ManagedProvisionError extends Error {
   }
 }
 
+/** main.ts apexAuthBodylessJson. */
+type BodylessGet = (method: 'GET', url: string, options: { bearer: null | string | undefined }) => Promise<unknown>
+
+const capabilityReads = new Map<string, Promise<unknown>>()
+
+function readCapabilities(provisionKeyUrl: string, bearer: null | string | undefined, get: BodylessGet): Promise<unknown> {
+  const forget = () => {
+    if (capabilityReads.get(provisionKeyUrl) === pending) {capabilityReads.delete(provisionKeyUrl)}
+  }
+
+  const pending = get('GET', `${provisionKeyUrl}/capabilities`, { bearer }).then(
+    answer => {
+      if ((answer as { version?: unknown })?.version !== 1) {forget()}
+
+      return answer
+    },
+    error => {
+      forget()
+      throw error
+    }
+  )
+
+  capabilityReads.set(provisionKeyUrl, pending)
+
+  return pending
+}
+
+/**
+ * hc-1142: the provision-key capabilities, read once per run. A sign-out used
+ * to GET them right before its revoke: one more round trip to apex-nodes.com
+ * while the window waited. They say whether the server takes ordered device-key
+ * mutations (version 1), a fact about the server rather than the account, so
+ * one version-1 answer is kept for that URL for the rest of the run and a read
+ * still in flight is joined. Anything else, or a failure, is asked again next
+ * time; a joined read that failed is retried once on the spot.
+ *
+ * What proves a mutation is still its own response: the echoed revision
+ * (requestRevisionedManagedKeyMutation) and, for a sign-out, `revoked: true`.
+ */
+export function provisionKeyCapabilities(provisionKeyUrl: string, bearer: null | string | undefined, get: BodylessGet): Promise<unknown> {
+  const shared = capabilityReads.get(provisionKeyUrl)
+
+  return shared
+    ? shared.catch(() => readCapabilities(provisionKeyUrl, bearer, get))
+    : readCapabilities(provisionKeyUrl, bearer, get)
+}
+
+/** The account menu opened: have the capabilities ready before 退出登录 is clicked. Never throws. */
+export function warmProvisionKeyCapabilities(provisionKeyUrl: string, bearer: null | string | undefined, get: BodylessGet) {
+  if (bearer) {
+    provisionKeyCapabilities(provisionKeyUrl, bearer, get).catch(() => undefined)
+  }
+}
+
 /** Login and logout share one ordered device-key mutation capability. */
 export async function requestRevisionedManagedKeyMutation(args: {
   capabilities: () => Promise<unknown>
