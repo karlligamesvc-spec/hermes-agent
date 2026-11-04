@@ -17,6 +17,10 @@ import pytest
 
 PLUGIN = Path(__file__).resolve().parents[2] / "plugins/apexnodes-video-tools/__init__.py"
 MINI = "doubao-seedance-2-0-mini-260615"
+# hc-1046: the video model catalog the ApexNodes server serves in its checks.
+CATALOG = json.loads(
+    (Path(__file__).resolve().parents[1] / "plugins/fixtures/apex_media_catalog_hc1046.json").read_text(encoding="utf-8")
+)["video"]
 
 
 @pytest.fixture
@@ -130,7 +134,11 @@ def test_invalid_picker_never_falls_back_to_the_platform_default(
     (tmp_path / "config.yaml").write_text(invalid_yaml, encoding="utf-8")
     monkeypatch.setattr(video_plugin, "_use_gateway", lambda: True)
     monkeypatch.setattr(
-        video_plugin._gateway, "request_json", lambda *_args, **_kwargs: pytest.fail("must not send video request")
+        video_plugin._gateway,
+        "request_json",
+        lambda _method, path, *_args, **_kwargs: (
+            {"video": {"catalog": CATALOG}} if path == "/tools/v1/check" else pytest.fail("must not send video request")
+        ),
     )
 
     result = json.loads(video_plugin._handle_generate_video({"prompt": "收纳架开箱"}))

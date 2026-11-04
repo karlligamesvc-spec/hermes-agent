@@ -136,3 +136,81 @@ def test_a_server_without_a_catalog_validates_the_name_itself(image_plugin, monk
     sent = _serve(monkeypatch, image_plugin, gateway=True, section={"legs": {}})
     assert _call(image_plugin, model="anything-new")["ok"] is True
     assert sent[0]["model"] == "anything-new"
+
+
+# ── generate_video: the same rules (contract v16) ─────────────────────────────
+
+VIDEO_PLUGIN = ROOT / "plugins/apexnodes-video-tools/__init__.py"
+MINI = "doubao-seedance-2-0-mini-260615"
+H3 = "MiniMax-H3"
+GROK = "grok-imagine-video"
+
+
+@pytest.fixture
+def video_plugin(monkeypatch, tmp_path):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    spec = importlib.util.spec_from_file_location("apexnodes_media_catalog_video_test", VIDEO_PLUGIN)
+    assert spec and spec.loader
+    plugin = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(plugin)
+    return plugin
+
+
+def _serve_video(monkeypatch, plugin, *, gateway: bool, section: dict | None = None) -> list[dict]:
+    section = section if section is not None else {"catalog": copy.deepcopy(SERVED["video"]), "legs": {}}
+    sent: list[dict] = []
+
+    def legacy(_method, path, payload=None, timeout=None):
+        if path.endswith("/check"):
+            return section
+        sent.append(payload)
+        return {"ok": True, "model": payload.get("model")}
+
+    def gateway_request(method, path, payload=None, **_kwargs):
+        # The gateway's video job wire (hc-1000): the submit answers running, the poll done.
+        if path == "/tools/v1/check":
+            return {"video": section}
+        if method == "POST":
+            sent.append(payload)
+            return {"ok": True, "job_id": "j1", "status": "running", "poll_after_seconds": 5}
+        return {"ok": True, "job_id": "j1", "status": "done", "data": {"model": sent[-1].get("model")}}
+
+    monkeypatch.setattr(plugin, "_use_gateway", lambda: gateway)
+    monkeypatch.setattr(plugin, "_request", legacy)
+    monkeypatch.setattr(plugin._gateway, "request_json", gateway_request)
+    monkeypatch.setattr(plugin._gateway.time, "sleep", lambda _s: None)
+    return sent
+
+
+def test_the_video_model_parameter_lists_no_ids(video_plugin):
+    model = video_plugin.GENERATE_VIDEO_SCHEMA["parameters"]["properties"]["model"]
+    assert "enum" not in model and "video-generation" in model["description"]
+
+
+@pytest.mark.parametrize("gateway", [True, False])
+@pytest.mark.parametrize(
+    ("config_text", "asked", "sent_model"),
+    [
+        # The bug the ticket is about: the hidden picker's saved Mini replaced the assistant's model.
+        (f"apex:\n  generation_video_model: {MINI}\n  generation_model_choice: assistant\n", H3, H3),
+        (f"apex:\n  generation_video_model: {MINI}\n  generation_model_choice: assistant\n", None, None),
+        (f"apex:\n  generation_video_model: {MINI}\n  generation_model_choice: user\n", H3, MINI),
+        (f"apex:\n  generation_video_model: {MINI}\n", H3, MINI),
+    ],
+)
+def test_who_picks_the_video_model(video_plugin, monkeypatch, tmp_path, gateway, config_text, asked, sent_model):
+    (tmp_path / "config.yaml").write_text(config_text, encoding="utf-8")
+    sent = _serve_video(monkeypatch, video_plugin, gateway=gateway)
+    args = {"prompt": "一只猫在弹钢琴", **({"model": asked} if asked else {})}
+    result = json.loads(video_plugin._handle_generate_video(args))
+    assert "error" not in result, result
+    assert sent[0]["model"] == sent_model
+
+
+@pytest.mark.parametrize("gateway", [True, False])
+def test_a_hypit_video_models_health_is_read_on_its_own_leg(video_plugin, monkeypatch, gateway):
+    paused = {"configured": True, "serving": False, "healthy": False, "retry_after_seconds": 300}
+    section = {"catalog": copy.deepcopy(SERVED["video"]), "legs": {"hypit:grok-imagine-video": paused}}
+    sent = _serve_video(monkeypatch, video_plugin, gateway=gateway, section=section)
+    result = json.loads(video_plugin._handle_generate_video({"prompt": "x", "model": GROK}))
+    assert sent == [] and "5 分钟" in result["error"] and "「+」" not in result["error"]

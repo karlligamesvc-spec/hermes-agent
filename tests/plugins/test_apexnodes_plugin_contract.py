@@ -58,8 +58,10 @@ CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 # /data/social/api 与 /tools/v1/social/{platform}/api,行为沿用 platform_arg_required。
 # v15(hc-1136):apexnodes-video-tools 加 video_breakdown(复刻卡),两条腿各一个看图端点
 # (/media/shot-labels、/tools/v1/video/shot-labels)。
-EXPECTED_CONTRACT_SHA256 = "dc2ae68a9a7398ba0880ffc804d341b26bb2b3495342f24d5d03fed4d2f00bea"
-EXPECTED_CONTRACT_VERSION = 15
+# v16(hc-1046):generate_video 的 model 不再列 id,按服务端下发的媒体模型目录查;两条新行为
+# model_checked_against_served_catalog、hidden_picker_lets_the_assistant_pick(两条腿)。
+EXPECTED_CONTRACT_SHA256 = "3f2b5a5182b4882d8e992d7488d7b40c1201d3b771686f1c340c3ef5198460f4"
+EXPECTED_CONTRACT_VERSION = 16
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -960,6 +962,72 @@ def _check_local_source_proxy_upload(h, tool_name, _spec):
     assert "error" in result and not h.proxied and not [c for c in calls if c.method == "POST"]
 
 
+# hc-1046: the served model catalog, as the video block of the check carries it.
+_CATALOG_SECTION = {
+    "ok": True,
+    "configured": True,
+    "serving": True,
+    "api_key_configured": True,
+    "model": "doubao-seedance-2-0-mini-260615",
+    "catalog": {
+        "default_model": "doubao-seedance-2-0-mini-260615",
+        "models": [
+            {"model": "doubao-seedance-2-0-mini-260615", "leg": "chinaapi:doubao-seedance-2-0-mini-260615", "configured": True},
+            {"model": "MiniMax-H3", "leg": "chinaapi:MiniMax-H3", "configured": True},
+            {"model": "grok-imagine-video", "leg": "hypit:grok-imagine-video", "configured": False,
+             "unavailable_reason": "Grok Imagine Video 暂不可用(平台没有开放这条线路)。"},
+        ],
+    },
+    "legs": {"hypit:grok-imagine-video": {"configured": False, "serving": False}},
+}
+
+
+def _serve_catalog(h, section):
+    """The check answers ``section`` (or none); everything else as the leg's canned answers."""
+    canned = type(h)._canned
+
+    def answer(path):
+        if path == "/tools/v1/check":
+            return {"ok": True, "video": section} if section is not None else {"ok": True}
+        if path.endswith("/media/video/check"):
+            return section if section is not None else {"ok": True}
+        return canned(path)
+
+    h._canned = answer
+
+
+def _sent_model(calls):
+    generate = [c for c in calls if c.method == "POST" and isinstance(c.body, dict)]
+    return generate[-1].body.get("model") if generate else None
+
+
+def _check_model_checked_against_served_catalog(h, tool_name, _spec):
+    _serve_catalog(h, _CATALOG_SECTION)
+    for model, words in (("midjourney-video", "midjourney-video"), ("grok-imagine-video", "暂不可用")):
+        result, calls = h.invoke(tool_name, {"prompt": "x", "model": model})
+        assert "error" in result and words in result["error"] and "MiniMax-H3" in result["error"], result
+        assert all(c.method == "GET" for c in calls), "refused before the generate call"
+    _result, calls = h.invoke(tool_name, {"prompt": "x", "model": "MiniMax-H3"})
+    assert _sent_model(calls) == "MiniMax-H3"
+    _serve_catalog(h, None)  # a check without a catalog: the server validates the name
+    _result, calls = h.invoke(tool_name, {"prompt": "x", "model": "anything-new"})
+    assert _sent_model(calls) == "anything-new"
+
+
+def _check_hidden_picker_lets_the_assistant_pick(h, tool_name, _spec):
+    _serve_catalog(h, _CATALOG_SECTION)
+    home = h.tmp_path / "hermes-home"
+    home.mkdir(exist_ok=True)
+    h.monkeypatch.setenv("HERMES_HOME", str(home))
+    for choice, sent in (("assistant", "MiniMax-H3"), ("user", "doubao-seedance-2-0-mini-260615")):
+        (home / "config.yaml").write_text(
+            f"apex:\n  generation_video_model: doubao-seedance-2-0-mini-260615\n  generation_model_choice: {choice}\n",
+            encoding="utf-8",
+        )
+        _result, calls = h.invoke(tool_name, {"prompt": "x", "model": "MiniMax-H3"})
+        assert _sent_model(calls) == sent, choice
+
+
 # name → callable;跑腿集合 = 契约行为声明的 legs(fork 双腿都在场)。
 BEHAVIOR_CHECKS = {
     "routed_intent_passthrough": _check_routed_intent_passthrough,
@@ -988,6 +1056,9 @@ BEHAVIOR_CHECKS = {
     "result_files_usable_here": _check_result_files_usable_here,
     "query_must_be_english": _check_query_must_be_english,
     "local_source_proxy_upload": _check_local_source_proxy_upload,
+    # hc-1046: the served model catalog and who picks the model.
+    "model_checked_against_served_catalog": _check_model_checked_against_served_catalog,
+    "hidden_picker_lets_the_assistant_pick": _check_hidden_picker_lets_the_assistant_pick,
 }
 
 BEHAVIOR_CASES = [
