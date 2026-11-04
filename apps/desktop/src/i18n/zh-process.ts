@@ -78,6 +78,12 @@ export const zhProcess: ProcessCopy = {
     ),
     social_batch_status: step('正在查看批量进度', '查看批量进度', said('看过了')),
     creator_top_posts: step('正在找博主的热门作品', '找博主热门作品', found('条作品'), publicData),
+    social_api: step(
+      '正在查社媒数据',
+      '查社媒数据',
+      found('条'),
+      facts => `来源：${facts.platform ?? '平台'}上的公开数据，经第三方数据服务获取。`
+    ),
     social_audience: step(
       '正在看人群画像',
       '看人群画像',
@@ -135,6 +141,13 @@ export const zhProcess: ProcessCopy = {
     generate_video: step('正在生成视频', '生成视频', facts =>
       facts.count ? `生成了 ${facts.count} 条视频` : '视频做好了'
     ),
+    video_highlights: step('正在挑选视频高光', '挑选视频高光', facts =>
+      facts.count ? `挑出 ${facts.count} 段` : facts.empty ? '没挑出能用的段落' : '已交给平台'
+    ),
+    video_moment_search: step('正在按描述找画面', '按描述找画面', facts =>
+      facts.count ? `找到 ${facts.count} 处画面` : facts.empty ? '没找到' : '已交给平台'
+    ),
+    video_breakdown: step('正在逐镜看视频', '逐镜拆视频', said('复刻卡做好了')),
     live_record_start: step('正在开始录直播', '开始录直播', said('开始录了')),
     live_record_status: step('正在查看录制进度', '查看录制进度', said('看过了')),
     live_record_stop: step('正在结束录制', '结束录制', said('录好了')),

@@ -234,6 +234,72 @@ INSIGHT_SCHEMAS: dict[str, dict[str, Any]] = {
     },
 }
 
+# hc-1143: TikHub's long tail by endpoint name. The server keeps the allowlist (read-only,
+# public, no login, no media links) and the key; this side only shapes the call.
+SOCIAL_API_SCHEMA = {
+    "name": "social_api",
+    "description": (
+        "查专门的 social_* 工具没有的公开数据（数据经第三方数据服务 TikHub 获取，约 500 个只读接口）："
+        "话题页和话题下的作品、BGM 和音乐榜、评论的二级回复、各平台热榜和热搜、星图达人报价与粉丝画像、"
+        "TikTok Shop 商品评价、直播间商品、合集和短剧、小红书话题和创作灵感等，覆盖抖音、TikTok、小红书、快手、"
+        "B 站、微博、知乎、视频号、公众号、YouTube、X、Instagram、头条、西瓜、Reddit、Threads、Lemon8。"
+        "先用专门的 social_* 工具，它们没有的才用这个。"
+        "不传 endpoint：列出这个平台能调的接口（用 query 按关键词筛、category 按类别筛；不花钱）。"
+        "传 endpoint 和 params：调用这个接口（计入周额度；required 里的参数必须给）。"
+        "只查公开数据，不接受 cookie 等登录凭据；不返回视频、图片和直播链接（下载视频用 social_download）。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "platform": {"type": "string", "description": "douyin, tiktok, xiaohongshu, kuaishou, bilibili, weibo, zhihu, wechat_channels, wechat_mp, wechat_search, youtube, twitter, instagram, toutiao, xigua, reddit, threads, lemon8."},
+            "endpoint": {"type": "string", "description": "接口名，照列表里的 endpoint 原样填，例如 douyin/app/v3/fetch_hashtag_video_list。不传就是列出接口。"},
+            "params": {"type": "object", "description": "这个接口自己的参数，名字照列表里的 required / optional 填。"},
+            "query": {"type": "string", "description": "列接口时按关键词筛，例如「话题」「音乐」「评论」「商品」。"},
+            "category": {"type": "string", "description": "列接口时按类别筛，例如 热榜/榜单、话题/标签、音乐、评论/回复、商品/店铺、达人营销数据、直播。"},
+        },
+        "required": ["platform"],
+    },
+}
+
+
+def _api_payload(args: dict) -> dict[str, Any]:
+    if not isinstance(args, dict):
+        raise RuntimeError("工具参数必须是 JSON 对象。")
+    platform = str(args.get("platform") or "").strip().lower()
+    if not platform:
+        raise RuntimeError("请提供 platform")
+    payload: dict[str, Any] = {"platform": platform}
+    for key in ("endpoint", "query", "category"):
+        value = args.get(key)
+        if value not in (None, ""):
+            payload[key] = str(value)
+    if isinstance(args.get("params"), dict):
+        payload["params"] = args["params"]
+    return payload
+
+
+def _api_handler(args: dict, **_kwargs) -> str:
+    """Two legs like every tool here. No SOCIAL_PLATFORMS pre-check: social_api serves
+    more platforms than the dedicated tools, and the server's allowlist answers an
+    unknown one in words."""
+    try:
+        payload = _api_payload(args)
+    except RuntimeError as exc:
+        return tool_error(f"跨平台数据查询失败: {exc}")
+    if _use_gateway():
+        try:
+            response = _gateway.request_json(
+                "POST", f"/tools/v1/social/{payload['platform']}/api", payload, timeout=90
+            )
+        except _gateway.GatewayError as exc:
+            return tool_error(f"跨平台数据查询失败: {exc}")
+        return tool_result(**_gateway.unwrap(response))
+    try:
+        return tool_result(**_request("POST", "/data/social/api", payload))
+    except RuntimeError as exc:
+        return tool_error(f"跨平台数据查询失败: {exc}")
+
+
 # hc-346: enumerate a creator's works and rank them by interaction volume — the
 # batch-pipeline selector. The master pages the creator's posts feed (bounded by a
 # scan cap), filters by like/collect/comment threshold + time range, and returns a
@@ -458,6 +524,16 @@ def register(ctx):
             description=INSIGHT_SCHEMAS[tool_name]["description"],
             emoji="🔎",
         )
+    ctx.register_tool(
+        name="social_api",
+        toolset="skills",
+        schema=SOCIAL_API_SCHEMA,
+        handler=_api_handler,
+        check_fn=_check,
+        requires_env=[],
+        description=SOCIAL_API_SCHEMA["description"],
+        emoji="🧭",
+    )
     ctx.register_tool(
         name="creator_top_posts",
         toolset="skills",

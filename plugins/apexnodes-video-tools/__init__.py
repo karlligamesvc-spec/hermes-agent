@@ -10,14 +10,23 @@ hermes-cloud ``app/runtime_plugins/apexnodes-video-tools`` 迁入 fork,
 Video rendering is async + heavy and takes a few minutes. On the gateway leg no
 single request waits for it: one silent request across the public internet lost
 its answer once the render was already billed.
+
+hc-1136: ``video_breakdown`` (the remake card) runs on this machine: ``breakdown.py`` beside
+this file cuts shots and writes the package, byte-identical with apex-nodes' hosted copy; only
+the labels request below is this plugin's own (``/tools/v1/video/shot-labels``, legacy
+``/media/shot-labels``).
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import subprocess
+import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 from tools.registry import tool_error, tool_result
@@ -26,6 +35,11 @@ try:  # 网关客户端(fork 内共用);导入失败时插件退回 legacy 路�
     from plugins import apexnodes_gateway as _gateway
 except Exception:  # pragma: no cover - 仅在裸拷贝部署等异常形态出现
     _gateway = None  # type: ignore[assignment]
+
+try:  # hc-1054: long-video analysis (video_highlights, video_moment_search); needs the gateway client.
+    from plugins import apexnodes_video_analysis as _analysis
+except ImportError:  # pragma: no cover - a bare copy without it keeps generate_video
+    _analysis = None  # type: ignore[assignment]
 
 
 def _use_gateway() -> bool:
@@ -407,7 +421,95 @@ def _handle_generate_video(args: dict, **_kwargs) -> str:
         return tool_error(_say("media_failed", "视频生成失败: {reason}", reason=exc))
 
 
+# ── video_breakdown (hc-1136) ─────────────────────────────────────────────────
+
+# Labels for up to 20 shots: one vision call and OCR on the platform.
+_SHOT_LABELS_TIMEOUT = 240
+# The whole card: local cuts, keyframes and motion, then up to two rounds of label requests
+# (a 300 s video with many shots); a 60 s video takes well under a minute.
+_BREAKDOWN_TIMEOUT = 600
+
+
+def _load_breakdown():
+    name = "apexnodes_video_breakdown"
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name("breakdown.py"))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_BREAKDOWN = _load_breakdown()
+
+
+def _shot_labels(payload: dict[str, Any]) -> dict[str, Any]:
+    if _use_gateway():
+        try:
+            response = _gateway.request_json(
+                "POST", "/tools/v1/video/shot-labels", payload, timeout=_SHOT_LABELS_TIMEOUT
+            )
+        except _gateway.GatewayError as exc:
+            raise RuntimeError(str(exc)) from exc
+        return _gateway.unwrap(response)
+    api_key = _agent_api_key()
+    if not api_key:
+        raise RuntimeError(_missing_credential_message())
+    request = urllib.request.Request(
+        f"{_api_base()}/media/shot-labels",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=_SHOT_LABELS_TIMEOUT) as response:
+            body = json.loads(response.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as exc:
+        _code, message = _error_detail(exc.read().decode("utf-8", errors="replace"))
+        raise RuntimeError(message or f"平台看图接口出错(HTTP {exc.code})") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"连不上平台看图接口: {exc.reason}") from exc
+    except ValueError as exc:
+        raise RuntimeError("平台看图接口的回答读不出来") from exc
+    if not isinstance(body, dict):
+        raise RuntimeError("平台看图接口的回答读不出来")
+    return body
+
+
+def _check_breakdown() -> bool:
+    return _BREAKDOWN.available() and bool(_agent_api_key())
+
+
+def _handle_video_breakdown(args: dict, **_kwargs) -> str:
+    if not isinstance(args, dict):
+        return tool_error("video_breakdown 的参数必须是 JSON 对象。")
+    video_path = str(args.get("video_path") or "").strip()
+    if not video_path:
+        return tool_error("请提供视频路径 video_path(social_download 的 video_path 或用户发来的视频)。")
+    try:
+        result = _BREAKDOWN.build(
+            video_path,
+            label_fn=_shot_labels,
+            segments_path=str(args.get("segments_path") or "").strip() or None,
+            title=str(args.get("title") or "").strip() or None,
+            url=str(args.get("url") or "").strip() or None,
+        )
+    except (_BREAKDOWN.BreakdownError, OSError, subprocess.SubprocessError) as exc:
+        return tool_error(f"复刻卡没做成：{exc}")
+    return tool_result(**result)
+
+
 def register(ctx):
+    ctx.register_tool(
+        name="video_breakdown",
+        toolset="skills",
+        schema=_BREAKDOWN.VIDEO_BREAKDOWN_SCHEMA,
+        handler=_handle_video_breakdown,
+        check_fn=_check_breakdown,
+        requires_env=[],
+        description=_BREAKDOWN.VIDEO_BREAKDOWN_SCHEMA["description"],
+        emoji="🎞️",
+        execution_timeout=_BREAKDOWN_TIMEOUT,
+    )
     ctx.register_tool(
         name="generate_video",
         toolset="skills",
@@ -419,3 +521,5 @@ def register(ctx):
         emoji="🎬",
         execution_timeout=_VIDEO_REQUEST_TIMEOUT,
     )
+    if _analysis is not None:
+        _analysis.register(ctx)
