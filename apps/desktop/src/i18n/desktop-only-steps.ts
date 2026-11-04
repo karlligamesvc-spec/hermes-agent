@@ -15,7 +15,8 @@
  * assistants are on).
  * hc-1122: ChatCut's MCP tools, while `desktop_features.chatcut` is on. Their
  * raw names (`mcp__chatcut__read_script`) must never reach the screen; a tool
- * without its own row reads as editing in general.
+ * without its own row reads as editing in general. Its two file tools (a local
+ * file going in, a finished export saved) are the engine's own, named as is.
  */
 
 import { getRuntimeI18nLocale } from './runtime'
@@ -74,7 +75,13 @@ const en: Record<string, StepCopy> = {
   [CHATCUT_CAPTIONS_STEP]: { running: 'Working on the captions', title: 'Captions', done: said('Done') },
   [CHATCUT_CUT_STEP]: { running: 'Cutting the video', title: 'Cut the video', done: said('Cut') },
   [CHATCUT_EXPORT_STEP]: { running: 'Exporting the video', title: 'Export the video', done: said('Done') },
-  [CHATCUT_READ_STEP]: { running: 'Looking through the project', title: 'Look through the project', done: said('Done') }
+  [CHATCUT_READ_STEP]: {
+    running: 'Looking through the project',
+    title: 'Look through the project',
+    done: said('Done')
+  },
+  chatcut_upload_files: { running: 'Sending the files to ChatCut', title: 'Send files to ChatCut', done: said('Sent') },
+  chatcut_save_export: { running: 'Saving the video', title: 'Save the video', done: said('Saved') }
 }
 
 const zh: Record<string, StepCopy> = {
@@ -86,7 +93,9 @@ const zh: Record<string, StepCopy> = {
   [CHATCUT_CAPTIONS_STEP]: { running: '正在处理字幕', title: '处理字幕', done: said('好了') },
   [CHATCUT_CUT_STEP]: { running: '正在剪视频', title: '剪视频', done: said('剪好了') },
   [CHATCUT_EXPORT_STEP]: { running: '正在导出视频', title: '导出视频', done: said('好了') },
-  [CHATCUT_READ_STEP]: { running: '正在看工程内容', title: '看工程内容', done: said('看好了') }
+  [CHATCUT_READ_STEP]: { running: '正在看工程内容', title: '看工程内容', done: said('看好了') },
+  chatcut_upload_files: { running: '正在把文件传到 ChatCut', title: '把文件传到 ChatCut', done: said('传好了') },
+  chatcut_save_export: { running: '正在保存成片', title: '保存成片', done: said('存好了') }
 }
 
 const zhHant: Record<string, StepCopy> = {
@@ -98,7 +107,9 @@ const zhHant: Record<string, StepCopy> = {
   [CHATCUT_CAPTIONS_STEP]: { running: '正在處理字幕', title: '處理字幕', done: said('好了') },
   [CHATCUT_CUT_STEP]: { running: '正在剪影片', title: '剪影片', done: said('剪好了') },
   [CHATCUT_EXPORT_STEP]: { running: '正在匯出影片', title: '匯出影片', done: said('好了') },
-  [CHATCUT_READ_STEP]: { running: '正在看工程內容', title: '看工程內容', done: said('看好了') }
+  [CHATCUT_READ_STEP]: { running: '正在看工程內容', title: '看工程內容', done: said('看好了') },
+  chatcut_upload_files: { running: '正在把檔案傳到 ChatCut', title: '把檔案傳到 ChatCut', done: said('傳好了') },
+  chatcut_save_export: { running: '正在儲存成片', title: '儲存成片', done: said('存好了') }
 }
 
 export const DESKTOP_ONLY_STEPS: Readonly<Record<Locale, Readonly<Record<string, StepCopy>>>> = {

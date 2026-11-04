@@ -65,6 +65,8 @@ describe('hc-1063 the memory ledger step in 「看过程」', () => {
           'chatcut:edit',
           'chatcut:export',
           'chatcut:read',
+          'chatcut_save_export',
+          'chatcut_upload_files',
           MEMORY_FORGET_STEP,
           MEMORY_LIST_STEP
         ].sort()
@@ -90,12 +92,35 @@ describe('hc-1122 ChatCut in 「看过程」', () => {
     setRuntimeI18nLocale(locale)
 
     const parts: TurnPart[] = [
-      { args: {}, isError: false, result: '{}', toolCallId: 'c1', toolName: 'mcp__chatcut__apply_script', type: 'tool-call' }
+      {
+        args: {},
+        isError: false,
+        result: '{}',
+        toolCallId: 'c1',
+        toolName: 'mcp__chatcut__apply_script',
+        type: 'tool-call'
+      }
     ] as never
+
     const [step] = buildTurnProcess(parts, false).steps
 
     expect(step.copy.title).toBe(DESKTOP_ONLY_STEPS[locale]['chatcut:cut'].title)
     expect(step.copy.title).not.toMatch(/mcp|apply_script/i)
+  })
+
+  it.each(['zh', 'zh-hant', 'en'] as const)('%s: the two file tools are named for what they do', locale => {
+    setRuntimeI18nLocale(locale)
+
+    for (const toolName of ['chatcut_upload_files', 'chatcut_save_export']) {
+      const parts: TurnPart[] = [
+        { args: {}, isError: false, result: '{}', toolCallId: 'c1', toolName, type: 'tool-call' }
+      ] as never
+
+      const [step] = buildTurnProcess(parts, false).steps
+
+      expect(step.copy.title).toBe(DESKTOP_ONLY_STEPS[locale][toolName].title)
+      expect(step.copy.title).not.toMatch(/chatcut_|_files|_export/)
+    }
   })
 })
 

@@ -173,7 +173,7 @@ def test_on_and_signed_in_writes_the_proxy_entry_with_placeholders_only(home, si
 
     assert chatcut.apply(recorder) is True
 
-    assert recorder.calls == [f"section:{chatcut.SECTION_ID}"]
+    assert recorder.calls == [f"section:{chatcut.SECTION_ID}", "tool:chatcut_upload_files", "tool:chatcut_save_export"]
     block = _servers(home)["chatcut"]
     assert block["url"] == "${TOOLS_GATEWAY_BASE}/api/v1/chatcut/mcp"
     assert block["headers"] == {"Authorization": "Bearer ${TOOLS_GATEWAY_KEY}"}
@@ -241,9 +241,9 @@ def test_the_section_says_how_to_reach_it_and_what_it_cannot_do(home, signed_in,
 
     assert "skill_view" in text and "name 填 chatcut" in text
     assert "mcp__chatcut__" in text
-    assert "还不能把这台电脑上的文件导入" in text
+    assert "chatcut_upload_files" in text and "chatcut_save_export" in text
     assert "不需要 ChatCut 账号" in text
-    assert "传到 ChatCut（美国），存在 APEX 使用的 ChatCut 账号下" in text
+    assert "先经过 APEX 的服务器，再存到 ChatCut 在美国的服务器上，放在 APEX 使用的 ChatCut 账号下" in text
     assert len(text) <= chatcut.MAX_SECTION_CHARS
 
 
