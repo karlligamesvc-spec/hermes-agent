@@ -38,6 +38,7 @@ from tests.plugins.test_apexnodes_plugin_contract import (
     PROBES,
     GatewayHarness,
     LegacyHarness,
+    stub_breakdown,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -55,6 +56,11 @@ EXPECTED_BUDGETS = {
     "media_transcribe": 2 * 60 * 60 + 10 * 60,
     "image_ocr": 600,
     "generate_video": 660,
+    # hc-1054: the local proxy and its upload come before the job's own wait.
+    "video_highlights": 3600,
+    "video_moment_search": 3600,
+    # hc-1136: the whole card (local steps, then label requests of up to 240 s each).
+    "video_breakdown": 600,
 }
 
 _REGISTER_TOOL = inspect.signature(PluginContext.register_tool)
@@ -185,6 +191,8 @@ def test_registrations_cover_every_network_tool():
 def test_executor_deadline_covers_the_longest_wait(tool_name, leg, monkeypatch, tmp_path):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes_home"))
     recorder = _WaitRecorder(monkeypatch, tmp_path, leg)
+    if tool_name == "video_breakdown":
+        stub_breakdown(monkeypatch, TOOLS[tool_name]["handler"])
     args = dict(PROBES.get(tool_name) or EXTRA_PROBES[tool_name])
 
     TOOLS[tool_name]["handler"](args)

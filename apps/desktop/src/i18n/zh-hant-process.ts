@@ -73,6 +73,12 @@ export const zhHantProcess: ProcessCopy = {
     ),
     social_batch_status: step('正在查看批次進度', '查看批次進度', said('看過了')),
     creator_top_posts: step('正在找創作者的熱門作品', '找創作者熱門作品', found('則作品'), publicData),
+    social_api: step(
+      '正在查社群資料',
+      '查社群資料',
+      found('筆'),
+      facts => `來源：${facts.platform ?? '平台'}上的公開資料，經第三方資料服務取得。`
+    ),
     social_audience: step(
       '正在看受眾輪廓',
       '看受眾輪廓',
@@ -130,6 +136,13 @@ export const zhHantProcess: ProcessCopy = {
     generate_video: step('正在生成影片', '生成影片', facts =>
       facts.count ? `生成了 ${facts.count} 部影片` : '影片做好了'
     ),
+    video_highlights: step('正在挑選影片精華', '挑選影片精華', facts =>
+      facts.count ? `挑出 ${facts.count} 段` : facts.empty ? '沒挑出能用的段落' : '已交給平台'
+    ),
+    video_moment_search: step('正在依描述找畫面', '依描述找畫面', facts =>
+      facts.count ? `找到 ${facts.count} 處畫面` : facts.empty ? '沒找到' : '已交給平台'
+    ),
+    video_breakdown: step('正在逐鏡看影片', '逐鏡拆影片', said('復刻卡做好了')),
     live_record_start: step('正在開始錄直播', '開始錄直播', said('開始錄了')),
     live_record_status: step('正在查看錄製進度', '查看錄製進度', said('看過了')),
     live_record_stop: step('正在結束錄製', '結束錄製', said('錄好了')),
