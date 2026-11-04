@@ -1,6 +1,6 @@
 /**
  * Copy for the simple composer (WP4): the "+" menu with its 高级 fold, the
- * three chips a pasted short-video link or a dropped video offers, and the
+ * four chips a pasted short-video link or a dropped video offers, and the
  * save-it-first line a 视频号 link gets instead.
  *
  * Kept beside the main catalogs instead of inside them: those files are past
@@ -55,9 +55,15 @@ const en: ComposerSimpleCopy = {
   approval: 'Approvals',
   paste: {
     group: 'What to do with this video',
-    labels: { breakdown: 'Why it went viral', remix: 'Rewrite as my script', transcribe: 'Transcribe' },
+    labels: {
+      breakdown: 'Why it went viral',
+      remake: 'Remake it as mine',
+      remix: 'Rewrite as my script',
+      transcribe: 'Transcribe'
+    },
     linkSentence: {
       breakdown: video => `Break down why this ${video} went viral`,
+      remake: video => `Remake this ${video} as my own`,
       remix: video => `Write a script of my own on the structure and pacing of this ${video}`,
       transcribe: video => `Transcribe this ${video}`
     },
@@ -73,6 +79,7 @@ const en: ComposerSimpleCopy = {
     },
     videoSentence: {
       breakdown: 'Break down why this video went viral',
+      remake: 'Remake this video as my own',
       remix: 'Write a script of my own on the structure and pacing of this video',
       transcribe: 'Transcribe this video'
     }
@@ -95,9 +102,10 @@ const zh: ComposerSimpleCopy = {
   approval: '审批方式',
   paste: {
     group: '用这条视频做什么',
-    labels: { breakdown: '拆它为什么火', remix: '仿写成我的脚本', transcribe: '转逐字稿' },
+    labels: { breakdown: '拆它为什么火', remake: '复刻成我的', remix: '仿写成我的脚本', transcribe: '转逐字稿' },
     linkSentence: {
       breakdown: video => `拆解这条${video}为什么火`,
+      remake: video => `把这条${video}复刻成我的`,
       remix: video => `照这条${video}的结构和节奏，仿写一个我的口播脚本`,
       transcribe: video => `把这条${video}转成逐字稿`
     },
@@ -112,6 +120,7 @@ const zh: ComposerSimpleCopy = {
     },
     videoSentence: {
       breakdown: '拆解这个视频为什么火',
+      remake: '把这个视频复刻成我的',
       remix: '照这个视频的结构和节奏，仿写一个我的口播脚本',
       transcribe: '把这个视频转成逐字稿'
     }
@@ -134,9 +143,10 @@ const zhHant: ComposerSimpleCopy = {
   approval: '審批方式',
   paste: {
     group: '用這個影片做什麼',
-    labels: { breakdown: '拆它為什麼紅', remix: '仿寫成我的腳本', transcribe: '轉逐字稿' },
+    labels: { breakdown: '拆它為什麼紅', remake: '複刻成我的', remix: '仿寫成我的腳本', transcribe: '轉逐字稿' },
     linkSentence: {
       breakdown: video => `拆解這個${video}為什麼紅`,
+      remake: video => `把這個${video}複刻成我的`,
       remix: video => `照這個${video}的結構和節奏，仿寫一個我的口播腳本`,
       transcribe: video => `把這個${video}轉成逐字稿`
     },
@@ -151,6 +161,7 @@ const zhHant: ComposerSimpleCopy = {
     },
     videoSentence: {
       breakdown: '拆解這個影片為什麼紅',
+      remake: '把這個影片複刻成我的',
       remix: '照這個影片的結構和節奏，仿寫一個我的口播腳本',
       transcribe: '把這個影片轉成逐字稿'
     }

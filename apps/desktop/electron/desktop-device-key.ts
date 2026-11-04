@@ -64,10 +64,28 @@ function signOutFailureReason(error: any, secrets: Array<null | string | undefin
   return reason.slice(0, 120)
 }
 
-/** The desktop.log line for a sign-out that did not finish. */
-function signOutFailureLine(reason: string): string {
-  return `[managed] sign-out failed (${reason}); the local credential stays so it can be retried`
+/** The desktop.log line for a sign-out that did not finish; `timing` is signOutTiming's. */
+function signOutFailureLine(reason: string, timing = ''): string {
+  return `[managed] sign-out failed (${reason}); the local credential stays so it can be retried${timing}`
 }
+
+/** The parts of a sign-out the window waits for, in their order (hc-1142). */
+const SIGN_OUT_STAGES = ['fence', 'capabilities', 'revoke', 'clear', 'clean-up'] as const
+
+type SignOutStage = (typeof SIGN_OUT_STAGES)[number]
+
+/** `; took <total> ms: <stage> <ms>, …`, the stages that ran; `revoke` is the request alone, without the capabilities read. */
+function signOutTiming(spent: Partial<Record<SignOutStage, number>>, total: number): string {
+  const own = { ...spent, revoke: spent.revoke === undefined ? undefined : spent.revoke - (spent.capabilities ?? 0) }
+  const parts = SIGN_OUT_STAGES.filter(stage => own[stage] !== undefined).map(stage => `${stage} ${own[stage]}`)
+
+  return `; took ${total} ms${parts.length ? `: ${parts.join(', ')}` : ''}`
+}
+
+type RevokeBody = { device_instance_id: string; legacy_key_hash?: string }
+
+/** Times one part of the revoke from inside it, e.g. the capabilities read. */
+type TimeStage = <T>(stage: 'capabilities', work: Promise<T>) => Promise<T>
 
 interface SignOutManagedDeviceInput {
   accessToken: string | null
@@ -75,25 +93,57 @@ interface SignOutManagedDeviceInput {
   deviceInstanceId: string
   envKey: string
   managedKey: string | null
-  revoke: (body: { device_instance_id: string; legacy_key_hash?: string }) => Promise<void>
+  revoke: (body: RevokeBody, stage: TimeStage) => Promise<void>
   isCurrent?: () => boolean
   prepare?: () => Promise<void>
   /** hc-1114: one desktop.log line per sign-out, whatever the outcome; never the key or the login token. */
   log?: (line: string) => void
   /** hc-1114: once the server revoked the key and the credential is gone (apex-sign-out.ts); returns the log detail. */
   afterClear?: () => string
+  /** hc-1142: the clock the stages are timed with (Date.now). */
+  now?: () => number
 }
 
-/** Revoke, clear, then say what happened: the line hc-1083 found missing from desktop.log. */
+/**
+ * Revoke, clear, then say what happened: the line hc-1083 found missing from
+ * desktop.log. hc-1142: the same line says how long each stage took, and a
+ * failure hands the renderer the HTTP status, so it can say why.
+ */
 async function signOutManagedDevice(input: SignOutManagedDeviceInput) {
+  const now = input.now ?? Date.now
+  const started = now()
+  const spent: Partial<Record<SignOutStage, number>> = {}
   let revoked = false
-  let revokeError: unknown = null
+  let revokeError: any = null
+
+  const time = <T>(stage: SignOutStage, work: () => T): T => {
+    const from = now()
+
+    const done = () => {spent[stage] = (spent[stage] ?? 0) + now() - from}
+
+    let result: T
+
+    try {
+      result = work()
+    } catch (error) {
+      done()
+      throw error
+    }
+
+    if (result instanceof Promise) {return result.finally(done) as T}
+
+    done()
+
+    return result
+  }
 
   const result = await revokeThenClear({
     ...input,
+    prepare: input.prepare && (() => time('fence', input.prepare!)),
+    clearCredential: () => time('clear', input.clearCredential),
     revoke: async body => {
       try {
-        await input.revoke(body)
+        await time('revoke', () => input.revoke(body, (stage, work) => time(stage, () => work)))
         revoked = true
       } catch (error) {
         revokeError = error
@@ -104,15 +154,15 @@ async function signOutManagedDevice(input: SignOutManagedDeviceInput) {
 
   if (!result.ok) {
     const reason = revokeError ? signOutFailureReason(revokeError, [input.managedKey, input.accessToken]) : result.message
-    input.log?.(signOutFailureLine(reason))
+    input.log?.(signOutFailureLine(reason, signOutTiming(spent, now() - started)))
 
-    return result
+    return Number(revokeError?.statusCode) > 0 ? { ...result, statusCode: Number(revokeError.statusCode) } : result
   }
 
   if (!revoked) {
-    input.log?.(String(input.envKey || '').trim()
+    input.log?.((String(input.envKey || '').trim()
       ? '[managed] signed out: the stored credential is deleted; the relay key comes from APEXNODES_RELAY_KEY, so nothing was revoked'
-      : '[managed] signed out: no credential was stored')
+      : '[managed] signed out: no credential was stored') + signOutTiming(spent, now() - started))
 
     return result
   }
@@ -120,17 +170,17 @@ async function signOutManagedDevice(input: SignOutManagedDeviceInput) {
   let detail = ''
 
   try {
-    detail = input.afterClear?.() || ''
+    detail = time('clean-up', () => input.afterClear?.() || '')
   } catch (error) {
     detail = `local clean-up failed (${signOutFailureReason(error, [input.managedKey, input.accessToken])})`
   }
 
-  input.log?.(`[managed] signed out: the server revoked this computer's relay key and the stored credential is deleted${detail ? `; ${detail}` : ''}`)
+  input.log?.(`[managed] signed out: the server revoked this computer's relay key and the stored credential is deleted${detail ? `; ${detail}` : ''}${signOutTiming(spent, now() - started)}`)
 
   return result
 }
 
-async function revokeThenClear(input: SignOutManagedDeviceInput) {
+async function revokeThenClear(input: Omit<SignOutManagedDeviceInput, 'revoke'> & { revoke: (body: RevokeBody) => Promise<void> }) {
   const managedKey = String(input.managedKey || '').trim()
   const envKey = String(input.envKey || '').trim()
   const isCurrent = input.isCurrent || (() => true)

@@ -308,7 +308,8 @@ describe('main.ts opens the first window in that order', () => {
 
   it('sign-in settles before it commits the new key, so the login screen is still up', () => {
     const signIn = stripped.slice(stripped.indexOf('async function provisionManagedFromAccessToken('))
-    const settle = signIn.indexOf('await clientConfigSync.settleBeforeSignInFinishes()')
+    // hc-1142: awaited together with the wait for an engine restart under way.
+    const settle = signIn.search(/\n {2}await (Promise\.all\(\[)?clientConfigSync\.settleBeforeSignInFinishes\(\)/)
     const commit = signIn.indexOf('await provisionManagedRelayForCurrentAccount(')
     const restart = signIn.indexOf('await finishManagedModelRuntime(target, current)')
 

@@ -741,3 +741,71 @@ describe('the 401 self-heal compares the running engine, not only the key on dis
     assert.deepEqual(outcome.enginesRestarted, [])
   })
 })
+
+// hc-1142: the login screen now stays up while a sign-out restarts the engine, so a sign-in can start
+// before that restart is done. It waits for it (main.ts provisionManagedFromAccessToken), then its own
+// run moves the primary onto the new key: the sign-out's restart never leaves the last word.
+describe('a sign-in right after a sign-out', () => {
+  const flush = () => new Promise(resolve => setTimeout(resolve, 0))
+
+  test('waits for the sign-out restart, then its own run puts the primary on the new key', async () => {
+    const apex = primary('default', OLD_KEY)
+    let stored: null | string = null
+    apex.store(null)
+    const released: Array<() => void> = []
+
+    // A respawn takes a few seconds; hold each one until the test lets it go.
+    const holders = () =>
+      apex.holders().map(holder => ({
+        ...holder,
+        restart: async () => {
+          await new Promise<void>(resolve => released.push(resolve))
+
+          return holder.restart()
+        }
+      }))
+
+    const { restarts } = restarter(holders, () => stored)
+    const signOut = restarts.run('sign-out')
+    let waited: string | undefined
+    const signIn = restarts.settled().then(outcome => (waited = outcome))
+
+    await flush()
+    await flush()
+    assert.equal(released.length, 1, 'the sign-out is restarting the primary')
+    assert.equal(waited, undefined, 'the sign-in waits while it does')
+
+    released.shift()?.()
+    await signIn
+    await signOut
+    assert.equal(waited, 'settled')
+    assert.deepEqual(apex.holders().map(holder => holder.stamp), [''], 'it came back on no key')
+
+    // Now the sign-in provisions and commits the new key; its run restarts the primary onto it.
+    stored = NEW_KEY
+    apex.store(NEW_KEY)
+    const own = restarts.run('managed-runtime-complete')
+    await flush()
+    await flush()
+    released.shift()?.()
+    assert.deepEqual((await own).restarted, ['primary backend "default"'])
+    assert.deepEqual(apex.holders().map(holder => holder.stamp), [maskRelayKey(NEW_KEY)])
+    assert.equal(apex.restarts, 2)
+  })
+
+  test('a respawn that hangs delays the sign-in, never blocks it', async () => {
+    const apex = primary('default', OLD_KEY)
+    apex.store(null)
+    const holders = () => apex.holders().map(holder => ({ ...holder, restart: () => new Promise<never>(() => undefined) }))
+    const { restarts } = restarter(holders, () => null)
+
+    void restarts.run('sign-out')
+    assert.equal(await restarts.settled(30), 'timed-out')
+  })
+
+  test('nothing under way: the sign-in goes ahead at once', async () => {
+    const { restarts } = restarter(() => [], () => null)
+
+    assert.equal(await restarts.settled(30), 'settled')
+  })
+})

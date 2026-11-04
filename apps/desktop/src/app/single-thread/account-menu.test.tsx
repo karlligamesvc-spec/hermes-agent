@@ -14,7 +14,7 @@ import { SidebarProvider } from '@/components/ui/sidebar'
 import type { DesktopPlanUsage, DesktopPlanUsageResult } from '@/global'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
 import { $accountTeam } from '@/store/account-team'
-import { $authState, markSignedIn } from '@/store/auth'
+import { $authState, $signingOut, markSignedIn } from '@/store/auth'
 import { $managedReSignIn, closeManagedReSignIn } from '@/store/managed-re-sign-in'
 import { $notifications, clearNotifications } from '@/store/notifications'
 import { $planUsage } from '@/store/plan-usage'
@@ -433,8 +433,12 @@ describe('where it leads', () => {
   })
 })
 
-describe('退出登录 (hc-1114, hc-1120, hc-1121: the flow behind it does not change)', () => {
-  it('signs out through main, once, and shows it is working while it does', async () => {
+// Literal copy, not read back from i18n/sign-out.ts.
+const STILL_SIGNED_IN_NETWORK = '没能和 APEX 服务器确认退出，这台电脑仍是登录状态。检查网络后重试。'
+const STILL_SIGNED_IN_EXPIRED = '登录已过期，服务器没法确认退出，这台电脑仍是登录状态。请先重新登录，再退出。'
+
+describe('退出登录 (hc-1114, hc-1120, hc-1121; hc-1142: it answers at the click)', () => {
+  it('the menu closes at the click, before main answers, and main is asked once', async () => {
     let finish!: (result: unknown) => void
     const signOut = vi.fn(() => new Promise(resolve => (finish = resolve)))
     installBridge({ signOut })
@@ -446,13 +450,21 @@ describe('退出登录 (hc-1114, hc-1120, hc-1121: the flow behind it does not c
     fireEvent.click(item)
     fireEvent.click(item)
 
-    await waitFor(() => expect(signOut).toHaveBeenCalledOnce())
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect($signingOut.get()).toBe(true)
+    // Fail-closed: nothing looks signed out until main says the server revoked the key.
+    expect($authState.get().status).toBe('signed-in')
+
+    // Reopened while it runs: the row cannot start a second one.
+    await openMenu()
     expect(screen.getByRole('menuitem', { name: '退出登录' }).getAttribute('aria-disabled')).toBe('true')
-    expect(screen.getByRole('menuitem', { name: '退出登录' }).querySelector('.animate-spin')).toBeTruthy()
+    fireEvent.click(screen.getByRole('menuitem', { name: '退出登录' }))
+    expect(signOut).toHaveBeenCalledOnce()
 
     await act(async () => finish({ ok: true }))
 
     await waitFor(() => expect($authState.get().status).toBe('signed-out'))
+    expect($signingOut.get()).toBe(false)
     expect($notifications.get()).toHaveLength(0)
   })
 
@@ -481,40 +493,56 @@ describe('退出登录 (hc-1114, hc-1120, hc-1121: the flow behind it does not c
     expect(menu.textContent).not.toContain('xiaoman@example.com')
   })
 
-  it.each([
-    ['an expired server token', () => Promise.resolve({ message: '401: expired', ok: false })],
-    ['no network', () => Promise.reject(new Error('offline'))]
-  ])(
-    'when %s stops it: the account stays, the menu closes, the toast leads to the sign-in',
-    async (_label, signOut) => {
-      installBridge({ signOut })
-      renderSidebar()
-      await openMenu()
-      fireEvent.click(screen.getByRole('menuitem', { name: '退出登录' }))
+  it('an expired login: the account stays, the toast says why and leads to the sign-in', async () => {
+    installBridge({ signOut: async () => ({ ok: false, message: 'MANAGED_PROVISION_UNAVAILABLE', statusCode: 401 }) })
+    renderSidebar()
+    await openMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: '退出登录' }))
 
-      await waitFor(() => expect($notifications.get()).toHaveLength(1))
+    await waitFor(() => expect($notifications.get()).toHaveLength(1))
 
-      const [notice] = $notifications.get()
+    const [notice] = $notifications.get()
 
-      expect(notice.message).toContain('退出登录未完成')
-      expect(notice.action?.label).toBe('重新登录')
-      expect($authState.get().status).toBe('signed-in')
-      await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+    expect(notice.message).toBe(STILL_SIGNED_IN_EXPIRED)
+    expect(notice.action?.label).toBe('重新登录')
+    expect($authState.get().status).toBe('signed-in')
 
-      await act(async () => notice.action?.onClick())
+    await act(async () => notice.action?.onClick())
 
-      expect(screen.getByTestId('re-sign-in').textContent).toBe('open')
-    }
-  )
+    expect(screen.getByTestId('re-sign-in').textContent).toBe('open')
+  })
 
-  it('it can be tried again after a failure', async () => {
+  it('no network: the account stays, the toast says why, and 重试 signs out again', async () => {
+    const signOut = vi.fn((): Promise<unknown> => Promise.reject(new Error('offline')))
+    installBridge({ signOut })
+    renderSidebar()
+    await openMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: '退出登录' }))
+
+    await waitFor(() => expect($notifications.get()).toHaveLength(1))
+
+    const [notice] = $notifications.get()
+
+    expect(notice.message).toBe(STILL_SIGNED_IN_NETWORK)
+    expect(notice.action?.label).toBe('重试')
+    expect($authState.get().status).toBe('signed-in')
+
+    signOut.mockResolvedValueOnce({ ok: true })
+    await act(async () => notice.action?.onClick())
+
+    await waitFor(() => expect($authState.get().status).toBe('signed-out'))
+    expect(signOut).toHaveBeenCalledTimes(2)
+    expect(screen.getByTestId('re-sign-in').textContent).toBe('closed')
+  })
+
+  it('it can be tried again from the menu after a failure', async () => {
     const signOut = vi.fn(async () => ({ ok: false }))
     installBridge({ signOut })
     renderSidebar()
     await openMenu()
     fireEvent.click(screen.getByRole('menuitem', { name: '退出登录' }))
     await waitFor(() => expect(signOut).toHaveBeenCalledOnce())
-    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+    await waitFor(() => expect($signingOut.get()).toBe(false))
 
     signOut.mockResolvedValueOnce({ ok: true })
     await openMenu()
@@ -538,6 +566,17 @@ describe('退出登录 (hc-1114, hc-1120, hc-1121: the flow behind it does not c
 
     expect($notifications.get()).toHaveLength(0)
     expect($managedReSignIn.get()).toBeNull()
+  })
+
+  it('opening the menu has main read what the sign-out needs ahead of the click', async () => {
+    const prepareSignOut = vi.fn(async () => undefined)
+    installBridge()
+    Object.assign(window.hermesDesktop.managed, { prepareSignOut })
+    renderSidebar()
+
+    expect(prepareSignOut).not.toHaveBeenCalled()
+    await openMenu()
+    expect(prepareSignOut).toHaveBeenCalledOnce()
   })
 })
 
@@ -609,7 +648,7 @@ describe('several assistants: the account is not one of them', () => {
 
 describe('the auth gate over the row', () => {
   it('a re-sign-in asked for from the failed sign-out’s toast opens the first-open screen', async () => {
-    installBridge({ signOut: async () => ({ ok: false }) })
+    installBridge({ signOut: async () => ({ ok: false, message: 'MANAGED_PROVISION_UNAVAILABLE', statusCode: 401 }) })
     setRuntimeI18nLocale('zh')
     render(
       <MemoryRouter initialEntries={['/thread-root']}>

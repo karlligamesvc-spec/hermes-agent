@@ -31,9 +31,8 @@ import { useAccountTeamCopy } from '@/i18n/account-team'
 import { openExternalLink } from '@/lib/external-link'
 import { cn } from '@/lib/utils'
 import { $accountTeam, loadAccountTeam, teamFor } from '@/store/account-team'
-import { $authState, captureManagedAuthRecoveryScope, signOutAccount } from '@/store/auth'
+import { $authState, $signingOut, prepareSignOut } from '@/store/auth'
 import { notify } from '@/store/notifications'
-import { requestManagedReSignIn } from '@/store/onboarding'
 import {
   $planUsage,
   planUsageFor,
@@ -50,6 +49,7 @@ import { SETTINGS_ROUTE } from '../routes'
 import { SETTINGS_PLANS_ROUTE, SETTINGS_USAGE_ROUTE } from '../settings/product-settings'
 
 import { AccountAvatar, accountDisplayName } from './account-identity'
+import { signOutFromAccountMenu } from './sign-out'
 import { useWeeklyQuotaValue, WeeklyQuotaMeter, weeklyQuotaUsedUp } from './weekly-quota'
 
 /** The address the website's footer and terms give (apex-nodes web/lib/support.ts). */
@@ -104,6 +104,7 @@ function SignedInAccountRow() {
     if (next) {
       void loadAccountTeam(accountId)
       void refreshPlanUsage(owner)
+      prepareSignOut()
     }
   }
 
@@ -204,39 +205,16 @@ function SingleThreadAccountMenu({ name, setOpen }: { name: string; setOpen: (op
   const { account, accountId } = useStore($authState)
   const team = teamFor(useStore($accountTeam), accountId)
   const email = account.email.trim()
-  const [signingOut, setSigningOut] = useState(false)
+  const signingOut = useStore($signingOut)
 
-  // The same sign-out AccountPanel runs: it only reports a failure for the account it started on.
-  async function signOut() {
+  // hc-1142: the menu closes on the click and the window says 「正在退出登录…」 (DesktopAuthGate) until the server answers.
+  function signOut() {
     if (signingOut) {
       return
     }
 
-    const isCurrent = captureManagedAuthRecoveryScope()
-    setSigningOut(true)
-
-    try {
-      if (!(await signOutAccount()) && isCurrent()) {
-        notify({
-          kind: 'error',
-          message: a.logoutFailed,
-          action: {
-            label: a.relogin,
-            onClick: () => {
-              if (isCurrent()) {
-                requestManagedReSignIn('')
-              }
-            }
-          }
-        })
-      }
-    } finally {
-      setSigningOut(false)
-
-      if (isCurrent()) {
-        setOpen(false)
-      }
-    }
+    setOpen(false)
+    void signOutFromAccountMenu()
   }
 
   // The mail app is the OS's to open; a computer without one set up shows nothing, so the address stays on screen.
@@ -289,7 +267,7 @@ function SingleThreadAccountMenu({ name, setOpen }: { name: string; setOpen: (op
         disabled={signingOut}
         onSelect={event => {
           event.preventDefault()
-          void signOut()
+          signOut()
         }}
         variant="destructive"
       >
