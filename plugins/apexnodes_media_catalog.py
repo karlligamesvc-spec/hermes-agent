@@ -39,7 +39,6 @@ _COPY = {
         "{reason}这次没有生成，也没有用掉额度。可以不填 model 用平台默认模型，或换成：{models}。",
         "{reason} Nothing was generated or charged. Leave model empty for the platform default, or use: {models}.",
     ),
-    "unavailable_reason": ("{label} 暂不可用。", "{label} is unavailable right now."),
 }
 
 
@@ -85,17 +84,18 @@ def model_problem(media: str, section: Any, model: str | None, *, saved: bool, s
 
     ``saved``: the model came from the Desktop picker, so an id the catalog lacks reads as
     that setting being stale (``saved_unknown``), not as the assistant's typo. A model the
-    catalog marks not ``configured`` (its leg switched off, not allowlisted) is said with
-    the server's own reason and the ids that work."""
+    catalog marks not ``configured`` with a reason of its own (a Hypit model off, not
+    allowlisted) is said with that reason and the ids that work; one without (its whole
+    leg switched off) is left to the leg check, which says so (``media_switched_off``)."""
     found = rows(section)
     if not model or found is None:
         return None
     row = found.get(model)
     if row is None:
         return saved_unknown if saved else _say("unknown", media, model=model, models=_usable(found))
-    if row.get("configured") is not False:
+    reason = str(row.get("unavailable_reason") or "").strip()
+    if row.get("configured") is not False or not reason:
         return None
-    reason = str(row.get("unavailable_reason") or "").strip() or _say("unavailable_reason", media)
     if saved:
         return reason
     return _say("unavailable", media, reason=reason, models=_usable(found))

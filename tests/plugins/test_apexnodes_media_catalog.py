@@ -214,3 +214,16 @@ def test_a_hypit_video_models_health_is_read_on_its_own_leg(video_plugin, monkey
     sent = _serve_video(monkeypatch, video_plugin, gateway=gateway, section=section)
     result = json.loads(video_plugin._handle_generate_video({"prompt": "x", "model": GROK}))
     assert sent == [] and "5 分钟" in result["error"] and "「+」" not in result["error"]
+
+
+@pytest.mark.parametrize("gateway", [True, False])
+def test_a_leg_switched_off_as_a_whole_says_so(video_plugin, monkeypatch, gateway):
+    """chinaapi switched off: its rows read configured=false with no reason of their own;
+    the leg check says the platform switched video off, not an empty "unavailable"."""
+    section = {"catalog": copy.deepcopy(SERVED["video"]), "legs": {f"chinaapi:{H3}": {"configured": False, "serving": False}}}
+    for row in section["catalog"]["models"]:
+        if row["provider"] == "chinaapi":
+            row["configured"] = False
+    sent = _serve_video(monkeypatch, video_plugin, gateway=gateway, section=section)
+    result = json.loads(video_plugin._handle_generate_video({"prompt": "x", "model": H3}))
+    assert sent == [] and "暂时关闭" in result["error"] and "换成" not in result["error"]
