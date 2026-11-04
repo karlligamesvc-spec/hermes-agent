@@ -57,8 +57,9 @@ EXPECTED_TOOLS = {
         # hc-1143:TikHub 长尾聚合工具,同一条网关腿。
         "social_api",
     },
-    # hc-1054: long-video analysis registers from the same plugin (plugins/apexnodes_video_analysis.py).
-    "apexnodes-video-tools": {"generate_video", "video_highlights", "video_moment_search"},
+    # hc-1054: long-video analysis registers from the same plugin (plugins/apexnodes_video_analysis.py);
+    # hc-1136: video_breakdown (the remake card) too.
+    "apexnodes-video-tools": {"generate_video", "video_highlights", "video_moment_search", "video_breakdown"},
 }
 
 # 桌面机器上不存在的 vendor/master 侧 env——冒烟前必须全空。

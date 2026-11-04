@@ -153,6 +153,7 @@ export const enProcess: ProcessCopy = {
     video_moment_search: step('Finding the moments', 'Find moments', facts =>
       facts.count ? `Found ${n(facts.count, 'moment')}` : facts.empty ? 'None found' : 'Handed to the platform'
     ),
+    video_breakdown: step('Going through the video shot by shot', 'Break down shots', said('Remake card ready')),
     live_record_start: step('Starting the live recording', 'Start recording', said('Recording')),
     live_record_status: step('Checking the recording', 'Check recording', said('Checked')),
     live_record_stop: step('Stopping the recording', 'Stop recording', said('Stopped')),
