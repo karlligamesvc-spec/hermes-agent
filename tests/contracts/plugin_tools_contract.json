@@ -1,7 +1,7 @@
 {
  "contract_name": "apexnodes-plugin-tools-parity",
- "contract_version": 14,
- "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948, hc-969, hc-1011, hc-1000, hc-1054, hc-1136",
+ "contract_version": 15,
+ "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948, hc-969, hc-1011, hc-1000, hc-1054, hc-1143, hc-1136",
  "sync_policy": {
   "copies": [
    "hermes-cloud: tests/contracts/plugin_tools_contract.json (source of truth)",
@@ -38,6 +38,7 @@
   ],
   "apexnodes-social-tools": [
    "creator_top_posts",
+   "social_api",
    "social_audience",
    "social_captions",
    "social_comments",
@@ -1108,6 +1109,46 @@
       "gateway"
      ],
      "note": "CLIP reads English only: a query that is not printable ASCII fails before any call (the agent translates first)."
+    }
+   }
+  },
+  "social_api": {
+   "schema": {
+    "params": {
+     "category": {
+      "type": "string"
+     },
+     "endpoint": {
+      "type": "string"
+     },
+     "params": {
+      "type": "object"
+     },
+     "platform": {
+      "type": "string"
+     },
+     "query": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "platform"
+    ]
+   },
+   "endpoints": {
+    "legacy": [
+     "/data/social/api"
+    ],
+    "gateway": [
+     "/tools/v1/social/{platform}/api"
+    ]
+   },
+   "behaviors": {
+    "platform_arg_required": {
+     "legs": [
+      "legacy",
+      "gateway"
+     ]
     }
    }
   },

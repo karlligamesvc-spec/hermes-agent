@@ -143,7 +143,8 @@ export const PLATFORM_TOOL_PLUGINS: readonly PlatformToolPlugin[] = Object.freez
       'social_trending',
       'social_posts',
       'social_captions',
-      'creator_top_posts'
+      'creator_top_posts',
+      'social_api'
     ])
   })
 ]) as readonly PlatformToolPlugin[]

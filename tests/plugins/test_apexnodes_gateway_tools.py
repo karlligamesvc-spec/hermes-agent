@@ -54,6 +54,8 @@ EXPECTED_TOOLS = {
         "social_audience",
         "social_creator_discovery",
         "social_product",
+        # hc-1143:TikHub 长尾聚合工具,同一条网关腿。
+        "social_api",
     },
     # hc-1054: long-video analysis registers from the same plugin (plugins/apexnodes_video_analysis.py);
     # hc-1136: video_breakdown (the remake card) too.

@@ -1,5 +1,5 @@
 name: apexnodes-social-tools
-version: "0.4.0"
+version: "0.5.0"
 description: "Cross-platform social data tools (10-platform whitelist). P1 gateway mode (default) calls the ApexNodes tools gateway /tools/v1/social/{platform}/{action}; legacy master data-gateway path kept behind TOOLS_GATEWAY_DISABLED=1 (cloud rollback channel)."
 provides_tools:
   - social_content
@@ -10,3 +10,4 @@ provides_tools:
   - social_posts
   - social_captions
   - creator_top_posts
+  - social_api
