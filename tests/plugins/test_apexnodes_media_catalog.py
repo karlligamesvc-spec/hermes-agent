@@ -227,3 +227,17 @@ def test_a_leg_switched_off_as_a_whole_says_so(video_plugin, monkeypatch, gatewa
     sent = _serve_video(monkeypatch, video_plugin, gateway=gateway, section=section)
     result = json.loads(video_plugin._handle_generate_video({"prompt": "x", "model": H3}))
     assert sent == [] and "暂时关闭" in result["error"] and "换成" not in result["error"]
+
+
+@pytest.mark.parametrize("kind", ["image", "video"])
+def test_the_refusal_follows_the_users_language(image_plugin, video_plugin, monkeypatch, kind):
+    """The catalog module reads nothing itself (no gateway import, no credential: hc-604's
+    platform-tool audit would otherwise count it as a plugin); the plugin passes the language."""
+    monkeypatch.setenv("HERMES_LANGUAGE", "en")
+    if kind == "image":
+        sent = _serve(monkeypatch, image_plugin, gateway=True)
+        result = _call(image_plugin, model="midjourney-v9")
+    else:
+        sent = _serve_video(monkeypatch, video_plugin, gateway=True)
+        result = json.loads(video_plugin._handle_generate_video({"prompt": "x", "model": "sora-9"}))
+    assert sent == [] and "model catalog has no" in result["error"], result

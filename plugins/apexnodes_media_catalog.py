@@ -42,17 +42,7 @@ _COPY = {
 }
 
 
-def _english() -> bool:
-    try:
-        from plugins import apexnodes_gateway
-
-        return apexnodes_gateway.ui_language() == "en"
-    except ImportError:  # a bare copy without the gateway: the APEX default
-        return False
-
-
-def _say(key: str, media: str, **fields: Any) -> str:
-    english = _english()
+def _say(key: str, media: str, english: bool, **fields: Any) -> str:
     zh, en = _COPY[key]
     return (en if english else zh).format(label=_LABELS[media][1 if english else 0], **fields)
 
@@ -79,8 +69,13 @@ def _usable(found: dict[str, dict[str, Any]]) -> str:
     return "、".join(names) if names else "-"
 
 
-def model_problem(media: str, section: Any, model: str | None, *, saved: bool, saved_unknown: str) -> str | None:
+def model_problem(
+    media: str, section: Any, model: str | None, *, saved: bool, saved_unknown: str, english: bool = False
+) -> str | None:
     """Why a call naming ``model`` should not start, or None to go ahead.
+
+    This module only reads what the plugin already fetched: it holds no credential and
+    makes no request, so the caller passes the user's language (``english``) in.
 
     ``saved``: the model came from the Desktop picker, so an id the catalog lacks reads as
     that setting being stale (``saved_unknown``), not as the assistant's typo. A model the
@@ -92,13 +87,13 @@ def model_problem(media: str, section: Any, model: str | None, *, saved: bool, s
         return None
     row = found.get(model)
     if row is None:
-        return saved_unknown if saved else _say("unknown", media, model=model, models=_usable(found))
+        return saved_unknown if saved else _say("unknown", media, english, model=model, models=_usable(found))
     reason = str(row.get("unavailable_reason") or "").strip()
     if row.get("configured") is not False or not reason:
         return None
     if saved:
         return reason
-    return _say("unavailable", media, reason=reason, models=_usable(found))
+    return _say("unavailable", media, english, reason=reason, models=_usable(found))
 
 
 def assistant_picks(apex: dict[str, Any]) -> bool:

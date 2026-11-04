@@ -418,6 +418,7 @@ def _handle_generate_image(args: dict, **_kwargs) -> str:
     problem = _media_catalog and _media_catalog.model_problem(
         "image", section, selected_model, saved=bool(saved_model),
         saved_unknown=_say("media_setting_unknown", "当前图片模型设置不是可用的模型"),
+        english=_gateway.ui_language() == "en",
     )
     if problem:
         return tool_error(problem)
