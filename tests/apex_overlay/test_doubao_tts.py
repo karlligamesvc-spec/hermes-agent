@@ -17,6 +17,7 @@ def tts_entry(monkeypatch):
     from tools.registry import registry
     entry = registry.get_entry('text_to_speech')
     monkeypatch.setattr(entry, 'dynamic_schema_overrides', entry.dynamic_schema_overrides)
+    monkeypatch.setattr(tts_tool, '_select_builtin_engine', tts_tool._select_builtin_engine)
     return entry
 
 
@@ -107,6 +108,7 @@ server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
 os.environ['HERMES_PLATFORM_API_BASE']=f'http://127.0.0.1:{server.server_port}'
 threading.Thread(target=server.serve_forever,daemon=True).start()
 from tools import tts_tool
+from apex_overlay import doubao_tts as adapter
 assert tts_tool._load_tts_config()['provider']=='edge'
 from hermes_cli.plugins import discover_plugins
 discover_plugins()
@@ -127,9 +129,23 @@ assert str(home) in schema['parameters']['properties']['output_path']['descripti
 assert tts_tool._load_tts_config()['provider']=='openai'
 upstream=tts_tool._tts_schema_overrides()
 assert registry.get_entry('text_to_speech').dynamic_schema_overrides()=={**upstream}
+# hc-1035: Edge picked in Settings → 语音, as packaged APEX ships it (no edge-tts, no NeuTTS).
+(home/'config.yaml').write_text('plugins:\n  enabled:\n    - apex-overlay\ntts:\n  provider: edge\n',encoding='utf-8')
+assert tts_tool._load_tts_config()['provider']=='edge'
+result=json.loads(tts_tool.text_to_speech_tool('你好。',output_path=str(home/'旁白2.mp3')))
+assert result['success'] is False,result
+# upstream's long-form loop prefixes its chunk number; the sentence after it is ours, whole
+assert result['error']=='TTS chunk 1 failed (edge): '+adapter.missing_engine_message('edge'),result
+for upstream_hint in ('pip install','hermes setup','hermes pm','No TTS provider'):
+ assert upstream_hint not in result['error'],result
+assert calls==['你好。']  # the explicit choice stands: nothing went to Doubao instead
+assert not (home/'旁白2.mp3').exists() and not (home/'旁白2.mp3').with_suffix('.mp3').exists()
 server.shutdown()
 '''
-    env = {**os.environ, 'HERMES_HOME': str(tmp_path / 'profile'), 'TOOLS_GATEWAY_KEY': 'only-this-profile'}
+    env = {**os.environ, 'HERMES_HOME': str(tmp_path / 'profile'), 'TOOLS_GATEWAY_KEY': 'only-this-profile',
+           'HERMES_DISABLE_LAZY_INSTALLS': '1'}
+    # Packaged APEX bundles neither edge-tts nor NeuTTS; the dev venv may have them.
+    script = "import sys\nsys.modules['edge_tts']=None\nsys.modules['neutts']=None\n" + script
     result = subprocess.run([sys.executable, '-c', script], env=env,
                             cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=35, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
@@ -198,3 +214,45 @@ def test_speed_stays_inside_what_scheduler_accepts(monkeypatch, tmp_path, speed,
     monkeypatch.setattr(adapter.urllib.request, 'build_opener', lambda *args: Opener())
     adapter.DoubaoTTS().synthesize('你好', str(tmp_path / 'out.mp3'), speed=speed)
     assert seen == [sent]
+
+
+def test_the_wrapped_engine_choice_is_still_where_upstream_calls_it():
+    """apply() rewords tools.tts_tool._select_builtin_engine's answer. An upstream sync that
+    renames it or stops calling it through the module global would leave the old English
+    text with its pip / hermes setup commands; this pins both ends of the seam."""
+    import inspect
+
+    from tools import tts_tool
+    assert list(inspect.signature(tts_tool._select_builtin_engine).parameters) == ['provider']
+    assert 'provider, error = _select_builtin_engine(provider)' in inspect.getsource(tts_tool._text_to_speech_single)
+
+
+@pytest.mark.parametrize('provider, shown', [('edge', 'Edge'), ('elevenlabs', 'Elevenlabs'), ('piper', 'Piper')])
+def test_an_engine_apex_does_not_ship_is_said_plainly(monkeypatch, tts_entry, provider, shown):
+    """hc-1035 (2026-11-04/05): Edge chosen in Settings → 语音 read 「无可用 TTS provider」 with
+    upstream's install commands. The choice stays as it is; nothing is routed to Doubao."""
+    from tools import tts_tool, tts_tool_delivery
+    monkeypatch.setattr(tts_tool, '_load_tts_config', tts_tool._load_tts_config)
+    monkeypatch.setattr(tts_tool, 'DEFAULT_PROVIDER', 'edge')
+    monkeypatch.setattr(tts_tool, '_dispatch_to_plugin_provider', tts_tool._dispatch_to_plugin_provider)
+    monkeypatch.setattr(tts_tool_delivery, 'PROVIDER_MAX_TEXT_LENGTH', dict(tts_tool_delivery.PROVIDER_MAX_TEXT_LENGTH))
+    monkeypatch.setattr(tts_tool, '_importable', lambda importer: False)
+    monkeypatch.setattr(tts_tool, '_check_neutts_available', lambda: False)
+    monkeypatch.setattr(tts_tool, '_check_piper_available', lambda: False)
+    upstream_engine, upstream_error = tts_tool._select_builtin_engine(provider)
+    assert upstream_error and ('pip' in upstream_error or 'hermes' in upstream_error)
+    adapter.apply(SimpleNamespace(register_tts_provider=lambda p: None))
+    wrapped = tts_tool._select_builtin_engine
+    adapter.apply(SimpleNamespace(register_tts_provider=lambda p: None))
+    assert tts_tool._select_builtin_engine is wrapped  # re-apply does not stack wrappers
+    engine, error = tts_tool._select_builtin_engine(provider)
+    assert engine == provider == upstream_engine
+    message = json.loads(error)
+    assert message['success'] is False
+    assert message['error'] == adapter.missing_engine_message(provider)
+    assert f'选的是「{shown}」' in message['error'] and '没有换成别的声音' in message['error']
+    for upstream_hint in ('pip', 'hermes', 'No TTS provider', 'install'):
+        assert upstream_hint not in message['error']
+    monkeypatch.setattr(tts_tool, '_importable', lambda importer: True)
+    monkeypatch.setattr(tts_tool, '_check_piper_available', lambda: True)
+    assert tts_tool._select_builtin_engine(provider) == (provider, None)  # an engine that is there runs

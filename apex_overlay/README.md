@@ -164,6 +164,19 @@ names Edge and OpenAI; on 0.17.58 a model cutting a video did exactly that
 upstream's description. Speed is clamped to the 0.5–2.0 the Scheduler route
 accepts.
 
+hc-1035: when the provider chosen in Settings → 语音 has no engine in APEX
+(packaged APEX bundles neither edge-tts nor NeuTTS, ElevenLabs, Mistral,
+KittenTTS or Piper), `install_missing_engine_message` rewords the answer of
+`tools.tts_tool._select_builtin_engine`. Upstream's text (`No TTS provider
+available. Enable Edge TTS with: pip install …` / `hermes setup tts`) names
+commands an APEX user cannot run; the model rendered it as 「无可用 TTS
+provider」 (2026-11-04/05). The new sentence names the chosen provider as
+Settings shows it, says nothing was spoken and no other voice was used, and
+tells the model not to install anything or substitute a voice. The choice is
+not changed and nothing is routed to Doubao.
+`test_the_wrapped_engine_choice_is_still_where_upstream_calls_it` pins the
+upstream symbol and its call site.
+
 Requires the companion Scheduler route before rollout. This change alone does
 not publish a Desktop installer or change the production runtime pin.
 

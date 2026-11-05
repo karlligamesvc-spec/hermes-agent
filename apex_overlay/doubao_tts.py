@@ -73,6 +73,42 @@ def install_narration_schema(tts_tool) -> bool:
     return True
 
 
+# How Settings → 语音 shows the built-in engines (prettyName of the option).
+_ENGINE_NAMES = {"edge": "Edge", "elevenlabs": "Elevenlabs", "openai": "Openai", "xai": "Xai", "minimax": "Minimax",
+                 "mistral": "Mistral", "gemini": "Gemini", "neutts": "Neutts", "kittentts": "Kittentts", "piper": "Piper"}
+
+
+def missing_engine_message(provider: str) -> str:
+    """hc-1035: what the model reads when the voice chosen in Settings has no engine in APEX.
+    Upstream's text (`No TTS provider available. Enable Edge TTS with: pip install …` or run
+    `hermes setup tts`) names commands an APEX user cannot run and the model rendered it as
+    「无可用 TTS provider」 (2026-11-04/05)."""
+    name = _ENGINE_NAMES.get(provider, provider)
+    return (
+        f"配音没做成：设置 → 语音 里的「文字转语音提供方」选的是「{name}」，APEX 没带这个组件；"
+        "这次没有配音，也没有换成别的声音。APEX 配音只在这一项没选的时候用，设置里的列表现在还选不回它。"
+        "把这些照实告诉用户，不要自己装组件、写代码或换别的声音顶上。"
+    )
+
+
+def install_missing_engine_message(tts_tool) -> None:
+    """Word the no-engine answer of ``_select_builtin_engine`` for APEX. Nothing else changes:
+    the chosen provider stays chosen and nothing is routed to another voice."""
+    original = tts_tool._select_builtin_engine
+    if getattr(original, "_apex_missing_engine", False):
+        return
+
+    def select_builtin_engine(provider):
+        engine, error = original(provider)
+        if error is None:
+            return engine, None
+        logger.info("apex-overlay: TTS provider %r has no engine here: %s", provider, error)
+        return provider, tts_tool._error_json(missing_engine_message(provider))
+
+    select_builtin_engine._apex_missing_engine = True
+    tts_tool._select_builtin_engine = select_builtin_engine
+
+
 def connection() -> tuple[str, str]:
     from hermes_cli.config import load_config
     from hermes_cli.env_loader import hydrate_profile_secret_sources
@@ -159,6 +195,7 @@ def apply(ctx) -> None:
             logger.warning("apex-overlay: text_to_speech is not registered; the model keeps upstream's description")
     except Exception:
         logger.warning("apex-overlay: Doubao narration description did not apply", exc_info=True)
+    install_missing_engine_message(tts_tool)
     if getattr(tts_tool._dispatch_to_plugin_provider, '_apex_doubao_guard', False):
         ctx.register_tts_provider(DoubaoTTS())
         return

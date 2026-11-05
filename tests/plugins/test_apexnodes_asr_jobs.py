@@ -321,6 +321,10 @@ def test_polls_answer_every_few_seconds_and_each_has_a_short_read_timeout(script
     [
         (503, {"code": "vendor_unavailable", "message": "ASR 识别失败 (code=55000031): busy", "vendor_code": "asr_failed"},
          "视频转写服务暂不可用(503)"),
+        # Volcengine timed out its own task: a failed job, said as that, and polled no further.
+        (503, {"code": "vendor_unavailable", "vendor_code": "asr_vendor_timeout",
+               "message": "转写服务这次的识别任务在供应商那边超时了，没出结果，也没计费；平台没停，同一个文件再转一次通常就行。"},
+         "用同一个文件再调一次 media_transcribe"),
         (402, {"code": "quota_exceeded", "message": "本月额度已用完"}, "额度"),
     ],
 )
@@ -334,6 +338,8 @@ def test_a_failed_job_reads_like_the_synchronous_error(scripted, status, detail,
         module.transcribe_media_url("https://cos.example/a.m4a", timeout=7800)
     assert caught.value.status == status
     assert expected in str(caught.value)
+    # A failed job is final: no second submit, no further poll.
+    assert [c[:2] for c in state["calls"]] == [("POST", "/tools/v1/asr/jobs"), ("GET", "/tools/v1/asr/jobs/job-1")]
 
 
 def test_media_transcribe_tool_reports_the_unreachable_wait_as_its_error(monkeypatch, tmp_path):

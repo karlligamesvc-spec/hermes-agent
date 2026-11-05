@@ -397,9 +397,50 @@ def _b64(path: Path) -> str:
     return base64.b64encode(path.read_bytes()).decode("ascii")
 
 
+# step -> (the answer's error key, the run's list of shots it left out)
+_STEPS = {"labels_from": ("labels_error", "labels_missing"), "ocr_from": ("ocr_error", "ocr_missing")}
+
+
+def _batch_answer(future: Any) -> dict:
+    """One batch's answer; a batch that raised (gateway down, timeout) failed both steps for its
+    own shots only."""
+    try:
+        return future.result()
+    except Exception as exc:  # health: allow BLE001 -- one batch's failure stays with its shots; logged
+        logger.warning("video_breakdown: one labels batch failed", exc_info=True)
+        reason = {"message": f"看图和读字这一步没做：{exc}"}
+        return {"labels_from": "none", "ocr_from": "none", "labels_error": reason, "ocr_error": reason}
+
+
+def _shot_ranges(numbers: list[int]) -> str:
+    """[21, 22, …, 40, 44] -> 「21–40、44」."""
+    spans: list[list[int]] = []
+    for n in sorted(numbers):
+        if spans and n == spans[-1][1] + 1:
+            spans[-1][1] = n
+        else:
+            spans.append([n, n])
+    return "、".join(f"{a}–{b}" if b > a else str(a) for a, b in spans)
+
+
+def _scoped(reason: str, numbers: list[int], total: int) -> str:
+    """A step's reason as a note: whole-run as the platform wrote it, or naming the shots it
+    covers when other batches did get through (the platform's 「这次」 is about one request)."""
+    if len(numbers) == total:
+        return reason
+    reason = reason.replace("这次没看画面", "这几镜没看画面").replace("这次没读画面上的字", "这几镜没读画面上的字")
+    return f"第 {_shot_ranges(numbers)} 镜：{reason}"
+
+
+def _coverage(missing: list[int], total: int) -> str:
+    return "server" if not missing else ("none" if len(missing) >= total else "partial")
+
+
 def request_labels(label_fn: Callable[[dict], dict], video: dict, shots: list[dict], root: Path) -> tuple[dict[int, dict], dict]:
-    """Labels per shot number, plus what the platform said about the whole run:
-    ``labels_from``, ``ocr_from``, ``model``, ``summary`` and the reasons a step did not run."""
+    """Labels per shot number, plus what the platform said about the whole run: ``labels_from``
+    and ``ocr_from`` (server, partial or none), the shots each step left out (``labels_missing``,
+    ``ocr_missing``), ``model``, ``summary`` and the reasons. Each batch counts for its own shots:
+    one that failed or raised leaves only those 「不确定」."""
     batches = [shots[i:i + LABEL_BATCH] for i in range(0, len(shots), LABEL_BATCH)]
 
     def ask(batch: list[dict]) -> dict:
@@ -414,23 +455,28 @@ def request_labels(label_fn: Callable[[dict], dict], video: dict, shots: list[di
         return label_fn(payload)
 
     with ThreadPoolExecutor(max_workers=3) as pool:
-        answers = [future.result() for future in [_in_context(pool, ask, batch) for batch in batches]]
+        answers = [_batch_answer(future) for future in [_in_context(pool, ask, batch) for batch in batches]]
     labels: dict[int, dict] = {}
-    run = {"labels_from": "server", "ocr_from": "server", "notes": []}
-    for answer in answers:
+    run: dict[str, Any] = {"notes": [], "labels_missing": [], "ocr_missing": []}
+    reasons: dict[str, list[int]] = {}
+    for batch, answer in zip(batches, answers):
+        numbers = [s["n"] for s in batch]
         for item in answer.get("shots") or []:
             if isinstance(item, dict) and isinstance(item.get("n"), int):
                 labels[item["n"]] = item
-        for step, key in (("labels_from", "labels_error"), ("ocr_from", "ocr_error")):
+        for step, (key, missing) in _STEPS.items():
             if answer.get(step) != "server":
-                run[step] = "none"
+                run[missing] += numbers
                 reason = (answer.get(key) or {}).get("message") or "平台没有做这一步。"
-                if reason not in run["notes"]:
-                    run["notes"].append(reason)
+                covered = reasons.setdefault(reason, [])
+                covered += [n for n in numbers if n not in covered]
         if answer.get("model"):
             run["model"] = answer["model"]
         if answer.get("summary") and len(batches) == 1:
             run["summary"] = answer["summary"]
+    run["notes"] = [_scoped(reason, numbers, len(shots)) for reason, numbers in reasons.items()]
+    for step, (_key, missing) in _STEPS.items():
+        run[step] = _coverage(run[missing], len(shots))
     return labels, run
 
 
@@ -669,13 +715,30 @@ def _labels(label_fn: Callable[[dict], dict], video: dict, shots: list[dict], ro
         return request_labels(label_fn, video, shots, root)
     except Exception as exc:  # health: allow BLE001 -- any failure of the labels leg keeps the card and says why; logged
         logger.warning("video_breakdown: labels request failed", exc_info=True)
-        return {}, {"labels_from": "none", "ocr_from": "none", "notes": [f"看图和读字这一步没做：{exc}"]}
+        every = [s["n"] for s in shots]
+        return {}, {"labels_from": "none", "ocr_from": "none", "labels_missing": every, "ocr_missing": list(every),
+                    "notes": [f"看图和读字这一步没做：{exc}"]}
+
+
+def _missing_notice(run: dict, total: int) -> str:
+    """The summary's first sentence when the platform left shots out, so a card with holes in it
+    never reads as a whole one (the reasons are in the notes)."""
+    labels, ocr, fields = sorted(run["labels_missing"]), sorted(run["ocr_missing"]), "景别、主体、动作、场景、真人脸、节拍"
+    parts = [(labels, "没看成画面、也没读字", fields + "和画面上的字")] if labels and labels == ocr else [
+        (labels, "没看成画面", fields), (ocr, "没读成画面上的字", "画面上的字")]
+    said = []
+    for numbers, what, unsure in parts:
+        if numbers:
+            whole = len(numbers) >= total
+            scope = f"{total} 镜都" if whole else f"第 {_shot_ranges(numbers)} 镜({total} 镜中 {len(numbers)} 镜)"
+            said.append(f"{scope}{what}，{'' if whole else '这些镜头的'}{unsure}是「不确定」")
+    return f"注意：画面这一层没做全——{'；'.join(said)}。" if said else ""
 
 
 def _merge(shots: list[dict], labels: dict[int, dict], run: dict, cameras: list[tuple[str, bool | str]] | None) -> None:
     for k, shot in enumerate(shots):
-        apply_labels(shot, labels.get(shot["n"]), labels_ran=run["labels_from"] == "server",
-                     ocr_ran=run["ocr_from"] == "server")
+        apply_labels(shot, labels.get(shot["n"]), labels_ran=shot["n"] not in run["labels_missing"],
+                     ocr_ran=shot["n"] not in run["ocr_missing"])
         shot["camera"], shot["subject_moves"] = cameras[k] if cameras else (UNSURE, UNSURE)
         if cameras:
             shot["evidence"]["camera"] = shot["evidence"]["subject_moves"] = "运动分析"
@@ -732,7 +795,7 @@ def _fill(root: Path, job: dict) -> dict:
         "summary": "",
         "shots": [_ordered(shot) for shot in shots],
     }
-    card["summary"] = run.get("summary") or _summary(card)
+    card["summary"] = _missing_notice(run, len(shots)) + (run.get("summary") or _summary(card))
     if not contact_sheet(ffmpeg, root, card["shots"], root / "复刻卡.jpg", info["height"] >= info["width"]):
         notes.append("找不到能写字的字体，宫格图上没写镜号和时间，按从左到右、从上到下的顺序对应镜号。")
     (root / "shots.json").write_text(json.dumps(card, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
