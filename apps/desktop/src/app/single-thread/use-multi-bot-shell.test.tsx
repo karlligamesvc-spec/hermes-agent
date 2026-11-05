@@ -458,16 +458,16 @@ describe('hc-1146 a click opens the thread this window already knows', () => {
     await waitFor(() => expect($mainThreadsByProfile.get().writer?.rootId).toBe('writer-root'))
     warmEngines()
 
-    // A notification opened 小红书文案's thread at its own route while APEX is on screen.
-    act(() => go('/writer-root'))
-    await settle()
     const before = navigations
 
+    // A notification opened 小红书文案's thread at its own route while APEX is on screen.
+    act(() => go('/writer-root'))
     await waitFor(() => expect($activeGatewayProfile.get()).toBe('writer'))
     await settle()
 
     expect(ensureGatewayProfile).toHaveBeenCalledWith('writer')
-    expect(navigations).toBe(before)
+    // The notification's navigation, and no second one from the follow.
+    expect(navigations).toBe(before + 1)
     expect(visited).toEqual(['/apex-root', '/writer-root'])
   })
 
