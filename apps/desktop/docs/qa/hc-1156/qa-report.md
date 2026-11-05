@@ -36,6 +36,6 @@ HC1156_SHOTS="$TMPDIR/hc1156" APEX_PYTHON=<engine python> npx playwright test e2
 ## 没在这里验的
 
 - 开关关着、开发者模式下仍是原来的四个按钮和「在电脑上处理」：由 `src/paste-chips-identity.test.tsx` 的 golden（在 main 上录）和 `trim-chips.test.tsx`、`trim-plain-words.test.tsx` 钉住，没在开发版里再走一遍。
-- ⌘V 粘贴访达里复制的视频：输入框今天只把粘贴的图片变成附件，视频文件进来只是文件名，所以不出按钮（本票不改）。
+- ⌘V 粘贴访达里复制的视频：输入框今天只把粘贴的图片变成附件，复制的视频不成附件，所以不出按钮（本票不改，由 hc-1158 接上；那张票实测改动前粘贴后什么都没有，也没有文件名）。
 - 打包产物：这次是开发版。
 - 真实账号、真实模型：都没用。

@@ -18,6 +18,7 @@ import { composerFocusBlockedBySurface } from '@/lib/keybinds/composer-focus-key
 
 import { getActiveComposer, requestComposerAttachImages, requestComposerFocus, requestComposerInsert } from './focus'
 import { notePastedText } from './paste-actions'
+import { copiedFilesInClipboard, requestComposerAttachCopiedFiles } from './paste-files'
 import { pathifyRefs } from './path-refs'
 import { extractClipboardImageBlobs } from './text-utils'
 import { linkifyUrls } from './url-refs'
@@ -30,6 +31,17 @@ export function routeClipboardToComposer(clipboard: DataTransfer): boolean {
 
   if (blobs.length > 0) {
     requestComposerAttachImages(blobs)
+  }
+
+  // Files copied in Finder (no text rides with them) attach like a drop
+  // (hc-1158, paste-files.ts), and the composer takes focus.
+  const copied = copiedFilesInClipboard(clipboard)
+
+  if (copied.length > 0) {
+    requestComposerAttachCopiedFiles(copied)
+    requestComposerFocus('active')
+
+    return true
   }
 
   // A bare `data:` URL IS the image attached above — not text to insert.
