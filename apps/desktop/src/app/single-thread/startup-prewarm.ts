@@ -15,6 +15,12 @@
  * Waits for the main engine on purpose: right after an update that one first
  * installs the new runtime, and a pool engine must not start before it.
  *
+ * And only when the pool keeps a free slot after it (startupPrewarmFits): with
+ * the pool held to one engine, the warmed engine is the one the next click to
+ * another assistant has to evict, and a click right after a switch to the
+ * warmed one is refused outright (APEX_POOL_ALL_BUSY) — measured, that cost
+ * 30–60 s where the cold start it saves costs about 3 s.
+ *
  * Off (one assistant, developer mode, a pop-out window) it does nothing.
  */
 
@@ -22,6 +28,8 @@ import { useStore } from '@nanostores/react'
 import { useEffect, useRef, useState } from 'react'
 
 import { readKey, writeKey } from '@/lib/storage'
+import { openSecondaryCount } from '@/store/gateway'
+import { $poolLimits, loadPoolLimits } from '@/store/pool-limits'
 import { $activeGatewayProfile, normalizeProfileKey, prewarmProfileBackend } from '@/store/profile'
 import { $botRoster, $botSwitchInFlight, $currentBotProfile } from '@/store/single-thread-bots'
 
@@ -41,6 +49,11 @@ export function startupPrewarmTarget(
   }
 
   return target
+}
+
+/** One more engine at launch still leaves a free pool slot for the assistant the user opens next. */
+export function startupPrewarmFits(openSecondaries: number, maxBackends: number): boolean {
+  return openSecondaries + 2 <= maxBackends
 }
 
 export function useStartupPrewarm(multiBot: boolean, gatewayOpen: boolean): void {
@@ -87,7 +100,12 @@ export function useStartupPrewarm(multiBot: boolean, gatewayOpen: boolean): void
     const target = startupPrewarmTarget(launchLast, $activeGatewayProfile.get(), $botRoster.get())
 
     if (target) {
-      prewarmProfileBackend(target)
+      // The limits main enforces (Settings, or HERMES_DESKTOP_POOL_MAX), not the defaults this window starts with.
+      void loadPoolLimits().then(() => {
+        if (startupPrewarmFits(openSecondaryCount(), $poolLimits.get().maxBackends)) {
+          prewarmProfileBackend(target)
+        }
+      })
     }
   }, [gatewayOpen, launchLast, multiBot])
 }
