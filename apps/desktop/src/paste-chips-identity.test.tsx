@@ -6,6 +6,9 @@
  * byte as it was. A diff that is not that one chip means something else moved:
  * fix the code, do not re-record the golden unless the change is meant to
  * reach every user.
+ *
+ * hc-1156 adds the dropped-video strip off single-thread product mode, recorded
+ * the same way before hc-1156 gave that mode its own chips for a video.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
@@ -48,11 +51,10 @@ const settle = () =>
     await new Promise(resolve => setTimeout(resolve, 40))
   })
 
-/** The strip above the composer once a Douyin link sits in the draft. */
-async function pasteStrip(locale: Locale): Promise<string> {
+function renderChatBar(locale: Locale) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
-  const { container } = render(
+  return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
         <I18nProvider configClient={null} initialLocale={locale}>
@@ -73,6 +75,11 @@ async function pasteStrip(locale: Locale): Promise<string> {
       </MemoryRouter>
     </QueryClientProvider>
   )
+}
+
+/** The strip above the composer once a Douyin link sits in the draft. */
+async function pasteStrip(locale: Locale): Promise<string> {
+  const { container } = renderChatBar(locale)
 
   await settle()
   const editor = container.querySelector<HTMLElement>(`[data-slot="${RICH_INPUT_SLOT}"]`)!
@@ -132,5 +139,47 @@ describe('the paste-to-act strip over a pasted Douyin link', () => {
     $singleThreadFlag.set(singleThread)
 
     await expect(await pasteStrip(locale)).toMatchFileSnapshot(`${GOLDEN}/${name}.html`)
+  })
+})
+
+/** The strip once one video file sits among the composer's attachments. */
+async function videoStrip(locale: Locale): Promise<string> {
+  const { container } = renderChatBar(locale)
+
+  await settle()
+  act(() => {
+    mainComposerScope.add({
+      id: 'file:/Users/me/Movies/口播.mp4',
+      kind: 'file',
+      label: '口播.mp4',
+      path: '/Users/me/Movies/口播.mp4'
+    })
+  })
+  await settle()
+
+  const group = container.querySelector('[data-slot="composer-paste-actions"]')
+
+  expect(group).not.toBeNull()
+
+  return normalized(group!.parentElement!.outerHTML)
+}
+
+// hc-1156 identity guard: a dropped video off single-thread product mode (the
+// switch off, or developer mode) keeps the four chips it had before hc-1156.
+// Recorded on fork main c5baa593 before hc-1156 touched the strip.
+const VIDEO_CASES: [string, Locale, ToolViewMode, boolean][] = [
+  ['video-switch-off-zh', 'zh', 'product', false],
+  ['video-switch-off-zh-hant', 'zh-hant', 'product', false],
+  ['video-switch-off-en', 'en', 'product', false],
+  ['video-developer-zh', 'zh', 'technical', true]
+]
+
+describe('the paste-to-act strip over a dropped video, off single-thread product mode', () => {
+  it.each(VIDEO_CASES)('%s', async (name, locale, mode, singleThread) => {
+    setRuntimeI18nLocale(locale)
+    setToolViewMode(mode)
+    $singleThreadFlag.set(singleThread)
+
+    await expect(await videoStrip(locale)).toMatchFileSnapshot(`${GOLDEN}/${name}.html`)
   })
 })
