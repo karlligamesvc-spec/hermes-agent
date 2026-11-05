@@ -132,6 +132,21 @@ describe('hc-1146 the composer gate while a switch to another assistant is under
 
     expect(screen.queryByTestId('composer') ? 'composer' : 'read-only').toBe(expected)
   })
+
+  it('the read-only bar under an earlier conversation leads back to the thread of the assistant asked for', () => {
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(true)
+    noteMainThreadClaimed('default', 'thread-root')
+    $mainThreadsByProfile.set({
+      ...$mainThreadsByProfile.get(),
+      writer: { ids: ['writer-root'], profile: 'writer', rootId: 'writer-root', status: 'found', tipId: 'writer-root' }
+    })
+    $botIntent.set('writer')
+    renderGate('older-chat')
+
+    fireEvent.click(screen.getByRole('button', { name: '回到对话' }))
+    expect(screen.getByTestId('where').textContent).toBe('/writer-root')
+  })
 })
 
 describe('hc-1014 quick entry goes to the one conversation', () => {

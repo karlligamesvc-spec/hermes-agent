@@ -206,6 +206,10 @@ describe('hc-1146 the row on screen while a switch to another assistant is under
 
     expect(row('writer').className).toContain('bg-(--ui-row-active-background)')
     expect(row('default').className).not.toContain('bg-(--ui-row-active-background)')
+
+    // A click on it meanwhile stays in its conversation, not the previous assistant's.
+    fireEvent.click(row('writer'))
+    expect(screen.getByTestId('location').textContent).toBe('/writer-root')
   })
 })
 

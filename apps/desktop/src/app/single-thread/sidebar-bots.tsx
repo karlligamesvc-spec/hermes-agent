@@ -175,8 +175,8 @@ export function SingleThreadBotRows({ onOpenCurrent, viewing }: { onOpenCurrent:
       return
     }
 
-    // The switch drops to a fresh draft on `/` from any page; the shell then opens the thread
-    // (while a cold engine starts, the chat says 「正在唤醒 <name>…」).
+    // hc-1146: straight into a thread this window knows, else a fresh draft the shell turns into
+    // it; a cold engine says 「正在唤醒 <name>…」 once it has taken 400 ms.
     void openBot(bot.profile).catch((error: unknown) =>
       sayWhyNotOpened(error, bot, copy, { label: t.common.retry, onClick: () => open(bot) })
     )
