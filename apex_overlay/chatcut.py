@@ -253,11 +253,10 @@ def reconcile_at_boot() -> None:
 
 
 def render_section(session_info: Mapping[str, Any] | None = None) -> str:
-    """When to reach for ChatCut, for a session a person is in."""
+    """When to reach for ChatCut, for a session a person is in, on an account it is open to (``entitled`` is no
+    with the switch off or nobody signed in)."""
     info = session_info or {}
-    if not switch_on() or not signed_in() or info.get("platform") in NON_INTERACTIVE_PLATFORMS:
-        return ""
-    if not entitled():
+    if info.get("platform") in NON_INTERACTIVE_PLATFORMS or not entitled():
         return ""
     return "\n".join((
         "## 剪辑（ChatCut）",
