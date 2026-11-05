@@ -37,6 +37,11 @@ export interface MainThreadState {
   profile: null | string
   /** The registry row (lineage root) — the thread's identity. */
   rootId: null | string
+  /**
+   * hc-1146: painted from {@link $mainThreadsByProfile} while the lookup that
+   * confirms it is still out (an assistant switched to). Gone once it lands.
+   */
+  seeded?: true
   status: MainThreadStatus
   /** The live tip to open. */
   tipId: null | string
@@ -97,12 +102,22 @@ async function lookupMainThread(request: RequestGateway, profile: string): Promi
  * Look the thread up for `profile`. Resolves to the settled state; only the
  * newest lookup lands, so a profile switch mid-read cannot publish the old
  * profile's thread.
+ *
+ * hc-1146: with `seed` (several assistants on), a profile switch paints the
+ * thread this window already holds for that profile at once, instead of
+ * `loading` (which paints nothing); the lookup still runs and corrects a tip
+ * that moved while the assistant worked in the background.
  */
-export async function resolveMainThread(request: RequestGateway, profile: string): Promise<MainThreadState> {
+export async function resolveMainThread(
+  request: RequestGateway,
+  profile: string,
+  seed = false
+): Promise<MainThreadState> {
   const serial = ++lookupSerial
+  const known = seed ? $mainThreadsByProfile.get()[profile] : undefined
 
   if ($mainThread.get().profile !== profile) {
-    $mainThread.set({ ...EMPTY, profile, status: 'loading' })
+    $mainThread.set(known?.status === 'found' ? { ...known, seeded: true } : { ...EMPTY, profile, status: 'loading' })
   } else if ($mainThread.get().status !== 'found') {
     $mainThread.set({ ...$mainThread.get(), status: 'loading' })
   }

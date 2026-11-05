@@ -9,7 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { APEX_AVATAR_COLOR, apexBotColorHex } from '@/components/apex-avatar-look'
 
+import { $mainThreadsByProfile, resetMainThreadForTest } from './main-thread'
 import { $activeGatewayProfile, $gatewaySwapTarget } from './profile'
+import { $selectedStoredSessionId } from './session'
 import { setSingleThreadFlagForTest } from './single-thread'
 import {
   $botIntent,
@@ -21,6 +23,7 @@ import {
   $multiBotMax,
   $multiBotMode,
   APEX_PROFILE,
+  BOT_THREAD_LEAVE_WAIT_MS,
   botFor,
   botNameForProfile,
   type BotProfileRow,
@@ -40,6 +43,7 @@ import {
   patchBotSidebarFlags,
   refreshBotRoster,
   resetBotRosterForTest,
+  setBotThreadOpener,
   setMultiBotFlagForTest,
   sidebarBots,
   withBotName
@@ -476,6 +480,140 @@ describe('switching assistants', () => {
 
     expect(source).not.toMatch(/selectProfile|profile\??\.remember|profile\??\.set\(|switchProfile/)
     expect(source).toMatch(/ensureGatewayProfile\(target\)/)
+  })
+})
+
+describe('hc-1146 切换助手不闪屏: a click opens the thread this window already knows', () => {
+  const WRITER_THREAD = {
+    ids: ['writer-root', 'writer-tip'],
+    profile: 'writer',
+    rootId: 'writer-root',
+    status: 'found' as const,
+    tipId: 'writer-tip'
+  }
+
+  let opened: [string, string][] = []
+  let uninstall: () => void = () => undefined
+
+  beforeEach(() => {
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(true)
+    $mainThreadsByProfile.set({ writer: WRITER_THREAD })
+    $selectedStoredSessionId.set('apex-root')
+    opened = []
+    uninstall = setBotThreadOpener((tipId, profile) => opened.push([tipId, profile]))
+  })
+
+  afterEach(() => {
+    uninstall()
+    resetMainThreadForTest()
+    $selectedStoredSessionId.set(null)
+    $botIntent.set(null)
+  })
+
+  it('opens its tip instead of a fresh draft, and holds the intent until the conversation being left is gone', async () => {
+    let settle!: () => void
+
+    ensureGatewayProfile.mockImplementationOnce(
+      () => new Promise<undefined>(resolve => (settle = () => resolve(undefined)))
+    )
+
+    const switching = openBot('writer')
+
+    expect(opened).toEqual([['writer-tip', 'writer']])
+    expect(requestFreshSession).not.toHaveBeenCalled()
+    expect(pinNewChatProfile).toHaveBeenCalledWith('writer')
+    expect(ensureGatewayProfile).toHaveBeenCalledWith('writer')
+
+    settle()
+    await new Promise(resolve => setTimeout(resolve, 10))
+    // The engine answers, but APEX's thread is still selected: the shell's follow would take APEX back (hc-1099).
+    expect($botIntent.get()).toBe('writer')
+
+    // The route's resume selects the thread opened.
+    $selectedStoredSessionId.set('writer-tip')
+    await switching
+    expect($botIntent.get()).toBeNull()
+  })
+
+  it('counts a selection that moved once, even if a notification brought the old one back before the engine answered', async () => {
+    let settle!: () => void
+
+    ensureGatewayProfile.mockImplementationOnce(
+      () => new Promise<undefined>(resolve => (settle = () => resolve(undefined)))
+    )
+
+    const switching = openBot('writer')
+
+    $selectedStoredSessionId.set('writer-tip')
+    $selectedStoredSessionId.set('apex-root')
+    settle()
+    await switching
+
+    // Cleared at once: the shell's follow now takes APEX's thread back, as a notification asked.
+    expect($botIntent.get()).toBeNull()
+  })
+
+  it('does not wait when nothing, or the assistant’s own thread, was on screen', async () => {
+    for (const left of [null, 'writer-root']) {
+      $selectedStoredSessionId.set(left)
+      await openBot('writer')
+
+      expect($botIntent.get()).toBeNull()
+    }
+
+    expect(opened).toEqual([
+      ['writer-tip', 'writer'],
+      ['writer-tip', 'writer']
+    ])
+  })
+
+  it('stops waiting when a later click takes over, or after BOT_THREAD_LEAVE_WAIT_MS', async () => {
+    vi.useFakeTimers()
+
+    const first = openBot('writer')
+    await vi.advanceTimersByTimeAsync(0)
+    expect($botIntent.get()).toBe('writer')
+
+    $botIntent.set('reviewer')
+    await first
+    expect($botIntent.get()).toBe('reviewer')
+
+    $botIntent.set(null)
+    const capped = openBot('writer')
+    await vi.advanceTimersByTimeAsync(BOT_THREAD_LEAVE_WAIT_MS - 1)
+    expect($botIntent.get()).toBe('writer')
+
+    await vi.advanceTimersByTimeAsync(1)
+    await capped
+    expect($botIntent.get()).toBeNull()
+  })
+
+  it.each([
+    ['no thread is known for it yet', () => $mainThreadsByProfile.set({})],
+    [
+      'its thread is known to be absent',
+      () => $mainThreadsByProfile.set({ writer: { ...WRITER_THREAD, status: 'absent' } })
+    ],
+    ['the shell is not mounted', () => uninstall()],
+    ['several assistants are off', () => setMultiBotFlagForTest(false)],
+    ['developer mode is on', () => setToolViewMode('technical')]
+  ])('drops to a fresh draft as before when %s', async (_label, arrange) => {
+    arrange()
+    await openBot('writer')
+
+    expect(opened).toEqual([])
+    expect(requestFreshSession).toHaveBeenCalledTimes(1)
+    expect($botIntent.get()).toBeNull()
+  })
+
+  it('falls back to a fresh draft when the engine cannot be reached', async () => {
+    ensureGatewayProfile.mockRejectedValueOnce(new Error('spawn failed'))
+
+    await expect(openBot('writer')).rejects.toThrow('spawn failed')
+    expect(opened).toEqual([['writer-tip', 'writer']])
+    expect(requestFreshSession).toHaveBeenCalledTimes(1)
+    expect($botIntent.get()).toBeNull()
   })
 })
 

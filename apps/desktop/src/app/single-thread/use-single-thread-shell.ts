@@ -49,20 +49,21 @@ export function useSingleThreadShell(requestGateway: RequestGateway): void {
   requestRef.current = requestGateway
   profileRef.current = profile
 
-  const { switching } = useMultiBotShell(singleThread, gatewayOpen, profile, requestRef)
+  const { multiBot, switching } = useMultiBotShell(singleThread, gatewayOpen, profile, requestRef)
 
   useEffect(() => {
     void loadSingleThreadFlag()
   }, [])
 
   // One lookup per (profile, open gateway); a failed one is retried by the next send.
+  // hc-1146: with several assistants, a switch paints the thread already known while it runs.
   useEffect(() => {
     const held = $mainThread.get()
 
     if (singleThread && gatewayOpen && (held.profile !== profile || held.status === 'unknown')) {
-      void resolveMainThread(requestRef.current, profile)
+      void resolveMainThread(requestRef.current, profile, multiBot)
     }
-  }, [gatewayOpen, profile, singleThread])
+  }, [gatewayOpen, multiBot, profile, singleThread])
 
   const threadTip = thread.status === 'found' && thread.profile === profile ? thread.tipId : null
 

@@ -13,7 +13,8 @@
  *   it creates is claimed as the thread (titled {@link MAIN_THREAD_TITLE}).
  * - Anywhere else (an earlier conversation; the thread still being looked up,
  *   or the lookup failed; hc-1077: another assistant asked for and not yet
- *   answering): nothing is sent and the text stays in the composer.
+ *   answering; hc-1146: its conversation still loading): nothing is sent and
+ *   the text stays in the composer.
  *   Fail closed: a send that cannot be placed in the thread must not mint a
  *   second one.
  */
@@ -114,6 +115,16 @@ export async function startThreadSegment(request: RequestGateway, reason: Segmen
   }
 }
 
+/**
+ * hc-1146: with several assistants, a conversation is selected but not bound yet — its history
+ * still loading (an assistant just switched to). The composer stays on screen meanwhile
+ * (composer-while-loading.ts) and its sends wait; a Quick Entry capture waits for it too
+ * (quick-entry.ts botSwitchSettled).
+ */
+export function conversationLoading(): boolean {
+  return isMultiBotMode() && $selectedStoredSessionId.get() !== null && !$activeSessionId.get()
+}
+
 function refuse(message: string): null {
   notify({ kind: 'info', message })
 
@@ -161,6 +172,10 @@ export async function singleThreadSend(
 
   if (!storedId) {
     // The thread exists and the shell is on its way there: wait for it rather than start another.
+    return refuse(copy.threadOpening)
+  }
+
+  if (conversationLoading()) {
     return refuse(copy.threadOpening)
   }
 

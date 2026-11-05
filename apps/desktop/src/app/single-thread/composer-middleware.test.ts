@@ -327,6 +327,8 @@ describe('hc-1077 a send while another assistant is being switched to', () => {
     $activeGatewayProfile.set('writer')
     noteMainThreadClaimed('writer', 'thread-root')
     $selectedStoredSessionId.set('thread-root')
+    // hc-1146: and its conversation is bound (loaded).
+    $activeSessionId.set('rt-writer')
     $sessions.set([])
     $messages.set([message('m1', now() - 60)])
 
@@ -347,5 +349,45 @@ describe('hc-1077 a send while another assistant is being switched to', () => {
     $messages.set([message('m1', now() - 60)])
 
     expect((await send('标题写 3 个', gateway().request))?.text).toBe('标题写 3 个')
+  })
+})
+
+describe('hc-1146 a send while a switched-to assistant’s conversation still loads', () => {
+  afterEach(() => {
+    setMultiBotFlagForTest(false)
+    $activeGatewayProfile.set('default')
+  })
+
+  function onWritersThread(bound: boolean): void {
+    $activeGatewayProfile.set('writer')
+    noteMainThreadClaimed('writer', 'thread-root')
+    $selectedStoredSessionId.set('thread-root')
+    $activeSessionId.set(bound ? 'rt-writer' : null)
+    $sessions.set([])
+    $messages.set([message('m1', now() - 60)])
+  }
+
+  const sendAsWriter = (request: RequestGateway) =>
+    singleThreadSend(
+      draft('标题写 3 个'),
+      () => request,
+      () => 'writer'
+    )
+
+  it('stays in the composer until the conversation is bound (the composer is on screen meanwhile)', async () => {
+    setMultiBotFlagForTest(true)
+    onWritersThread(false)
+    const { calls, request } = gateway()
+
+    expect(await sendAsWriter(request)).toBeNull()
+    expect(notices).toEqual(['正在打开对话，稍等一下再发。'])
+    expect(calls).toEqual([])
+  })
+
+  it('with one assistant nothing changes: the composer is hidden while loading, and a send is not held here', async () => {
+    onWritersThread(false)
+
+    expect((await sendAsWriter(gateway().request))?.text).toBe('标题写 3 个')
+    expect(notices).toEqual([])
   })
 })

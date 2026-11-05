@@ -61,6 +61,7 @@ import { isAuxiliaryWindow, isWatchWindow } from '@/store/windows'
 import { primaryRouteSelectedSessionId, routeSessionId } from '../routes'
 import { titlebarHeaderBaseClass, titlebarHeaderShadowClass, titlebarHeaderTitleClass } from '../shell/titlebar'
 import { ChatBar, ChatBarFallback } from '../single-thread/composer-gate'
+import { composerHiddenWhileLoading } from '../single-thread/composer-while-loading'
 import { SingleThreadHeader, useSingleThreadHeader } from '../single-thread/thread-header'
 
 import { ChatDropOverlay } from './chat-drop-overlay'
@@ -608,7 +609,7 @@ const ChatViewContent = memo(function ChatViewContent({
   // to send to until a retry rebinds one. Watch windows are pure spectators of a
   // subagent run driven elsewhere — no composer, transcript is read-only.
   const showChatBar = shouldShowChatComposer({
-    available: !loadingSession && !resumeExhausted && !isWatchWindow(),
+    available: !composerHiddenWhileLoading(loadingSession) && !resumeExhausted && !isWatchWindow(),
     businessStartVisible,
     objectRouteOpen
   })
