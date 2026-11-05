@@ -6,6 +6,8 @@
  * (`social_download` → `media_transcribe`, the `video-script-breakdown` skill,
  * the `short-video-studio` skill's 路径五 for a remake: a shot-by-shot card
  * first, then one question on how to remake it); nothing here calls a backend.
+ * In single-thread product mode a single dropped video offers the trim chips
+ * instead (hc-1156): the short-video-studio skill cleans the take up.
  *
  * The host list mirrors the server's own share-link parsers, so a chip is never
  * offered for a link the download tool cannot read:
@@ -141,6 +143,13 @@ export type PasteActionId = 'breakdown' | 'remake' | 'remix' | 'transcribe'
 
 export const PASTE_ACTIONS: readonly PasteActionId[] = ['transcribe', 'breakdown', 'remix', 'remake']
 
+/** hc-1156: what single-thread product mode offers for one video dropped on its
+ *  own — most often the creator's own talking-head take, so cleaning it up
+ *  comes first: 剪干净 / 剪干净再加字幕 / 先找同类视频对照. */
+export type TrimActionId = 'compare' | 'subtitles' | 'trim'
+
+export const TRIM_ACTIONS: readonly TrimActionId[] = ['trim', 'subtitles', 'compare']
+
 /** What a pick acts on: a link the tools can download, or a local video —
  *  `replaces` is the 视频号 link that video stands in for. */
 export type PasteActionTarget = { kind: 'link'; link: ShortVideoLink } | { kind: 'video'; replaces?: ShortVideoLink }
@@ -149,20 +158,36 @@ export type PasteActionTarget = { kind: 'link'; link: ShortVideoLink } | { kind:
  *  (`douyin_media.py`; `analysis_video_links.py` marks them `upload_required`),
  *  so the strip says to save the video and drag it in instead of offering chips
  *  that could only end in the assistant asking for the file (Kael, 2026-10-20). */
-export type PasteActionSource = PasteActionTarget | { kind: 'save-first'; link: ShortVideoLink }
+export type PasteActionSource =
+  | PasteActionTarget
+  | { kind: 'save-first'; link: ShortVideoLink }
+  /** hc-1156: one video and no link, with `trim` asked for — the trim chips. */
+  | { kind: 'own-video' }
 
 /** What the chips act on: a downloadable link in the draft first (the words
  *  the user is looking at), else a local video among the attachments, else a
- *  视频号 link to save first. */
-export function pasteActionSource(draft: string, attachments: readonly ComposerAttachment[]): null | PasteActionSource {
+ *  视频号 link to save first. With `trim` (single-thread product mode), a lone
+ *  video is the creator's own footage; a 视频号 video standing in for its link,
+ *  or several videos at once, keep the four chips. */
+export function pasteActionSource(
+  draft: string,
+  attachments: readonly ComposerAttachment[],
+  { trim = false }: { trim?: boolean } = {}
+): null | PasteActionSource {
   const link = detectShortVideoLink(draft)
 
   if (link && link.platform !== 'channels') {
     return { kind: 'link', link }
   }
 
-  if (attachments.some(isLocalVideoAttachment)) {
-    return link ? { kind: 'video', replaces: link } : { kind: 'video' }
+  const videos = attachments.filter(isLocalVideoAttachment).length
+
+  if (videos > 0) {
+    if (link) {
+      return { kind: 'video', replaces: link }
+    }
+
+    return trim && videos === 1 ? { kind: 'own-video' } : { kind: 'video' }
   }
 
   return link ? { kind: 'save-first', link } : null
@@ -206,6 +231,23 @@ export function pasteActionRequest(
       ? `${phrases.linkSentence[action](phrases.platforms[source.link.platform])}${phrases.linkSeparator}${source.link.url}`
       : phrases.videoSentence[action]
 
+  return withTypedNote(sentence, rest)
+}
+
+/** The message a trim chip sends: its sentence (「把这段口播剪干净」), then
+ *  whatever the user typed, on its own line. The video rides along as the
+ *  attachment it already is. */
+export function trimActionRequest(
+  action: TrimActionId,
+  phrases: { trimSentence: Record<TrimActionId, string> },
+  draft: string
+): string {
+  return withTypedNote(phrases.trimSentence[action], draft)
+}
+
+/** A chip's sentence and, on its own line, the rest of the draft, so a click
+ *  never drops the user's words. */
+function withTypedNote(sentence: string, rest: string): string {
   const note = rest
     .replace(/[ \t]+/g, ' ')
     .replace(/\s*\n\s*/g, '\n')

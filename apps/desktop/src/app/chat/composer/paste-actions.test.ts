@@ -13,14 +13,17 @@ import {
   pasteActionSource,
   type PasteActionTarget,
   pastedTextFor,
-  type ShortVideoPlatform
+  type ShortVideoPlatform,
+  TRIM_ACTIONS,
+  trimActionRequest
 } from './paste-actions'
 
 const zh = COMPOSER_SIMPLE_COPY.zh.paste
 
-/** A source the chips act on (not a 视频号 link waiting for its file). */
+/** A source the four chips act on (not a 视频号 link waiting for its file, nor
+ *  a lone video that gets the trim chips). */
 function target(source: null | PasteActionSource): PasteActionTarget {
-  if (!source || source.kind === 'save-first') {
+  if (!source || source.kind === 'save-first' || source.kind === 'own-video') {
     throw new Error(`no chips for this draft: ${JSON.stringify(source)}`)
   }
 
@@ -342,5 +345,75 @@ describe('notePastedText', () => {
     notePastedText('tile:paste-keep', '一句普通的话')
 
     expect(pastedTextFor('tile:paste-keep')).toBe(DOUYIN_SHARE)
+  })
+})
+
+// hc-1156: one video dropped on its own in single-thread product mode is most
+// often the creator's own take, so the chips offer to clean it up first.
+describe('the trim chips (hc-1156)', () => {
+  const TRIM = { trim: true }
+
+  it('offers them for one video with nothing typed, in single-thread product mode', () => {
+    expect(pasteActionSource('', [file('/Users/me/Movies/口播.mp4')], TRIM)).toEqual({ kind: 'own-video' })
+  })
+
+  it('counts only the videos: a script beside the take still gets them', () => {
+    const attachments = [file('/Users/me/Movies/口播.mov'), file('/Users/me/口播稿.docx')]
+
+    expect(pasteActionSource('开头那句别删', attachments, TRIM)).toEqual({ kind: 'own-video' })
+  })
+
+  it.each([
+    ['off single-thread product mode', '', [file('/Users/me/a.mp4')], {}, { kind: 'video' }],
+    ['for two videos at once', '', [file('/Users/me/a.mp4'), file('/Users/me/b.mov')], TRIM, { kind: 'video' }],
+    [
+      'for a 视频号 video standing in for its link',
+      CHANNELS_SHARE,
+      [file('/Users/me/Movies/a.mp4')],
+      TRIM,
+      { kind: 'video', replaces: { platform: 'channels', raw: CHANNELS_LINK, url: CHANNELS_LINK } }
+    ],
+    [
+      'when a downloadable link sits in the draft',
+      'https://b23.tv/AbCd123',
+      [file('/Users/me/a.mp4')],
+      TRIM,
+      { kind: 'link', link: { platform: 'bilibili', raw: 'https://b23.tv/AbCd123', url: 'https://b23.tv/AbCd123' } }
+    ],
+    ['without a video', '帮我写个口播', [file('/Users/me/notes.txt')], TRIM, null]
+  ] as const)('keeps today’s strip %s', (_, draft, attachments, options, expected) => {
+    expect(pasteActionSource(draft, attachments, options)).toEqual(expected)
+  })
+
+  it('reads 剪干净 / 剪干净再加字幕 / 先找同类视频对照, in that order', () => {
+    expect(TRIM_ACTIONS.map(action => zh.trimLabels[action])).toEqual(['剪干净', '剪干净再加字幕', '先找同类视频对照'])
+  })
+
+  it.each([
+    ['zh', 'trim', '把这段口播剪干净'],
+    ['zh', 'subtitles', '把这段口播剪干净，再加上字幕'],
+    ['zh', 'compare', '先找几条同类视频对照，再把这段口播剪干净'],
+    ['zh-hant', 'trim', '把這段口播剪乾淨'],
+    ['zh-hant', 'subtitles', '把這段口播剪乾淨，再加上字幕'],
+    ['zh-hant', 'compare', '先找幾個同類影片對照，再把這段口播剪乾淨'],
+    ['en', 'trim', 'Clean up this talking-head clip'],
+    ['en', 'subtitles', 'Clean up this talking-head clip, then add subtitles'],
+    ['en', 'compare', 'First find a few similar videos to compare with, then clean up this talking-head clip']
+  ] as const)('%s %s sends %j', (locale, action, request) => {
+    expect(trimActionRequest(action, COMPOSER_SIMPLE_COPY[locale].paste, '')).toBe(request)
+  })
+
+  it('keeps what the user typed, on its own line', () => {
+    expect(trimActionRequest('trim', zh, '  价格那句后面\n 留一下停顿 ')).toBe(
+      '把这段口播剪干净\n价格那句后面\n留一下停顿'
+    )
+  })
+
+  // 报告第 08 节: no tool, script or measurement names in what the user reads.
+  it.each(['zh', 'zh-hant', 'en'] as const)('names no tool or term in %s', locale => {
+    const { trimLabels, trimSentence } = COMPOSER_SIMPLE_COPY[locale].paste
+    const words = [...Object.values(trimLabels), ...Object.values(trimSentence)].join('\n')
+
+    expect(words).not.toMatch(/footage|motion|\.py|pacing|recipe|ffmpeg|LUFS|ChatCut|Hypit|skill|技能|工具|脚本|腳本/i)
   })
 })
