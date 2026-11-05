@@ -1,106 +1,90 @@
 {
   "switching": {
     "afterSend": {
-      "composer": "帮我写 3 个标题",
-      "dock": null,
-      "notices": [
-        "正在打开对话，稍等一下再发。"
-      ],
+      "composer": "",
+      "dock": "<div class=\"flex w-full basis-full flex-col gap-1.5\" data-held-sends=\"\"><ol aria-label=\"等待发送\" class=\"flex w-full flex-col items-end gap-1.5\"><li class=\"flex max-w-[min(500px,85%)] flex-col items-end gap-0.5\" data-held-send=\"held-«n»\"><div class=\"rounded-[18px] bg-[#6a4ceb] px-3.5 py-2 text-[14.5px] leading-[1.6] text-white opacity-60\" data-held-send-bubble=\"\"><span class=\"line-clamp-4 whitespace-pre-wrap break-words\">帮我写 3 个标题</span></div><div class=\"flex items-center gap-2 text-[0.6875rem] text-muted-foreground\"><span>writer 接上后发送</span><button aria-label=\"不发了，放回输入框\" class=\"cursor-pointer rounded px-1 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline\" data-held-send-withdraw=\"\" title=\"不发了，放回输入框\" type=\"button\">取消发送</button></div></li></ol></div>",
+      "notices": [],
       "sent": []
     },
     "stillOpening": {
-      "composer": "帮我写 3 个标题",
-      "dock": null,
-      "notices": [
-        "正在打开对话，稍等一下再发。"
-      ],
+      "composer": "",
+      "dock": "<div class=\"flex w-full basis-full flex-col gap-1.5\" data-held-sends=\"\"><ol aria-label=\"等待发送\" class=\"flex w-full flex-col items-end gap-1.5\"><li class=\"flex max-w-[min(500px,85%)] flex-col items-end gap-0.5\" data-held-send=\"held-«n»\"><div class=\"rounded-[18px] bg-[#6a4ceb] px-3.5 py-2 text-[14.5px] leading-[1.6] text-white opacity-60\" data-held-send-bubble=\"\"><span class=\"line-clamp-4 whitespace-pre-wrap break-words\">帮我写 3 个标题</span></div><div class=\"flex items-center gap-2 text-[0.6875rem] text-muted-foreground\"><span>writer 接上后发送</span><button aria-label=\"不发了，放回输入框\" class=\"cursor-pointer rounded px-1 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline\" data-held-send-withdraw=\"\" title=\"不发了，放回输入框\" type=\"button\">取消发送</button></div></li></ol><div class=\"flex items-center gap-1.5 self-start px-1 text-[0.75rem] text-muted-foreground\" data-held-sends-opening=\"\" role=\"status\"><span aria-label=\"Loading\" class=\"inline-flex items-center font-mono leading-none tabular-nums w-3 justify-start text-(--ui-accent)\" role=\"status\"><span aria-hidden=\"true\" class=\"glyph-spinner\"><span class=\"glyph-spinner__strip\" style=\"--glyph-spinner-duration: 800ms; --glyph-spinner-frames: 10;\"><span class=\"glyph-spinner__frame\">⠋</span><span class=\"glyph-spinner__frame\">⠙</span><span class=\"glyph-spinner__frame\">⠹</span><span class=\"glyph-spinner__frame\">⠸</span><span class=\"glyph-spinner__frame\">⠼</span><span class=\"glyph-spinner__frame\">⠴</span><span class=\"glyph-spinner__frame\">⠦</span><span class=\"glyph-spinner__frame\">⠧</span><span class=\"glyph-spinner__frame\">⠇</span><span class=\"glyph-spinner__frame\">⠏</span></span></span></span>正在唤醒 writer…现在发的消息会先排着，接上就发。</div></div>",
+      "notices": [],
       "sent": []
     },
     "afterOpen": {
-      "composer": "帮我写 3 个标题",
+      "composer": "",
       "dock": null,
-      "notices": [
-        "正在打开对话，稍等一下再发。"
-      ],
-      "sent": []
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
     }
   },
   "looking-up": {
     "afterSend": {
-      "composer": "帮我写 3 个标题",
-      "dock": null,
-      "notices": [
-        "正在打开对话，稍等一下再发。"
-      ],
+      "composer": "",
+      "dock": "<div class=\"flex w-full basis-full flex-col gap-1.5\" data-held-sends=\"\"><ol aria-label=\"等待发送\" class=\"flex w-full flex-col items-end gap-1.5\"><li class=\"flex max-w-[min(500px,85%)] flex-col items-end gap-0.5\" data-held-send=\"held-«n»\"><div class=\"rounded-[18px] bg-[#6a4ceb] px-3.5 py-2 text-[14.5px] leading-[1.6] text-white opacity-60\" data-held-send-bubble=\"\"><span class=\"line-clamp-4 whitespace-pre-wrap break-words\">帮我写 3 个标题</span></div><div class=\"flex items-center gap-2 text-[0.6875rem] text-muted-foreground\"><span>APEX 接上后发送</span><button aria-label=\"不发了，放回输入框\" class=\"cursor-pointer rounded px-1 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline\" data-held-send-withdraw=\"\" title=\"不发了，放回输入框\" type=\"button\">取消发送</button></div></li></ol></div>",
+      "notices": [],
       "sent": []
     },
     "stillOpening": {
-      "composer": "帮我写 3 个标题",
-      "dock": null,
-      "notices": [
-        "正在打开对话，稍等一下再发。"
-      ],
+      "composer": "",
+      "dock": "<div class=\"flex w-full basis-full flex-col gap-1.5\" data-held-sends=\"\"><ol aria-label=\"等待发送\" class=\"flex w-full flex-col items-end gap-1.5\"><li class=\"flex max-w-[min(500px,85%)] flex-col items-end gap-0.5\" data-held-send=\"held-«n»\"><div class=\"rounded-[18px] bg-[#6a4ceb] px-3.5 py-2 text-[14.5px] leading-[1.6] text-white opacity-60\" data-held-send-bubble=\"\"><span class=\"line-clamp-4 whitespace-pre-wrap break-words\">帮我写 3 个标题</span></div><div class=\"flex items-center gap-2 text-[0.6875rem] text-muted-foreground\"><span>APEX 接上后发送</span><button aria-label=\"不发了，放回输入框\" class=\"cursor-pointer rounded px-1 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline\" data-held-send-withdraw=\"\" title=\"不发了，放回输入框\" type=\"button\">取消发送</button></div></li></ol><div class=\"flex items-center gap-1.5 self-start px-1 text-[0.75rem] text-muted-foreground\" data-held-sends-opening=\"\" role=\"status\"><span aria-label=\"Loading\" class=\"inline-flex items-center font-mono leading-none tabular-nums w-3 justify-start text-(--ui-accent)\" role=\"status\"><span aria-hidden=\"true\" class=\"glyph-spinner\"><span class=\"glyph-spinner__strip\" style=\"--glyph-spinner-duration: 800ms; --glyph-spinner-frames: 10;\"><span class=\"glyph-spinner__frame\">⠋</span><span class=\"glyph-spinner__frame\">⠙</span><span class=\"glyph-spinner__frame\">⠹</span><span class=\"glyph-spinner__frame\">⠸</span><span class=\"glyph-spinner__frame\">⠼</span><span class=\"glyph-spinner__frame\">⠴</span><span class=\"glyph-spinner__frame\">⠦</span><span class=\"glyph-spinner__frame\">⠧</span><span class=\"glyph-spinner__frame\">⠇</span><span class=\"glyph-spinner__frame\">⠏</span></span></span></span>正在唤醒 APEX…现在发的消息会先排着，接上就发。</div></div>",
+      "notices": [],
       "sent": []
     },
     "afterOpen": {
-      "composer": "帮我写 3 个标题",
+      "composer": "",
       "dock": null,
-      "notices": [
-        "正在打开对话，稍等一下再发。"
-      ],
-      "sent": []
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
     }
   },
   "selecting": {
     "afterSend": {
-      "composer": "帮我写 3 个标题",
-      "dock": null,
-      "notices": [
-        "正在打开对话，稍等一下再发。"
-      ],
+      "composer": "",
+      "dock": "<div class=\"flex w-full basis-full flex-col gap-1.5\" data-held-sends=\"\"><ol aria-label=\"等待发送\" class=\"flex w-full flex-col items-end gap-1.5\"><li class=\"flex max-w-[min(500px,85%)] flex-col items-end gap-0.5\" data-held-send=\"held-«n»\"><div class=\"rounded-[18px] bg-[#6a4ceb] px-3.5 py-2 text-[14.5px] leading-[1.6] text-white opacity-60\" data-held-send-bubble=\"\"><span class=\"line-clamp-4 whitespace-pre-wrap break-words\">帮我写 3 个标题</span></div><div class=\"flex items-center gap-2 text-[0.6875rem] text-muted-foreground\"><span>APEX 接上后发送</span><button aria-label=\"不发了，放回输入框\" class=\"cursor-pointer rounded px-1 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline\" data-held-send-withdraw=\"\" title=\"不发了，放回输入框\" type=\"button\">取消发送</button></div></li></ol></div>",
+      "notices": [],
       "sent": []
     },
     "stillOpening": {
-      "composer": "帮我写 3 个标题",
-      "dock": null,
-      "notices": [
-        "正在打开对话，稍等一下再发。"
-      ],
+      "composer": "",
+      "dock": "<div class=\"flex w-full basis-full flex-col gap-1.5\" data-held-sends=\"\"><ol aria-label=\"等待发送\" class=\"flex w-full flex-col items-end gap-1.5\"><li class=\"flex max-w-[min(500px,85%)] flex-col items-end gap-0.5\" data-held-send=\"held-«n»\"><div class=\"rounded-[18px] bg-[#6a4ceb] px-3.5 py-2 text-[14.5px] leading-[1.6] text-white opacity-60\" data-held-send-bubble=\"\"><span class=\"line-clamp-4 whitespace-pre-wrap break-words\">帮我写 3 个标题</span></div><div class=\"flex items-center gap-2 text-[0.6875rem] text-muted-foreground\"><span>APEX 接上后发送</span><button aria-label=\"不发了，放回输入框\" class=\"cursor-pointer rounded px-1 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline\" data-held-send-withdraw=\"\" title=\"不发了，放回输入框\" type=\"button\">取消发送</button></div></li></ol><div class=\"flex items-center gap-1.5 self-start px-1 text-[0.75rem] text-muted-foreground\" data-held-sends-opening=\"\" role=\"status\"><span aria-label=\"Loading\" class=\"inline-flex items-center font-mono leading-none tabular-nums w-3 justify-start text-(--ui-accent)\" role=\"status\"><span aria-hidden=\"true\" class=\"glyph-spinner\"><span class=\"glyph-spinner__strip\" style=\"--glyph-spinner-duration: 800ms; --glyph-spinner-frames: 10;\"><span class=\"glyph-spinner__frame\">⠋</span><span class=\"glyph-spinner__frame\">⠙</span><span class=\"glyph-spinner__frame\">⠹</span><span class=\"glyph-spinner__frame\">⠸</span><span class=\"glyph-spinner__frame\">⠼</span><span class=\"glyph-spinner__frame\">⠴</span><span class=\"glyph-spinner__frame\">⠦</span><span class=\"glyph-spinner__frame\">⠧</span><span class=\"glyph-spinner__frame\">⠇</span><span class=\"glyph-spinner__frame\">⠏</span></span></span></span>正在唤醒 APEX…现在发的消息会先排着，接上就发。</div></div>",
+      "notices": [],
       "sent": []
     },
     "afterOpen": {
-      "composer": "帮我写 3 个标题",
+      "composer": "",
       "dock": null,
-      "notices": [
-        "正在打开对话，稍等一下再发。"
-      ],
-      "sent": []
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
     }
   },
   "loading": {
     "afterSend": {
-      "composer": "帮我写 3 个标题",
-      "dock": null,
-      "notices": [
-        "正在打开对话，稍等一下再发。"
-      ],
+      "composer": "",
+      "dock": "<div class=\"flex w-full basis-full flex-col gap-1.5\" data-held-sends=\"\"><ol aria-label=\"等待发送\" class=\"flex w-full flex-col items-end gap-1.5\"><li class=\"flex max-w-[min(500px,85%)] flex-col items-end gap-0.5\" data-held-send=\"held-«n»\"><div class=\"rounded-[18px] bg-[#6a4ceb] px-3.5 py-2 text-[14.5px] leading-[1.6] text-white opacity-60\" data-held-send-bubble=\"\"><span class=\"line-clamp-4 whitespace-pre-wrap break-words\">帮我写 3 个标题</span></div><div class=\"flex items-center gap-2 text-[0.6875rem] text-muted-foreground\"><span>APEX 接上后发送</span><button aria-label=\"不发了，放回输入框\" class=\"cursor-pointer rounded px-1 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline\" data-held-send-withdraw=\"\" title=\"不发了，放回输入框\" type=\"button\">取消发送</button></div></li></ol></div>",
+      "notices": [],
       "sent": []
     },
     "stillOpening": {
-      "composer": "帮我写 3 个标题",
-      "dock": null,
-      "notices": [
-        "正在打开对话，稍等一下再发。"
-      ],
+      "composer": "",
+      "dock": "<div class=\"flex w-full basis-full flex-col gap-1.5\" data-held-sends=\"\"><ol aria-label=\"等待发送\" class=\"flex w-full flex-col items-end gap-1.5\"><li class=\"flex max-w-[min(500px,85%)] flex-col items-end gap-0.5\" data-held-send=\"held-«n»\"><div class=\"rounded-[18px] bg-[#6a4ceb] px-3.5 py-2 text-[14.5px] leading-[1.6] text-white opacity-60\" data-held-send-bubble=\"\"><span class=\"line-clamp-4 whitespace-pre-wrap break-words\">帮我写 3 个标题</span></div><div class=\"flex items-center gap-2 text-[0.6875rem] text-muted-foreground\"><span>APEX 接上后发送</span><button aria-label=\"不发了，放回输入框\" class=\"cursor-pointer rounded px-1 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline\" data-held-send-withdraw=\"\" title=\"不发了，放回输入框\" type=\"button\">取消发送</button></div></li></ol><div class=\"flex items-center gap-1.5 self-start px-1 text-[0.75rem] text-muted-foreground\" data-held-sends-opening=\"\" role=\"status\"><span aria-label=\"Loading\" class=\"inline-flex items-center font-mono leading-none tabular-nums w-3 justify-start text-(--ui-accent)\" role=\"status\"><span aria-hidden=\"true\" class=\"glyph-spinner\"><span class=\"glyph-spinner__strip\" style=\"--glyph-spinner-duration: 800ms; --glyph-spinner-frames: 10;\"><span class=\"glyph-spinner__frame\">⠋</span><span class=\"glyph-spinner__frame\">⠙</span><span class=\"glyph-spinner__frame\">⠹</span><span class=\"glyph-spinner__frame\">⠸</span><span class=\"glyph-spinner__frame\">⠼</span><span class=\"glyph-spinner__frame\">⠴</span><span class=\"glyph-spinner__frame\">⠦</span><span class=\"glyph-spinner__frame\">⠧</span><span class=\"glyph-spinner__frame\">⠇</span><span class=\"glyph-spinner__frame\">⠏</span></span></span></span>正在唤醒 APEX…现在发的消息会先排着，接上就发。</div></div>",
+      "notices": [],
       "sent": []
     },
     "afterOpen": {
-      "composer": "帮我写 3 个标题",
+      "composer": "",
       "dock": null,
-      "notices": [
-        "正在打开对话，稍等一下再发。"
-      ],
-      "sent": []
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
     }
   }
 }

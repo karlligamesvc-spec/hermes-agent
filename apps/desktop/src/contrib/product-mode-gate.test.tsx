@@ -8,7 +8,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { BOOT_TREE, type MountedLayout, mountLayout, sidebarZoneHtml } from '@/__identity__/sidebar-zone/render'
 import { seedShellState } from '@/__identity__/single-thread-shell/render'
 import { restoreRecordingTimeZone } from '@/__identity__/single-thread-shell/time-zone'
-import { COMPOSER_AREAS, type ComposerAtCompletionSource, runComposerMiddleware } from '@/app/chat/composer/contrib'
+import {
+  COMPOSER_AREAS,
+  type ComposerAtCompletionSource,
+  type ComposerMiddlewareResult,
+  runComposerMiddleware
+} from '@/app/chat/composer/contrib'
 import { PALETTE_AREA } from '@/app/command-palette/contrib'
 import { findGroupOfPane, group, split } from '@/components/pane-shell/tree/model'
 import { $layoutTree } from '@/components/pane-shell/tree/store'
@@ -25,6 +30,9 @@ import { createPluginContext } from './plugin'
 import { pluginPaneVisibility, PRODUCT_MODE_HIDDEN, registerPluginContributions } from './product-mode-gate'
 import { $registryVersion, registry } from './registry'
 import type { Contribution } from './types'
+
+/** The words a middleware chain let through (null when it cancelled or took the send). */
+const draftText = (result: ComposerMiddlewareResult) => (result && typeof result === 'object' ? result.text : null)
 
 /**
  * hc-1085: single-thread product mode leaves Bot Mode's 「助手」 pane (and the
@@ -351,8 +359,8 @@ describe('「@助手」 (hc-1074 K5: product mode never merges assistants into B
 
       const sent = await runComposerMiddleware({ text: '@writer 帮我写三个标题' })
 
-      expect(sent?.text).toContain('@writer = agent profile "writer"')
-      expect(sent?.text).toContain('message_agent')
+      expect(draftText(sent)).toContain('@writer = agent profile "writer"')
+      expect(draftText(sent)).toContain('message_agent')
     }
   )
 
@@ -370,11 +378,11 @@ describe('「@助手」 (hc-1074 K5: product mode never merges assistants into B
     productMode()
 
     expect(atCompletions('wr')).toEqual([])
-    expect((await runComposerMiddleware({ text: '@writer hi' }))?.text).toBe('@writer hi')
+    expect(draftText(await runComposerMiddleware({ text: '@writer hi' }))).toBe('@writer hi')
 
     developerMode()
 
     expect(atCompletions('wr')).toEqual(['@writer'])
-    expect((await runComposerMiddleware({ text: '@writer hi' }))?.text).toContain('message_agent')
+    expect(draftText(await runComposerMiddleware({ text: '@writer hi' }))).toContain('message_agent')
   })
 })
