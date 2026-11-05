@@ -36,9 +36,18 @@ export interface CopiedFilesSink {
   requestMainFocus: () => void
 }
 
+/**
+ * Every copied entry in a paste: the files and folders with a path on disk,
+ * pictures included. The business Start page takes them all the way its drop
+ * does (hc-1159): it has no image-blob paste of its own.
+ */
+export function copiedEntriesInClipboard(clipboard: DataTransfer): DroppedFile[] {
+  return extractDroppedFiles(clipboard).filter(entry => entry.path)
+}
+
 /** The copied files and folders in a paste: entries with a path, image files left out. */
 export function copiedFilesInClipboard(clipboard: DataTransfer): DroppedFile[] {
-  return extractDroppedFiles(clipboard).filter(entry => entry.path && !entry.file?.type.startsWith('image/'))
+  return copiedEntriesInClipboard(clipboard).filter(entry => !entry.file?.type.startsWith('image/'))
 }
 
 /** Attach copied entries with the steps of the composer's drop handler (`useComposerDrop`). */
