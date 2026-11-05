@@ -1,0 +1,106 @@
+{
+  "switching": {
+    "afterSend": {
+      "composer": "帮我写 3 个标题",
+      "dock": null,
+      "notices": [
+        "正在打开对话，稍等一下再发。"
+      ],
+      "sent": []
+    },
+    "stillOpening": {
+      "composer": "帮我写 3 个标题",
+      "dock": null,
+      "notices": [
+        "正在打开对话，稍等一下再发。"
+      ],
+      "sent": []
+    },
+    "afterOpen": {
+      "composer": "帮我写 3 个标题",
+      "dock": null,
+      "notices": [
+        "正在打开对话，稍等一下再发。"
+      ],
+      "sent": []
+    }
+  },
+  "looking-up": {
+    "afterSend": {
+      "composer": "帮我写 3 个标题",
+      "dock": null,
+      "notices": [
+        "正在打开对话，稍等一下再发。"
+      ],
+      "sent": []
+    },
+    "stillOpening": {
+      "composer": "帮我写 3 个标题",
+      "dock": null,
+      "notices": [
+        "正在打开对话，稍等一下再发。"
+      ],
+      "sent": []
+    },
+    "afterOpen": {
+      "composer": "帮我写 3 个标题",
+      "dock": null,
+      "notices": [
+        "正在打开对话，稍等一下再发。"
+      ],
+      "sent": []
+    }
+  },
+  "selecting": {
+    "afterSend": {
+      "composer": "帮我写 3 个标题",
+      "dock": null,
+      "notices": [
+        "正在打开对话，稍等一下再发。"
+      ],
+      "sent": []
+    },
+    "stillOpening": {
+      "composer": "帮我写 3 个标题",
+      "dock": null,
+      "notices": [
+        "正在打开对话，稍等一下再发。"
+      ],
+      "sent": []
+    },
+    "afterOpen": {
+      "composer": "帮我写 3 个标题",
+      "dock": null,
+      "notices": [
+        "正在打开对话，稍等一下再发。"
+      ],
+      "sent": []
+    }
+  },
+  "loading": {
+    "afterSend": {
+      "composer": "帮我写 3 个标题",
+      "dock": null,
+      "notices": [
+        "正在打开对话，稍等一下再发。"
+      ],
+      "sent": []
+    },
+    "stillOpening": {
+      "composer": "帮我写 3 个标题",
+      "dock": null,
+      "notices": [
+        "正在打开对话，稍等一下再发。"
+      ],
+      "sent": []
+    },
+    "afterOpen": {
+      "composer": "帮我写 3 个标题",
+      "dock": null,
+      "notices": [
+        "正在打开对话，稍等一下再发。"
+      ],
+      "sent": []
+    }
+  }
+}
