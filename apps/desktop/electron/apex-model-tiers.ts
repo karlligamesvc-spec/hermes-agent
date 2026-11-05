@@ -12,6 +12,7 @@
  * aliases: src/lib/model-tiers.ts (MODEL_TIER_ALIAS).
  */
 
+import { applyChatcutSwitch, CHATCUT_ACTIVE_ENV } from './apex-chatcut'
 import { applyHypihubApexSwitch, HYPIHUB_APEX_ACTIVE_ENV } from './apex-hypihub'
 import { applyMultiBotSwitch } from './apex-multi-bot'
 import { applyMultiBotHandoffSwitch, MULTI_BOT_HANDOFF_ACTIVE_ENV } from './apex-multi-bot-handoff'
@@ -163,7 +164,8 @@ export function applyModelTierSwitches(
 /** Every launch-time `desktop_features` switch main settles into the env: the
  *  tier switches above, hc-1015 single-thread (apex-single-thread.ts),
  *  APEX-hosted Hypit generation (apex-hypihub.ts), hc-1077 several
- *  assistants (apex-multi-bot.ts) and hc-1086 relay (apex-multi-bot-handoff.ts). */
+ *  assistants (apex-multi-bot.ts), hc-1086 relay (apex-multi-bot-handoff.ts)
+ *  and hc-1122 ChatCut (apex-chatcut.ts). */
 export function applyDesktopFeatureSwitches(
   env: Record<string, string | undefined>,
   clientConfigPayload: unknown,
@@ -174,8 +176,9 @@ export function applyDesktopFeatureSwitches(
   const hosted = applyHypihubApexSwitch(env, clientConfigPayload, log) ? [HYPIHUB_APEX_ACTIVE_ENV] : []
   const multiBot = applyMultiBotSwitch(env, clientConfigPayload, log) ? [MULTI_BOT_ACTIVE_ENV] : []
   const handoff = applyMultiBotHandoffSwitch(env, clientConfigPayload, log) ? [MULTI_BOT_HANDOFF_ACTIVE_ENV] : []
+  const chatcut = applyChatcutSwitch(env, clientConfigPayload, log) ? [CHATCUT_ACTIVE_ENV] : []
 
-  return [...set, ...singleThread, ...hosted, ...multiBot, ...handoff]
+  return [...set, ...singleThread, ...hosted, ...multiBot, ...handoff, ...chatcut]
 }
 
 function trimTrailingSlash(value: string): string {

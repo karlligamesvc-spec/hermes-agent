@@ -1,0 +1,70 @@
+{
+  "nothing": {
+    "env": {},
+    "lines": [],
+    "set": []
+  },
+  "no such flag": {
+    "env": {},
+    "lines": [],
+    "set": []
+  },
+  "explicitly false": {
+    "env": {},
+    "lines": [],
+    "set": []
+  },
+  "a non-literal true: string": {
+    "env": {},
+    "lines": [],
+    "set": []
+  },
+  "a non-literal true: number": {
+    "env": {},
+    "lines": [],
+    "set": []
+  },
+  "a top-level key is not the switch": {
+    "env": {},
+    "lines": [],
+    "set": []
+  },
+  "off on this install while the platform says on": {
+    "env": {
+      "APEXNODES_CHATCUT": "0"
+    },
+    "lines": [],
+    "set": []
+  },
+  "beside single-thread": {
+    "env": {
+      "APEX_SINGLE_THREAD_ACTIVE": "1"
+    },
+    "lines": [
+      "[client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)"
+    ],
+    "set": [
+      "APEX_SINGLE_THREAD_ACTIVE"
+    ]
+  },
+  "beside everything else": {
+    "env": {
+      "APEX_HYPIHUB_ACTIVE": "1",
+      "APEX_MULTI_BOT_ACTIVE": "1",
+      "APEX_SINGLE_THREAD_ACTIVE": "1",
+      "APEXNODES_MODEL_TIERS": "1"
+    },
+    "lines": [
+      "[client-config] APEXNODES_MODEL_TIERS=1 from platform desktop_features",
+      "[client-config] APEX_SINGLE_THREAD_ACTIVE=1 (desktop_features.single_thread)",
+      "[client-config] APEX_HYPIHUB_ACTIVE=1 (desktop_features.hypihub_apex)",
+      "[client-config] APEX_MULTI_BOT_ACTIVE=1 (desktop_features.multi_bot)"
+    ],
+    "set": [
+      "APEXNODES_MODEL_TIERS",
+      "APEX_SINGLE_THREAD_ACTIVE",
+      "APEX_HYPIHUB_ACTIVE",
+      "APEX_MULTI_BOT_ACTIVE"
+    ]
+  }
+}

@@ -49,6 +49,14 @@ const DOUYIN = {
 
 // ── URL building ────────────────────────────────────────────────────────────
 
+test('platformSkillsUrl: asks for the ChatCut skill only while that switch is on', () => {
+  const base = `https://x${PLATFORM_SKILLS_PATH}?caps=next-steps,next-steps-handoff`
+
+  assert.equal(platformSkillsUrl('https://x', undefined, {}), base)
+  assert.equal(platformSkillsUrl('https://x', undefined, { APEX_CHATCUT_ACTIVE: '0' }), base)
+  assert.equal(platformSkillsUrl('https://x', undefined, { APEX_CHATCUT_ACTIVE: '1' }), `${base},chatcut`)
+})
+
 test('platformSkillsUrl: always advertises caps, adds known_hash when held, trims slash + encodes', () => {
   // caps=next-steps: this build renders the 「下一步」 block, so the server includes the skill
   // section that asks for it (an older build without it never gets that section).

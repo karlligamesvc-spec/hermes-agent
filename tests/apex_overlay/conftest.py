@@ -45,6 +45,8 @@ _SEAM_MODULES = (
     "memory_ledger",
     # hc-1097 a ledger change reaches every open session on its next turn.
     "memory_ledger_live",
+    # hc-1122 ChatCut: the entry for the Scheduler's proxy, a prompt section and the upload/save tools (switch on).
+    "chatcut",
     # hc-1015 how APEX talks in single-thread mode.
     "single_thread_prompt",
     # hc-1082 each assistant's own name and the apex_rename tool (several assistants on).
