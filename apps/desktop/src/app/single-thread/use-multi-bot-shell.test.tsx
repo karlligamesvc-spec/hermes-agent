@@ -4,11 +4,12 @@
  * and a conversation followed to its assistant.
  */
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router'
+import { useEffect } from 'react'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { QUICK_ENTRY_ASSISTANT_KEY } from '@/i18n/quick-entry'
-import { $mainThreadsByProfile, MAIN_THREAD_TITLE, resetMainThreadForTest } from '@/store/main-thread'
+import { $mainThread, $mainThreadsByProfile, MAIN_THREAD_TITLE, resetMainThreadForTest } from '@/store/main-thread'
 import { notificationTitle } from '@/store/notification-title'
 import { $activeGatewayProfile, $freshSessionRequest, $gatewaySwapTarget } from '@/store/profile'
 import { $activeSessionId, $gatewayState, $selectedStoredSessionId } from '@/store/session'
@@ -60,16 +61,81 @@ function gateway(threads: Record<string, string> = { default: 'apex-root', write
   }) as unknown as RequestGateway & ReturnType<typeof vi.fn>
 }
 
-function Shell({ request }: { request: RequestGateway }) {
-  useSingleThreadShell(request)
+/** Every route the shell's window visited, in order. */
+let visited: string[] = []
+/** Every navigation the window made (a location key changes even for the same path). */
+let navigations = 0
+/** The window's router, for a test that moves the route itself. */
+let go: (to: string) => void = () => undefined
 
-  return <span data-testid="where">{useLocation().pathname}</span>
+/**
+ * The chat controller's half of a switch, at the app's timing (hc-1146): a
+ * fresh draft drops the selection and goes to `/` a little late, and a
+ * conversation route is selected a little after the route changed (resumeSession
+ * selects at its synchronous entry).
+ */
+function Controller() {
+  const { pathname } = useLocation()
+  const navigate = useNavigate()
+
+  useEffect(
+    () =>
+      $freshSessionRequest.listen(() => {
+        setTimeout(() => {
+          $selectedStoredSessionId.set(null)
+          navigate('/')
+        }, 5)
+      }),
+    [navigate]
+  )
+
+  useEffect(() => {
+    const id = pathname === '/' ? null : decodeURIComponent(pathname.slice(1))
+
+    if (!id || $selectedStoredSessionId.get() === id) {
+      return
+    }
+
+    const timer = setTimeout(() => $selectedStoredSessionId.set(id), 2)
+
+    return () => clearTimeout(timer)
+  }, [pathname])
+
+  return null
 }
 
-function mount(request: RequestGateway, path = '/') {
+function Shell({ controller, request }: { controller: boolean; request: RequestGateway }) {
+  useSingleThreadShell(request)
+  const { key, pathname } = useLocation()
+  const navigate = useNavigate()
+
+  go = to => navigate(to)
+
+  useEffect(() => {
+    if (visited.at(-1) !== pathname) {
+      visited.push(pathname)
+    }
+  }, [pathname])
+
+  useEffect(() => {
+    navigations += 1
+  }, [key])
+
+  return (
+    <>
+      <span data-testid="where">{pathname}</span>
+      {controller && <Controller />}
+    </>
+  )
+}
+
+function mount(request: RequestGateway, path = '/', controller = false) {
+  visited = []
+  navigations = 0
+
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <Shell request={request} />
+      <Shell controller={controller} request={request} />
     </MemoryRouter>
   )
 }
@@ -184,10 +250,11 @@ describe('hc-1077 several assistants in the shell', () => {
 /**
  * hc-1099: an engine already running is published as the active profile in
  * the click's own tick (the registry's onActiveRouteChanged mirror), before
- * the fresh draft drops the conversation being left and well before the swap
- * settles.
+ * the conversation being left is dropped (a fresh draft before hc-1146; since,
+ * the route's resume selecting the thread opened) and well before the swap
+ * settles. Mount with the controller stub to get the chat controller's half.
  */
-function warmEngines(): { asked: [string, null | string][]; stop: () => void } {
+function warmEngines(): { asked: [string, null | string][] } {
   // Each switch asked for, with the swap that was still in flight when it was asked.
   const asked: [string, null | string][] = []
 
@@ -199,15 +266,17 @@ function warmEngines(): { asked: [string, null | string][]; stop: () => void } {
     $gatewaySwapTarget.set(null)
   })
 
-  // The chat controller's fresh draft lands a little after the engine was published.
-  const stop = $freshSessionRequest.listen(() => {
-    setTimeout(() => $selectedStoredSessionId.set(null), 5)
-  })
-
-  return { asked, stop }
+  return { asked }
 }
 
-const settle = () => act(async () => new Promise(resolve => setTimeout(resolve, 60)))
+/** Let `ms` pass one millisecond per act() scope, so React paints each route change when the app would. */
+async function pass(ms: number): Promise<void> {
+  for (let passed = 0; passed < ms; passed += 1) {
+    await act(async () => new Promise(resolve => setTimeout(resolve, 1)))
+  }
+}
+
+const settle = () => pass(60)
 
 describe('hc-1099 a switch to an assistant whose engine is already running', () => {
   afterEach(() => {
@@ -215,37 +284,44 @@ describe('hc-1099 a switch to an assistant whose engine is already running', () 
     ensureGatewayProfile.mockImplementation(async () => undefined)
   })
 
-  it('lands: the conversation being left does not pull its assistant back', async () => {
+  it.each([
+    ['opened at once (hc-1146)', true, ['/apex-root', '/writer-root']],
+    ['through a fresh draft (no thread known yet)', false, ['/apex-root', '/', '/writer-root']]
+  ])('lands, %s: the conversation being left does not pull its assistant back', async (_label, known, routes) => {
     setMultiBotFlagForTest(true)
     $selectedStoredSessionId.set('apex-root')
-    mount(gateway(), '/apex-root')
+    mount(gateway(), '/apex-root', true)
     await waitFor(() => expect($mainThreadsByProfile.get().writer?.rootId).toBe('writer-root'))
-    const { asked, stop } = warmEngines()
+    const { asked } = warmEngines()
+
+    if (!known) {
+      $mainThreadsByProfile.set({ default: $mainThreadsByProfile.get().default! })
+    }
 
     act(() => void openBot('writer'))
     await settle()
-    stop()
 
     expect(asked).toEqual([['writer', null]])
     expect($activeGatewayProfile.get()).toBe('writer')
     expect($botIntent.get()).toBeNull()
+    expect(visited).toEqual(routes)
+    expect($selectedStoredSessionId.get()).toBe('writer-root')
   })
 
   it('a conversation opened during the switch is still followed once it settles', async () => {
     setMultiBotFlagForTest(true)
     $selectedStoredSessionId.set('apex-root')
-    mount(gateway(), '/apex-root')
+    mount(gateway(), '/apex-root', true)
     await waitFor(() => expect($mainThreadsByProfile.get().writer?.rootId).toBe('writer-root'))
-    const { asked, stop } = warmEngines()
+    const { asked } = warmEngines()
 
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
     act(() => void openBot('writer'))
-    // After the fresh draft, before the swap settles: a notification opens APEX's thread.
-    await act(async () => new Promise(resolve => setTimeout(resolve, 10)))
+    // After 小红书文案's thread was selected, before the swap settles: a notification opens APEX's thread.
+    await pass(10)
     act(() => $selectedStoredSessionId.set('apex-root'))
     await settle()
-    stop()
 
     // Followed once nothing was in flight any more, not in the middle of the switch.
     expect(asked).toEqual([
@@ -279,6 +355,134 @@ describe('hc-1099 a switch to an assistant whose engine is already running', () 
     // Settled with APEX's thread still on screen: now it is followed.
     act(() => $gatewaySwapTarget.set(null))
     await waitFor(() => expect(ensureGatewayProfile).toHaveBeenCalledWith('default'))
+  })
+})
+
+describe('hc-1146 a click opens the thread this window already knows', () => {
+  afterEach(() => {
+    ensureGatewayProfile.mockReset()
+    ensureGatewayProfile.mockImplementation(async () => undefined)
+  })
+
+  async function onApexWithWriterKnown(request: RequestGateway = gateway()) {
+    setMultiBotFlagForTest(true)
+    $selectedStoredSessionId.set('apex-root')
+    mount(request, '/apex-root', true)
+    await waitFor(() => expect($mainThreadsByProfile.get().writer?.rootId).toBe('writer-root'))
+  }
+
+  it('paints the known thread at once while its lookup runs (no `loading` thread), and asks the lookup all the same', async () => {
+    const request = gateway()
+
+    await onApexWithWriterKnown(request)
+    warmEngines()
+    const painted: string[] = []
+    const stop = $mainThread.listen(thread => painted.push(`${thread.profile}:${thread.status}`))
+
+    act(() => void openBot('writer'))
+    await settle()
+    stop()
+
+    expect(painted).toEqual(['writer:found', 'writer:found'])
+    expect(calls(request, 'session.list').map(([, params]) => params?.profile)).toContain('writer')
+  })
+
+  it('moves on to the live tip when the thread rotated while the assistant worked in the background', async () => {
+    const threads = { default: 'apex-root', writer: 'writer-root' }
+
+    const request = vi.fn(async (method: string, params?: Record<string, unknown>) =>
+      method === 'session.list' && params?.profile === 'writer' && threads.writer !== 'writer-root'
+        ? { sessions: [{ id: 'writer-root', resolved_id: threads.writer, title: MAIN_THREAD_TITLE }] }
+        : gateway(threads)(method, params)
+    ) as unknown as RequestGateway
+
+    await onApexWithWriterKnown(request)
+    warmEngines()
+    // Compressed in the background: this window still holds the old tip.
+    threads.writer = 'writer-tip-2'
+
+    act(() => void openBot('writer'))
+    await settle()
+
+    expect(visited).toEqual(['/apex-root', '/writer-root', '/writer-tip-2'])
+    expect($selectedStoredSessionId.get()).toBe('writer-tip-2')
+    expect($botIntent.get()).toBeNull()
+  })
+
+  it('leaves a route the click did not open alone', async () => {
+    await onApexWithWriterKnown()
+    warmEngines()
+
+    act(() => void openBot('writer'))
+    await settle()
+    // Confirmed: the thread opened was the live tip. A later rotation is the session's own business.
+    act(() => $mainThread.set({ ...$mainThread.get(), ids: ['writer-root', 'writer-tip-3'], tipId: 'writer-tip-3' }))
+    await settle()
+
+    expect(visited).toEqual(['/apex-root', '/writer-root'])
+  })
+
+  it('leaves alone a route the user moved to before the lookup landed', async () => {
+    let answer!: () => void
+    const held = new Promise<void>(resolve => (answer = resolve))
+    const threads = { default: 'apex-root', writer: 'writer-root' }
+
+    const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
+      if (method === 'session.list' && params?.profile === 'writer' && threads.writer !== 'writer-root') {
+        await held
+
+        return { sessions: [{ id: 'writer-root', resolved_id: threads.writer, title: MAIN_THREAD_TITLE }] }
+      }
+
+      return gateway(threads)(method, params)
+    }) as unknown as RequestGateway
+
+    await onApexWithWriterKnown(request)
+    warmEngines()
+    threads.writer = 'writer-tip-2'
+
+    act(() => void openBot('writer'))
+    await settle()
+    // An earlier conversation, opened from 「更早的对话」 while the thread was still being confirmed.
+    act(() => go('/older-chat'))
+    await settle()
+    answer()
+    await settle()
+
+    expect(visited).toEqual(['/apex-root', '/writer-root', '/older-chat'])
+  })
+
+  it('a follow onto a thread already on screen does not navigate again', async () => {
+    setMultiBotFlagForTest(true)
+    mount(gateway(), '/apex-root', true)
+    await waitFor(() => expect($mainThreadsByProfile.get().writer?.rootId).toBe('writer-root'))
+    warmEngines()
+
+    const before = navigations
+
+    // A notification opened 小红书文案's thread at its own route while APEX is on screen.
+    act(() => go('/writer-root'))
+    await waitFor(() => expect($activeGatewayProfile.get()).toBe('writer'))
+    await settle()
+
+    expect(ensureGatewayProfile).toHaveBeenCalledWith('writer')
+    // The notification's navigation, and no second one from the follow.
+    expect(navigations).toBe(before + 1)
+    expect(visited).toEqual(['/apex-root', '/writer-root'])
+  })
+
+  it('goes back through a fresh draft to the thread of the assistant still answering when the engine cannot start', async () => {
+    await onApexWithWriterKnown()
+    ensureGatewayProfile.mockRejectedValueOnce(new Error('spawn failed'))
+
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    act(() => void openBot('writer').catch(() => undefined))
+    await settle()
+    vi.mocked(console.error).mockRestore()
+
+    expect(where()).toBe('/apex-root')
+    expect(visited).toEqual(['/apex-root', '/writer-root', '/', '/apex-root'])
+    expect($activeGatewayProfile.get()).toBe('default')
   })
 })
 

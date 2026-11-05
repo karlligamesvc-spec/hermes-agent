@@ -20,6 +20,8 @@ import {
   $selectedStoredSessionId,
   $sessions
 } from '@/store/session'
+import { setSingleThreadFlagForTest } from '@/store/single-thread'
+import { setMultiBotFlagForTest } from '@/store/single-thread-bots'
 
 const composerLifetime = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }))
 const threadRenderCount = vi.hoisted(() => ({ current: 0 }))
@@ -318,5 +320,66 @@ describe('ChatView render isolation', () => {
     expect(screen.getByTestId('voice-owner').closest('[hidden]')).toBeNull()
     expect(composerLifetime.mounts).toBe(1)
     expect(composerLifetime.unmounts).toBe(0)
+  })
+})
+
+describe('hc-1146 the composer while a switched-to conversation loads', () => {
+  const props = {
+    gateway: null, onAddContextRef: vi.fn(), onAddUrl: vi.fn(), onAttachDroppedItems: vi.fn(),
+    onAttachImageBlob: vi.fn(), onBranchInNewChat: vi.fn(), onCancel: vi.fn(), onDeleteSelectedSession: vi.fn(),
+    onEdit: vi.fn(), onPasteClipboardImage: vi.fn(), onPickFiles: vi.fn(), onPickFolders: vi.fn(), onPickImages: vi.fn(),
+    onReload: vi.fn(), onRemoveAttachment: vi.fn(), onRetryResume: vi.fn(), onSteer: vi.fn(),
+    onSubmit: vi.fn(), onThreadMessagesChange: vi.fn(), onToggleSelectedPin: vi.fn(), onTranscribeAudio: vi.fn()
+  }
+
+  beforeEach(() => {
+    composerLifetime.mounts = 0
+    composerLifetime.unmounts = 0
+    $voiceConversationStartRequest.set(0)
+    mainComposerScope.clear()
+    // The route's resume has selected 小红书文案's thread; its history is not bound yet.
+    $activeSessionId.set(null)
+    $freshDraftReady.set(false)
+    $gatewayState.set('open')
+    $messages.set([])
+    $selectedStoredSessionId.set('writer-tip')
+    $sessions.set([{ id: 'writer-tip', message_count: 12, title: 'APEX 主线' } as never])
+  })
+
+  afterEach(() => {
+    cleanup()
+    setMultiBotFlagForTest(false)
+    setSingleThreadFlagForTest(false)
+    $activeSessionId.set(null)
+    $gatewayState.set('idle')
+    $selectedStoredSessionId.set(null)
+    $sessions.set([])
+    mainComposerScope.clear()
+  })
+
+  const renderLoading = () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={['/writer-tip']}><ChatView {...props} /></MemoryRouter></QueryClientProvider>)
+  }
+
+  it('stays on screen with several assistants while the thread shows its loader', () => {
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(true)
+    renderLoading()
+
+    expect(threadProps.current).toEqual(expect.objectContaining({ clampToComposer: true, loading: 'session' }))
+    expect(screen.getByTestId('voice-owner').closest('[hidden]')).toBeNull()
+  })
+
+  it.each([
+    ['both switches off', false],
+    ['single-thread alone', true]
+  ])('hides as it always did with %s', (_label, singleThread) => {
+    setSingleThreadFlagForTest(singleThread)
+    renderLoading()
+
+    expect(threadProps.current).toEqual(expect.objectContaining({ clampToComposer: false, loading: 'session' }))
+    expect(screen.queryByTestId('voice-owner')).toBeNull()
   })
 })

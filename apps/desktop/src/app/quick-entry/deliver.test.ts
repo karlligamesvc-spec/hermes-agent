@@ -11,7 +11,7 @@ import { BOT_SWITCH_WAIT_MS } from '@/app/single-thread/quick-entry'
 import { noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
 import { $activeGatewayProfile } from '@/store/profile'
 import { initQuickEntryBridge, QUICK_TARGET_NEW, setQuickEntrySubmitHandler } from '@/store/quick-entry'
-import { $busy } from '@/store/session'
+import { $activeSessionId, $busy, $selectedStoredSessionId } from '@/store/session'
 import { sessionTileDelegate } from '@/store/session-states'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
 import { botRosterFrom, openBot, resetBotRosterForTest, setMultiBotFlagForTest } from '@/store/single-thread-bots'
@@ -69,6 +69,8 @@ afterEach(() => {
   resetMainThreadForTest()
   $activeGatewayProfile.set('default')
   $busy.set(false)
+  $selectedStoredSessionId.set(null)
+  $activeSessionId.set(null)
   setQuickEntrySubmitHandler(null)
   delete (window as unknown as { hermesDesktop?: unknown }).hermesDesktop
 })
@@ -173,6 +175,29 @@ describe('hc-1113 several assistants: the line goes to the one the quick window 
       reason: 'switch'
     })
     expect(d.submitText).not.toHaveBeenCalled()
+  })
+
+  it('hc-1146 opened at once: the line waits until its conversation is bound, then goes into it', async () => {
+    vi.useFakeTimers()
+    severalOn()
+    landOn('default')
+    // The switch opened 剪辑助手's thread at once: selected, its history still loading.
+    vi.mocked(openBot).mockImplementation(async profile => {
+      landOn(profile)
+      $selectedStoredSessionId.set(`${profile}-root`)
+    })
+    const d = deps()
+    let outcome: unknown = null
+
+    void deliverQuickCapture({ assistant: EDITOR, target: 'current', text: LINE }, d).then(value => (outcome = value))
+    await vi.advanceTimersByTimeAsync(500)
+    expect(outcome).toBeNull()
+    expect(d.submitText).not.toHaveBeenCalled()
+
+    $activeSessionId.set('rt-editor')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(outcome).toEqual({ kind: 'current', ok: true, profile: 'apex-bot-2' })
+    expect(d.submitText).toHaveBeenCalledWith(LINE)
   })
 
   it('it opens but its thread never comes: after the wait a failure, never a send into APEX’s thread', async () => {

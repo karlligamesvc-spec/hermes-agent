@@ -1,0 +1,27 @@
+{
+  "ensure": [
+    "writer",
+    "default"
+  ],
+  "requests": [],
+  "switches": {
+    "to writer": [
+      "/apex-root | selected=apex-root | thread=null:unknown:null | swap=null | intent=null | active=default",
+      "/apex-root | selected=apex-root | thread=null:unknown:null | swap=null | intent=writer | active=default",
+      "/apex-root | selected=apex-root | thread=null:unknown:null | swap=writer | intent=writer | active=default",
+      "/apex-root | selected=apex-root | thread=null:unknown:null | swap=writer | intent=writer | active=writer",
+      "/apex-root | selected=null | thread=null:unknown:null | swap=writer | intent=writer | active=writer",
+      "/ | selected=null | thread=null:unknown:null | swap=writer | intent=writer | active=writer",
+      "/ | selected=null | thread=null:unknown:null | swap=null | intent=writer | active=writer",
+      "/ | selected=null | thread=null:unknown:null | swap=null | intent=null | active=writer"
+    ],
+    "to default": [
+      "/ | selected=null | thread=null:unknown:null | swap=null | intent=null | active=writer",
+      "/ | selected=null | thread=null:unknown:null | swap=null | intent=default | active=writer",
+      "/ | selected=null | thread=null:unknown:null | swap=default | intent=default | active=writer",
+      "/ | selected=null | thread=null:unknown:null | swap=default | intent=default | active=default",
+      "/ | selected=null | thread=null:unknown:null | swap=null | intent=default | active=default",
+      "/ | selected=null | thread=null:unknown:null | swap=null | intent=null | active=default"
+    ]
+  }
+}

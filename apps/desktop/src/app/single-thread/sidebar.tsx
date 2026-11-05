@@ -30,9 +30,9 @@ import { useSingleThreadSidebarCopy } from '@/i18n/single-thread-sidebar'
 import { cn } from '@/lib/utils'
 import { openCommandPalette } from '@/store/command-palette'
 import { $panesFlipped } from '@/store/layout'
-import { $mainThread, isMainThreadStoredId } from '@/store/main-thread'
+import { isMainThreadStoredId } from '@/store/main-thread'
 import { $selectedStoredSessionId, $sessions } from '@/store/session'
-import { useMultiBotMode } from '@/store/single-thread-bots'
+import { $onScreenThread, useMultiBotMode } from '@/store/single-thread-bots'
 import { $threadLatestReply, $threadPresence, $threadUnread, markThreadReplySeen } from '@/store/single-thread-presence'
 
 import { DesktopUpdatePill } from '../chat/sidebar/desktop-update-pill'
@@ -47,7 +47,8 @@ import { SingleThreadWechatRow } from './sidebar-wechat'
 
 /** The conversation is the page on screen: the thread, or the empty thread on `/` before it exists. */
 function useViewingThread(currentView: AppView): boolean {
-  const thread = useStore($mainThread)
+  // hc-1146: the on-screen assistant's thread, also while a switch to it is under way.
+  const thread = useStore($onScreenThread)
   const sessions = useStore($sessions)
   const selected = useStore($selectedStoredSessionId)
 
@@ -93,7 +94,7 @@ function AssistantRow({ active, onOpen }: { active: boolean; onOpen: () => void 
 export function SingleThreadSidebar({ currentView }: { currentView: AppView }) {
   const copy = useSingleThreadSidebarCopy()
   const navigate = useNavigate()
-  const thread = useStore($mainThread)
+  const thread = useStore($onScreenThread)
   const panesFlipped = useStore($panesFlipped)
   const multiBot = useMultiBotMode()
   const viewing = useViewingThread(currentView)

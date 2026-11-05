@@ -5,11 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { $newSessionTabAction } from '@/components/pane-shell/tree/store'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
-import { $mainThread, noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
+import { $mainThread, $mainThreadsByProfile, noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
 import { $activeGatewayProfile } from '@/store/profile'
 import { QUICK_TARGET_CURRENT, QUICK_TARGET_NEW } from '@/store/quick-entry'
 import { $selectedStoredSessionId, $sessions } from '@/store/session'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
+import { $botIntent, setMultiBotFlagForTest } from '@/store/single-thread-bots'
 import { setToolViewMode } from '@/store/tool-view'
 import { makeSessionInfo } from '@/test/session-info'
 
@@ -103,6 +104,48 @@ describe('hc-1014 the composer gate', () => {
     const singleThread = flag && toolView === 'product'
 
     expect(isEarlierConversation(singleThread, key, thread, $sessions.get(), claimPending)).toBe(expected)
+  })
+})
+
+describe('hc-1146 the composer gate while a switch to another assistant is under way', () => {
+  afterEach(() => {
+    setMultiBotFlagForTest(false)
+    $botIntent.set(null)
+    $activeGatewayProfile.set('default')
+  })
+
+  it.each([
+    ['several assistants: its conversation keeps the composer', true, 'composer'],
+    ['one assistant: an earlier conversation, as before', false, 'read-only']
+  ] as const)('%s', (_label, several, expected) => {
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(several)
+    // APEX's engine still answers; 小红书文案 was clicked and its known thread opened at once.
+    noteMainThreadClaimed('default', 'thread-root')
+    $mainThreadsByProfile.set({
+      ...$mainThreadsByProfile.get(),
+      writer: { ids: ['writer-root'], profile: 'writer', rootId: 'writer-root', status: 'found', tipId: 'writer-root' }
+    })
+    $botIntent.set('writer')
+
+    renderGate('writer-root')
+
+    expect(screen.queryByTestId('composer') ? 'composer' : 'read-only').toBe(expected)
+  })
+
+  it('the read-only bar under an earlier conversation leads back to the thread of the assistant asked for', () => {
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(true)
+    noteMainThreadClaimed('default', 'thread-root')
+    $mainThreadsByProfile.set({
+      ...$mainThreadsByProfile.get(),
+      writer: { ids: ['writer-root'], profile: 'writer', rootId: 'writer-root', status: 'found', tipId: 'writer-root' }
+    })
+    $botIntent.set('writer')
+    renderGate('older-chat')
+
+    fireEvent.click(screen.getByRole('button', { name: '回到对话' }))
+    expect(screen.getByTestId('where').textContent).toBe('/writer-root')
   })
 })
 

@@ -4,12 +4,18 @@ import { useOnboardingChatActive } from '@/components/onboarding-chat/assembly'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
-import { botSwapLabel } from '@/store/single-thread-bots'
+import { botSwapLabel, isMultiBotMode } from '@/store/single-thread-bots'
+
+/** hc-1146: how long a switch between assistants may take before 「正在唤醒 …」 starts to fade in. */
+export const SWAP_OVERLAY_DELAY = 'delay-400'
 
 // Shown over the conversation while the live gateway swaps to another profile's
 // backend (lazily spawned). Keeps the last profile name through the fade-out so
 // the label doesn't blank. Purely visual — pointer-events-none. hc-1077: with
 // several assistants on, it names the assistant rather than its profile.
+// hc-1146: and only for a switch that is actually slow — the fade-in waits
+// SWAP_OVERLAY_DELAY in CSS, so an engine that answers sooner (a warm one)
+// never shows it; the fade-out stays immediate.
 export function ChatSwapOverlay({ profile }: { profile: string | null }) {
   const { t } = useI18n()
   const onboarding = useOnboardingChatActive()
@@ -36,7 +42,8 @@ export function ChatSwapOverlay({ profile }: { profile: string | null }) {
       aria-hidden
       className={cn(
         'pointer-events-none absolute inset-0 z-50 flex items-center justify-center transition-opacity duration-150 ease-out',
-        profile ? 'opacity-100' : 'opacity-0'
+        profile ? 'opacity-100' : 'opacity-0',
+        profile && isMultiBotMode() && SWAP_OVERLAY_DELAY
       )}
     >
       <div className="flex items-center gap-2 bg-[color-mix(in_srgb,var(--dt-card)_92%,transparent)] px-4 py-2 font-mono text-[0.8125rem] text-foreground shadow-composer">

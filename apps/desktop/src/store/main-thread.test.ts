@@ -221,3 +221,88 @@ describe('hc-1077 every assistant’s thread, by profile', () => {
     expect($mainThread.get().tipId).toBe('apex-root')
   })
 })
+
+describe('hc-1146 a switch paints the thread this window already holds', () => {
+  /** A lookup that answers only when told to. */
+  function heldLookup(rows: unknown[] | Error) {
+    let answer!: () => void
+    const answered = new Promise<void>(resolve => (answer = resolve))
+
+    const request = vi.fn(async () => {
+      await answered
+
+      if (rows instanceof Error) {
+        throw rows
+      }
+
+      return { sessions: rows } as never
+    })
+
+    return { answer, request }
+  }
+
+  async function knowWriter(): Promise<void> {
+    noteMainThreadClaimed('default', 'apex-root')
+    await resolveProfileThread(gatewayAnswering([{ id: 'writer-root', title: MAIN_THREAD_TITLE }]), 'writer')
+  }
+
+  it('with `seed`, at once and marked as such; the lookup still runs and moves it onto the live tip', async () => {
+    await knowWriter()
+
+    const { answer, request } = heldLookup([
+      { id: 'writer-root', resolved_id: 'writer-tip-2', title: MAIN_THREAD_TITLE }
+    ])
+
+    const settled = resolveMainThread(request, 'writer', true)
+
+    expect($mainThread.get()).toEqual({
+      ids: ['writer-root'],
+      profile: 'writer',
+      rootId: 'writer-root',
+      seeded: true,
+      status: 'found',
+      tipId: 'writer-root'
+    })
+    expect(request).toHaveBeenCalledTimes(1)
+
+    answer()
+    await settled
+
+    expect($mainThread.get()).toEqual({
+      ids: ['writer-root', 'writer-tip-2'],
+      profile: 'writer',
+      rootId: 'writer-root',
+      status: 'found',
+      tipId: 'writer-tip-2'
+    })
+  })
+
+  it('keeps the seeded thread when the confirming read fails (never downgraded)', async () => {
+    await knowWriter()
+    const { answer, request } = heldLookup(new Error('offline'))
+    const settled = resolveMainThread(request, 'writer', true)
+
+    answer()
+
+    expect(await settled).toMatchObject({ profile: 'writer', seeded: true, status: 'found', tipId: 'writer-root' })
+  })
+
+  it.each([
+    ['without `seed` (one assistant)', false, true],
+    ['for a profile with no thread known', true, false]
+  ])('shows `loading` %s, as before', async (_label, seed, known) => {
+    if (known) {
+      await knowWriter()
+    } else {
+      noteMainThreadClaimed('default', 'apex-root')
+    }
+
+    const { answer, request } = heldLookup([])
+    const settled = resolveMainThread(request, 'writer', seed)
+
+    expect($mainThread.get()).toEqual({ ids: [], profile: 'writer', rootId: null, status: 'loading', tipId: null })
+
+    answer()
+    await settled
+  })
+})

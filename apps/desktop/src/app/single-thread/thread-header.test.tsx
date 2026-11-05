@@ -2,9 +2,10 @@ import { cleanup, render, renderHook, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
-import { noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
+import { $mainThreadsByProfile, noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
 import { $sessions } from '@/store/session'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
+import { $botIntent, setMultiBotFlagForTest } from '@/store/single-thread-bots'
 import { setToolViewMode } from '@/store/tool-view'
 import { makeSessionInfo } from '@/test/session-info'
 
@@ -53,5 +54,27 @@ describe('hc-1014 the header over the one thread', () => {
     expect(screen.getByLabelText('APEX').querySelector('[data-apex-avatar="idle"]')).toBeTruthy()
     expect(screen.getByLabelText('APEX').querySelector('img')).toBeNull()
     expect(screen.queryByRole('button')).toBeNull()
+  })
+})
+
+describe('hc-1146 the pill while a switch to another assistant is under way', () => {
+  afterEach(() => {
+    setMultiBotFlagForTest(false)
+    $botIntent.set(null)
+  })
+
+  it.each([
+    ['several assistants: its opened conversation keeps the pill', true, true],
+    ['one assistant: another profile’s conversation has none, as before', false, false]
+  ] as const)('%s', (_label, several, expected) => {
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(several)
+    $mainThreadsByProfile.set({
+      ...$mainThreadsByProfile.get(),
+      writer: { ids: ['writer-root'], profile: 'writer', rootId: 'writer-root', status: 'found', tipId: 'writer-root' }
+    })
+    $botIntent.set('writer')
+
+    expect(renderHook(() => useSingleThreadHeader('writer-root')).result.current).toBe(expected)
   })
 })

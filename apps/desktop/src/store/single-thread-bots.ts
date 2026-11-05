@@ -54,6 +54,7 @@ import {
 } from '../../shared/apex-product-assistant'
 
 import { type BotSwitchCause, watchBotSwitch } from './bot-switch-log'
+import { $mainThread, $mainThreadsByProfile, type MainThreadState } from './main-thread'
 import {
   $activeGatewayProfile,
   $gatewaySwapTarget,
@@ -62,6 +63,7 @@ import {
   pinNewChatProfile,
   requestFreshSession
 } from './profile'
+import { $selectedStoredSessionId } from './session'
 import { $singleThreadMode } from './single-thread'
 
 export { APEX_NAME, withBotName }
@@ -466,6 +468,19 @@ export const $currentBotProfile = computed(
   (intent, swapping, active) => normalizeProfileKey(intent ?? swapping ?? active)
 )
 
+/**
+ * hc-1146: the thread of the assistant on screen. While a switch is under way
+ * $mainThread still holds the previous assistant's (it follows the engine
+ * answering); with several assistants the one asked for is already on screen
+ * and its conversation may already be opened (openBot opens a known thread at
+ * once), so the composer gate, the header pill and the sidebar's highlight
+ * read the thread this window knows for it. With one assistant: $mainThread.
+ */
+export const $onScreenThread = computed(
+  [$multiBotMode, $mainThread, $mainThreadsByProfile, $currentBotProfile],
+  (on, held, byProfile, current) => (on && held.profile !== current ? (byProfile[current] ?? held) : held)
+)
+
 /** `profile`'s roster row, or what can be said of it before the roster lists it. */
 export function botFor(roster: readonly ApexBot[], profile: string): ApexBot {
   const key = normalizeProfileKey(profile)
@@ -604,14 +619,109 @@ export function botSwapLabel(profile: null | string): string {
 
 // ── switching ────────────────────────────────────────────────────────────────
 
+/** hc-1146: how long, at most, a switch that opened a thread waits for the conversation being left to go. */
+export const BOT_THREAD_LEAVE_WAIT_MS = 3_000
+
+type BotThreadOpener = (tipId: string, profile: string) => void
+
+let threadOpener: BotThreadOpener | null = null
+
 /**
- * Put `profile`'s assistant on screen: point new chats at it, drop to a fresh
- * draft (the shell then opens that profile's thread) and activate its engine,
- * cold-starting a pool backend when it is not running. Unlike the developer
- * profile rail it never remembers the profile for the next launch: the
- * startup profile is what the local IM gateway and the config heal follow,
- * and that stays APEX's (K7). Rejects when the engine cannot be reached.
- * `cause` only labels the desktop.log line of a switch that goes wrong.
+ * hc-1146: the shell's way to put a conversation route on screen
+ * (use-bot-thread-open.ts), installed while several assistants are on.
+ * Returns the uninstall.
+ */
+export function setBotThreadOpener(open: BotThreadOpener): () => void {
+  threadOpener = open
+
+  return () => {
+    if (threadOpener === open) {
+      threadOpener = null
+    }
+  }
+}
+
+/**
+ * hc-1146 切换助手不闪屏: open `target`'s thread straight away when this window
+ * already knows it ($mainThreadsByProfile), instead of a fresh draft first —
+ * the blank frame every switch used to show. The resume the route starts
+ * selects it and activates its engine like any other conversation. Null when
+ * nothing was opened (one assistant, no thread known yet, no shell mounted):
+ * the caller drops to a fresh draft as before.
+ */
+function openKnownThread(target: string): MainThreadState | null {
+  const thread = isMultiBotMode() ? $mainThreadsByProfile.get()[target] : undefined
+
+  if (!threadOpener || thread?.status !== 'found' || !thread.tipId) {
+    return null
+  }
+
+  threadOpener(thread.tipId, target)
+
+  return thread
+}
+
+/** {@link watchLeaving}: wait for the conversation being left to go, and stop watching. */
+interface LeaveWatch {
+  gone: () => Promise<void>
+  stop: () => void
+}
+
+/**
+ * hc-1099 with a thread opened at once: until the route's resume selects the
+ * new thread, the conversation being left is still selected, and once the
+ * intent clears the shell's follow would take its assistant back. Watched
+ * from the click, so a selection that moved once counts even when a
+ * notification brought the old conversation back meanwhile (that one the
+ * follow should see). `gone` resolves once the selection moved or a later
+ * switch took over, and at the latest {@link BOT_THREAD_LEAVE_WAIT_MS} after
+ * it is asked (the engine answers first: a cold one is selected only then).
+ */
+function watchLeaving(left: string, target: string): LeaveWatch {
+  let moved = false
+  let wake: () => void = () => undefined
+  let timer: number | undefined
+
+  const check = () => {
+    if ($selectedStoredSessionId.get() !== left || $botIntent.get() !== target) {
+      moved = true
+      wake()
+    }
+  }
+
+  const stopSelection = $selectedStoredSessionId.listen(check)
+  const stopIntent = $botIntent.listen(check)
+
+  const stop = () => {
+    window.clearTimeout(timer)
+    stopSelection()
+    stopIntent()
+    wake()
+  }
+
+  const gone = () =>
+    new Promise<void>(resolve => {
+      wake = resolve
+
+      if (moved) {
+        resolve()
+      } else {
+        timer = window.setTimeout(resolve, BOT_THREAD_LEAVE_WAIT_MS)
+      }
+    })
+
+  return { gone, stop }
+}
+
+/**
+ * Put `profile`'s assistant on screen: point new chats at it, open its thread
+ * (hc-1146: at once when this window knows it, else through a fresh draft the
+ * shell turns into the thread) and activate its engine, cold-starting a pool
+ * backend when it is not running. Unlike the developer profile rail it never
+ * remembers the profile for the next launch: the startup profile is what the
+ * local IM gateway and the config heal follow, and that stays APEX's (K7).
+ * Rejects when the engine cannot be reached. `cause` only labels the
+ * desktop.log line of a switch that goes wrong.
  */
 export async function openBot(profile: string, cause: BotSwitchCause = 'click'): Promise<void> {
   const target = normalizeProfileKey(profile)
@@ -623,21 +733,35 @@ export async function openBot(profile: string, cause: BotSwitchCause = 'click'):
   // The assistant on screen ($currentBotProfile's rule, read from the plain atoms: no computed store wakes here).
   const from = normalizeProfileKey($botIntent.get() ?? $gatewaySwapTarget.get() ?? $activeGatewayProfile.get())
   const watch = watchBotSwitch(target, from, cause)
+  const left = $selectedStoredSessionId.get()
 
   // Before anything renders: the sidebar, the header and the shell's
   // redirect follow the assistant asked for, not the engine still answering.
   $botIntent.set(target)
   pinNewChatProfile(target)
-  requestFreshSession()
+  const opened = openKnownThread(target)
+  const leaving = opened && left && !opened.ids.includes(left) ? watchLeaving(left, target) : null
+
+  if (!opened) {
+    requestFreshSession()
+  }
 
   try {
     await ensureGatewayProfile(target)
     watch.resolved(normalizeProfileKey($activeGatewayProfile.get()), $botIntent.get() !== target)
+    await leaving?.gone()
   } catch (error) {
     watch.failed(error)
 
+    // As before hc-1146 opened threads at once: back to a fresh draft, which the shell turns into
+    // the thread of the assistant still answering.
+    if (opened && $botIntent.get() === target) {
+      requestFreshSession()
+    }
+
     throw error
   } finally {
+    leaving?.stop()
     watch.done()
 
     if ($botIntent.get() === target) {

@@ -20,11 +20,12 @@ import type { ChatMessage } from '@/lib/chat-messages'
 import { $authState } from '@/store/auth'
 import { clearClarifyRequest, setClarifyRequest } from '@/store/clarify'
 import { $commandPaletteOpen } from '@/store/command-palette'
-import { noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
+import { $mainThreadsByProfile, noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
 import { $planUsage } from '@/store/plan-usage'
 import { $selectedStoredSessionId } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
+import { $botIntent, botRosterFrom, resetBotRosterForTest, setMultiBotFlagForTest } from '@/store/single-thread-bots'
 import { resetThreadPresenceForTest } from '@/store/single-thread-presence'
 import { $threadActivity, $threadInCall } from '@/store/thread-signals'
 import { setToolViewMode } from '@/store/tool-view'
@@ -171,6 +172,44 @@ describe('hc-1061 the layout, top to bottom', () => {
     expect(assistantRow().className).not.toContain('bg-(--ui-row-active-background)')
     fireEvent.click(assistantRow())
     expect(screen.getByTestId('location').textContent).toBe('/thread-root')
+  })
+})
+
+describe('hc-1146 the row on screen while a switch to another assistant is under way', () => {
+  afterEach(() => {
+    setMultiBotFlagForTest(false)
+    resetBotRosterForTest()
+    $botIntent.set(null)
+  })
+
+  it('is the clicked assistant’s, whose known conversation is already opened (no row without the highlight)', () => {
+    setMultiBotFlagForTest(true)
+    resetBotRosterForTest(
+      botRosterFrom(
+        [
+          { is_default: true, name: 'default' },
+          { name: 'writer', ui_meta: { apex: { created: 1, name: '小红书文案' } } }
+        ],
+        () => true
+      )
+    )
+    $mainThreadsByProfile.set({
+      ...$mainThreadsByProfile.get(),
+      writer: { ids: ['writer-root'], profile: 'writer', rootId: 'writer-root', status: 'found', tipId: 'writer-root' }
+    })
+    // APEX's engine still answers; 小红书文案 was clicked and its thread opened at once.
+    $botIntent.set('writer')
+    $selectedStoredSessionId.set('writer-root')
+
+    const { container } = renderSidebar()
+    const row = (profile: string) => container.querySelector(`[data-single-thread-bot="${profile}"]`)!
+
+    expect(row('writer').className).toContain('bg-(--ui-row-active-background)')
+    expect(row('default').className).not.toContain('bg-(--ui-row-active-background)')
+
+    // A click on it meanwhile stays in its conversation, not the previous assistant's.
+    fireEvent.click(row('writer'))
+    expect(screen.getByTestId('location').textContent).toBe('/writer-root')
   })
 })
 

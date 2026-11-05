@@ -17,7 +17,9 @@
  * - runs the relay (接力) dispatcher while relay is on (hc-1086, handoff-runner.ts),
  *   notes each relay that comes back in the memory ledger (hc-1090), and turns
  *   a send naming another assistant into the confirm card (hc-1087), and
- *   moves a relay plan on baton by baton (hc-1091).
+ *   moves a relay plan on baton by baton (hc-1091);
+ * - opens a clicked assistant's thread at once when it is already known, with
+ *   no fresh draft in between (hc-1146, use-bot-thread-open.ts).
  *
  * Off (or in a pop-out window) it does nothing.
  */
@@ -46,6 +48,7 @@ import { profileOfThreadStoredId } from '@/store/single-thread-presence'
 import type { RequestGateway } from './composer-middleware'
 import { useHandoffRunner } from './handoff-runner'
 import { useHandoffScreens } from './handoff/use-handoff-screens'
+import { useBotThreadOpen } from './use-bot-thread-open'
 
 export const ROSTER_REFRESH_MS = 20_000
 
@@ -86,6 +89,8 @@ export function useMultiBotShell(
   useHandoffPlanDriver()
   // hc-1087: the relay screens (a send naming another assistant becomes the confirm card).
   useHandoffScreens(multiBot)
+  // hc-1146: a click opens the assistant's known thread straight away.
+  useBotThreadOpen(multiBot)
 
   useEffect(() => {
     void loadMultiBotFlag()

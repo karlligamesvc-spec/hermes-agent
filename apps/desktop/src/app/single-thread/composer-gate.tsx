@@ -23,9 +23,10 @@ import { Button } from '@/components/ui/button'
 import { useSingleThreadChatCopy } from '@/i18n/single-thread-chat'
 import { triggerHaptic } from '@/lib/haptics'
 import { parkQueuedPrompts } from '@/store/composer-queue'
-import { $mainThread, isMainThreadStoredId, type MainThreadState } from '@/store/main-thread'
+import { isMainThreadStoredId, type MainThreadState } from '@/store/main-thread'
 import { $sessions } from '@/store/session'
 import { $singleThreadMode } from '@/store/single-thread'
+import { $onScreenThread } from '@/store/single-thread-bots'
 import { publishThreadStop } from '@/store/single-thread-stop'
 import type { SessionInfo } from '@/types/hermes'
 
@@ -58,7 +59,8 @@ export function isEarlierConversation(
 
 export function ChatBar(props: ComponentProps<typeof Composer>) {
   const singleThread = useStore($singleThreadMode)
-  const thread = useStore($mainThread)
+  // hc-1146: the on-screen assistant's thread, so a switch never shows its conversation as an earlier one.
+  const thread = useStore($onScreenThread)
   const sessions = useStore($sessions)
   const claimPending = Boolean(useStore($pendingThreadClaim))
   const onSteer = useThreadStop(singleThread, props)
@@ -99,7 +101,7 @@ function useThreadStop(
 function EarlierConversationBar() {
   const copy = useSingleThreadChatCopy()
   const navigate = useNavigate()
-  const thread = useStore($mainThread)
+  const thread = useStore($onScreenThread)
 
   return (
     <div

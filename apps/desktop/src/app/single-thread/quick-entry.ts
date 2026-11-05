@@ -16,16 +16,19 @@
 import { $mainThread, isMainThreadStoredId } from '@/store/main-thread'
 import { $activeGatewayProfile, normalizeProfileKey } from '@/store/profile'
 import { QUICK_TARGET_CURRENT, QUICK_TARGET_NEW } from '@/store/quick-entry'
-import { $selectedStoredSessionId, $sessions } from '@/store/session'
+import { $activeSessionId, $selectedStoredSessionId, $sessions } from '@/store/session'
 import { isSingleThreadMode } from '@/store/single-thread'
 import { $currentBotProfile, isMultiBotMode } from '@/store/single-thread-bots'
 
-import { $pendingThreadClaim } from './composer-middleware'
+import { $pendingThreadClaim, conversationLoading } from './composer-middleware'
 
 /** How long a capture waits for a switch to land before it is handed back as not delivered. */
 export const BOT_SWITCH_WAIT_MS = 30_000
 
-/** The assistant asked for is not the one whose thread is on hand yet (or its thread is still being looked up). */
+/**
+ * The assistant asked for is not the one whose thread is on hand yet (or its thread is still being
+ * looked up, or hc-1146: its conversation, opened at once by the switch, is still loading).
+ */
 function botSwitchPending(wanted: null | string): boolean {
   const current = $currentBotProfile.get()
   const thread = $mainThread.get()
@@ -34,7 +37,8 @@ function botSwitchPending(wanted: null | string): boolean {
     (wanted !== null && current !== wanted) ||
     current !== normalizeProfileKey($activeGatewayProfile.get()) ||
     thread.profile !== current ||
-    thread.status === 'loading'
+    thread.status === 'loading' ||
+    conversationLoading()
   )
 }
 
@@ -70,7 +74,13 @@ export function botSwitchSettled(wanted: null | string, timeoutMs = BOT_SWITCH_W
 
     const timer = window.setTimeout(() => finish(false), timeoutMs)
 
-    stops.push($currentBotProfile.listen(check), $activeGatewayProfile.listen(check), $mainThread.listen(check))
+    stops.push(
+      $currentBotProfile.listen(check),
+      $activeGatewayProfile.listen(check),
+      $mainThread.listen(check),
+      $selectedStoredSessionId.listen(check),
+      $activeSessionId.listen(check)
+    )
   })
 }
 
