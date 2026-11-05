@@ -242,7 +242,9 @@ def test_an_engine_apex_does_not_ship_is_said_plainly(monkeypatch, tts_entry, pr
     upstream_engine, upstream_error = tts_tool._select_builtin_engine(provider)
     assert upstream_error and ('pip' in upstream_error or 'hermes' in upstream_error)
     adapter.apply(SimpleNamespace(register_tts_provider=lambda p: None))
-    adapter.apply(SimpleNamespace(register_tts_provider=lambda p: None))  # re-apply does not stack
+    wrapped = tts_tool._select_builtin_engine
+    adapter.apply(SimpleNamespace(register_tts_provider=lambda p: None))
+    assert tts_tool._select_builtin_engine is wrapped  # re-apply does not stack wrappers
     engine, error = tts_tool._select_builtin_engine(provider)
     assert engine == provider == upstream_engine
     message = json.loads(error)
