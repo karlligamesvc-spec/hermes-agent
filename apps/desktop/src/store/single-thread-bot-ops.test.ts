@@ -33,7 +33,8 @@ import {
   deleteBot,
   nextBotProfileName,
   readBotMeta,
-  saveBotLook
+  saveBotLook,
+  saveBotSidebarFlags
 } from './single-thread-bot-ops'
 import { botRosterFrom, resetBotRosterForTest, setMultiBotFlagForTest } from './single-thread-bots'
 import { handoffById, resetHandoffsForTest, setMultiBotHandoffFlagForTest, startHandoff } from './single-thread-handoff'
@@ -556,5 +557,89 @@ describe('deleteBot', () => {
       setSingleThreadFlagForTest(false)
       resetBotRosterForTest()
     }
+  })
+})
+
+describe('hc-1146 saveBotSidebarFlags', () => {
+  const STORED = { name: '小红书文案', shape: 'drop', color: 'gold', created: 1_761_541_200_000, origin: 'product' }
+
+  const listing = (apex: Record<string, unknown>, revision: number) => ({
+    profiles: [
+      { name: 'apex-bot-2', ui_meta: { apex, 'hermes-bots': { title: 'B' } }, ui_meta_revisions: { apex: revision } }
+    ]
+  })
+
+  it('writes the flag over everything stored in ui_meta.apex, against the revision it just read', async () => {
+    answer = method => (method === 'profiles.list' ? listing(STORED, 6) : { applied: { ui_meta: true } })
+
+    await saveBotSidebarFlags('apex-bot-2', { pinned: true })
+
+    expect(methods()).toEqual(['profiles.list', 'profiles.configure'])
+    expect(configureCalls()[0]).toEqual({
+      method: 'profiles.configure',
+      params: {
+        name: 'apex-bot-2',
+        ui_meta: { apex: { ...STORED, pinned: true } },
+        ui_meta_expected_revisions: { apex: 6 }
+      },
+      profile: 'default'
+    })
+  })
+
+  it('never writes upstream Bot Mode’s hermes-bots key (the engine would treat the profile as a Bot Mode one)', async () => {
+    answer = method => (method === 'profiles.list' ? listing(STORED, 6) : { applied: { ui_meta: true } })
+
+    await saveBotSidebarFlags('apex-bot-2', { hidden: true })
+    await saveBotSidebarFlags('apex-bot-2', { hidden: false, pinned: false })
+
+    for (const call of configureCalls()) {
+      expect(Object.keys(call.params.ui_meta as object)).toEqual(['apex'])
+    }
+  })
+
+  it('reads again once when another write landed in between, keeping what that write stored', async () => {
+    let configures = 0
+
+    answer = method => {
+      if (method === 'profiles.list') {
+        return configures === 0 ? listing(STORED, 6) : listing({ ...STORED, name: '新名' }, 7)
+      }
+
+      configures += 1
+
+      return configures === 1
+        ? { applied: { ui_meta: false, ui_meta_conflicts: { apex: { expected: 6, actual: 7 } } } }
+        : { applied: { ui_meta: true } }
+    }
+
+    await saveBotSidebarFlags('apex-bot-2', { hidden: true })
+
+    expect(methods()).toEqual(['profiles.list', 'profiles.configure', 'profiles.list', 'profiles.configure'])
+    expect(configureCalls()[1].params).toMatchObject({
+      ui_meta: { apex: { ...STORED, hidden: true, name: '新名' } },
+      ui_meta_expected_revisions: { apex: 7 }
+    })
+  })
+
+  it('gives up after a second conflict, and on any other failure at once', async () => {
+    answer = method =>
+      method === 'profiles.list'
+        ? listing(STORED, 6)
+        : { applied: { ui_meta: false, ui_meta_conflicts: { apex: { expected: 6, actual: 8 } } } }
+
+    await expect(saveBotSidebarFlags('apex-bot-2', { pinned: true })).rejects.toMatchObject({ kind: 'conflict' })
+    expect(configureCalls()).toHaveLength(2)
+
+    calls = []
+    answer = method => (method === 'profiles.list' ? listing(STORED, 6) : { applied: {} })
+
+    await expect(saveBotSidebarFlags('apex-bot-2', { pinned: true })).rejects.toMatchObject({ kind: 'failed' })
+    expect(configureCalls()).toHaveLength(1)
+  })
+
+  it('refuses APEX without sending anything: it is always first and always shown', async () => {
+    await expect(saveBotSidebarFlags('default', { hidden: true })).rejects.toMatchObject({ kind: 'apex' })
+    await expect(saveBotSidebarFlags(' Default ', { pinned: true })).rejects.toMatchObject({ kind: 'apex' })
+    expect(calls).toEqual([])
   })
 })

@@ -29,15 +29,19 @@ import {
   canDeleteBot,
   canRestyleBot,
   followsApexTier,
+  isBotHidden,
+  isBotPinned,
   loadMultiBotFlag,
   MULTI_BOT_HINT_KEY,
   MULTI_BOT_MAX_DEFAULT,
   multiBotMaxFrom,
   multiBotSwitchFrom,
   openBot,
+  patchBotSidebarFlags,
   refreshBotRoster,
   resetBotRosterForTest,
   setMultiBotFlagForTest,
+  sidebarBots,
   withBotName
 } from './single-thread-bots'
 import { setToolViewMode } from './tool-view'
@@ -472,5 +476,80 @@ describe('switching assistants', () => {
 
     expect(source).not.toMatch(/selectProfile|profile\??\.remember|profile\??\.set\(|switchProfile/)
     expect(source).toMatch(/ensureGatewayProfile\(target\)/)
+  })
+})
+
+describe('hc-1146: the sidebar’s order and what it leaves out', () => {
+  const ROWS = [
+    row('default', { name: 'APEX', pinned: true, hidden: true }),
+    row('a', { created: 1, name: 'A' }),
+    row('b', { created: 2, name: 'B', pinned: true }),
+    row('c', { created: 3, name: 'C', hidden: true }),
+    row('d', { created: 4, name: 'D', hidden: true, pinned: true }),
+    row('e', { created: 5, name: 'E', pinned: true })
+  ]
+
+  const roster = () => botRosterFrom(ROWS, () => true)
+  const profiles = (bots: readonly { profile: string }[]) => bots.map(bot => bot.profile)
+
+  it('puts APEX first, then the pinned ones, then the rest, each in creation order', () => {
+    const { hidden, shown } = sidebarBots(roster(), APEX_PROFILE)
+
+    expect(profiles(shown)).toEqual([APEX_PROFILE, 'b', 'e', 'a'])
+    expect(profiles(hidden)).toEqual(['c', 'd'])
+  })
+
+  it('never pins or hides APEX, whatever its ui_meta says', () => {
+    const apex = roster()[0]!
+
+    expect([isBotPinned(apex), isBotHidden(apex)]).toEqual([false, false])
+    expect(profiles(sidebarBots(roster(), 'a').shown)[0]).toBe(APEX_PROFILE)
+  })
+
+  it('shows a hidden assistant while it is the one on screen, in its own place', () => {
+    expect(profiles(sidebarBots(roster(), 'c').shown)).toEqual([APEX_PROFILE, 'b', 'e', 'a', 'c'])
+    expect(profiles(sidebarBots(roster(), 'd').shown)).toEqual([APEX_PROFILE, 'b', 'd', 'e', 'a'])
+    expect(profiles(sidebarBots(roster(), 'd').hidden)).toEqual(['c'])
+  })
+
+  it('leaves the roster itself whole: relay, notifications and the limit still count every assistant', () => {
+    expect(profiles(roster())).toEqual([APEX_PROFILE, 'a', 'b', 'c', 'd', 'e'])
+  })
+
+  it('shows a change at once, over the rest of ui_meta.apex, and never on APEX', () => {
+    resetBotRosterForTest(roster())
+
+    patchBotSidebarFlags('a', { pinned: true })
+    patchBotSidebarFlags('c', { hidden: false })
+    patchBotSidebarFlags(APEX_PROFILE, { hidden: true })
+
+    const byProfile = Object.fromEntries($botRoster.get().map(bot => [bot.profile, bot]))
+
+    expect(byProfile.a!.uiMeta.apex).toEqual({ created: 1, name: 'A', pinned: true })
+    expect(isBotHidden(byProfile.c!)).toBe(false)
+    expect(byProfile[APEX_PROFILE]!.uiMeta.apex).toEqual({ name: 'APEX', pinned: true, hidden: true })
+    expect(profiles(sidebarBots($botRoster.get(), APEX_PROFILE).shown)).toEqual([APEX_PROFILE, 'a', 'b', 'e', 'c'])
+  })
+
+  it('paints the next launch with the flags (the cache keeps the rest of ui_meta.apex)', async () => {
+    await refreshBotRoster((async (method: string) =>
+      method === 'profiles.list'
+        ? {
+            profiles: [
+              row('default'),
+              row('writer', { color: 'gold', name: '文案', pinned: true, shape: 'pill' }),
+              row('scripts', { name: '脚本', hidden: true })
+            ]
+          }
+        : { soul: 'x' }) as never)
+
+    vi.resetModules()
+
+    const fresh = await import('./single-thread-bots')
+    const writer = fresh.$botRoster.get().find(bot => bot.profile === 'writer')
+    const scripts = fresh.$botRoster.get().find(bot => bot.profile === 'scripts')
+
+    expect([fresh.isBotPinned(writer!), fresh.isBotHidden(scripts!)]).toEqual([true, true])
+    expect([writer!.name, writer!.shape, writer!.color]).toEqual(['文案', 'pill', apexBotColorHex('gold')])
   })
 })

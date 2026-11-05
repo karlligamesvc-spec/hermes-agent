@@ -14,6 +14,9 @@
  * - the roster: `profiles.list` rows with a SOUL.md that Bot Mode has not
  *   hidden, APEX first, the rest in creation order; each row's name and look
  *   read from the profile's `ui_meta.apex` ({@link ApexBotMeta});
+ * - hc-1146: the sidebar's order and what it leaves out ({@link sidebarBots}):
+ *   pinned assistants after APEX, hidden ones only in its 「已隐藏」 row. Both
+ *   flags live in `ui_meta.apex` too; the roster itself keeps every assistant;
  * - which assistant is on screen, and its name for every line that says
  *   「APEX」 about the assistant ({@link withBotName});
  * - switching: {@link openBot} activates the profile's engine
@@ -191,7 +194,11 @@ export interface ApexBotMeta {
   origin?: typeof PRODUCT_ASSISTANT_ORIGIN
   /** Creation time, epoch ms: the roster's order after APEX. */
   created?: number
+  /** hc-1146 「从侧栏隐藏」: only the sidebar leaves it out. Never on APEX. */
+  hidden?: boolean
   name?: string
+  /** hc-1146 「置顶」: the sidebar puts it right after APEX. Never on APEX. */
+  pinned?: boolean
   /** One of APEX_AVATAR_SHAPES. Ignored on APEX. */
   shape?: ApexAvatarShape
 }
@@ -331,6 +338,8 @@ function cachedRoster(): ApexBot[] {
   const meta = (row: Partial<ApexBot>) => ({
     ...(row.uiMeta && typeof row.uiMeta === 'object' ? row.uiMeta : {}),
     [APEX_BOT_META_KEY]: {
+      // The rest of what was stored (hc-1146's pinned / hidden, origin) paints too; the look is re-checked below.
+      ...apexMetaOf({ uiMeta: row.uiMeta && typeof row.uiMeta === 'object' ? row.uiMeta : {} }),
       color: APEX_BOT_COLORS.find(color => color.hex === row.color)?.id,
       created: row.created,
       name: row.name,
@@ -495,6 +504,61 @@ export function canDeleteBot(bot: Pick<ApexBot, 'isApex'>): boolean {
 
 export function canRestyleBot(bot: Pick<ApexBot, 'isApex'>): boolean {
   return !bot.isApex
+}
+
+// ── hc-1146: the sidebar's own flags ─────────────────────────────────────────
+
+/** 「置顶」 and 「从侧栏隐藏」 as `ui_meta.apex` stores them. APEX has neither: it is always first and always shown. */
+export interface BotSidebarFlags {
+  hidden?: boolean
+  pinned?: boolean
+}
+
+function apexMetaOf(bot: Pick<ApexBot, 'uiMeta'>): Record<string, unknown> {
+  const value = bot.uiMeta[APEX_BOT_META_KEY]
+
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+}
+
+export function isBotPinned(bot: Pick<ApexBot, 'isApex' | 'uiMeta'>): boolean {
+  return !bot.isApex && apexMetaOf(bot).pinned === true
+}
+
+export function isBotHidden(bot: Pick<ApexBot, 'isApex' | 'uiMeta'>): boolean {
+  return !bot.isApex && apexMetaOf(bot).hidden === true
+}
+
+/**
+ * hc-1146: the sidebar's rows — APEX, then the pinned assistants, then the rest, each group in
+ * roster (creation) order. A hidden one is left out unless it is the one on screen (a notification,
+ * the palette or a relay brought it there); `hidden` lists the left-out ones for the 「已隐藏」 row.
+ * Only the sidebar reads this: relay, notifications, the palette and the limit on 「+」 still see
+ * every assistant.
+ */
+export function sidebarBots(
+  roster: readonly ApexBot[],
+  currentProfile: string
+): { hidden: ApexBot[]; shown: ApexBot[] } {
+  const away = (bot: ApexBot) => isBotHidden(bot) && bot.profile !== currentProfile
+  const shown = roster.filter(bot => !away(bot))
+  const pinned = shown.filter(isBotPinned)
+  const rest = shown.filter(bot => !bot.isApex && !isBotPinned(bot))
+
+  return { hidden: roster.filter(away), shown: [...shown.filter(bot => bot.isApex), ...pinned, ...rest] }
+}
+
+/** Show a flag change at once; the write (single-thread-bot-ops.ts) and the next roster read follow. */
+export function patchBotSidebarFlags(profile: string, flags: BotSidebarFlags): void {
+  const roster = $botRoster
+    .get()
+    .map(bot =>
+      bot.profile === profile && !bot.isApex
+        ? { ...bot, uiMeta: { ...bot.uiMeta, [APEX_BOT_META_KEY]: { ...apexMetaOf(bot), ...flags } } }
+        : bot
+    )
+
+  $botRoster.set(roster)
+  writeJson(ROSTER_CACHE_KEY, roster)
 }
 
 /**

@@ -8,12 +8,20 @@
  *
  * What is open lives in the sidebar's own state, so it goes when the sidebar goes (developer mode,
  * the switch off) instead of reopening on the next mount.
+ *
+ * hc-1146 adds the row menu's 「置顶」 and 「从侧栏隐藏」 (and putting one back from 「已隐藏」): the
+ * row moves at once, the flag is written to `ui_meta.apex`, and the roster is read again either way,
+ * so a write that failed puts the row back where it was and says so. Hiding the assistant on screen
+ * goes back to APEX, as deleting it does. A deleted or new assistant drops any 「标为未读」 left under
+ * its profile name (`apex-bot-N` names come back).
  */
 
 import { useStore } from '@nanostores/react'
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ComponentProps, type ReactNode, useEffect, useState } from 'react'
 
-import { requestOnApex } from '@/store/single-thread-bot-ops'
+import { useSingleThreadBotsCopy } from '@/i18n/single-thread-bots'
+import { notify } from '@/store/notifications'
+import { requestOnApex, saveBotSidebarFlags } from '@/store/single-thread-bot-ops'
 import {
   $botCreateRequest,
   $botRoster,
@@ -22,30 +30,30 @@ import {
   APEX_PROFILE,
   type ApexBot,
   botFor,
+  type BotSidebarFlags,
+  patchBotSidebarFlags,
   refreshBotRoster
 } from '@/store/single-thread-bots'
+import { clearBotUnreadMark } from '@/store/single-thread-presence'
 
 import { BotDeleteConfirm, type BotDeleteTarget } from './bot-delete-confirm'
-import { BotRowMenu } from './bot-row-menu'
+import { BotRowMenu, type BotRowMenuProps } from './bot-row-menu'
 import { BotSheet, type BotSheetTarget } from './bot-sheet'
 
-/** The row on screen with its 「···」 over the row's right edge (prototype ⑦); the row keeps room for it. */
+/**
+ * The row on screen with its 「···」 over the row's right edge (prototype ⑦); the row keeps room for it.
+ * The rest of the props reach the frame: the row menu's right-click trigger (hc-1146) is put on it.
+ */
 export function CurrentBotRowFrame({
-  bot,
   children,
-  onDelete,
-  onEdit
-}: {
-  bot: ApexBot
-  children: ReactNode
-  onDelete: () => void
-  onEdit: () => void
-}) {
+  menu,
+  ...props
+}: ComponentProps<'div'> & { children: ReactNode; menu: BotRowMenuProps }) {
   return (
-    <div className="relative [&>[data-single-thread-bot]]:pr-10" data-single-thread-bot-frame="">
+    <div className="relative [&>[data-single-thread-bot]]:pr-10" data-single-thread-bot-frame="" {...props}>
       {children}
       <div className="absolute top-1/2 right-1.5 -translate-y-1/2">
-        <BotRowMenu bot={bot} onDelete={onDelete} onEdit={onEdit} />
+        <BotRowMenu {...menu} />
       </div>
     </div>
   )
@@ -57,13 +65,18 @@ function refreshRoster(): Promise<unknown> {
 
 export interface BotManage {
   edit: (bot: ApexBot) => void
+  hide: (bot: ApexBot) => void
   /** The sheet and the confirmation; render it once, beside the rows. */
   layer: ReactNode
   remove: (bot: ApexBot) => void
+  setPinned: (bot: ApexBot, pinned: boolean) => void
+  /** Back into the sidebar from 「已隐藏」. */
+  unhide: (bot: ApexBot) => void
 }
 
 /** `open` is the rows' switch (hc-1077 sidebar-bots.tsx): it opens an assistant and says why when it cannot. */
 export function useBotManage(open: (bot: ApexBot) => void): BotManage {
+  const copy = useSingleThreadBotsCopy()
   const roster = useStore($botRoster)
   const max = useStore($multiBotMax)
   const [sheet, setSheet] = useState<BotSheetTarget | null>(null)
@@ -76,6 +89,7 @@ export function useBotManage(open: (bot: ApexBot) => void): BotManage {
   const takenNames = roster.filter(bot => bot.profile !== editing).map(bot => bot.name)
 
   async function opened(profile: string) {
+    clearBotUnreadMark(profile)
     await refreshRoster()
     open(botFor($botRoster.get(), profile))
   }
@@ -83,6 +97,7 @@ export function useBotManage(open: (bot: ApexBot) => void): BotManage {
   function deleted(profile: string) {
     const wasOnScreen = $currentBotProfile.get() === profile
 
+    clearBotUnreadMark(profile)
     void refreshRoster()
 
     if (wasOnScreen) {
@@ -105,9 +120,29 @@ export function useBotManage(open: (bot: ApexBot) => void): BotManage {
     </>
   )
 
+  function saveFlags(bot: ApexBot, flags: BotSidebarFlags, saved?: () => void) {
+    patchBotSidebarFlags(bot.profile, flags)
+    saveBotSidebarFlags(bot.profile, flags)
+      .then(saved, () => notify({ kind: 'error', message: copy.flagFailed }))
+      .finally(() => void refreshRoster())
+  }
+
+  function hide(bot: ApexBot) {
+    const wasOnScreen = $currentBotProfile.get() === bot.profile
+
+    saveFlags(bot, { hidden: true }, () => notify({ kind: 'info', message: copy.hiddenNotice(bot.name) }))
+
+    if (wasOnScreen) {
+      open(botFor($botRoster.get(), APEX_PROFILE))
+    }
+  }
+
   return {
     edit: bot => setSheet({ bot, kind: 'edit' }),
+    hide,
     layer,
-    remove: bot => setDeleting({ name: bot.name, profile: bot.profile })
+    remove: bot => setDeleting({ name: bot.name, profile: bot.profile }),
+    setPinned: (bot, pinned) => saveFlags(bot, { pinned }),
+    unhide: bot => saveFlags(bot, { hidden: false })
   }
 }

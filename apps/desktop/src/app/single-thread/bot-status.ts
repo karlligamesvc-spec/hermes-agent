@@ -18,6 +18,8 @@
  *   this install's cache have no conversations listed yet, and one that has
  *   them must not flash 「先问 3 个小问题」.
  * - hc-1087: a relay (接力) the row is part of names it first (handoff/row-line.ts).
+ * - hc-1146 「标为未读」: a marked row keeps its dot until its conversation
+ *   is next on screen (store/single-thread-presence.ts `$botUnreadMarks`).
  * - hc-1107: waiting on the user — a prompt parked for any of its sessions, its
  *   relay confirm card up, or a relay turn only the relay poll saw stop
  *   (handoff/waiting.ts) — reads 「等你确认」 or 「等你决定」 with a lit dot, on
@@ -34,7 +36,9 @@ import { $sessionStates } from '@/store/session-states'
 import { $botLastSessions, type ApexBot } from '@/store/single-thread-bots'
 import {
   $botSeenReplyIds,
+  $botUnreadMarks,
   botUnread,
+  clearBotUnreadMark,
   latestReply,
   mainThreadState,
   markBotReplySeen,
@@ -58,6 +62,8 @@ export interface BotRowStatus {
   kind: ThreadPresence['kind']
   /** Under the name; null shows the name alone. */
   line: null | string
+  /** The newest reply's id: 「标为已读」 counts it as seen (hc-1146). */
+  replyId: null | string
   unread: boolean
 }
 
@@ -116,6 +122,7 @@ export function useBotRowStatus(
   // Working, waiting and in a call always have a line, so only a quiet row is left.
   const fresh = !bot.isApex && bot.revision > 0 && !line && !lastSessions[bot.profile]
   const seen = useStore($botSeenReplyIds)[bot.profile]
+  const marked = useStore($botUnreadMarks).includes(bot.profile)
 
   useEffect(() => {
     if (onScreen) {
@@ -123,9 +130,17 @@ export function useBotRowStatus(
     }
   }, [bot.profile, onScreen, reply?.id])
 
+  // Coming on screen ends a 「标为未读」; one made while on screen shows once the user leaves.
+  useEffect(() => {
+    if (onScreen) {
+      clearBotUnreadMark(bot.profile)
+    }
+  }, [bot.profile, onScreen])
+
   return {
     kind: presence.kind,
     line: relayLine ?? (fresh ? botIntakeStatusLine(bot.uiMeta[BOT_INTAKE_META_KEY], intakeCopy) : line),
-    unread: botUnread(reply, seen) && !onScreen
+    replyId: reply?.id ?? null,
+    unread: (botUnread(reply, seen) || marked) && !onScreen
   }
 }

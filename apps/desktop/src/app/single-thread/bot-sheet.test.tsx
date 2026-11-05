@@ -247,36 +247,37 @@ describe('the edit sheet', () => {
 
 describe('the 「···」 menu', () => {
   async function openMenu(bot: Parameters<typeof BotRowMenu>[0]['bot']) {
-    const actions = { onDelete: vi.fn(), onEdit: vi.fn() }
-    zh(<BotRowMenu bot={bot} {...actions} />)
+    const manage = { edit: vi.fn(), hide: vi.fn(), layer: null, remove: vi.fn(), setPinned: vi.fn(), unhide: vi.fn() }
+    zh(<BotRowMenu bot={bot} manage={manage} status={{ replyId: null, unread: false }} />)
     const trigger = screen.getByRole('button', { name: `管理${bot.name}` })
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
 
-    return { actions, menu: await screen.findByRole('menu') }
+    return { manage, menu: await screen.findByRole('menu') }
   }
 
-  it('offers rename-or-restyle and delete for an assistant', async () => {
-    const { actions, menu } = await openMenu(NAMED)
+  // hc-1146 grew it into Grok Bot's row menu (bot-row-menu.test.tsx has the rest).
+  it('offers an assistant the whole row menu, delete last', async () => {
+    const { manage, menu } = await openMenu(NAMED)
 
     expect(
       within(menu)
         .getAllByRole('menuitem')
         .map(item => item.textContent)
-    ).toEqual(['改名或换样子', '删除这个助手'])
+    ).toEqual(['置顶', '标为未读', '改名或换样子', '复制对话 ID', '从侧栏隐藏', '删除这个助手'])
     fireEvent.click(within(menu).getByRole('menuitem', { name: '删除这个助手' }))
-    expect(actions.onDelete).toHaveBeenCalled()
+    expect(manage.remove).toHaveBeenCalledWith(NAMED)
   })
 
-  it('offers APEX a rename only', async () => {
-    const { actions, menu } = await openMenu(apexBot())
+  it('offers APEX no pin, hide or delete: a rename is its only change', async () => {
+    const { manage, menu } = await openMenu(apexBot())
 
     expect(
       within(menu)
         .getAllByRole('menuitem')
         .map(item => item.textContent)
-    ).toEqual(['改名'])
+    ).toEqual(['标为未读', '改名', '复制对话 ID'])
     fireEvent.click(within(menu).getByRole('menuitem', { name: '改名' }))
-    expect(actions.onEdit).toHaveBeenCalled()
+    expect(manage.edit).toHaveBeenCalled()
   })
 })
 
