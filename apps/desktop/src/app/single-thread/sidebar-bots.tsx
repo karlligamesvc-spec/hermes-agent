@@ -14,9 +14,15 @@
  * screen goes back to its conversation, as APEX's row did. Renaming, a new
  * look and deleting are hc-1078's (bot-manage.tsx): the 「+」 asks for its
  * sheet, and the row on screen carries its 「···」.
+ *
+ * hc-1146: a right-click on any row opens the same menu as the 「···」, in
+ * Grok Bot's order and look (bot-row-menu.tsx). Pinned assistants come right
+ * after APEX and wear a small pin; hidden ones leave the list for the
+ * 「已隐藏」 row under it (sidebar-hidden-bots.tsx).
  */
 
 import { useStore } from '@nanostores/react'
+import { IconPinFilled } from '@tabler/icons-react'
 
 import { ApexAvatar } from '@/components/apex-avatar'
 import { Codicon } from '@/components/ui/codicon'
@@ -31,15 +37,19 @@ import {
   $multiBotMax,
   type ApexBot,
   botFor,
+  isBotPinned,
   openBot,
-  requestBotCreate
+  requestBotCreate,
+  sidebarBots
 } from '@/store/single-thread-bots'
 
 import { parsePoolAllBusy } from '../../../shared/apex-pool-busy'
 
-import { CurrentBotRowFrame, useBotManage } from './bot-manage'
+import { type BotManage, CurrentBotRowFrame, useBotManage } from './bot-manage'
+import { BotRowContextMenu } from './bot-row-menu'
 import { useBotRowStatus } from './bot-status'
 import { RowDot } from './row-dot'
+import { HiddenBotsRow } from './sidebar-hidden-bots'
 import { SINGLE_THREAD_ROW_CLASS } from './sidebar-row'
 import { rowMood, statusLineClass } from './sidebar-status'
 
@@ -91,18 +101,23 @@ type NotifyRetry = { label: string; onClick: () => void }
 function BotRow({
   bot,
   current,
+  manage,
   onOpen,
   viewing
 }: {
   bot: ApexBot
   current: boolean
+  manage: BotManage
   onOpen: () => void
   viewing: boolean
 }) {
   const onScreen = current && viewing
   const status = useBotRowStatus(bot, { current, onScreen })
+  const menu = { bot, manage, status }
+  const pinnedLabel = useSingleThreadBotsCopy().pinnedLabel
+  const name = <span className="truncate text-[0.875rem] font-semibold text-(--ui-text-primary)">{bot.name}</span>
 
-  return (
+  const row = (
     <button
       aria-current={current ? 'true' : undefined}
       className={cn(SINGLE_THREAD_ROW_CLASS, onScreen && ACTIVE_ROW_CLASS)}
@@ -114,7 +129,19 @@ function BotRow({
     >
       <ApexAvatar className="size-[2.125rem]" color={bot.color} mood={rowMood(status.kind)} shape={bot.shape} />
       <span className="flex min-w-0 flex-1 flex-col leading-tight">
-        <span className="truncate text-[0.875rem] font-semibold text-(--ui-text-primary)">{bot.name}</span>
+        {isBotPinned(bot) ? (
+          <span className="flex min-w-0 items-center gap-1">
+            {name}
+            <IconPinFilled
+              aria-label={pinnedLabel}
+              className="size-3 shrink-0 text-(--ui-text-tertiary)"
+              data-single-thread-bot-pinned=""
+              role="img"
+            />
+          </span>
+        ) : (
+          name
+        )}
         {status.line ? (
           <span
             className={cn('truncate pt-0.5 text-[0.75rem] text-(--ui-text-tertiary)', statusLineClass(status.kind))}
@@ -126,6 +153,12 @@ function BotRow({
       </span>
       <RowDot unread={status.unread} waiting={status.kind === 'waiting' ? status.line : null} />
     </button>
+  )
+
+  return (
+    <BotRowContextMenu {...menu}>
+      {current ? <CurrentBotRowFrame menu={menu}>{row}</CurrentBotRowFrame> : row}
+    </BotRowContextMenu>
   )
 }
 
@@ -150,26 +183,21 @@ export function SingleThreadBotRows({ onOpenCurrent, viewing }: { onOpenCurrent:
   }
 
   const manage = useBotManage(open)
+  const { hidden, shown } = sidebarBots(roster, currentProfile)
 
   return (
     <>
-      {roster.map(bot => {
-        const current = bot.profile === currentProfile
-        const row = <BotRow bot={bot} current={current} key={bot.profile} onOpen={() => open(bot)} viewing={viewing} />
-
-        return current ? (
-          <CurrentBotRowFrame
-            bot={bot}
-            key={bot.profile}
-            onDelete={() => manage.remove(bot)}
-            onEdit={() => manage.edit(bot)}
-          >
-            {row}
-          </CurrentBotRowFrame>
-        ) : (
-          row
-        )
-      })}
+      {shown.map(bot => (
+        <BotRow
+          bot={bot}
+          current={bot.profile === currentProfile}
+          key={bot.profile}
+          manage={manage}
+          onOpen={() => open(bot)}
+          viewing={viewing}
+        />
+      ))}
+      <HiddenBotsRow bots={hidden} manage={manage} />
       {manage.layer}
     </>
   )

@@ -1,6 +1,7 @@
 /**
  * Copy for hc-1078 (multi-bot M2): the new-assistant sheet, the selected row's 「···」 menu and the
- * delete confirmation, as prototype v2 artboard ⑦ (BotNew) words them.
+ * delete confirmation, as prototype v2 artboard ⑦ (BotNew) words them. hc-1146 adds the rest of the
+ * row menu (right-click and 「···」 alike, in Grok Bot's order) and the 「已隐藏」 row.
  *
  * Kept beside the main catalogs (they are past the code-health size cap). Each locale is a whole
  * typed object, so a missing zh string is a type error rather than an English fallback; zh, zh-hant
@@ -54,6 +55,25 @@ export interface SingleThreadBotsCopy {
   /** APEX's menu: its look is fixed (K6), only the name changes. */
   rename: string
   remove: string
+  /** hc-1146: the row menu's other items. */
+  pin: string
+  unpin: string
+  markUnread: string
+  markRead: string
+  copyId: string
+  copiedId: string
+  copyIdFailed: string
+  hide: string
+  /** After 「从侧栏隐藏」: where to find it again. */
+  hiddenNotice: (name: string) => string
+  /** A pin, hide or put-back that did not save. */
+  flagFailed: string
+  /** The row under the assistants while some are hidden. */
+  hiddenRow: (count: number) => string
+  /** The 「已隐藏」 menu's heading: picking one puts it back. */
+  hiddenMenuLabel: string
+  /** The small pin beside a pinned assistant's name. */
+  pinnedLabel: string
   deleteTitle: (name: string) => string
   deleteBody: string
   deleteCancel: string
@@ -100,6 +120,19 @@ const en: SingleThreadBotsCopy = {
   edit: 'Rename or restyle',
   rename: 'Rename',
   remove: 'Delete this assistant',
+  pin: 'Pin',
+  unpin: 'Unpin',
+  markUnread: 'Mark as unread',
+  markRead: 'Mark as read',
+  copyId: 'Copy conversation ID',
+  copiedId: 'Conversation ID copied',
+  copyIdFailed: 'That didn’t copy. Try again.',
+  hide: 'Hide from sidebar',
+  hiddenNotice: name => `${name} is hidden. Find it again under “hidden” below the assistants.`,
+  flagFailed: 'That didn’t work. Try again.',
+  hiddenRow: count => `${count} hidden`,
+  hiddenMenuLabel: 'Pick one to put it back',
+  pinnedLabel: 'Pinned',
   deleteTitle: name => `Delete “${name}”?`,
   deleteBody:
     'Its conversations, the images and videos it saved on this computer, and its copy of the skills go with it, for good. Your “About you” and your usage stay as they are.',
@@ -147,6 +180,19 @@ const zh: SingleThreadBotsCopy = {
   edit: '改名或换样子',
   rename: '改名',
   remove: '删除这个助手',
+  pin: '置顶',
+  unpin: '取消置顶',
+  markUnread: '标为未读',
+  markRead: '标为已读',
+  copyId: '复制对话 ID',
+  copiedId: '已复制对话 ID',
+  copyIdFailed: '没复制成，再试一次。',
+  hide: '从侧栏隐藏',
+  hiddenNotice: name => `已隐藏「${name}」，在助手下面的「已隐藏」里能找回`,
+  flagFailed: '没改成，再试一次。',
+  hiddenRow: count => `已隐藏 ${count} 个助手`,
+  hiddenMenuLabel: '点一下放回侧栏',
+  pinnedLabel: '已置顶',
   deleteTitle: name => `删掉「${name}」？`,
   deleteBody:
     '它的对话、它在这台电脑上存的图片和视频、它那份技能会一起删掉，删了找不回来。你的「关于你」和用量都不受影响。',
@@ -194,6 +240,19 @@ const zhHant: SingleThreadBotsCopy = {
   edit: '改名或換樣子',
   rename: '改名',
   remove: '刪除這個助手',
+  pin: '置頂',
+  unpin: '取消置頂',
+  markUnread: '標為未讀',
+  markRead: '標為已讀',
+  copyId: '複製對話 ID',
+  copiedId: '已複製對話 ID',
+  copyIdFailed: '沒複製成，再試一次。',
+  hide: '從側欄隱藏',
+  hiddenNotice: name => `已隱藏「${name}」，在助手下面的「已隱藏」裡能找回`,
+  flagFailed: '沒改成，再試一次。',
+  hiddenRow: count => `已隱藏 ${count} 個助手`,
+  hiddenMenuLabel: '點一下放回側欄',
+  pinnedLabel: '已置頂',
   deleteTitle: name => `刪掉「${name}」？`,
   deleteBody:
     '它的對話、它在這台電腦上存的圖片和影片、它那份技能會一起刪掉，刪了找不回來。你的「關於你」和用量都不受影響。',

@@ -52,6 +52,8 @@ const AVATAR_SURFACES = [
   'app/single-thread/handoff/composer-at.tsx',
   'app/single-thread/handoff/plan-card.tsx',
   'app/single-thread/sidebar-bots.tsx',
+  // hc-1146: the 「已隐藏」 row under the assistants (several assistants on only).
+  'app/single-thread/sidebar-hidden-bots.tsx',
   'app/single-thread/sidebar.tsx',
   'app/single-thread/thread-header.tsx',
   'components/assistant-ui/process/single-thread-process.tsx'

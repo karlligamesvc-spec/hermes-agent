@@ -28,6 +28,7 @@ import { atom, computed } from 'nanostores'
 import type { ClientSessionState } from '@/app/types'
 import { type ChatMessage, chatMessageText } from '@/lib/chat-messages'
 import { visibleReplyText } from '@/lib/reply-markers'
+import { readJson, writeJson } from '@/lib/storage'
 
 import { $mainThread, $mainThreadsByProfile, type MainThreadState } from './main-thread'
 import { $sessionStates } from './session-states'
@@ -173,6 +174,44 @@ export function markBotReplySeen(profile: string, id: null | string): void {
   }
 }
 
+const UNREAD_MARKS_KEY = 'apex.single-thread.bots.unread-marks.v1'
+
+function loadUnreadMarks(): readonly string[] {
+  const raw = readJson<unknown>(UNREAD_MARKS_KEY)
+
+  return Array.isArray(raw) ? raw.filter((profile): profile is string => typeof profile === 'string') : []
+}
+
+/**
+ * hc-1146 「标为未读」: assistants whose row keeps its dot until their conversation is next on screen,
+ * reply or not. This install only, across restarts (seen replies are this window's only).
+ */
+export const $botUnreadMarks = atom<readonly string[]>(loadUnreadMarks())
+
+function setUnreadMarks(marks: readonly string[]): void {
+  $botUnreadMarks.set(marks)
+  writeJson(UNREAD_MARKS_KEY, marks.length ? marks : null)
+}
+
+export function markBotUnread(profile: string): void {
+  if (!$botUnreadMarks.get().includes(profile)) {
+    setUnreadMarks([...$botUnreadMarks.get(), profile])
+  }
+}
+
+/** 「标为已读」, the conversation coming on screen, and a deleted or new assistant (its profile name comes back). */
+export function clearBotUnreadMark(profile: string): void {
+  if ($botUnreadMarks.get().includes(profile)) {
+    setUnreadMarks($botUnreadMarks.get().filter(marked => marked !== profile))
+  }
+}
+
+/** 「标为已读」: the mark goes and the newest reply counts as seen. */
+export function markBotRead(profile: string, replyId: null | string): void {
+  clearBotUnreadMark(profile)
+  markBotReplySeen(profile, replyId)
+}
+
 /** A reply came in since the user last had this assistant's conversation open (never before they first did). */
 export function botUnread(reply: null | ThreadReply, seen: string | undefined): boolean {
   return reply !== null && seen !== undefined && reply.id !== seen
@@ -211,4 +250,5 @@ export function resetThreadPresenceForTest(): void {
   $threadInCall.set(false)
   $threadSeenReplyId.set(null)
   $botSeenReplyIds.set({})
+  setUnreadMarks([])
 }

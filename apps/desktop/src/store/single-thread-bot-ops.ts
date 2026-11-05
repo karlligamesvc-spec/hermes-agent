@@ -23,6 +23,8 @@
  * - A new assistant is always cloned from default (`clone_from: 'default'`): only that copy carries
  *   the plugin enable list with apex-overlay and the generation tools.
  * - APEX keeps its look (K6) and cannot be deleted; renaming it writes only `ui_meta.apex.name`.
+ * - hc-1146: the sidebar's 「置顶」 and 「从侧栏隐藏」 are `ui_meta.apex.pinned` / `.hidden`, written the
+ *   same way. Not upstream Bot Mode's `hermes-bots.pinned` / `.hidden`, for the reason above.
  */
 
 import type { ApexAvatarShape, ApexBotColor } from '@/components/apex-avatar-look'
@@ -31,7 +33,7 @@ import { apexBotNameFromSoul, composeApexBotSoul, renameInApexBotSoul } from '..
 import { PRODUCT_ASSISTANT_ORIGIN } from '../../shared/apex-product-assistant'
 
 import { requestGatewayForProfile } from './gateway'
-import { APEX_BOT_META_KEY, APEX_PROFILE } from './single-thread-bots'
+import { APEX_BOT_META_KEY, APEX_PROFILE, type BotSidebarFlags } from './single-thread-bots'
 import { cancelHandoffsForProfile } from './single-thread-handoff'
 
 /** The name field's limit, in characters (prototype ⑦: `maxlength="12"`). */
@@ -357,6 +359,32 @@ export async function saveBotLook(
 
   if (profile !== APEX_PROFILE) {
     await syncSoulName(profile, name)
+  }
+}
+
+/**
+ * hc-1146: 「置顶」 / 「从侧栏隐藏」 and back, from the sidebar's right-click menu. The flags go into
+ * `ui_meta.apex` over everything stored there (name, look, `created`, `origin`), against the revision
+ * just read; when another write lands in between (the sheet, the rename tool), it reads again once.
+ * Never on APEX: it is always first and always shown.
+ */
+export async function saveBotSidebarFlags(profile: string, flags: BotSidebarFlags): Promise<void> {
+  if (profile.trim().toLowerCase() === APEX_PROFILE) {
+    throw new BotOpError('apex', 'APEX is always first and always shown')
+  }
+
+  for (let attempt = 1; ; attempt += 1) {
+    const { meta, revision } = await readBotMeta(profile)
+
+    try {
+      await writeMeta(profile, { ...meta, ...flags }, revision)
+
+      return
+    } catch (error) {
+      if (attempt >= 2 || !(error instanceof BotOpError) || error.kind !== 'conflict') {
+        throw error
+      }
+    }
   }
 }
 
