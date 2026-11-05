@@ -68,6 +68,7 @@ import { shouldConvertPasteToAttachment } from './large-paste'
 import { ActionBadges } from './micro-actions'
 import { ComposerPasteActions } from './paste-action-chips'
 import { notePastedText } from './paste-actions'
+import { pasteCopiedFiles } from './paste-files'
 import { chipTypedPathOnSpace, pathifyRefs } from './path-refs'
 import { ProjectPicker } from './project-picker'
 import { QueuePanel } from './queue-panel'
@@ -525,6 +526,13 @@ export function ChatBar({
       for (const blob of imageBlobs) {
         void onAttachImageBlob(blob)
       }
+    }
+
+    // Files copied in Finder arrive as path-backed Files with no text: they
+    // attach like a drop (hc-1158, paste-files.ts) instead of reaching the
+    // empty-paste clipboard-image read below.
+    if (pasteCopiedFiles(event, { cwd, insertInlineRefs, onAttachDroppedItems, requestMainFocus })) {
+      return
     }
 
     // Trim surrounding whitespace so a copy that dragged along leading/trailing
@@ -993,7 +1001,7 @@ export function ChatBar({
     handleDrop,
     handleInputDragOver,
     handleInputDrop
-  } = useComposerDrop({ cwd, insertInlineRefs, onAttachDroppedItems, requestMainFocus })
+  } = useComposerDrop({ cwd, insertInlineRefs, onAttachDroppedItems, requestMainFocus, target: scope.target })
 
   // A bot chat is a companion conversation, not a working session, so it has no
   // repo to speak of — see the blank repoPath handed to CodingStatusRow below.

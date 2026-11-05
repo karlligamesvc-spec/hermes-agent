@@ -3,7 +3,9 @@ import { type DragEvent as ReactDragEvent, useRef, useState } from 'react'
 import { triggerHaptic } from '@/lib/haptics'
 
 import { extractDroppedFiles, HERMES_PATHS_MIME, partitionDroppedFiles } from '../../hooks/use-composer-actions'
+import type { ComposerTarget } from '../focus'
 import { dragHasAttachments, droppedFileInlineRefs, type InlineRefInput } from '../inline-refs'
+import { useCopiedFilesRequests } from '../paste-files'
 import type { ChatBarProps } from '../types'
 
 interface UseComposerDropArgs {
@@ -11,6 +13,8 @@ interface UseComposerDropArgs {
   insertInlineRefs: (refs: InlineRefInput[]) => boolean
   onAttachDroppedItems: ChatBarProps['onAttachDroppedItems']
   requestMainFocus: () => void
+  /** This composer's bus key: Finder files pasted outside it (paste-to-focus) land here. */
+  target: ComposerTarget
 }
 
 /**
@@ -24,10 +28,15 @@ export function useComposerDrop({
   cwd,
   insertInlineRefs,
   onAttachDroppedItems,
-  requestMainFocus
+  requestMainFocus,
+  target
 }: UseComposerDropArgs) {
   const [dragActive, setDragActive] = useState(false)
   const dragDepthRef = useRef(0)
+
+  // Files copied in Finder and pasted with the composer unfocused arrive by
+  // bus and are taken like a drop (hc-1158, paste-files.ts).
+  useCopiedFilesRequests({ cwd, insertInlineRefs, onAttachDroppedItems, requestMainFocus, target })
 
   const resetDragState = () => {
     dragDepthRef.current = 0
