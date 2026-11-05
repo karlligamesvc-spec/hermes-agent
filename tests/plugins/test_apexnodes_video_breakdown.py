@@ -10,6 +10,8 @@ fork's own plugin path:
   shots.json with code is what made product mode ask for approval);
 * a gateway that refuses (no quota, offline) still leaves a card on disk: the labelled fields
   are 「不确定」 and the result says why, it never guesses;
+* each batch of 20 shots counts for its own shots: one batch that fails or raises leaves only
+  those 「不确定」, and the summary opens by saying which (hc-1035/hc-1136, 2026-11-05);
 * footage_motion.py is found where APEX Desktop installs platform skills
   (``HERMES_HOME/skills/apexnodes/short-video-studio/scripts/``);
 * with a real ffmpeg (the bundled 9.x; skipped without one) a synthetic video's cuts come back.
@@ -150,8 +152,37 @@ def test_a_refusing_gateway_still_leaves_an_honest_card(desktop):
     desktop.answer[0] = desktop.gateway.GatewayError("本月额度已用完", code="quota_exceeded")
     result = json.loads(plugin._handle_video_breakdown({"video_path": str(desktop.video)}))
     assert result["labels_from"] == "none" and "本月额度已用完" in result["note"]
+    assert result["summary"].startswith("注意：画面这一层没做全——2 镜都没看成画面、也没读字")
     card = json.loads(Path(result["shots_path"]).read_text(encoding="utf-8"))
     assert all(s["shot_size"] == "不确定" and "shot_size" in s["uncertain"] for s in card["shots"])
+
+
+@pytest.mark.parametrize("how", ["answers", "raises"])
+def test_one_failed_batch_leaves_only_its_shots_unsure(desktop, monkeypatch, how):
+    """2026-11-05: one of the batches failed and every shot of the run read 「不确定」."""
+    monkeypatch.setattr(breakdown, "probe", lambda ffprobe, path: {"duration": 27.0, "width": 720, "height": 1280, "fps": 30.0})
+    monkeypatch.setattr(breakdown, "scene_scores", lambda ffmpeg, path, seconds: [(round(0.6 * k, 2), 0.9) for k in range(1, 45)])
+
+    def answer(payload):
+        if 21 not in [s["n"] for s in payload["shots"]]:
+            return _labels(payload)
+        if how == "raises":
+            raise desktop.gateway.GatewayError("平台工具网关返回错误(HTTP 502)", code="bad_gateway")
+        return {"labels_from": "none", "ocr_from": "server", "model": "apex-flash",
+                "labels_error": {"code": "vision_truncated", "message": "看图的模型没答完这些镜头(回答写到长度上限被截断，"
+                                 "分成两半重问也没答完)，这次没看画面。"},
+                "shots": [{"n": s["n"], "text_overlays": []} for s in payload["shots"]]}
+
+    desktop.answer[0] = answer
+    result = json.loads(plugin._handle_video_breakdown({"video_path": str(desktop.video)}))
+    assert len(desktop.calls) == 3 and result["shot_count"] == 45
+    assert result["labels_from"] == "partial"
+    assert list(result)[:3] == ["summary", "card", "note"]
+    assert result["summary"].startswith("注意：画面这一层没做全——第 21–40 镜(45 镜中 20 镜)没看成画面")
+    assert "第 21–40 镜：" in result["note"] and "这次没看画面" not in result["note"]
+    card = json.loads(Path(result["shots_path"]).read_text(encoding="utf-8"))
+    sizes = {s["n"]: s["shot_size"] for s in card["shots"]}
+    assert all(sizes[n] == ("不确定" if 21 <= n <= 40 else "近景") for n in sizes)
 
 
 def test_a_missing_file_is_said_plainly(desktop, tmp_path):

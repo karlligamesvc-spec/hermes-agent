@@ -67,6 +67,12 @@ def _response(status: int, detail) -> httpx.Response:
          ASR, "视频转写服务暂不可用(503),请过几分钟再试，或先提供已有文字稿。"),
         (503, {"code": "vendor_unavailable", "vendor_code": "asr_auth_failed", "message": "火山 ASR 凭证无效或无权限"},
          ASR, "平台这项能力的配置出了问题(503),要等平台修好才能用，现在重试也不会成功。"),
+        # 2026-11-04/05: Volcengine timed out its own task (55001010). Not an outage: the same
+        # file again, and a link to the same video would not help.
+        (503, {"code": "vendor_unavailable", "vendor_code": "asr_vendor_timeout",
+               "message": "转写服务这次的识别任务在供应商那边超时了，没出结果，也没计费；平台没停，同一个文件再转一次通常就行。"},
+         ASR, "转写服务这次的识别任务在供应商那边超时了，没出结果，也没计费；平台没停。"
+              "用同一个文件再调一次 media_transcribe 通常就行；换成这条视频的链接还是同一段音频，没有帮助。"),
     ],
 )
 def test_error_sentence_table(status, detail, path, expected):
@@ -84,6 +90,24 @@ def test_a_4xx_never_reads_as_an_outage():
     for status in (400, 403, 404, 409, 422):
         error = gateway._error_from_response(_response(status, {"code": "x", "message": "这次查询的参数不对"}), path=SOCIAL)
         assert "暂不可用" not in str(error) and "503" not in str(error)
+
+
+def test_a_vendor_timeout_names_no_outage_and_no_link_retry():
+    error = gateway._error_from_response(
+        _response(503, {"code": "vendor_unavailable", "vendor_code": "asr_vendor_timeout", "message": "x"}), path=ASR
+    )
+    assert error.status == 503 and error.vendor_code == "asr_vendor_timeout"
+    assert "暂不可用" not in str(error) and "过几分钟" not in str(error)
+    assert "同一个文件" in str(error) and "链接" in str(error)
+
+
+def test_a_vendor_timeout_reads_in_english_for_an_english_desktop(monkeypatch):
+    monkeypatch.setenv("HERMES_LANGUAGE", "en")
+    error = gateway._error_from_response(
+        _response(503, {"code": "vendor_unavailable", "vendor_code": "asr_vendor_timeout", "message": "x"}), path=ASR
+    )
+    assert str(error).startswith("The transcription vendor timed out on this recognition task")
+    assert "same file" in str(error)
 
 
 def test_failed_job_answers_are_read_through_the_same_table():

@@ -63,7 +63,8 @@ ASR 族(hc-978:先提交任务再轮询,旧网关没有 /asr/jobs 时回退同�
 错误语义(全部显式降级文案,不静默吞):
   401 key 失效→提示重新登录;402 配额/余额;429 限流(本客户端带有限退避重试,
   日限 429 除外);503 只代表平台这边服务不了:按 vendor_code 分「配置坏了,重试无用」
-  「排队满了,1 分钟后再试」,其余按 download resolve / ASR / 其他能力分段,不向用户
+  「排队满了,1 分钟后再试」「转写供应商这次超时,同一个文件再转一次」,其余按
+  download resolve / ASR / 其他能力分段,不向用户
   暴露供应商细节;其余 4xx(链接不完整、参数被拒、内容不存在)直接用服务端原句
   (hc-1035)。图片/视频生成只在能自己恢复的失败上提示再试(hc-969,见 media_error_message)。
 ──────────────────────────────────────────────────────────────────────────────
@@ -109,6 +110,7 @@ from typing import Any
 import httpx
 
 from plugins import apexnodes_media_catalog as _media_catalog
+from plugins.apexnodes_gateway_copy import COPY as _COPY
 
 logger = logging.getLogger(__name__)
 
@@ -297,221 +299,7 @@ class GatewayError(RuntimeError):
 # ---------------------------------------------------------------------------
 # 面向用户的报错:中英两版(hc-984)
 # ---------------------------------------------------------------------------
-# Every sentence this client (and the apexnodes image/video tools through it) writes
-# itself, as (zh, en). The language is the user's: HERMES_LANGUAGE, then
-# display.language in config.yaml (the Desktop writes zh by default and the user can
-# switch to English), Chinese unless that is English. The hosted copies in apex-nodes
-# use the same rule (hc-961 sets zh there). The server's own sentences are passed on
-# as they are. ``{label}`` / ``{Label}`` name the media (图片/视频, image/video).
-_COPY: dict[str, tuple[str, str]] = {
-    "credential_missing_desktop": (
-        "尚未登录 ApexNodes 账号,平台工具(图片/视频生成、图片 OCR、媒体转写)不可用。"
-        "请打开 设置 → 账户 完成登录;登录后本对话直接重试即可,无需其他配置。",
-        "You are not signed in to ApexNodes, so platform tools (image/video generation, image OCR, "
-        "media transcription) are unavailable. Open Settings → Account and sign in; then simply try "
-        "again in this chat, nothing else to set up.",
-    ),
-    "credential_missing_container": (
-        "本环境没有平台凭据,平台工具不可用。请为容器注入 {env_key}(或 API_SERVER_KEY),再重启 Agent 容器。",
-        "This environment has no platform credential, so platform tools are unavailable. Inject "
-        "{env_key} (or API_SERVER_KEY) into the container and restart the Agent container.",
-    ),
-    "credential_stale_config": (
-        "平台凭据被服务端拒绝(401);当前用的是 config.yaml 里的备用副本,它可能已经过期。"
-        "请先把 APEX 更新到最新版并重启(桌面端会在启动时自动换发凭据);若更新后仍然如此,"
-        "再到 设置 → 账户 重新登录一次。",
-        "The server rejected the platform credential (401). The one in use is the backup copy in "
-        "config.yaml, which may have expired. Update APEX to the latest version and restart it (the "
-        "Desktop re-issues the credential at start-up); if it still happens, sign in again under "
-        "Settings → Account.",
-    ),
-    "credential_stale_desktop": (
-        "平台凭据被服务端拒绝(401)。请到 设置 → 账户 重新登录一次以换发凭据;"
-        "若刚登录过仍然如此,请重启 APEX(启动时会自动换发)。",
-        "The server rejected the platform credential (401). Sign in again under Settings → Account "
-        "to get a new one; if you just did, restart APEX (it re-issues the credential at start-up).",
-    ),
-    "credential_stale_container": (
-        "平台凭据被服务端拒绝(401):该 Agent Key 可能已轮换或被停用,请管理员重新下发 Agent Key 后重启容器。",
-        "The server rejected the platform credential (401): this Agent Key may have been rotated or "
-        "disabled. An admin needs to issue a new Agent Key and restart the container.",
-    ),
-    "quota_402": (
-        "平台工具额度不足(402):套餐配额已用尽或余额不足,请升级套餐/充值后再试。",
-        "Not enough platform tool quota (402): the plan's allowance or the balance has run out. "
-        "Upgrade the plan or top up, then try again.",
-    ),
-    "too_large_413": (
-        "文件超过平台大小上限(413),本次未能处理。",
-        "The file is over the platform's size limit (413) and was not processed.",
-    ),
-    "rate_limited_429": (
-        "平台工具请求过于频繁(429):已自动退避重试仍被限流,请稍等 1-2 分钟再试。",
-        "Too many platform tool requests (429): still rate-limited after backing off. Wait 1-2 "
-        "minutes and try again.",
-    ),
-    # hc-1035: a 503 is said only for the platform being unable to serve; the server
-    # answers a link, parameter or rate-limit problem with a 4xx and its own sentence.
-    "download_unavailable_503": (
-        "视频链接解析/下载服务暂不可用(503),请过几分钟再试，或直接上传视频文件。",
-        "The video link resolving/download service is unavailable right now (503). Try again in a "
-        "few minutes, or upload the video file directly.",
-    ),
-    "asr_unavailable_503": (
-        "视频转写服务暂不可用(503),请过几分钟再试，或先提供已有文字稿。",
-        "The video transcription service is unavailable right now (503). Try again in a few minutes, "
-        "or provide an existing transcript first.",
-    ),
-    "capability_unavailable_503": (
-        "平台能力暂不可用(503),请过几分钟再试。",
-        "This platform capability is unavailable right now (503). Try again in a few minutes.",
-    ),
-    "capability_busy_503": (
-        "平台的数据服务这会儿排队的请求太多(503),这次没轮到；过 1 分钟再试。",
-        "The platform's data service has too many requests queued right now (503); try again in "
-        "about a minute.",
-    ),
-    "capability_setup_503": (
-        "平台这项能力的配置出了问题(503),要等平台修好才能用，现在重试也不会成功。",
-        "This platform capability is misconfigured (503) and works again only once the platform "
-        "fixes it; retrying now will not help.",
-    ),
-    "gateway_error_status": ("平台工具网关返回错误(HTTP {status})", "The platform tool gateway returned an error (HTTP {status})"),
-    "with_detail": ("{message}(详情: {detail})", "{message} (details: {detail})"),
-    "gateway_unconfigured": (
-        "平台工具网关未配置(缺 {env_base},亦未检测到桌面登录凭证),无法调用平台能力。",
-        "The platform tool gateway is not configured ({env_base} is missing and no Desktop sign-in "
-        "was found), so platform capabilities cannot be called.",
-    ),
-    "network_error": (
-        "无法连接平台服务(网络错误):{error}。请检查网络/代理后重试;凭据本身没有问题。",
-        "Could not reach the platform service (network error): {error}. Check the network or proxy "
-        "and try again; the credential itself is fine.",
-    ),
-    # hc-984: no retry promise for an answer nobody could read.
-    "gateway_unreadable": (
-        "平台工具网关的回答读不出来,这次没有结果。",
-        "The platform tool gateway sent an answer that could not be read; there is no result this time.",
-    ),
-    # hc-978: what the agent can do next when a transcription job's answer is out of reach.
-    "asr_job_unreachable": (
-        "转写任务已经交给平台，但本机连续 {minutes} 分钟连不上平台，没拿到结果。先检查网络或代理；"
-        "恢复后用同一个文件再调一次 media_transcribe，平台已经转完的话会直接取回结果。",
-        "The transcription job reached the platform, but this computer could not reach the platform for "
-        "{minutes} minutes in a row, so there is no result. Check the network or proxy; once it is back, call "
-        "media_transcribe again with the same file, and a result the platform already finished comes straight back.",
-    ),
-    "asr_job_overdue": (
-        "平台转写等了 {minutes} 分钟还没完成，这次停止等待。可以稍后用同一个文件再试一次；"
-        "这段素材如果不需要台词，按没有字幕的素材继续。",
-        "The platform has been transcribing for {minutes} minutes without finishing, so this wait stops here. "
-        "Try again later with the same file; if this clip does not need its speech, carry on without captions.",
-    ),
-    "asr_job_lost": (
-        "平台重启过，找不到这个转写任务；自动重新提交一次后又找不到了，这次没有结果。稍后用同一个文件再调一次 media_transcribe。",
-        "The platform restarted and lost this transcription job, and the automatic resubmission was lost too; "
-        "there is no result this time. Call media_transcribe again later with the same file.",
-    ),
-    # What the agent can do next when a video job's end is out of reach. The same call
-    # again carries the same Idempotency-Key, so a clip the platform kept comes back.
-    "video_job_unreachable": (
-        "视频任务已经交给平台，但本机连续 {minutes} 分钟连不上平台，没拿到结果；平台那边可能还在生成。"
-        "先检查网络或代理，恢复后用完全相同的参数再调一次 generate_video：平台还留着这个任务的话会直接取回，不会重新生成。",
-        "The video job reached the platform, but this computer could not reach the platform for {minutes} "
-        "minutes in a row, so there is no result; the platform may still be rendering it. Check the network or "
-        "proxy; once it is back, call generate_video again with exactly the same arguments, and a job the "
-        "platform still keeps comes straight back instead of rendering again.",
-    ),
-    "video_job_overdue": (
-        "视频在平台上已经生成了 {minutes} 分钟还没完成(可能在排队),这次先停止等待。"
-        "过几分钟用完全相同的参数再调一次 generate_video:平台还留着这个任务的话会接着等它、直接取回，不会重新生成。",
-        "The video has been rendering on the platform for {minutes} minutes without finishing (it may be "
-        "queued), so this wait stops here. In a few minutes call generate_video again with exactly the same "
-        "arguments: a job the platform still keeps is picked up and returned, not rendered again.",
-    ),
-    "video_job_lost": (
-        "平台重启过，找不到这个视频任务，这次没有结果。可以用同样的参数再调一次 generate_video。",
-        "The platform restarted and lost this video job; there is no result this time. Call generate_video "
-        "again with the same arguments.",
-    ),
-    "video_job_recovered": (
-        "这是之前一次完全相同的调用已经生成好的视频(当时没取回),这次没有重新生成，也没有再计费。",
-        "This is the video an earlier call with exactly the same arguments already generated (its answer never "
-        "arrived); nothing was rendered or billed again.",
-    ),
-    "media_daily_limit": ("今天的{label}生成额度用完了，明天恢复。", "Today's {label} generation quota is used up; it comes back tomorrow."),
-    "media_switched_off": (
-        "平台现在暂时关闭了{label}生成，重新开放之前重试也不会成功。",
-        "The platform has switched {label} generation off for now; retrying will not work until it is back.",
-    ),
-    "media_not_configured": (
-        "平台还没有开通{label}生成服务，重试也不会成功。",
-        "The platform has not set up {label} generation; retrying will not help.",
-    ),
-    "media_auth_failed": (
-        "平台的{label}生成服务配置出了问题，要等平台修好才能用，重试也不会成功。",
-        "The platform's {label} generation setup is broken and works again only once the platform "
-        "fixes it; retrying will not help.",
-    ),
-    "media_no_reason": ("{label}生成服务出了问题，没有说明原因。", "The {label} generation service had a problem without saying why."),
-    "media_no_reason_status": (
-        "{label}生成服务出错了({status}),没有说明原因。",
-        "The {label} generation service failed ({status}) without saying why.",
-    ),
-    "media_unreadable": (
-        "{label}生成服务的回答读不出来，这次没有结果。",
-        "The {label} generation service sent an answer that could not be read; there is no result this time.",
-    ),
-    "media_paused_model": (
-        "这次用的{label}模型最近连续几次都没生成成功，平台先暂停了它，{when}；"
-        "现在也可以换一个{label}模型。",
-        "The {label} model for this call failed several times in a row and the platform paused it; "
-        "{when}. You can also switch to another {label} model now.",
-    ),
-    "media_paused": (
-        "{label}生成最近连续几次都没成功，平台先暂停了它，{when}。",
-        "{Label} generation failed several times in a row and the platform paused it; {when}.",
-    ),
-    "when_minutes": ("大约 {minutes} 分钟后可以再试", "try again in about {minutes} minutes"),
-    "when_later": ("过一会儿可以再试", "try again in a while"),
-    "media_unreachable": ("无法连接{label}生成服务: {reason}", "Could not reach the {label} generation service: {reason}"),
-    "media_not_object": ("generate_{media} 的参数必须是 JSON 对象。", "generate_{media} expects a JSON object argument."),
-    "media_missing_prompt": ("请提供{label}描述", "Please describe the {label}."),
-    "media_failed": ("{label}生成失败: {reason}", "{Label} generation failed: {reason}"),
-    "media_setting_malformed": ("当前{label}模型设置格式无效", "The current {label} model setting is malformed"),
-    "media_setting_unknown": ("当前{label}模型设置不是可用的模型", "The current {label} model setting is not an available model"),
-    "media_setting_unreadable": ("无法读取当前{label}模型设置", "Could not read the current {label} model setting"),
-    # Input images (参考图、首帧、首尾帧).
-    "input_images_not_list": (
-        "images 必须是列表，每一项是 {{source, role, kind}}。",
-        "images must be a list of {{source, role, kind}} objects.",
-    ),
-    "input_image_source_missing": ("images 第 {index} 项没有 source。", "images item {index} has no source."),
-    "input_images_unsupported_server": (
-        "平台还不支持带图生成(参考图、首帧、首尾帧),这次没有生成。可以先不带图生成，或等平台更新后再试。",
-        "The platform does not take input images (references, first or last frames) yet; nothing was "
-        "generated. Generate without images for now, or try again after the platform updates.",
-    ),
-    "input_image_missing": (
-        "找不到第 {index} 张图({source}),这次没有生成。请让用户重新发图，或用生成结果里的 image_ref。",
-        "Image {index} ({source}) was not found; nothing was generated. Ask for the image again, or use "
-        "the image_ref from an earlier result.",
-    ),
-    "input_image_too_large": (
-        "第 {index} 张图超过 {mb} MB,没有上传，这次没有生成。",
-        "Image {index} is over {mb} MB and was not uploaded; nothing was generated.",
-    ),
-    "input_image_download_failed": (
-        "第 {index} 张图的链接下载不下来({reason}),这次没有生成。",
-        "Image {index}'s link could not be downloaded ({reason}); nothing was generated.",
-    ),
-    "input_image_upload_failed": (
-        "第 {index} 张图上传失败：{reason}。这次没有生成，也不会改成不带图去生成。",
-        "Image {index} could not be uploaded: {reason}. Nothing was generated, and nothing will be "
-        "generated without the image.",
-    ),
-}
-
+# The sentences themselves are the _COPY table in apexnodes_gateway_copy.py.
 # (zh, en) media names for ``{label}``.
 _MEDIA_NAMES = {"image": ("图片", "image"), "video": ("视频", "video")}
 
@@ -754,6 +542,8 @@ def _server_code(response: httpx.Response, key: str = "code") -> str | None:
 # vendor_code behind a 503 that decides the sentence (hc-1035): our own outbound queue
 # was full (retry in a minute), or the platform's setup is broken (retrying cannot help).
 _BUSY_VENDOR_CODES = frozenset({"provider_busy"})
+# The vendor timed out this one task; its own sentence says what helps (hc-1035).
+_OWN_SENTENCE_VENDOR_CODES = frozenset({"asr_vendor_timeout"})
 _SETUP_VENDOR_CODES = frozenset(
     {"provider_not_configured", "provider_auth_failed", "asr_auth_failed", "asr_quota_insufficient"}
 )
@@ -764,6 +554,8 @@ def _outage_message(path: str, vendor_code: str | None) -> str:
         return say("capability_setup_503")
     if vendor_code in _BUSY_VENDOR_CODES:
         return say("capability_busy_503")
+    if vendor_code in _OWN_SENTENCE_VENDOR_CODES:
+        return say(vendor_code)
     if path.startswith("/tools/v1/social/") and path.endswith("/download"):
         return say("download_unavailable_503")
     if path.startswith("/tools/v1/asr/"):
