@@ -17,6 +17,7 @@ export type StepIntent =
   | 'audio'
   | 'blackframes'
   | 'cleanup'
+  | 'compare'
   | 'data'
   | 'download'
   | 'editDoc'
@@ -31,11 +32,13 @@ export type StepIntent =
   | 'install'
   | 'loudness'
   | 'open'
+  | 'pacing'
   | 'probe'
   | 'program'
   | 'readData'
   | 'readDoc'
   | 'readSubs'
+  | 'recipe'
   | 'render'
   | 'save'
   | 'silence'
@@ -43,6 +46,7 @@ export type StepIntent =
   | 'tools'
   | 'transcribe'
   | 'transcript'
+  | 'trim'
   | 'writeDoc'
   | 'writeEdit'
   | 'writeScript'
@@ -54,6 +58,10 @@ export type LookTopic = 'artifacts' | 'framing' | 'people' | 'product' | 'qualit
 // When one command does several things (`mkdir -p out && ffmpeg …`), the most
 // telling one names it: making the video beats making the folder for it.
 const PRIORITY: readonly StepIntent[] = [
+  'trim',
+  'compare',
+  'recipe',
+  'pacing',
   'render',
   'subtitles',
   'audio',
@@ -332,12 +340,35 @@ function interpreterIntent(program: string, args: string[]): null | StepIntent {
 
   const script = args.find(arg => !arg.startsWith('-'))
 
-  return script && SCRIPT_EXT.test(script) ? scriptPurpose(script) : null
+  if (!script || !SCRIPT_EXT.test(script)) {
+    return null
+  }
+
+  return footageIntent(script, args[args.indexOf(script) + 1] ?? '') ?? scriptPurpose(script)
+}
+
+// short-video-studio's editing script says its job in its first argument
+// (`footage_motion.py trim …`); hc-1156 added pacing / trim / recipe / compare
+// for 口播精剪. Its other form, `footage_motion.py <folder>`, reads the footage
+// and stays a plain script.
+const FOOTAGE_COMMANDS = new Map<string, StepIntent>([
+  ['assemble', 'render'],
+  ['compare', 'compare'],
+  ['pacing', 'pacing'],
+  ['recipe', 'recipe'],
+  ['sheet', 'frames'],
+  ['subtitles', 'subtitles'],
+  ['trim', 'trim']
+])
+
+function footageIntent(script: string, command: string): null | StepIntent {
+  return baseName(script).toLowerCase() === 'footage_motion.py' ? (FOOTAGE_COMMANDS.get(command) ?? null) : null
 }
 
 const LIST_PROGRAMS = new Set(['cat', 'du', 'file', 'find', 'head', 'ls', 'mdls', 'stat', 'tail', 'tree', 'wc'])
 const INSTALLERS = new Set(['brew', 'npm', 'pip', 'pip3', 'pnpm', 'uv', 'yarn'])
-const INTERPRETERS = /^python(\d(\.\d+)?)?$|^(ba|z)?sh$|^node$/
+// `"$APEX_PYTHON" x.py`: the Desktop's own Python, the way platform skills call it.
+const INTERPRETERS = /^python(\d(\.\d+)?)?$|^\$\{?apex_python\}?$|^(ba|z)?sh$|^node$/
 
 // Programs whose name alone says what they are for.
 const PROGRAM_INTENTS = new Map<string, StepIntent>([
@@ -587,6 +618,7 @@ const CHECKING: ReadonlySet<StepIntent | 'look'> = new Set([
   'frames',
   'look',
   'loudness',
+  'pacing',
   'probe',
   'silence'
 ])
@@ -603,6 +635,7 @@ const EDITING: ReadonlySet<StepIntent> = new Set([
   'program',
   'render',
   'subtitles',
+  'trim',
   'writeEdit',
   'writeScript',
   'writeSubs'
@@ -616,6 +649,11 @@ const EDITING: ReadonlySet<StepIntent> = new Set([
  */
 export function stepStage(toolName: string, intent: null | string | undefined, edited: boolean): null | Stage {
   const kind = intent ?? (isLookTool(toolName) ? 'look' : null)
+
+  // Holding a cut up against its references is checking it, cut or not yet.
+  if (kind === 'compare') {
+    return 'check'
+  }
 
   if (kind && CHECKING.has(kind as StepIntent)) {
     return edited ? 'check' : 'look'

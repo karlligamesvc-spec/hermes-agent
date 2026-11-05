@@ -1,7 +1,8 @@
 /**
  * Copy for the simple composer (WP4): the "+" menu with its 高级 fold, the
- * four chips a pasted short-video link or a dropped video offers, and the
- * save-it-first line a 视频号 link gets instead.
+ * four chips a pasted short-video link or a dropped video offers, the
+ * save-it-first line a 视频号 link gets instead, and the three trim chips a lone
+ * video gets in single-thread product mode (hc-1156).
  *
  * Kept beside the main catalogs instead of inside them: those files are past
  * the code-health size cap (they may only shrink), and a key zh lacks there
@@ -14,7 +15,7 @@
  * `composer.wakeWord*` word for word, and a test keeps the two equal.
  */
 
-import type { PasteActionId, PasteActionPhrases } from '@/app/chat/composer/paste-actions'
+import type { PasteActionId, PasteActionPhrases, TrimActionId } from '@/app/chat/composer/paste-actions'
 
 import { useI18n } from './context'
 import { getRuntimeI18nLocale } from './runtime'
@@ -35,6 +36,9 @@ export interface ComposerSimpleCopy {
     labels: Record<PasteActionId, string>
     /** Shown instead of the chips for a 视频号 link: it can't be downloaded. */
     saveFirst: string
+    /** hc-1156: a lone video in single-thread product mode. */
+    trimLabels: Record<TrimActionId, string>
+    trimSentence: Record<TrimActionId, string>
   }
   /** Native picker titles (Windows shows them in the dialog's title bar). */
   pickFilesTitle: string
@@ -77,6 +81,16 @@ const en: ComposerSimpleCopy = {
       kuaishou: 'Kuaishou video',
       xiaohongshu: 'Xiaohongshu note'
     },
+    trimLabels: {
+      compare: 'Compare with similar videos first',
+      subtitles: 'Clean up, then subtitle',
+      trim: 'Clean it up'
+    },
+    trimSentence: {
+      compare: 'First find a few similar videos to compare with, then clean up this talking-head clip',
+      subtitles: 'Clean up this talking-head clip, then add subtitles',
+      trim: 'Clean up this talking-head clip'
+    },
     videoSentence: {
       breakdown: 'Break down why this video went viral',
       remake: 'Remake this video as my own',
@@ -118,6 +132,12 @@ const zh: ComposerSimpleCopy = {
       kuaishou: '快手视频',
       xiaohongshu: '小红书笔记'
     },
+    trimLabels: { compare: '先找同类视频对照', subtitles: '剪干净再加字幕', trim: '剪干净' },
+    trimSentence: {
+      compare: '先找几条同类视频对照，再把这段口播剪干净',
+      subtitles: '把这段口播剪干净，再加上字幕',
+      trim: '把这段口播剪干净'
+    },
     videoSentence: {
       breakdown: '拆解这个视频为什么火',
       remake: '把这个视频复刻成我的',
@@ -158,6 +178,12 @@ const zhHant: ComposerSimpleCopy = {
       douyin: '抖音影片',
       kuaishou: '快手影片',
       xiaohongshu: '小紅書筆記'
+    },
+    trimLabels: { compare: '先找同類影片對照', subtitles: '剪乾淨再加字幕', trim: '剪乾淨' },
+    trimSentence: {
+      compare: '先找幾個同類影片對照，再把這段口播剪乾淨',
+      subtitles: '把這段口播剪乾淨，再加上字幕',
+      trim: '把這段口播剪乾淨'
     },
     videoSentence: {
       breakdown: '拆解這個影片為什麼紅',
