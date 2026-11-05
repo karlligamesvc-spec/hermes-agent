@@ -1,0 +1,46 @@
+{
+  "ensure": [
+    "writer",
+    "default"
+  ],
+  "requests": [
+    "profiles.list",
+    "session.list(default)",
+    "profiles.describe",
+    "session.list(writer)",
+    "profiles.list",
+    "session.list(writer)",
+    "profiles.list",
+    "session.list(default)"
+  ],
+  "switches": {
+    "to writer": [
+      "/apex-root | selected=apex-root | thread=default:found:apex-root | swap=null | intent=null | active=default",
+      "/apex-root | selected=apex-root | thread=default:found:apex-root | swap=null | intent=writer | active=default",
+      "/apex-root | selected=apex-root | thread=default:found:apex-root | swap=writer | intent=writer | active=default",
+      "/apex-root | selected=apex-root | thread=default:found:apex-root | swap=writer | intent=writer | active=writer",
+      "/apex-root | selected=apex-root | thread=writer:loading:null | swap=writer | intent=writer | active=writer",
+      "/apex-root | selected=apex-root | thread=writer:found:writer-root | swap=writer | intent=writer | active=writer",
+      "/apex-root | selected=null | thread=writer:found:writer-root | swap=writer | intent=writer | active=writer",
+      "/ | selected=null | thread=writer:found:writer-root | swap=writer | intent=writer | active=writer",
+      "/writer-root | selected=null | thread=writer:found:writer-root | swap=writer | intent=writer | active=writer",
+      "/writer-root | selected=writer-root | thread=writer:found:writer-root | swap=writer | intent=writer | active=writer",
+      "/writer-root | selected=writer-root | thread=writer:found:writer-root | swap=null | intent=writer | active=writer",
+      "/writer-root | selected=writer-root | thread=writer:found:writer-root | swap=null | intent=null | active=writer"
+    ],
+    "to default": [
+      "/writer-root | selected=writer-root | thread=writer:found:writer-root | swap=null | intent=null | active=writer",
+      "/writer-root | selected=writer-root | thread=writer:found:writer-root | swap=null | intent=default | active=writer",
+      "/writer-root | selected=writer-root | thread=writer:found:writer-root | swap=default | intent=default | active=writer",
+      "/writer-root | selected=writer-root | thread=writer:found:writer-root | swap=default | intent=default | active=default",
+      "/writer-root | selected=writer-root | thread=default:loading:null | swap=default | intent=default | active=default",
+      "/writer-root | selected=writer-root | thread=default:found:apex-root | swap=default | intent=default | active=default",
+      "/writer-root | selected=null | thread=default:found:apex-root | swap=default | intent=default | active=default",
+      "/ | selected=null | thread=default:found:apex-root | swap=default | intent=default | active=default",
+      "/apex-root | selected=null | thread=default:found:apex-root | swap=default | intent=default | active=default",
+      "/apex-root | selected=apex-root | thread=default:found:apex-root | swap=default | intent=default | active=default",
+      "/apex-root | selected=apex-root | thread=default:found:apex-root | swap=null | intent=default | active=default",
+      "/apex-root | selected=apex-root | thread=default:found:apex-root | swap=null | intent=null | active=default"
+    ]
+  }
+}
