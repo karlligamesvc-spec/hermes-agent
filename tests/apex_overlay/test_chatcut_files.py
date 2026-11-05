@@ -38,6 +38,9 @@ class FakeScheduler:
         self.export_status = 200
         self.export_body = EXPORT
         self.declared_size: str | None = str(len(EXPORT))
+        # /tools/v1/check's answer for this account (apex-nodes chatcut_access), and who asked.
+        self.chatcut_enabled = True
+        self.checks: list[dict] = []
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -61,6 +64,10 @@ class FakeScheduler:
 
             def do_GET(self):
                 url = urlparse(self.path)
+                if url.path == chatcut.CHECK_PATH:
+                    fake.checks.append({"headers": dict(self.headers)})
+                    self._json(200, {"ok": True, "chatcut": {"enabled": fake.chatcut_enabled}})
+                    return
                 fake.exports.append({"path": url.path, "query": parse_qs(url.query), "headers": dict(self.headers)})
                 if fake.export_status != 200:
                     self._json(fake.export_status, {"error": {"code": "x", "message": "这个导出还没完成"}})
@@ -117,6 +124,10 @@ def scheduler(tmp_path, monkeypatch):
     monkeypatch.setenv(chatcut.KEY_ENV, APEX_KEY)
     monkeypatch.setenv(chatcut.BASE_ENV, fake.base)
     monkeypatch.setattr(chatcut_files, "copy", lambda key: chatcut_files._COPY["zh"][key])
+    monkeypatch.setattr(chatcut, "_answers", {})
+    monkeypatch.setattr(chatcut, "_refreshing", set())
+    changes: list[str] = []
+    monkeypatch.setattr(chatcut, "_follow_change", lambda: changes.append("changed"))
     yield fake
     fake.stop()
 
@@ -322,3 +333,15 @@ def test_off_or_signed_out_neither_tool_does_anything(scheduler, tmp_path, monke
     assert upload(agent, [media(tmp_path)])["error"] == chatcut_files.SIGNED_OUT
     assert save()["error"] == chatcut_files.SIGNED_OUT
     assert agent.asked == [] and scheduler.uploads == [] and scheduler.exports == []
+
+
+def test_an_account_chatcut_is_not_open_to_is_told_so_before_any_card(scheduler, tmp_path):
+    """The tools are hidden then; one called from a list built before the account closed still asks nothing and
+    sends nothing, and says why in the Scheduler's words."""
+    scheduler.chatcut_enabled = False
+    agent = Agent("同意上传")
+
+    assert upload(agent, [media(tmp_path)])["error"] == chatcut_files.NOT_OPEN
+    assert save()["error"] == chatcut_files.NOT_OPEN
+    assert agent.asked == [] and scheduler.uploads == [] and scheduler.exports == []
+    assert {check["headers"].get("Authorization") for check in scheduler.checks} == {f"Bearer {APEX_KEY}"}

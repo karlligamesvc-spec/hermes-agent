@@ -109,6 +109,8 @@ SAVE_SCHEMA = {
 }
 
 SIGNED_OUT = "要先登录 APEX 账号，ChatCut 才能用。"
+# The Scheduler's own words for the same refusal (apex-nodes chatcut_access.NOT_ENABLED).
+NOT_OPEN = "ChatCut 剪辑还没有对这个账号开放。"
 NEEDS_PROJECT = "project_id 要填完整的工程 id（36 位，从 create_project 或 list_projects 拿）。"
 NO_FILES = f"paths 要填 1 到 {MAX_FILES} 个本机文件的绝对路径。"
 NO_CARD = "这里没有卡片能让用户确认，上传本机文件要在电脑上的 APEX 对话里做。"
@@ -251,6 +253,8 @@ def upload_files(agent: Any, args: Mapping[str, Any] | None, ctx: Any) -> str:
     base, key = _gateway()
     if not chatcut.switch_on() or not base or not key:
         return tool_error(SIGNED_OUT)
+    if not chatcut.entitled():
+        return tool_error(NOT_OPEN)  # before the card: nothing to agree to
     args = args if isinstance(args, Mapping) else {}
     project_id = str(args.get("project_id") or "").strip().lower()
     raw = args.get("paths")
@@ -307,6 +311,8 @@ def save_export(args: Mapping[str, Any] | None, **_kwargs: Any) -> str:
     base, key = _gateway()
     if not chatcut.switch_on() or not base or not key:
         return tool_error(SIGNED_OUT)
+    if not chatcut.entitled():
+        return tool_error(NOT_OPEN)
     args = args if isinstance(args, Mapping) else {}
     project_id = str(args.get("project_id") or "").strip().lower()
     render_id = str(args.get("render_id") or "").strip()
@@ -352,7 +358,9 @@ def install_inline(module: Any) -> bool:
 def register(ctx: Any) -> None:
     from tools.registry import no_cache_check_fn
 
-    available = no_cache_check_fn(lambda: chatcut.switch_on() and chatcut.signed_in())
+    # Read each time (chatcut.entitled keeps the Scheduler's answer for a minute): the account may be opened or
+    # closed while Desktop runs.
+    available = no_cache_check_fn(lambda: chatcut.switch_on() and chatcut.signed_in() and chatcut.entitled())
     ctx.register_tool(
         name=UPLOAD_TOOL, toolset=TOOLSET, schema=UPLOAD_SCHEMA,
         # Registry dispatch has no card callback; the inline table runs it in a conversation.

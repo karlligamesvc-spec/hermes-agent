@@ -96,6 +96,20 @@ class FakeProxy:
         self.server.server_close()
 
 
+@pytest.fixture(autouse=True)
+def gate_state(monkeypatch):
+    """Each test starts with no kept answer, and the MCP functions ``apply`` wraps come back afterwards."""
+    from tools import mcp_tool_config, mcp_tool_registration
+
+    monkeypatch.setattr(chatcut, "_answers", {})
+    monkeypatch.setattr(chatcut, "_refreshing", set())
+    changes: list[str] = []
+    monkeypatch.setattr(chatcut, "_follow_change", lambda: changes.append("changed"))
+    monkeypatch.setattr(mcp_tool_config, "_load_mcp_config", mcp_tool_config._load_mcp_config)
+    monkeypatch.setattr(mcp_tool_registration, "_make_check_fn", mcp_tool_registration._make_check_fn)
+    return changes
+
+
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     path = tmp_path / "apexnodes"
@@ -108,8 +122,10 @@ def home(tmp_path, monkeypatch):
 
 @pytest.fixture
 def signed_in(home, monkeypatch):
+    """Signed in to an account the Scheduler has opened ChatCut for (test_chatcut_entitlement.py: one it has not)."""
     monkeypatch.setenv(chatcut.KEY_ENV, APEX_KEY)
     monkeypatch.setenv(chatcut.BASE_ENV, "https://api.apex-nodes.com")
+    monkeypatch.setattr(chatcut, "_read_entitlement", lambda base, key: True)
 
 
 def _switch_on(monkeypatch):
