@@ -54,7 +54,7 @@ import {
 } from '../../shared/apex-product-assistant'
 
 import { type BotSwitchCause, watchBotSwitch } from './bot-switch-log'
-import { $mainThreadsByProfile, type MainThreadState } from './main-thread'
+import { $mainThread, $mainThreadsByProfile, type MainThreadState } from './main-thread'
 import {
   $activeGatewayProfile,
   $gatewaySwapTarget,
@@ -466,6 +466,19 @@ export const $botSwitchInFlight = computed(
 export const $currentBotProfile = computed(
   [$botIntent, $gatewaySwapTarget, $activeGatewayProfile],
   (intent, swapping, active) => normalizeProfileKey(intent ?? swapping ?? active)
+)
+
+/**
+ * hc-1146: the thread of the assistant on screen. While a switch is under way
+ * $mainThread still holds the previous assistant's (it follows the engine
+ * answering); with several assistants the one asked for is already on screen
+ * and its conversation may already be opened (openBot opens a known thread at
+ * once), so the composer gate, the header pill and the sidebar's highlight
+ * read the thread this window knows for it. With one assistant: $mainThread.
+ */
+export const $onScreenThread = computed(
+  [$multiBotMode, $mainThread, $mainThreadsByProfile, $currentBotProfile],
+  (on, held, byProfile, current) => (on && held.profile !== current ? (byProfile[current] ?? held) : held)
 )
 
 /** `profile`'s roster row, or what can be said of it before the roster lists it. */

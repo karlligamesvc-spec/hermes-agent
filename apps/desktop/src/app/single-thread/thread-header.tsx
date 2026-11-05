@@ -14,17 +14,18 @@ import { useStore } from '@nanostores/react'
 import { ApexAvatar } from '@/components/apex-avatar'
 import { useSingleThreadChatCopy } from '@/i18n/single-thread-chat'
 import { cn } from '@/lib/utils'
-import { $mainThread, isMainThreadStoredId } from '@/store/main-thread'
+import { isMainThreadStoredId } from '@/store/main-thread'
 import { $sessions } from '@/store/session'
 import { useSingleThreadMode } from '@/store/single-thread'
-import { useBotLook, useBotName } from '@/store/single-thread-bots'
+import { $onScreenThread, useBotLook, useBotName } from '@/store/single-thread-bots'
 
 import { titlebarHeaderBaseClass } from '../shell/titlebar'
 
 /** Does the primary chat on screen (the thread, or the empty thread before it exists) wear the pill? */
 export function useSingleThreadHeader(selectedStoredSessionId: null | string): boolean {
   const singleThread = useSingleThreadMode()
-  const thread = useStore($mainThread)
+  // hc-1146: the on-screen assistant's thread, also while a switch to it is under way.
+  const thread = useStore($onScreenThread)
   const sessions = useStore($sessions)
 
   return singleThread && (!selectedStoredSessionId || isMainThreadStoredId(selectedStoredSessionId, thread, sessions))

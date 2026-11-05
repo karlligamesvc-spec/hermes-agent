@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { APEX_AVATAR_COLOR, apexBotColorHex } from '@/components/apex-avatar-look'
 
-import { $mainThreadsByProfile, resetMainThreadForTest } from './main-thread'
+import { $mainThreadsByProfile, noteMainThreadClaimed, resetMainThreadForTest } from './main-thread'
 import { $activeGatewayProfile, $gatewaySwapTarget } from './profile'
 import { $selectedStoredSessionId } from './session'
 import { setSingleThreadFlagForTest } from './single-thread'
@@ -22,6 +22,7 @@ import {
   $currentBotProfile,
   $multiBotMax,
   $multiBotMode,
+  $onScreenThread,
   APEX_PROFILE,
   BOT_THREAD_LEAVE_WAIT_MS,
   botFor,
@@ -614,6 +615,43 @@ describe('hc-1146 切换助手不闪屏: a click opens the thread this window al
     expect(opened).toEqual([['writer-tip', 'writer']])
     expect(requestFreshSession).toHaveBeenCalledTimes(1)
     expect($botIntent.get()).toBeNull()
+  })
+})
+
+describe('hc-1146 the thread of the assistant on screen', () => {
+  const writerThread = {
+    ids: ['writer-root'],
+    profile: 'writer',
+    rootId: 'writer-root',
+    status: 'found' as const,
+    tipId: 'writer-root'
+  }
+
+  afterEach(() => {
+    resetMainThreadForTest()
+    $botIntent.set(null)
+  })
+
+  it.each([
+    ['one assistant, even mid-switch', false, 'writer', true, 'apex-root'],
+    ['several, no switch under way', true, null, true, 'apex-root'],
+    ['several, switching to one whose thread is known', true, 'writer', true, 'writer-root'],
+    ['several, switching to one whose thread is not known yet', true, 'writer', false, 'apex-root']
+  ] as const)('%s → %s', (_label, several, intent, known, expected) => {
+    setSingleThreadFlagForTest(true)
+    setMultiBotFlagForTest(several)
+    noteMainThreadClaimed('default', 'apex-root')
+
+    if (known) {
+      $mainThreadsByProfile.set({ ...$mainThreadsByProfile.get(), writer: writerThread })
+    }
+
+    $botIntent.set(intent)
+
+    const unlisten = $onScreenThread.listen(() => undefined)
+
+    expect($onScreenThread.get().rootId).toBe(expected)
+    unlisten()
   })
 })
 
