@@ -262,3 +262,23 @@ def test_an_engine_apex_does_not_ship_is_said_plainly(monkeypatch, tts_entry, pr
     monkeypatch.setattr(tts_tool, '_importable', lambda importer: True)
     monkeypatch.setattr(tts_tool, '_check_piper_available', lambda: True)
     assert tts_tool._select_builtin_engine(provider) == (provider, None)  # an engine that is there runs
+
+
+@pytest.mark.parametrize('rel', ['apex_overlay/doubao_tts.py', 'plugins/apexnodes-douyin-tools/__init__.py'])
+def test_nothing_the_plugins_show_names_a_voice_vendor(rel):
+    """hc-1163: Scheduler picks who speaks and who transcribes (TTS_PROVIDER, ASR_PROVIDER), so no string
+    these plugins show the model or the user names a vendor. Comments, docstrings, internal keys and
+    log lines in English are not checked; the model id the narration provider compares against is
+    not shown."""
+    import ast
+
+    tree = ast.parse((Path(__file__).resolve().parents[2] / rel).read_text(encoding='utf-8'))
+    docstrings = {id(node.body[0].value) for node in ast.walk(tree)
+                  if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                  and node.body and isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant)}
+    shown = [node for node in ast.walk(tree)
+             if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings]
+    leaks = [(node.lineno, node.value) for node in shown
+             if any(name in node.value for name in ('豆包', '火山', 'Volcengine'))
+             or ('seed-tts' in node.value and node.value != 'seed-tts-2.0')]
+    assert len(shown) > 50 and leaks == []

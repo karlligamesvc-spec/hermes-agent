@@ -7,8 +7,8 @@ What this replaces
 ``faster_whisper`` on first use (via ``tools.lazy_deps.ensure(...)``). On a
 768MB-budgeted managed container that download + CPU inference is exactly the
 kind of work that OOM-kills the gateway (hc-205/hc-212). Managed/hosted agents
-must transcribe through the platform media pipeline (Volcengine ASR via the
-internal ``/media/transcribe`` endpoint) only, never by self-installing a local
+must transcribe through the platform media pipeline (the ASR Scheduler picks,
+Volcengine or Bailian, via the internal ``/media/transcribe`` endpoint) only, never by self-installing a local
 transcriber. The original cloud fix neutered the function in-place at image
 build time (an early ``return False``).
 
