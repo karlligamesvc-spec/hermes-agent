@@ -161,7 +161,7 @@ import { buildPlatformToolSpawnEnv, describePlatformToolSpawnEnv } from './apex-
 import { makeRoomInPool, poolAllBusyError, reapIdlePoolEngine, stampPoolEngine } from './apex-pool-engines'
 import { guardProductBlocksInHomes, persistRelayKeyInHome } from './apex-profile-config'
 import { registerProfileConfigIpc } from './apex-profile-config-ipc'
-import { isMultiBotActive, managedProfileHomes } from './apex-profile-homes'
+import { isMultiBotActive, managedProfileHomes, withLocalSharedPrimary } from './apex-profile-homes'
 import { createQuitConfirm, ENGINE_IDLE_PATH, ENGINE_PROBE_DEADLINE_MS, localEnginesOf } from './apex-quit-confirm'
 import { fetchRelayModels, RelayTierMemo } from './apex-relay-tiers'
 import {
@@ -11776,7 +11776,7 @@ function profileRouteOptions(profile, request?) {
   const sshOverride = profileSshOverride(config, profile)
   const key = connectionScopeKey(profile) || primaryProfileKey()
 
-  return {
+  return withLocalSharedPrimary(process.env, {
     // A desktop profile can be only a client-side routing alias. Keep backend
     // endpoint filters in the SSH target's namespace (e.g. mara → default).
     backendProfile: sshOverride?.remoteProfile,
@@ -11792,7 +11792,7 @@ function profileRouteOptions(profile, request?) {
     ownEntry: Boolean((config.profiles || {})[key]),
     requestMethod: request?.method,
     requestPath: request?.path
-  }
+  })
 }
 
 // Resolve a backend connection for the given profile, per the routing table in

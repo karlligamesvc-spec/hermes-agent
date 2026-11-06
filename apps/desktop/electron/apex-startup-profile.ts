@@ -27,7 +27,13 @@
  *    what it held and the next launch with several assistants on starts as it
  *    would have.
  *
- * With several assistants on, or single-thread off, all of it passes through.
+ * hc-1166: with several assistants on ONE engine (apex-single-engine.ts) the
+ * same lock holds: that engine hosts every assistant beside the profile it was
+ * started as, and that profile has to be APEX's, the root home the local IM
+ * gateway and the engine's launch-profile settings belong to.
+ *
+ * With several assistants on (each on an engine of its own), or single-thread
+ * off, all of it passes through.
  * Main cannot see the renderer's developer mode, so it counts there too: a
  * profile picked on the developer rail still opens live, it just is not the
  * startup profile while several assistants are off. Electron-free.
@@ -35,7 +41,7 @@
 
 import fs from 'node:fs'
 
-import { isMultiBotActive } from './apex-profile-homes'
+import { isMultiBotActive, isSingleEngineActive } from './apex-profile-homes'
 import { isSingleThreadActive } from './apex-single-thread'
 import { migrateActiveProfileIfMissing, type MigrationDeps, readExistingPreference } from './profile-migration'
 
@@ -47,6 +53,15 @@ type Env = Record<string, string | undefined>
 /** This launch shows APEX alone: single-thread on, several assistants off. */
 export function apexOnlyStartup(env: Env): boolean {
   return isSingleThreadActive(env) && !isMultiBotActive(env)
+}
+
+/** The main engine starts as APEX: APEX shown alone, or every assistant on one engine (hc-1166). */
+export function apexStartupPinned(env: Env): boolean {
+  return apexOnlyStartup(env) || isSingleEngineActive(env)
+}
+
+function pinReason(env: Env): string {
+  return apexOnlyStartup(env) ? 'off' : 'one engine'
 }
 
 /**
@@ -72,29 +87,30 @@ export function readStoredDesktopProfile(
   return null
 }
 
-/** The startup profile for this launch: APEX's while it shows APEX alone, else what is stored. */
+/** The startup profile for this launch: APEX's while the engine is pinned to it, else what is stored. */
 export function startupProfileFor(stored: null | string, env: Env): null | string {
-  return apexOnlyStartup(env) ? APEX_STARTUP_PROFILE : stored
+  return apexStartupPinned(env) ? APEX_STARTUP_PROFILE : stored
 }
 
 /**
- * Whether `profile` may be recorded as the startup profile. While APEX is
- * shown alone only APEX's (or clearing the choice) may; anything else is left
- * out, with one desktop.log line.
+ * Whether `profile` may be recorded as the startup profile. While the engine
+ * is pinned to APEX only APEX's (or clearing the choice) may; anything else is
+ * left out, with one desktop.log line.
  */
 export function startupProfileWritable(profile: null | string, env: Env, log: (line: string) => void): boolean {
-  if (!apexOnlyStartup(env) || !profile || profile === APEX_STARTUP_PROFILE) {
+  if (!apexStartupPinned(env) || !profile || profile === APEX_STARTUP_PROFILE) {
     return true
   }
 
-  log(`[multi-bot] off: not recording "${profile}" as the startup profile (it stays APEX's)`)
+  log(`[multi-bot] ${pinReason(env)}: not recording "${profile}" as the startup profile (it stays APEX's)`)
 
   return false
 }
 
 /**
  * The first-boot seed and heuristic re-score (profile-migration.ts), except
- * while APEX is shown alone: then it does not run and the file is not touched.
+ * while the engine is pinned to APEX: then it does not run and the file is not
+ * touched.
  */
 export function migrateStartupProfileIfMissing(
   file: string,
@@ -102,11 +118,11 @@ export function migrateStartupProfileIfMissing(
   env: Env,
   log: (line: string) => void
 ): boolean {
-  if (apexOnlyStartup(env)) {
+  if (apexStartupPinned(env)) {
     const stored = deps.existsSync(file) ? readExistingPreference(file, deps.readFileSync)?.profile : null
 
     log(
-      `[multi-bot] off: the main engine starts as APEX; active-profile.json (${stored ?? 'no profile'}) left as it is`
+      `[multi-bot] ${pinReason(env)}: the main engine starts as APEX; active-profile.json (${stored ?? 'no profile'}) left as it is`
     )
 
     return false

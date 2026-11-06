@@ -43,6 +43,29 @@ export function isMultiBotActive(env: Record<string, string | undefined> = {}): 
   return env?.[MULTI_BOT_ACTIVE_ENV] === '1'
 }
 
+/**
+ * hc-1166: several assistants on ONE engine. Main settles the
+ * `multi_bot_single_engine` client switch into it (apex-single-engine.ts); it
+ * only counts while several assistants are on.
+ */
+export const SINGLE_ENGINE_ACTIVE_ENV = 'APEX_MULTI_BOT_SINGLE_ENGINE'
+
+export function isSingleEngineActive(env: Record<string, string | undefined> = {}): boolean {
+  return isMultiBotActive(env) && env?.[SINGLE_ENGINE_ACTIVE_ENV] === '1'
+}
+
+/**
+ * hc-1166: a profile route's options plus whether every local assistant is
+ * served by the primary engine (connection-config.ts `localSharedPrimary`)
+ * instead of a pool engine of its own.
+ */
+export function withLocalSharedPrimary<T extends object>(
+  env: Record<string, string | undefined>,
+  options: T
+): T & { localSharedPrimary: boolean } {
+  return { ...options, localSharedPrimary: isSingleEngineActive(env) }
+}
+
 export interface ApexProfileHome {
   /** `default` for the root, else the directory name under `profiles/`. */
   profile: string
