@@ -678,3 +678,49 @@ describe('attached shared-remote group turns (#96493)', () => {
     expect(secondaryGateways).toHaveLength(0)
   })
 })
+
+describe('hc-1166: a local assistant the primary engine serves', () => {
+  function installLocalSharedPrimary(shared: boolean) {
+    ;(window as unknown as { hermesDesktop: unknown }).hermesDesktop = {
+      getConnection: vi.fn(async (profile: null | string) => ({ port: 4242, profile, token: 't' })),
+      getConnectionFor: vi.fn(async ({ connectionId, profile }: { connectionId: string; profile: string }) => ({
+        connectionId,
+        port: shared ? 4242 : 5151,
+        profile,
+        ...(shared ? { sharedPrimary: true } : {})
+      })),
+      getGatewayWsUrlFor: vi.fn(async ({ connectionId, profile }: { connectionId: string; profile: string }) => ({
+        ok: true as const,
+        wsUrl: `ws://${connectionId}/${profile}`
+      })),
+      touchBackend: vi.fn(async () => undefined)
+    }
+  }
+
+  it('reuses the primary socket and names the assistant on each call, like a shared remote', async () => {
+    const primary = makePrimary()
+    setPrimaryGateway(primary as never, 'default')
+    setPrimaryGatewayConnection({ connectionId: 'local' })
+    installLocalSharedPrimary(true)
+    await ensureGatewayForProfile('default')
+
+    await requestGatewayForAgent('local', 'apex-bot-3', 'session.resume', { session_id: 'stored-3' })
+
+    expect(secondaryGateways).toHaveLength(0)
+    expect(primary.request).toHaveBeenCalledWith('session.resume', { profile: 'apex-bot-3', session_id: 'stored-3' })
+  })
+
+  it('still dials its own socket when main says the assistant has an engine of its own', async () => {
+    const primary = makePrimary()
+    setPrimaryGateway(primary as never, 'default')
+    setPrimaryGatewayConnection({ connectionId: 'local' })
+    installLocalSharedPrimary(false)
+    await ensureGatewayForProfile('default')
+
+    await requestGatewayForAgent('local', 'apex-bot-3', 'session.resume', { session_id: 'stored-3' })
+
+    expect(secondaryGateways).toHaveLength(1)
+    expect(secondaryGateways[0].request).toHaveBeenCalledWith('session.resume', { session_id: 'stored-3' })
+    expect(primary.request).not.toHaveBeenCalled()
+  })
+})
