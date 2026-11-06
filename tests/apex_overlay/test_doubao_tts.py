@@ -97,12 +97,14 @@ home=Path(os.environ['HERMES_HOME']);home.mkdir(exist_ok=True)
 (home/'config.yaml').write_text('plugins:\n  enabled:\n    - apex-overlay\n',encoding='utf-8')
 audio=b'ID3\x04\x00\x00test-audio'
 calls=[]
+bodies=[]
 class Handler(BaseHTTPRequestHandler):
  def log_message(self,*args): pass
  def do_POST(self):
   assert self.path=='/tools/v1/tts/synthesize'
   assert self.headers['Authorization']=='Bearer only-this-profile'
-  calls.append(json.loads(self.rfile.read(int(self.headers['Content-Length'])))['text'])
+  body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+  bodies.append(body);calls.append(body['text'])
   self.send_response(200);self.send_header('Content-Type','audio/mpeg');self.end_headers();self.wfile.write(audio)
 server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
 os.environ['HERMES_PLATFORM_API_BASE']=f'http://127.0.0.1:{server.server_port}'
@@ -114,17 +116,21 @@ from hermes_cli.plugins import discover_plugins
 discover_plugins()
 assert tts_tool._load_tts_config()['provider']=='doubao'
 assert tts_tool.check_tts_requirements()
-result=json.loads(tts_tool.text_to_speech_tool('你好。',output_path=str(home/'旁白.mp3')))
+result=json.loads(tts_tool.text_to_speech_tool('你好。',output_path=str(home/'旁白.mp3'),instructions='语气热情一点'))
 assert result['success'],result
 assert result['provider']=='doubao'
 assert Path(result['file_path']).read_bytes()==audio
 assert calls==['你好。']
 from tools.registry import registry
 schema=registry.get_definitions({'text_to_speech'},quiet=True)[0]['function']
-assert schema['description'].startswith('把文字合成语音，默认用 APEX 平台的豆包配音'),schema['description']
+assert schema['description'].startswith('把文字合成语音，用 APEX 平台配音'),schema['description']
+assert '豆包' not in schema['description'] and 'seed-tts' not in schema['description']
 assert 'edge-tts' in schema['description'] and 'say' in schema['description']
 assert '0.5–2.0' in schema['parameters']['properties']['speed']['description']
 assert str(home) in schema['parameters']['properties']['output_path']['description']
+# the tone may be offered only if the model's instructions reach Scheduler
+offered='不使用' not in schema['parameters']['properties']['instructions']['description']
+assert offered==('instructions' in bodies[0]),(offered,bodies)
 (home/'config.yaml').write_text('plugins:\n  enabled:\n    - apex-overlay\ntts:\n  provider: openai\n',encoding='utf-8')
 assert tts_tool._load_tts_config()['provider']=='openai'
 upstream=tts_tool._tts_schema_overrides()
@@ -184,7 +190,7 @@ def test_model_reads_chinese_narration_text_only_while_doubao_is_active(monkeypa
     monkeypatch.setattr(tts_tool, '_load_tts_config', lambda: dict(config))
     shown = tts_entry.dynamic_schema_overrides()
     assert shown['description'] == adapter.NARRATION_DESCRIPTION
-    for phrase in ('豆包配音', '视频配音、旁白、口播、朗读一律调用本工具', 'edge-tts', 'pyttsx3', 'macOS say', '不要换别的声音顶上'):
+    for phrase in ('APEX 平台配音', '视频配音、旁白、口播、朗读一律调用本工具', 'edge-tts', 'pyttsx3', 'macOS say', '不要换别的声音顶上'):
         assert phrase in shown['description']
     props = shown['parameters']['properties']
     assert set(props) == set(tts_tool.TTS_SCHEMA['parameters']['properties'])

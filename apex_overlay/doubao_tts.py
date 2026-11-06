@@ -26,7 +26,7 @@ MIN_SPEED, MAX_SPEED = 0.5, 2.0
 # Edge and OpenAI, and on 0.17.58 a model cutting a video wrote its own edge-tts code and then
 # used macOS `say` instead of calling this tool (2026-10-21; Scheduler saw no TTS call).
 NARRATION_DESCRIPTION = (
-    "把文字合成语音，默认用 APEX 平台的豆包配音（seed-tts-2.0，中文女声）。"
+    "把文字合成语音，用 APEX 平台配音（默认中文女声，也能读英文等语言）。"
     "视频配音、旁白、口播、朗读一律调用本工具：它返回音频文件（MEDIA: 路径），"
     "在 Hypit、ffmpeg 或脚本里直接引用这个文件。"
     "不要在终端或代码里自己用 edge-tts、gTTS、pyttsx3、macOS say 或其他系统声音代替。"
@@ -40,10 +40,10 @@ def narration_parameters(parameters: dict, home: str) -> dict:
     props = params["properties"]
     props["text"]["description"] = "要读出来的文字。"
     props["output_path"]["description"] = (
-        f"可选：音频保存路径，比如剪辑工程里的 narration.mp3；豆包配音总是存成 .mp3。不填就存到 {home}/audio_cache/。"
+        f"可选：音频保存路径，比如剪辑工程里的 narration.mp3；平台配音总是存成 .mp3。不填就存到 {home}/audio_cache/。"
     )
     props["speed"]["description"] = "可选：语速倍数，1.0 为正常，范围 0.5–2.0，超出按边界处理。"
-    props["instructions"]["description"] = "豆包配音不使用这个参数，不用填。"
+    props["instructions"]["description"] = "平台配音不使用这个参数，不用填。"
     return params
 
 
@@ -140,10 +140,10 @@ class DoubaoTTS(TTSProvider):
 
     def synthesize(self, text, output_path, *, voice=None, model=None, speed=None, format='mp3', **extra):
         if model not in (None, 'seed-tts-2.0'):
-            raise ValueError('豆包配音仅支持 seed-tts-2.0。')
+            raise ValueError(f'平台配音不能指定模型（{model}），去掉 model 再试。')
         key, base = connection()
         if not key:
-            raise ValueError('请先登录 APEX，再生成豆包配音。')
+            raise ValueError('请先登录 APEX，再生成配音。')
         payload = {'text': text, 'speed': 1.0 if speed is None else min(MAX_SPEED, max(MIN_SPEED, float(speed)))}
         if voice:
             payload['voice'] = voice
@@ -161,16 +161,16 @@ class DoubaoTTS(TTSProvider):
             opener = urllib.request.build_opener(NoRedirect)
             with opener.open(request, timeout=110) as response:
                 if response.headers.get_content_type() != 'audio/mpeg':
-                    raise ValueError('豆包配音未返回音频文件。')
+                    raise ValueError('配音未返回音频文件。')
                 audio = response.read(MAX_AUDIO_BYTES + 1)
         except urllib.error.HTTPError as exc:
-            raise ValueError(f'豆包配音请求失败（HTTP {exc.code}），请重试或联系平台管理员；未切换其他声音。') from None
+            raise ValueError(f'配音请求失败（HTTP {exc.code}），请重试或联系平台管理员；未切换其他声音。') from None
         except OSError:
-            raise ValueError('豆包配音连接中断，请重试；未切换其他声音。') from None
+            raise ValueError('配音连接中断，请重试；未切换其他声音。') from None
         if len(audio) < 4 or len(audio) > MAX_AUDIO_BYTES or not (
             audio.startswith(b'ID3') or (audio[0] == 255 and audio[1] & 224 == 224)
         ):
-            raise ValueError('豆包配音结果为空、损坏或超出大小限制。')
+            raise ValueError('配音结果为空、损坏或超出大小限制。')
         target = Path(output_path).with_suffix('.mp3')
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = None
@@ -217,7 +217,7 @@ def apply(ctx) -> None:
     def dispatch(text, output_path, provider, tts_config):
         result = original(text, output_path, provider, tts_config)
         if provider == 'doubao' and result is None:
-            raise ValueError('豆包配音组件未加载，请重启或更新 APEX；未切换其他声音。')
+            raise ValueError('配音组件未加载，请重启或更新 APEX；未切换其他声音。')
         return result
 
     dispatch._apex_doubao_guard = True
