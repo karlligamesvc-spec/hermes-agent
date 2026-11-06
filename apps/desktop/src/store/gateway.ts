@@ -383,7 +383,11 @@ async function isAttachedSharedRemote(
       `Timed out resolving shared-remote route for "${key}"`
     )
 
-    return Boolean(conn && typeof conn === 'object' && (conn as { sharedRemote?: boolean }).sharedRemote === true)
+    // hc-1166: a local assistant the primary engine serves (sharedPrimary) is the same one-host-many-profiles case.
+    const shared =
+      conn && typeof conn === 'object' ? (conn as { sharedPrimary?: boolean; sharedRemote?: boolean }) : null
+
+    return shared?.sharedRemote === true || shared?.sharedPrimary === true
   } catch {
     // Probe failed. A secondary at this already-attached source is the #96493
     // ghost WebSocket (accept/close, messages=1). Prefer the primary until a

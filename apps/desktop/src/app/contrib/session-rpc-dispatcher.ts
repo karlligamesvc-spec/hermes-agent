@@ -40,6 +40,7 @@ import { getSessionOwnerHint, knownSessionOwner, ownerLookupSessionRows, request
 import { assertSessionOwnerResolved } from '@/store/session-owner-resolution'
 import { requestForSessionProfile, type SessionOwnerScope } from '@/store/session-request-router'
 import { $focusedStoredSessionId, sessionTileOwnerRoute, storedSessionIdForRuntimeId } from '@/store/session-states'
+import { namedProfileRpcOwner } from '@/store/single-engine'
 
 import { findStoredIdForRuntimeId, resolveRoutingSessionId, resolveSessionRpcOwner } from './wiring-routing'
 
@@ -74,12 +75,15 @@ export function createSessionRpcDispatcher(deps: SessionRpcDispatcherDeps): Ambi
         undefined
     })
 
-    let owner: SessionOwnerScope = resolveSessionRpcOwner({
-      routingSessionId,
-      sessionOwnerHint: storedSessionId => getSessionOwnerHint(storedSessionId),
-      sessionRowOwner: storedSessionId => knownSessionOwner(ownerLookupSessionRows(), storedSessionId),
-      tileOwnerRoute: sessionTileOwnerRoute
-    })
+    // hc-1166: with every assistant on one engine, a session-less RPC that names its profile goes there.
+    let owner: SessionOwnerScope =
+      namedProfileRpcOwner(paramSessionId, params) ??
+      resolveSessionRpcOwner({
+        routingSessionId,
+        sessionOwnerHint: storedSessionId => getSessionOwnerHint(storedSessionId),
+        sessionRowOwner: storedSessionId => knownSessionOwner(ownerLookupSessionRows(), storedSessionId),
+        tileOwnerRoute: sessionTileOwnerRoute
+      })
 
     if (!owner && routingSessionId) {
       // Unknown owner for a REAL session: probe across profiles (REST, not the
