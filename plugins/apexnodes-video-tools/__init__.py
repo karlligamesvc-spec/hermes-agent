@@ -211,9 +211,10 @@ GENERATE_VIDEO_SCHEMA = {
             "seconds": {
                 "type": "integer",
                 "description": (
-                    "Optional clip length in whole seconds. Leave empty for the platform default (a 5 s "
-                    "sample). A finished cut of up to 15 s is ONE call: write all its shots into the prompt "
-                    "in order with hard cuts, not one call per shot; only a longer cut is split. The "
+                    "Optional clip length in whole seconds. A sample clip is a complete 10 s "
+                    "mini-video: pass 10. Empty means the platform default of 5 s. A finished cut of "
+                    "up to 15 s is ONE call: write all its shots into the prompt in order with hard "
+                    "cuts, not one call per shot; only a longer cut is split. The "
                     "platform clamps this to the selected engine's range (at most 15 s), so report the "
                     "returned seconds."
                 ),

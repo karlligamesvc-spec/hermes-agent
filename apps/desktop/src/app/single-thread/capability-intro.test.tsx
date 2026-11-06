@@ -34,7 +34,7 @@ vi.mock('@/app/chat/composer/focus', async importOriginal => ({
 
 const LEAD = '我能帮你做的，先说三件：'
 const PASTE = '看到火的视频，把链接贴给我。我能转成逐字稿、拆它为什么火，再仿写成你的脚本。'
-const VIDEO = '说一句想拍什么，我先出 5 秒样片给你看，满意了再出 15 秒成片。'
+const VIDEO = '说一句想拍什么，我先出 10 秒样片给你看，满意了再出 15 秒成片。'
 const WECHAT = '这台电脑开着的时候，微信里也能找我，扫一下码就连上。'
 const SHORT_TIP = '懒得打字的话，点右下角那个圆按钮跟我说。我们就在这一个对话里聊，不用开新的。'
 const FULL_TIP = `以后直接贴链接就行。${SHORT_TIP}`

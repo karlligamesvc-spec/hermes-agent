@@ -47,7 +47,7 @@ const en: CapabilityIntroCopy = {
     hint: 'In Douyin, tap Share › Copy link, then come back and tap this again.'
   },
   video: {
-    text: 'Tell me in one line what you want to shoot. I’ll make a 5-second sample first, and once you like it, the full 15-second video.',
+    text: 'Tell me in one line what you want to shoot. I’ll make a 10-second sample first, and once you like it, the full 15-second video.',
     button: 'Make one',
     draft: 'Make me a 15-second short video of:'
   },
@@ -68,7 +68,7 @@ const zh: CapabilityIntroCopy = {
     hint: '在抖音点「分享 › 复制链接」，回来再点一次就行。'
   },
   video: {
-    text: '说一句想拍什么，我先出 5 秒样片给你看，满意了再出 15 秒成片。',
+    text: '说一句想拍什么，我先出 10 秒样片给你看，满意了再出 15 秒成片。',
     button: '出一条',
     draft: '帮我做一条 15 秒的短视频，拍：'
   },
@@ -89,7 +89,7 @@ const zhHant: CapabilityIntroCopy = {
     hint: '在抖音點「分享 › 複製連結」，回來再點一次就行。'
   },
   video: {
-    text: '說一句想拍什麼，我先出 5 秒樣片給你看，滿意了再出 15 秒成片。',
+    text: '說一句想拍什麼，我先出 10 秒樣片給你看，滿意了再出 15 秒成片。',
     button: '出一條',
     draft: '幫我做一條 15 秒的短影音，拍：'
   },
