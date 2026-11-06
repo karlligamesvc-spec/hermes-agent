@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { deferred } from '../test/deferred'
 
@@ -9,6 +9,7 @@ import {
   setApprovalModeForProfile,
   syncApprovalModeForProfile
 } from './approval-mode'
+import { setSingleEngineFlagForTest } from './single-engine'
 
 describe('profile-scoped approval mode cache', () => {
   beforeEach(() => $approvalModes.set({}))
@@ -95,5 +96,30 @@ describe('profile-scoped approval mode cache', () => {
     await staleRead
 
     expect(approvalModeForProfile('default')).toBe('off')
+  })
+})
+
+// hc-1166: on one engine shared by every assistant a call with no session reaches the primary, so it names whose
+// config it reads or writes; with an engine per assistant it goes to that assistant's engine, unchanged.
+describe('one engine for every assistant', () => {
+  afterEach(() => setSingleEngineFlagForTest(false))
+
+  it.each([
+    [true, { profile: 'writer' }],
+    [false, {}]
+  ])('switch %s: the approval mode calls name the assistant', async (on, named) => {
+    setSingleEngineFlagForTest(on)
+
+    const request = vi.fn(async (_method: string, params?: Record<string, unknown>) => ({
+      value: params?.value ?? 'manual'
+    }))
+
+    await syncApprovalModeForProfile(request, 'writer')
+    await setApprovalModeForProfile(request, 'writer', 'off')
+
+    expect(request.mock.calls).toEqual([
+      ['config.get', { key: 'approvals.mode', ...named }],
+      ['config.set', { key: 'approvals.mode', value: 'off', ...named }]
+    ])
   })
 })
