@@ -75,6 +75,12 @@ _TOOL_SEAMS = (
         "prior error). A new assistant's first reply may point to /help, and IM "
         "notices may name Hermes or tell the user to run hermes commands.",
     ),
+    (
+        "im_launch_profile",
+        "apex-overlay: hc-1171 IM launch-profile seam did not fully apply (see prior "
+        "error). With several assistants, the messaging gateway configures neither "
+        "Feishu nor WeChat and the bound bot never connects.",
+    ),
 )
 
 
