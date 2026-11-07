@@ -13,19 +13,6 @@ permissions:
   contents: read
 
 jobs:
-  # hc-1175: the OpenFilm toolkit is the pinned package with scripts/media-tools/openfilm/patches applied. Checks the
-  # pins, applies the patches, runs the guard, the reverse check and upstream's tests of what the patches touch.
-  openfilm:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '22'
-      - name: Verify the OpenFilm patches
-        run: node scripts/media-tools/openfilm/verify.mjs "$RUNNER_TEMP/openfilm-verify"
-
   hypit:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20

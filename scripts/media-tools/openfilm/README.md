@@ -35,7 +35,6 @@ that the files a patch touches are the same in both. It applies the patches to b
   a time. The exact text must be found once. Each removal must turn the guard red.
 - Upstream's own tests of what the patch touches (`pin.json` `upstreamTests`, 131 at 0.3.0), with no browsers.
 
-The `openfilm` job in `.github/workflows/media-tools.yml` runs it. That workflow stays disabled except when a toolkit
-is built (see `docs/media-tools-mirror.md`), so pull requests do not run it otherwise. Run it locally before changing
-`pin.json` or `patches/`. Behind the CN proxy, set `NODE_USE_ENV_PROXY=1 HTTPS_PROXY=…` for the downloads, and pass
-git a proxy through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0`.
+`.github/workflows/openfilm-patch.yml` runs it on every pull request and `main` push that touches this folder (and on
+no other). Locally, behind the CN proxy, set `NODE_USE_ENV_PROXY=1 HTTPS_PROXY=…` for the downloads, and pass git a
+proxy through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0`.
