@@ -95,7 +95,7 @@ _NO_SPEECH_NOTE = (
 # 连 transcript 一起被换成 1.5K 预览;字幕/锚点本来就由脚本读时间轴。所以两条腿统一:全量写
 # <转写文件名>.segments.json,结果面只带 segments_path + segments_summary。
 _SEGMENTS_WRITE_FAILED_NOTE = (
-    "豆包时间轴文件没能写进本机缓存目录，本次结果没有 segments_path；"
+    "转写时间轴文件没能写进本机缓存目录，本次结果没有 segments_path；"
     "需要字幕时间轴时先排查磁盘空间或目录权限，再重新转写。"
 )
 
@@ -296,7 +296,7 @@ MEDIA_TRANSCRIBE_SCHEMA = {
     "description": (
         "转写已下载的 video_path 或社媒视频链接 url（抖音/小红书/快手/B站，可直接传用户的原始分享文本，一步下载并转写）。"
         "用户要视频文案/逐字稿/拆解脚本时用本工具，禁止用浏览器或其他平台替代，也不要自行安装或运行本地转写工具（如 whisper）。"
-        "返回完整转写、transcript_path，以及豆包分句/字词级时间轴文件 segments_path"
+        "返回完整转写、transcript_path，以及分句/字词级时间轴文件 segments_path"
         "（JSON 分句数组，start_time/end_time 为毫秒，含字/词级 words；结果里只附 segments_summary 摘要，"
         "做字幕时用脚本读这个文件）。"
         "素材没有人声（纯环境声/音乐/静音）时返回 ok=true、speech=false 和空 transcript，"

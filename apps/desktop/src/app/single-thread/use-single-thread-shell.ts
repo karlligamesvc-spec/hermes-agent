@@ -11,7 +11,9 @@
  * - titles the session the first message of a brand-new thread creates;
  * - hc-1077: with several assistants on, keeps their roster and threads
  *   (use-multi-bot-shell.ts), and holds the Start-route redirect while a
- *   switch to another assistant is still settling.
+ *   switch to another assistant is still settling;
+ * - hc-1146: with several assistants on, sends the messages the middleware held
+ *   while the thread was opening, once it is on screen (held-send-release.ts).
  *
  * Off, it does nothing at all: no lookup, no middleware, no navigation.
  */
@@ -31,11 +33,13 @@ import { isSecondaryWindow } from '@/store/windows'
 import { NEW_CHAT_ROUTE, sessionRoute } from '../routes'
 
 import { $pendingThreadClaim, claimCreatedThread, type RequestGateway, singleThreadSend } from './composer-middleware'
+import { type HeldSendSubmit, useHeldSendRelease } from './held-send-release'
 import { useMultiBotShell } from './use-multi-bot-shell'
 
 export const SINGLE_THREAD_MIDDLEWARE_ID = 'single-thread-send'
 
-export function useSingleThreadShell(requestGateway: RequestGateway): void {
+/** `submit` is the app's own (submitText), for the held messages; without it they wait. */
+export function useSingleThreadShell(requestGateway: RequestGateway, submit?: HeldSendSubmit): void {
   // The main window only: a pop-out or watch window is a scratch surface, never the thread's owner.
   const singleThread = useStore($singleThreadMode) && !isSecondaryWindow()
   const gatewayOpen = useStore($gatewayState) === 'open'
@@ -45,11 +49,15 @@ export function useSingleThreadShell(requestGateway: RequestGateway): void {
   const { pathname } = useLocation()
   const requestRef = useRef(requestGateway)
   const profileRef = useRef(profile)
+  const submitRef = useRef<HeldSendSubmit | null>(submit ?? null)
 
   requestRef.current = requestGateway
   profileRef.current = profile
+  submitRef.current = submit ?? null
 
   const { multiBot, switching } = useMultiBotShell(singleThread, gatewayOpen, profile, requestRef)
+
+  useHeldSendRelease(multiBot, submitRef)
 
   useEffect(() => {
     void loadSingleThreadFlag()

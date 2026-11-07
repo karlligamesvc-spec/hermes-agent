@@ -7,6 +7,7 @@ import { embeddedImageUrls, textWithoutEmbeddedImages } from '@/lib/embedded-ima
 import { parseErrorSurface } from '@/lib/error-surface'
 import { isMessagingSource, normalizeSessionSource } from '@/lib/session-source'
 import { reconcileApprovalModeForProfile } from '@/store/approval-mode'
+import { threadOwnerToAskFirst } from '@/store/bot-thread-owner'
 import { requestDesktopOnboardingForCredentialWarning } from '@/store/onboarding'
 import { $activeGatewayProfile, $profiles, normalizeProfileKey } from '@/store/profile'
 import { $projectTree } from '@/store/projects'
@@ -1585,11 +1586,18 @@ export async function resolveStoredSession(
   // Multi-profile only: probe each remaining profile by id (still one cheap
   // lookup each) rather than pulling every profile's recent sessions. The
   // first hit carries its owning `profile`, which routes the resume to the
-  // right backend. The active profile was already tried above.
+  // right backend. The active profile was already tried above. A probe can be
+  // served by that profile's own engine, starting it when cold, so a known
+  // assistant thread whose engine a switch is starting asks that assistant
+  // first (hc-1146, store/bot-thread-owner.ts); the sort is stable, so every
+  // other order is unchanged.
+  const owner = threadOwnerToAskFirst(storedSessionId)
+
   const otherProfiles = $profiles
     .get()
     .map(profile => normalizeProfileKey(profile.name))
     .filter(key => key !== activeKey)
+    .sort((a, b) => Number(b === owner) - Number(a === owner))
 
   for (const profile of otherProfiles) {
     try {

@@ -1,17 +1,22 @@
 import assert from 'node:assert/strict'
 import { pathToFileURL } from 'node:url'
 
-// The feeds a release advances: one per platform desktop-release.yml builds,
-// which is Mac arm64 only. Two frozen feeds are not read, because nothing
-// builds them and they would fail every later release: desktop/win-x64/
-// (Windows, paused after 0.17.66) and desktop/mac-x64/ (Intel, stopped after
-// 0.17.63).
-const DEFAULT_FEEDS = [
-  {
-    platform: 'mac-arm64',
-    url: 'https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-arm64/latest-mac.yml'
-  }
+const FEED_BASE = 'https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop'
+
+// The feeds a release advances, one per platform desktop-release.yml builds.
+// Every release builds Mac arm64. Windows x64 is built only by a run dispatched
+// with windows=true (a fixed version), which passes --include-windows here; any
+// other release leaves desktop/win-x64/ at the last fixed version, so reading it
+// would fail that release. desktop/mac-x64/ (Intel, stopped after 0.17.63) is
+// never read.
+const MAC_FEEDS = [
+  { platform: 'mac-arm64', url: `${FEED_BASE}/mac-arm64/latest-mac.yml` }
 ]
+const WINDOWS_FEED = { platform: 'win-x64', url: `${FEED_BASE}/win-x64/latest.yml` }
+
+function releaseFeeds({ includeWindows = false } = {}) {
+  return includeWindows ? [...MAC_FEEDS, WINDOWS_FEED] : [...MAC_FEEDS]
+}
 
 function parseFeed(text) {
   const version = /^version:\s*['"]?([^'"\s]+)['"]?\s*$/m.exec(text)?.[1] ?? ''
@@ -34,7 +39,7 @@ async function readFeed(fetchImpl, feed) {
   return { ...feed, ...parsed, artifactUrl, contentLength }
 }
 
-async function verifyCrossPlatformRelease({ expectedVersion, fetchImpl = fetch, feeds = DEFAULT_FEEDS }) {
+async function verifyCrossPlatformRelease({ expectedVersion, fetchImpl = fetch, feeds = releaseFeeds() }) {
   assert.match(expectedVersion, /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/, 'invalid expected version')
   const results = await Promise.all(feeds.map(feed => readFeed(fetchImpl, feed)))
   for (const result of results) {
@@ -44,11 +49,11 @@ async function verifyCrossPlatformRelease({ expectedVersion, fetchImpl = fetch, 
   return results
 }
 
-async function verifyWithRetry({ expectedVersion, attempts = 9, delayMs = 15_000, fetchImpl = fetch }) {
+async function verifyWithRetry({ expectedVersion, attempts = 9, delayMs = 15_000, fetchImpl = fetch, feeds = releaseFeeds() }) {
   let lastError
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      return await verifyCrossPlatformRelease({ expectedVersion, fetchImpl })
+      return await verifyCrossPlatformRelease({ expectedVersion, fetchImpl, feeds })
     } catch (error) {
       lastError = error
       if (attempt < attempts) {
@@ -60,18 +65,30 @@ async function verifyWithRetry({ expectedVersion, attempts = 9, delayMs = 15_000
   throw lastError
 }
 
-function expectedVersionFromArgs(argv) {
-  const index = argv.indexOf('--expected-version')
-  return index >= 0 ? String(argv[index + 1] ?? '').trim() : ''
+// Strict: a misspelt --include-windows must fail the readback, not quietly skip the
+// Windows feed of a release that published it.
+function parseArgs(argv) {
+  const options = { expectedVersion: '', includeWindows: false }
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === '--expected-version') {
+      if (index + 1 >= argv.length) throw new Error('missing value for --expected-version')
+      options.expectedVersion = String(argv[++index]).trim()
+    } else if (argv[index] === '--include-windows') {
+      options.includeWindows = true
+    } else {
+      throw new Error(`unknown argument: ${argv[index]}`)
+    }
+  }
+  return options
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const expectedVersion = expectedVersionFromArgs(process.argv.slice(2))
-  const results = await verifyWithRetry({ expectedVersion })
+  const { expectedVersion, includeWindows } = parseArgs(process.argv.slice(2))
+  const results = await verifyWithRetry({ expectedVersion, feeds: releaseFeeds({ includeWindows }) })
   for (const result of results) {
     console.log(`${result.platform}: ${result.version} ${result.path} (${result.contentLength} bytes)`)
   }
   console.log(`production updater feeds (${results.map(result => result.platform).join(', ')}) are at ${expectedVersion}`)
 }
 
-export { DEFAULT_FEEDS, parseFeed, verifyCrossPlatformRelease, verifyWithRetry }
+export { MAC_FEEDS, WINDOWS_FEED, parseArgs, parseFeed, releaseFeeds, verifyCrossPlatformRelease, verifyWithRetry }
