@@ -3,13 +3,37 @@
 ## Engines embedded in Desktop installers
 
 The Desktop release (`desktop-release.yml`) builds a complete native engine for
-Mac arm64 before packaging the shell. Mac x64 stopped after 0.17.63 and Windows
-x64 is paused after 0.17.66; `desktop-windows.yml` still builds a Windows engine
-and installer when dispatched directly, as diagnostic artifacts only. The engine
-source is pinned by `apps/desktop/bundled-runtime.json`; it can intentionally
-differ from the Desktop shell's source commit. Every installer must carry the
-pinned full engine commit and release label. Changing the pin does not change
-the Cloud default runtime.
+Mac arm64 before packaging the shell. Windows x64 joins only at a fixed version
+the owner names: dispatched with `windows=true`, the same run builds a Windows
+engine and installer from the same commit, publishes both platforms when
+`publish=true`, and reads both feeds back. Every other release leaves
+`desktop/win-x64/` at the last fixed version. Mac x64 stopped after 0.17.63. A
+direct `desktop-windows.yml` dispatch builds the Windows engine and installer
+as diagnostic artifacts only. The engine source is pinned by
+`apps/desktop/bundled-runtime.json`; it can intentionally differ from the
+Desktop shell's source commit. Every installer must carry the pinned full
+engine commit and release label. Changing the pin does not change the Cloud
+default runtime.
+
+### A release that includes Windows
+
+- Cut it like any release, then run the candidate with `windows=true` and
+  `publish=false`. That is the first time since the last fixed version that the
+  Windows-only gates run: `runtime-bundle-owned-cleanup-gate.mjs`, the
+  bundled-runtime consumer smoke on Windows, `assert-update-engine-stored.mjs nsis`
+  and `assert-exe-identity.mjs`. CI never installs the package, so check the
+  candidate on a physical Windows machine over the previous fixed version and
+  record that check on its own. The installer is unsigned.
+- Publish with `windows=true` and `publish=true` from the same commit. The
+  parity job requires both platforms to report the caller's commit, the
+  `package.json` version, the pinned engine commit and label, and the Windows PE
+  identity, then reads back `desktop/mac-arm64/` and `desktop/win-x64/`.
+- There is no cross-platform publish gate: each platform uploads its binaries and
+  flips its feed last. Cancel only while no feed has flipped. Once one feed is
+  live, let the run end and rerun its failed jobs (`gh run rerun <run-id>
+  --failed`), so the same commit finishes. Never publish the other platform from
+  another commit under the same version; if it cannot finish, it waits for the
+  next fixed version and the run stays red.
 
 The pin's `supersedes` map (full commit -> release label) lists engines the pin
 descends from. On start, the shell replaces an installed engine whose source
@@ -51,7 +75,7 @@ and Gatekeeper gates.
 resource archive's size, SHA256, native target, full source stamp and required
 executables. Missing, unlocked, wrong-source or wrong-architecture payloads
 reject packaging. The release's final job also compares the embedded engine
-commit and label with the pin.
+commit and label with the pin, for every platform the run built.
 
 An installed engine is never a frontend build tree: Desktop keeps the previous one
 for rollback, and reinstalling a version already on disk re-verifies every file

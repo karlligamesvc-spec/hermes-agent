@@ -54,23 +54,96 @@ def test_foreign_or_mismatched_objects_never_upload(tmp_path, key):
     client.upload_file.assert_not_called()
 
 
-@pytest.mark.parametrize('prefix,name', [
-    ('desktop/mac-x64/', 'latest-mac.yml'),
-    ('desktop/mac-x64/', 'APEX-0.17.64-mac-x64.zip'),
-    ('desktop/win-x64/', 'latest.yml'),
-    ('desktop/win-x64/', 'APEX-0.17.67-win-x64.exe'),
-    ('desktop/win-x64/', 'APEX-0.17.67-win-x64.exe.blockmap'),
-])
-def test_frozen_feeds_are_never_written(tmp_path, monkeypatch, prefix, name):
-    # Neither is built any more. Installed shells keep polling desktop/mac-x64/ at 0.17.63
-    # (Intel) and desktop/win-x64/ at 0.17.66 (Windows, paused).
-    local = tmp_path / name
-    local.write_bytes(b'version: 0.17.67\n')
+WINDOWS_FILES = ['latest.yml', 'APEX-0.17.73-win-x64.exe', 'APEX-0.17.73-win-x64.exe.blockmap']
+MAC_FILES = ['latest-mac.yml', 'APEX-0.17.73-mac-arm64.zip', 'APEX-0.17.73-mac-arm64.dmg']
+
+
+def _refused(tmp_path, monkeypatch, key, **options):
+    local = tmp_path / key.rsplit('/', 1)[1]
+    local.write_bytes(b'version: 0.17.73\n')
     client = Mock()
     monkeypatch.setattr(publisher.urllib.request, 'urlopen', Mock(side_effect=AssertionError('no network in tests')))
     with pytest.raises(ValueError, match='invalid Desktop object key'):
-        publisher.upload_and_verify(local, prefix + name, client)
+        publisher.upload_and_verify(local, key, client, **options)
     client.upload_file.assert_not_called()
+
+
+@pytest.mark.parametrize('windows_release', [False, True])
+@pytest.mark.parametrize('name', ['latest-mac.yml', 'APEX-0.17.64-mac-x64.zip'])
+def test_frozen_intel_feed_is_never_written(tmp_path, monkeypatch, name, windows_release):
+    # Intel is not built any more; installed Intel shells keep polling desktop/mac-x64/ at 0.17.63.
+    _refused(tmp_path, monkeypatch, 'desktop/mac-x64/' + name, windows_release=windows_release)
+
+
+@pytest.mark.parametrize('name', WINDOWS_FILES)
+def test_windows_feed_is_refused_without_the_windows_release_flag(tmp_path, monkeypatch, name):
+    # A release without windows=true leaves desktop/win-x64/ at the last fixed version.
+    _refused(tmp_path, monkeypatch, 'desktop/win-x64/' + name)
+
+
+@pytest.mark.parametrize('name', MAC_FILES)
+def test_windows_release_leg_cannot_write_the_mac_feed(tmp_path, monkeypatch, name):
+    _refused(tmp_path, monkeypatch, 'desktop/mac-arm64/' + name, windows_release=True)
+
+
+@pytest.mark.parametrize('name', WINDOWS_FILES)
+def test_windows_release_flag_writes_the_windows_feed(tmp_path, monkeypatch, name):
+    local = tmp_path / name
+    local.write_bytes(b'MZx')
+    client = Mock()
+
+    class Response(io.BytesIO):
+        status = 200
+        headers = {'Content-Length': '3'}
+
+    monkeypatch.setattr(publisher.urllib.request, 'urlopen', lambda *a, **k: Response())
+    result = publisher.upload_and_verify(local, 'desktop/win-x64/' + name, client, windows_release=True)
+    assert result['object'] == 'desktop/win-x64/' + name and result['publicHeadVerified']
+    assert client.upload_file.call_args.kwargs['Key'] == 'desktop/win-x64/' + name
+
+
+def _fake_sdk(monkeypatch, uploads):
+    sdk, errors = ModuleType('qcloud_cos'), ModuleType('qcloud_cos.cos_exception')
+    errors.CosClientError = type('CosClientError', (Exception,), {})
+    sdk.CosConfig = lambda **kwargs: kwargs
+
+    class Client:
+        def __init__(self, config): pass
+        def upload_file(self, **kwargs): uploads.append(kwargs['Key'])
+
+    sdk.CosS3Client = Client
+    monkeypatch.setitem(sys.modules, 'qcloud_cos', sdk)
+    monkeypatch.setitem(sys.modules, 'qcloud_cos.cos_exception', errors)
+
+
+@pytest.mark.parametrize('flags,prefix,writes', [
+    ([], 'desktop/mac-arm64/', True),
+    ([], 'desktop/win-x64/', False),
+    ([publisher.WINDOWS_RELEASE], 'desktop/win-x64/', True),
+    ([publisher.WINDOWS_RELEASE], 'desktop/mac-arm64/', False),
+])
+def test_cli_windows_release_flag_picks_the_feed_it_may_write(tmp_path, monkeypatch, flags, prefix, writes):
+    # The flag desktop-windows.yml's publish job passes must reach upload_and_verify.
+    local = tmp_path / 'latest.yml'
+    local.write_bytes(b'v: 1')
+    monkeypatch.setattr(sys, 'argv', [str(SCRIPT), '--file', str(local), '--key', prefix + local.name, *flags])
+    monkeypatch.setenv('COS_SECRET_ID', 'fixture-identity')
+    monkeypatch.setenv('COS_SECRET_KEY', 'fixture-secret')
+    uploads = []
+    _fake_sdk(monkeypatch, uploads)
+
+    class Response(io.BytesIO):
+        status = 200
+        headers = {'Content-Length': '4'}
+
+    monkeypatch.setattr(publisher.urllib.request, 'urlopen', lambda *a, **k: Response())
+    if writes:
+        assert publisher.main() == 0
+        assert uploads == [prefix + local.name]
+    else:
+        with pytest.raises(ValueError, match='invalid Desktop object key'):
+            publisher.main()
+        assert uploads == []
 
 
 def test_cli_never_prints_signed_sdk_exception_headers(tmp_path):
@@ -159,6 +232,18 @@ def test_stalled_owned_worker_is_bounded_and_only_transient_exits_resume(monkeyp
     assert len(seen) == calls
     assert all(command[-4:] == args and '--transfer-worker' in command and options['timeout'] == 600
                for command, options in seen)
+
+
+def test_bounded_upload_hands_the_windows_release_flag_to_every_worker(monkeypatch):
+    seen = []
+    def run(args, **kwargs):
+        seen.append(args)
+        raise subprocess.TimeoutExpired(args, kwargs['timeout'])
+    monkeypatch.setattr(publisher.subprocess, 'run', run)
+    args = ['--file', '/owned/latest.yml', '--key', 'desktop/win-x64/latest.yml', publisher.WINDOWS_RELEASE]
+    assert publisher.run_bounded_upload(args) == 75
+    assert len(seen) == publisher.DEFAULT_WORKERS
+    assert all(command[-5:] == args for command in seen)
 
 
 def _sized(tmp_path, size):

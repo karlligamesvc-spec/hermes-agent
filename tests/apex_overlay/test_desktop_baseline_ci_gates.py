@@ -1,7 +1,7 @@
 """ApexNodes hc-911: CI lanes that build or exercise upstream's Desktop stay off the APEX baseline.
 
-apps/desktop stays on the APEX baseline (Mac arm64 releases plus a Windows x64 NSIS build paused
-after 0.17.66, built by its own npm pipeline). Two upstream lanes assume upstream's Desktop
+apps/desktop stays on the APEX baseline (Mac arm64 releases plus a Windows x64 NSIS build at
+fixed versions, built by its own npm pipeline). Two upstream lanes assume upstream's Desktop
 instead, and #390's first fork CI run failed on both:
 
 - nix flake check built the Desktop renderer through nix/desktop.nix, whose native-deps staging

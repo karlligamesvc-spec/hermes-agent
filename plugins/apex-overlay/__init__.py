@@ -82,6 +82,12 @@ _TOOL_SEAMS = (
         "account's web search, platform tools and Feishu / WeChat credentials; web "
         "search falls back to a keyless backend without saying so.",
     ),
+    (
+        "im_launch_profile",
+        "apex-overlay: hc-1171 IM launch-profile seam did not fully apply (see prior "
+        "error). With several assistants, the messaging gateway configures neither "
+        "Feishu nor WeChat and the bound bot never connects.",
+    ),
 )
 
 

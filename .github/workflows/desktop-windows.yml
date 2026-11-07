@@ -11,11 +11,14 @@ name: Build ApexNodes Desktop (Windows)
 # Mac dmg for V0.1 (signing is a V0.2 item). Native windows-latest avoids the
 # Mac cross-build pitfalls (wrong node-pty binary, @electron/get download hangs).
 #
-# Windows x64 is paused after 0.17.66: desktop-release.yml no longer calls this
-# workflow, so nothing passes publish and the publish job below cannot run, and
-# scripts/release/upload-desktop-cos.py refuses desktop/win-x64/. Installed
-# Windows shells keep polling that feed, which stays at 0.17.66. A direct
-# dispatch still builds the installer as a diagnostic artifact.
+# Windows x64 ships only at a fixed version the owner names. The only caller is
+# desktop-release.yml, whose windows job runs only when dispatched with
+# windows=true; it builds Mac arm64 from the same commit, passes publish, and
+# reads both feeds back. Only then does the publish job below run, and its
+# --windows-release flag is what lets scripts/release/upload-desktop-cos.py write
+# desktop/win-x64/. Every other release leaves that feed at the last fixed
+# version, which installed Windows shells keep polling. A direct dispatch has no
+# publish input and only builds the installer as a diagnostic artifact.
 
 on:
   workflow_call:
@@ -301,12 +304,15 @@ jobs:
           python -m pip install --quiet cos-python-sdk-v5==1.9.44
           if ($LASTEXITCODE -ne 0) { throw "COS SDK dependency install failed" }
           $python = (Get-Command python).Source
+          # --windows-release: the uploader writes only desktop/win-x64/ keys with it,
+          # and refuses them without it. This job runs only inside a release that
+          # includes Windows (see the header).
           $uploader = {
             param($LocalPath, $Key)
             $bytes = (Get-Item $LocalPath).Length
             $budget = [Math]::Min(3000, [Math]::Max(900, [Math]::Ceiling($bytes / (128 * 1024)) + 600))
             Invoke-BoundedProcess -FilePath $python -TimeoutSeconds $budget `
-              -ArgumentList @("scripts/release/upload-desktop-cos.py", "--file", $LocalPath, "--key", $Key)
+              -ArgumentList @("scripts/release/upload-desktop-cos.py", "--file", $LocalPath, "--key", $Key, "--windows-release")
           }.GetNewClosure()
           $verifier = { param($Url) Get-RemoteContentLength -Url $Url }
           Publish-DesktopRelease -ReleaseDir "apps/desktop/release" -Prefix "desktop/win-x64" `

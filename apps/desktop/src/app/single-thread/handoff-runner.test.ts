@@ -1,5 +1,5 @@
 import type { GatewayEvent } from '@hermes/shared'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { composeHandoffRequest } from '@/lib/handoff-text'
 /**
@@ -51,6 +51,17 @@ type Call = [profile: string, method: string, params: Record<string, unknown>]
 
 /** One engine per assistant; each holds that assistant's thread. */
 class Engines {
+  /**
+   * Every request the moment it is made, answered or not: for "nothing (more) was asked" checks,
+   * which must also catch a request still on its way.
+   */
+  asked: Call[] = []
+  /**
+   * The requests already answered (or failed), in order. Wait on these before acting on a call:
+   * the caller has its answer and has done what follows from it (kept the turn, told the shell,
+   * started following) by the next `vi.waitFor` poll. A call that is only asked can still be
+   * answered later — after a `failTurn`, which the late answer to `prompt.submit` then overwrites.
+   */
   calls: Call[] = []
   threads: Record<string, Thread | undefined> = {}
   up = new Set(['default', 'writer', 'editor', 'titles'])
@@ -74,8 +85,14 @@ class Engines {
     return thread
   }
 
+  /** Answered calls to `profile` (see `calls`). */
   callsTo(profile: string, method?: string): Call[] {
     return this.calls.filter(([p, m]) => p === profile && (!method || m === method))
+  }
+
+  /** Requests made to `profile`, answered or not (see `asked`). */
+  askedTo(profile: string, method?: string): Call[] {
+    return this.asked.filter(([p, m]) => p === profile && (!method || m === method))
   }
 
   emit(type: string, sessionId: string, payload: Record<string, unknown> = {}): void {
@@ -105,9 +122,13 @@ class Engines {
 
   request(profile: string) {
     return async <T>(method: string, params: Record<string, unknown> = {}): Promise<T> => {
-      this.calls.push([profile, method, params])
+      const call: Call = [profile, method, params]
+
+      this.asked.push(call)
       // An RPC crosses IPC and a socket: the answer never lands in the same tick.
       await new Promise(resolve => setTimeout(resolve, 0))
+      // From here to the answer (or the throw) nothing yields, so a call in `calls` is an answered one.
+      this.calls.push(call)
       const failure = this.failures.findIndex(entry => entry.profile === profile && entry.method === method)
 
       if (failure >= 0) {
@@ -287,7 +308,7 @@ describe('one relay', () => {
     })
     expect(returned).toHaveBeenCalledTimes(1)
     // Only the receiver's engine was asked anything, and no thread was made.
-    expect(new Set(engines.calls.map(([profile]) => profile))).toEqual(new Set(['writer']))
+    expect(new Set(engines.asked.map(([profile]) => profile))).toEqual(new Set(['writer']))
     expect(engines.created).toBe(0)
   })
 
@@ -331,18 +352,29 @@ describe('one relay', () => {
 describe('the queue (L3, L7)', () => {
   it('waits while the receiver’s thread is busy with its own turn, then goes', async () => {
     engines.thread('writer', { running: true })
+    // Each round dials the receiver, finds it busy and queues the relay until the next round. That
+    // queued spell can be shorter than a dial, so keep every state the relay passes through rather
+    // than hoping a poll lands inside it.
+    const states: HandoffRecord[] = []
+    const stopWatching = $handoffs.listen(records => states.push(...records))
+
+    onTestFinished(() => stopWatching())
     startRunner()
     const handoff = relay()
 
-    await vi.waitFor(() => expect(record(handoff.id).queueReason).toBe('receiver_busy'))
-    expect(record(handoff.id)).toMatchObject({ attempts: 0, status: 'queued' })
-    expect(engines.callsTo('writer', 'prompt.submit')).toEqual([])
+    await vi.waitFor(() =>
+      expect(states.find(state => state.id === handoff.id && state.queueReason === 'receiver_busy')).toMatchObject({
+        attempts: 0,
+        status: 'queued'
+      })
+    )
+    expect(engines.askedTo('writer', 'prompt.submit')).toEqual([])
 
     // It looks again once per queue round, not in a tight loop.
-    const before = engines.callsTo('writer', 'session.list').length
+    const before = engines.askedTo('writer', 'session.list').length
 
     await new Promise(resolve => setTimeout(resolve, TIMING.queueMs * 10))
-    expect(engines.callsTo('writer', 'session.list').length - before).toBeLessThanOrEqual(12)
+    expect(engines.askedTo('writer', 'session.list').length - before).toBeLessThanOrEqual(12)
 
     engines.threads.writer!.running = false
 
@@ -362,7 +394,7 @@ describe('the queue (L3, L7)', () => {
 
     await vi.waitFor(() => expect(engines.calls.filter(([, method]) => method === 'prompt.submit')).toHaveLength(2))
     expect(record(c.id)).toMatchObject({ queueReason: 'running_cap', status: 'queued' })
-    expect(engines.callsTo('titles')).toEqual([])
+    expect(engines.askedTo('titles')).toEqual([])
 
     engines.finish('writer', '好了')
     await vi.waitFor(() => expect(status(a.id)).toBe('returned'))
@@ -395,7 +427,7 @@ describe('the queue (L3, L7)', () => {
 
     await vi.waitFor(() => expect(record(handoff.id).queueReason).toBe('pool_full'))
     await new Promise(resolve => setTimeout(resolve, TIMING.queueMs * 3))
-    expect(engines.callsTo('editor')).toEqual([])
+    expect(engines.askedTo('editor')).toEqual([])
 
     engines.room = true
     await vi.waitFor(() => expect(engines.callsTo('editor', 'prompt.submit')).toHaveLength(1))
@@ -443,7 +475,7 @@ describe('when the turn does not simply come back', () => {
     await vi.waitFor(() => expect(status(handoff.id)).toBe('failed'))
     expect(record(handoff.id).failure).toEqual({ kind: 'platform_busy', message: 'HTTP 503: 平台繁忙，请稍后再试。' })
     await new Promise(resolve => setTimeout(resolve, TIMING.retryAfterMs * 2))
-    expect(engines.callsTo('writer', 'prompt.submit')).toHaveLength(2)
+    expect(engines.askedTo('writer', 'prompt.submit')).toHaveLength(2)
   })
 
   it('a failure left by an earlier turn in that thread is not this relay’s', async () => {
@@ -487,7 +519,7 @@ describe('when the turn does not simply come back', () => {
 
     await vi.waitFor(() => expect(status(handoff.id)).toBe('failed'))
     expect(record(handoff.id).failure?.kind).toBe('turn_error')
-    expect(engines.callsTo('writer', 'prompt.submit')).toHaveLength(1)
+    expect(engines.askedTo('writer', 'prompt.submit')).toHaveLength(1)
   })
 
   it('shows 「在等你决定」 while the turn asks the user, then carries on', async () => {
@@ -553,7 +585,7 @@ describe('when the turn does not simply come back', () => {
 
     await vi.waitFor(() => expect(status(handoff.id)).toBe('failed'))
     expect(record(handoff.id).failure?.kind).toBe('unreachable')
-    expect(engines.callsTo('writer', 'prompt.submit')).toEqual([])
+    expect(engines.askedTo('writer', 'prompt.submit')).toEqual([])
   })
 })
 
@@ -566,7 +598,7 @@ describe('stopping and deleting', () => {
     await vi.waitFor(() => expect(engines.callsTo('writer', 'prompt.submit')).toHaveLength(1))
     await stopHandoff(handoff.id)
 
-    expect(engines.callsTo('writer', 'session.interrupt').map(([, , params]) => params)).toEqual([
+    expect(engines.askedTo('writer', 'session.interrupt').map(([, , params]) => params)).toEqual([
       { session_id: 'writer-live' }
     ])
     expect(status(handoff.id)).toBe('stopped')
@@ -585,7 +617,7 @@ describe('stopping and deleting', () => {
     engines.threads.writer!.inflight = { user: '我自己问的另一件事' }
     await stopHandoff(handoff.id)
 
-    expect(engines.callsTo('writer', 'session.interrupt')).toEqual([])
+    expect(engines.askedTo('writer', 'session.interrupt')).toEqual([])
   })
 
   it('deleting the receiver mid-turn cancels the relay and stops following it (K9)', async () => {
@@ -595,11 +627,12 @@ describe('stopping and deleting', () => {
 
     await vi.waitFor(() => expect(engines.callsTo('writer', 'prompt.submit')).toHaveLength(1))
     await cancelHandoffsForProfile('writer')
-    const seen = engines.calls.length
+    // `asked`, not `calls`: a poll already on its way when the relay was cancelled is not a new request.
+    const seen = engines.asked.length
 
     await new Promise(resolve => setTimeout(resolve, TIMING.pollMs * 3))
     expect(record(handoff.id)).toMatchObject({ cancelReason: 'receiver_deleted', status: 'cancelled' })
-    expect(engines.calls.length).toBe(seen)
+    expect(engines.asked.length).toBe(seen)
   })
 })
 
@@ -626,6 +659,7 @@ describe('a reopened window (Mac: closing the window keeps the app)', () => {
     const turn = { requestText: text, runtimeSessionId: 'old-live', storedSessionId: 'writer-root', submittedAt: 1 }
 
     $handoffs.set($handoffs.get().map(r => (r.id === handoff.id ? { ...r, attempts: 1, status: 'running', turn } : r)))
+    engines.asked = []
     engines.calls = []
 
     return handoff
@@ -639,7 +673,7 @@ describe('a reopened window (Mac: closing the window keeps the app)', () => {
     engines.finish('writer', '关窗期间做完了')
 
     await vi.waitFor(() => expect(record(handoff.id).result?.text).toBe('关窗期间做完了'))
-    expect(engines.callsTo('writer', 'prompt.submit')).toEqual([])
+    expect(engines.askedTo('writer', 'prompt.submit')).toEqual([])
   })
 
   it('a reply that landed while the window was closed is harvested at once', async () => {
@@ -655,7 +689,7 @@ describe('a reopened window (Mac: closing the window keeps the app)', () => {
     startRunner().kick()
     await vi.waitFor(() => expect(status(handoff.id)).toBe('failed'))
     expect(record(handoff.id).failure?.kind).toBe('interrupted')
-    expect(engines.callsTo('writer', 'prompt.submit')).toEqual([])
+    expect(engines.askedTo('writer', 'prompt.submit')).toEqual([])
   })
 })
 
@@ -671,7 +705,7 @@ describe('accounts', () => {
     startRunner().kick()
 
     await vi.waitFor(() => expect(handoffById(theirs.id)).toBeNull())
-    expect(engines.calls).toEqual([])
+    expect(engines.asked).toEqual([])
   })
 
   it('the last account’s running relay: its turn is interrupted and never harvested', async () => {
@@ -696,7 +730,7 @@ describe('accounts', () => {
     vi.useFakeTimers()
     startRunner().kick()
 
-    expect(engines.calls).toEqual([])
+    expect(engines.asked).toEqual([])
     expect(vi.getTimerCount()).toBe(0)
   })
 })
@@ -706,7 +740,7 @@ describe('idle', () => {
     vi.useFakeTimers()
     startRunner().kick()
 
-    expect(engines.calls).toEqual([])
+    expect(engines.asked).toEqual([])
     expect(vi.getTimerCount()).toBe(0)
   })
 })
