@@ -74,3 +74,24 @@ an agent works on a video.
 3. It writes `tool-cache/openfilm/ready.json`, which names both.
 
 Desktop reads only `ready.json`.
+
+## The agent side (hc-1177)
+
+The engine's bundled Node puts `openfilm` on the agent's PATH (`scripts/runtime-node-shims.mjs`). The command is
+`apex_overlay/openfilm_cli.mjs`. It is off unless Desktop's editor switch (`APEXNODES_OPENFILM_STUDIO`) is on. When on,
+it installs the toolkit if needed (`python -m apex_overlay.film_project env`, which uses `ensure_openfilm`), then runs
+OpenFilm's own CLI unchanged with:
+
+- the same `OPENFILM_HOME` and other folders as Desktop's editor, so `openfilm look` finds that Studio and reports
+  the person's edits;
+- `OPENFILM_NO_BROWSER=1`;
+- the agent browser's Chromium;
+- APEX's ffmpeg first on PATH.
+
+`python -m apex_overlay.film_project` is what the edit skill runs around a `film.html` the person may change:
+
+- `diff <project>` lists what changed since the agent's last write: caption text cue by cue, clips added, removed or
+  split, overrides, caption tracks and track flags. `openfilm look` does not report caption text or splits.
+- `write <project> <draft>` writes `film.html`, waits for the editor to merge it, then checks that every caption
+  track and clip the agent wrote, and every one the person added, is still there. It reads `film.html` with its own
+  parser and does not use OpenFilm's merge. A loss exits with code 1 and leaves the agent's copy as it was.
