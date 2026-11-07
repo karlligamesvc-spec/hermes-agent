@@ -22712,15 +22712,17 @@ const openfilmStudio = createOpenfilmStudio({
       venvRoot: VENV_ROOT,
       currentPath: pathWithHermesManagedNode()
     }),
-  enginePython: async () => {
-    const backend = await ensureRuntime(resolveHermesBackend([]))
-
-    return backend.command ? { command: backend.command, cwd: backend.root, env: backend.env ?? {} } : null
-  },
+  enginePython: openfilmEnginePython,
   log: rememberLog
 })
 
 registerOpenfilmStudio(openfilmStudio, ipcMain, app)
+
+async function openfilmEnginePython() {
+  const backend = await ensureRuntime(resolveHermesBackend([]))
+
+  return backend.command ? { command: backend.command, cwd: backend.root, env: backend.env ?? {} } : null
+}
 
 ipcMain.handle('hermes:workflowDomain:startGoal', async (_event, payload) => {
   const context = workflowDomainIpcContext()
