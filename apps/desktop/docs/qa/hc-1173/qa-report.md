@@ -46,6 +46,7 @@
 ## 坏了的 / 要注意的
 
 1. **人改过东西后，智能体重写 `film.html`,字幕轨整条消失**(新发现，严重)。Studio 的合并保住了人的修改，却删了 `<section><track kind="captions" …></section>`;时间线上字幕全没了,`captions.vtt` 还在磁盘上但没人引用;`look` 也不报。复现了两次(cook2:改字幕 + 改花字 + 分割;cook3:只改花字)。对照组 cook4(人没改)让智能体写入，字幕轨保留。所以是「保住人的修改」这条合并路径的问题。要么报上游、等修，要么生成器换一种写字幕轨的方式绕开(没试)。
+   - 已修:hc-1175(#578)。补丁打进钉住的工具包，带守卫和反向验证;给上游的 issue/PR 已起草，等 Kael 看。
 2. **`look` 只报写在 `overrides` 里的改动**:人改的字幕文字(在 `captions.vtt`)和分割(改的是 `<video>` 本身)它不说。智能体要自己比对文件，或者靠上面那条合并通知(只在它的写入会覆盖人的修改时才有)。
 3. 改字幕会丢逐字计时(报告里的坑，复现)。
 4. 分割会把入场动画复制到后半段(报告里的坑，复现，截图 07 里能看到糊)。
@@ -80,19 +81,47 @@ ffmpeg 用的是已装 APEX 引擎的 9.0.2(`~/.apexnodes/hermes-agent/.runtime/
 - 需要模型的功能(翻译字幕、画布写字)没接 `askAgent`,现在会走 OpenFilm 自己连的服务。
 - 预览框外壳：换成没有地址栏的专用页签，不露启动密钥。
 
-## 请 Kael 定的
+## Kael 已定(2026-11-07)
 
-1. 「合并丢字幕轨」这个坑出来以后，还继续走 OpenFilm 吗?继续的话：报上游等修，还是我们生成器绕开?
-2. 工具包怎么给用户:260 MB 的媒体包在第一次要「可编辑版」时下载，还是随 APEX 一起装?
-3. 智能体那一侧要不要接：引擎环境里放同一个 `OPENFILM_HOME`、`openfilm` 命令和 APEX 的剪辑技能(这次是我在 shell 里替智能体跑的 `look`)。
-4. Studio 外壳怎么改：fork OpenFilm 改界面(MIT 允许，不能叫 OpenFilm),还是用 `editorDir` 把 Studio 的编辑器编进 APEX 自己的页面?
-5. 开关：现在只有本机环境变量能开。内测要不要做成平台开关(只给内部账号)?
-6. 票号：本分支用 hc-1173(本仓、fork、PD L 列三处查过都空着),PD 表还没写这一行，需要你确认。
+原来这里列了 6 个请 Kael 定的问题。票号 hc-1173 已写进 PD 第 1108 行。其余 5 项 Kael 11-07 定了：按推荐来，站在用户方便的角度。定案全文见 #576 正文「Kael 已定」。顺序上先做风险最大的两件：
+
+- 字幕轨合并修复：hc-1175,#578;
+- 正式包实测：见下一节。
+
+## 正式包实测(2026-11-07)
+
+这次在已装的正式版 APEX 上验原型主进程那条路：用正式版的二进制当 Node 起 Studio。
+
+- 用的是本分支 `electron/openfilm-studio.ts` 原样打成的一个模块(esbuild 打成一个文件),只把 `execPath` 换成正式版二进制。
+- 工具包是打了 hc-1175 补丁的 openfilm 0.3.0。
+- 编辑器页面用无头浏览器打开，代替预览框里的 webview。
+
+| | Mac(本机) | Windows(5090 测试机，实体机) |
+|---|---|---|
+| 版本 | APEX 0.17.72(`/Applications`,签名、公证) | APEX 0.17.73(`%LOCALAPPDATA%\Programs\APEX`) |
+| Electron fuse(只读文件，没运行 APEX) | `RunAsNode` 开;asar 完整性校验、只从 asar 加载都关 | 同左 |
+| 起 Studio 并打开 CookVlog | 1.9 秒 | 1.0 秒 |
+| 拉起 APEX 窗口进程 | 没有 | 没有 |
+| 编辑器页面 | 正常：时间线、缩略图、波形、画面都出来(截图 10) | 同左(截图 11) |
+| Studio 带起的子进程 | headless Chromium | headless Chromium、ffmpeg、ffprobe |
+| 退出(关 stdin,同 APEX 退出时) | Studio 退出，`run.json` 删掉 | 0.5 秒退出，退出码 0,`run.json` 删掉 |
+| 真实 APEX 数据 | `~/.apexnodes/logs/desktop.log` 没动 | `%LOCALAPPDATA%\ApexNodes\logs\desktop.log` 没动 |
+| 日志里的启动密钥 | 没有 | 没有 |
+
+结论：
+- 正式包没有关掉 `ELECTRON_RUN_AS_NODE`。打包脚本里没有 `@electron/fuses`,两个平台的正式二进制都实测能用。
+- 原型不从 asar 里读文件。宿主脚本写在数据目录，工具包在 asar 外面，所以 asar 路径影响不到它;fuse 也没开「只从 asar 加载」。
+- Windows 上 SIGTERM 就是强杀，所以原型用关 stdin 让 Studio 自己退出。这在 Windows 上实测有效。
+
+还没覆盖：把本分支整个打成正式包(主进程、preload、渲染进程都在 asar 里),在真实预览框里跑一遍。这次是正式版二进制配原型模块，渲染端用的是无头浏览器。按第 5 项的放开条件，正式开放前还要用带工具包下载的正式包在 Mac 和 Windows 上完整跑。
+
+![正式版 Mac 二进制起的 Studio](screenshots/10-packaged-mac-0.17.72-binary.jpg)
+
+![正式版 Windows 二进制起的 Studio](screenshots/11-packaged-windows-0.17.73-binary.jpg)
 
 ## 没测的
 
-- 正式包(`.app`)里跑：打包后 `ELECTRON_RUN_AS_NODE` 是否被 Electron fuse 关掉、asar 里的路径，都没验。
-- Windows。
+- 本分支整个打成正式包后在真实预览框里跑(Mac、Windows)。正式版二进制当 Node 起 Studio 这一段已在两个平台实测，见上一节。
 - 真实智能体回合(用的是 e2e 假模型);真人在 APEX 里按 ⌘A、⌘B 等快捷键(测试用的是 webview 的输入事件和 `selectAll()`)。
 - 导出、剪映草稿导出(报告里在浏览器里测过，这次没在 APEX 里测)。
 
