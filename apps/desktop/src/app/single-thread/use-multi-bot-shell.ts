@@ -19,7 +19,10 @@
  *   a send naming another assistant into the confirm card (hc-1087), and
  *   moves a relay plan on baton by baton (hc-1091);
  * - opens a clicked assistant's thread at once when it is already known, with
- *   no fresh draft in between (hc-1146, use-bot-thread-open.ts).
+ *   no fresh draft in between (hc-1146, use-bot-thread-open.ts);
+ * - remembers the assistant on screen and, at the next launch, starts its
+ *   engine in the background once the main engine answers (hc-1146,
+ *   startup-prewarm.ts).
  *
  * Off (or in a pop-out window) it does nothing.
  */
@@ -48,6 +51,7 @@ import { profileOfThreadStoredId } from '@/store/single-thread-presence'
 import type { RequestGateway } from './composer-middleware'
 import { useHandoffRunner } from './handoff-runner'
 import { useHandoffScreens } from './handoff/use-handoff-screens'
+import { useStartupPrewarm } from './startup-prewarm'
 import { useBotThreadOpen } from './use-bot-thread-open'
 
 export const ROSTER_REFRESH_MS = 20_000
@@ -91,6 +95,8 @@ export function useMultiBotShell(
   useHandoffScreens(multiBot)
   // hc-1146: a click opens the assistant's known thread straight away.
   useBotThreadOpen(multiBot)
+  // hc-1146: the assistant on screen last starts warming at launch.
+  useStartupPrewarm(multiBot, gatewayOpen)
 
   useEffect(() => {
     void loadMultiBotFlag()

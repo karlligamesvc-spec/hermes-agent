@@ -226,6 +226,8 @@ describe('hc-1014 the seams stay wired', () => {
     expect(chat).toMatch(/\{isPrimary && \(\n\s+<PrimaryChatHeader\n/)
 
     expect(chat).toContain('const introSplash = useStore($introSplashShown)')
+    // hc-1146: the composer's sends while the gateway is not open go through the one seam (off: refused as before).
+    expect(chat).toContain('disabled={composerDisabledWhileConnecting(gatewayOpen)}')
     expect(chat).toContain("import { ChatBar, ChatBarFallback } from '../single-thread/composer-gate'")
   })
 
@@ -233,7 +235,10 @@ describe('hc-1014 the seams stay wired', () => {
     const surfaces = source('app', 'contrib', 'surfaces.tsx')
 
     expect(surfaces).toContain('<SingleThreadSidebar currentView={currentView} />')
-    expect(surfaces).toContain('useSingleThreadShell(actions.requestGateway)')
+    // hc-1146: with the app's submit, for the messages held while the thread opens.
+    expect(surfaces).toContain(
+      'useSingleThreadShell(actions.requestGateway, (text, options) => actions.onSubmit(text, options))'
+    )
   })
 
   it('⌘T and the new-window shortcut go through the one-conversation guard', () => {

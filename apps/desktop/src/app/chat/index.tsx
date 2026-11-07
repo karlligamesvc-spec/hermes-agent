@@ -61,7 +61,7 @@ import { isAuxiliaryWindow, isWatchWindow } from '@/store/windows'
 import { primaryRouteSelectedSessionId, routeSessionId } from '../routes'
 import { titlebarHeaderBaseClass, titlebarHeaderShadowClass, titlebarHeaderTitleClass } from '../shell/titlebar'
 import { ChatBar, ChatBarFallback } from '../single-thread/composer-gate'
-import { composerHiddenWhileLoading } from '../single-thread/composer-while-loading'
+import { composerDisabledWhileConnecting, composerHiddenWhileLoading } from '../single-thread/composer-while-loading'
 import { SingleThreadHeader, useSingleThreadHeader } from '../single-thread/thread-header'
 
 import { ChatDropOverlay } from './chat-drop-overlay'
@@ -826,7 +826,7 @@ const ChatViewContent = memo(function ChatViewContent({
               <ChatBar
                 busy={busy}
                 cwd={currentCwd}
-                disabled={!gatewayOpen}
+                disabled={composerDisabledWhileConnecting(gatewayOpen)}
                 focusKey={activeSessionId}
                 gateway={gateway}
                 maxRecordingSeconds={maxVoiceRecordingSeconds}
