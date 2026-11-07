@@ -328,17 +328,18 @@ describe('main.ts reads and writes the startup profile only through this module'
       /migrateActiveProfileIfMissing\(\)\n[\s\S]*const primaryProfile = primaryProfileKey\(\)\n[\s\S]*primaryProfilePin\.pin\(primaryProfile\)/
     )
     assert.match(body('function primaryProfileKey('), /return primaryProfilePin\.resolve\(readActiveDesktopProfile\)/)
-    // The renderer's adoptPrimaryProfile, the local IM gateway, plugin roots (fs-ipc).
+    // The renderer's adoptPrimaryProfile and plugin roots (fs-ipc).
     assert.match(
       code,
       /ipcMain\.handle\('hermes:profile:get', async \(\) => \(\{ profile: readActiveDesktopProfile\(\) \}\)\)/
     )
-    assert.match(
-      body('async function reconcileMessagingGateway('),
-      /const activeProfile = readActiveDesktopProfile\(\) \|\| null/
-    )
-    assert.match(code, /await startMessagingGateway\(readActiveDesktopProfile\(\)\)/)
     assert.match(code, /registerFsIpc\(\{[^}]*\breadActiveDesktopProfile,/)
+    // hc-1171: the local IM gateway is the one exit that deliberately does not follow the startup
+    // profile: it always runs as APEX's default (apex-gateway.ts MESSAGING_GATEWAY_PROFILE).
+    for (const signature of ['async function restartMessagingGateway(', 'async function reconcileMessagingGateway(']) {
+      assert.match(body(signature), /await startMessagingGateway\(MESSAGING_GATEWAY_PROFILE\)/)
+      assert.doesNotMatch(body(signature), /readActiveDesktopProfile/)
+    }
     // remember / set (the developer rail, ⌘1–9 and ⌘⇧[ ⌘⇧]) go through the guarded writer.
     assert.match(
       code,

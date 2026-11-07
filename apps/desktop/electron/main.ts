@@ -111,7 +111,7 @@ import {
   normalizeStoredFeishu,
   parseFeishuCredentialsResponse
 } from './apex-feishu'
-import { buildGatewayRunArgs, imEntryStoreHasBinding } from './apex-gateway'
+import { buildGatewayRunArgs, imEntryStoreHasBinding, MESSAGING_GATEWAY_PROFILE } from './apex-gateway'
 import { checkLocalVideoReadiness, probeLocalVideoTool } from './apex-hypit-readiness'
 import {
   buildImEntrySpawnEnv,
@@ -21743,16 +21743,16 @@ async function restartMessagingGateway() {
     }
 
     await stopMessagingGateway()
-    await startMessagingGateway(readActiveDesktopProfile())
+    await startMessagingGateway(MESSAGING_GATEWAY_PROFILE)
   } catch (error: any) {
     rememberLog(`[im-entry] messaging gateway restart failed: ${error && error.message ? error.message : error}`)
   }
 }
 
-// Converge the messaging gateway to the current binding + profile without
-// churning a healthy one — used from the boot/local-ready path (which can fire
-// on every window reload). No binding → stopped; bound + already running under
-// the active profile → left alone; profile changed or not running → (re)started.
+// Converge the messaging gateway to the current binding without churning a
+// healthy one — used from the boot/local-ready path (which can fire on every
+// window reload). No binding → stopped; bound + running → left alone; else
+// (re)started, always as APEX's default profile (hc-1171, apex-gateway.ts).
 // Same local-backend gate as restartMessagingGateway. Never throws.
 async function reconcileMessagingGateway() {
   try {
@@ -21768,14 +21768,12 @@ async function reconcileMessagingGateway() {
       return
     }
 
-    const activeProfile = readActiveDesktopProfile() || null
-
-    if (messagingGatewayChildAlive() && messagingGatewayRuntime.profile === activeProfile) {
+    if (messagingGatewayChildAlive() && messagingGatewayRuntime.profile === MESSAGING_GATEWAY_PROFILE) {
       return
     }
 
     await stopMessagingGateway()
-    await startMessagingGateway(activeProfile)
+    await startMessagingGateway(MESSAGING_GATEWAY_PROFILE)
   } catch (error: any) {
     rememberLog(`[im-entry] messaging gateway reconcile failed: ${error && error.message ? error.message : error}`)
   }
