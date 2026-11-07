@@ -71,6 +71,8 @@ _SEAM_MODULES = (
     "apex_identity",
     # hc-1116 upstream wording (first-contact /help, Hermes in notices) on APEX surfaces.
     "upstream_copy",
+    # hc-1169 cron fires get the account's credentials when a process serves several profiles.
+    "cron_account_env",
 )
 
 

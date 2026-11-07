@@ -75,6 +75,13 @@ _TOOL_SEAMS = (
         "prior error). A new assistant's first reply may point to /help, and IM "
         "notices may name Hermes or tell the user to run hermes commands.",
     ),
+    (
+        "cron_account_env",
+        "apex-overlay: hc-1169 cron account credentials seam did not fully apply (see "
+        "prior error). With several assistants, every cron job runs without the "
+        "account's web search, platform tools and Feishu / WeChat credentials; web "
+        "search falls back to a keyless backend without saying so.",
+    ),
 )
 
 
