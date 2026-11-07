@@ -321,6 +321,8 @@ describe('main.ts wiring of the packaged engine pick', () => {
   test('every runtime consumer resolves through resolveHermesBackend', () => {
     assert.deepEqual(callersOf('resolveHermesBackend'), [
       'ipc:hermes:window:openInTerminal',
+      // hc-1176: the engine the Agent runs installs the OpenFilm editor's toolkit.
+      'openfilmEnginePython',
       'runEnsureRuntime',
       'runHermesStart',
       'runPoolBackendStart',
