@@ -78,6 +78,19 @@ function buildGatewayRunArgs(profile?) {
 }
 
 /**
+ * hc-1171: the profile the desktop-managed messaging gateway runs as — always
+ * APEX's root (default), whichever assistant Desktop starts with. Upstream runs
+ * one gateway per host from the default profile and refuses a named one once
+ * several profiles exist (`hermes -p X gateway run` exits 78: "does not get a
+ * gateway of its own"), so with several assistants and the single-engine
+ * switch off, a startup assistant other than APEX used to leave Feishu and
+ * WeChat disconnected. The IM 入口's credentials belong to that default profile
+ * (apex_overlay/im_launch_profile.py): on Desktop the IM is APEX's. A fixed
+ * profile also means switching the startup assistant never restarts the gateway.
+ */
+const MESSAGING_GATEWAY_PROFILE = null
+
+/**
  * True when the normalized IM 入口 store (the map keyed by channel id that
  * resolveImEntryStore() returns) has at least one usable channel binding — i.e.
  * there is an adapter for the messaging gateway to host. When false the gateway
@@ -107,5 +120,6 @@ function imEntryStoreHasBinding(store) {
 
 export {
   buildGatewayRunArgs,
-  imEntryStoreHasBinding
+  imEntryStoreHasBinding,
+  MESSAGING_GATEWAY_PROFILE
 }

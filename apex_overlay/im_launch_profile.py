@@ -9,7 +9,9 @@ scope lacks never falls back to the process environment. So no profile configure
 and the bound bot never connected (reproduced 2026-11-07: one profile, both enabled; two, neither).
 
 This seam gives those names back to the profile they belonged to with one assistant: the one the
-process was started for (its launch home; for the gateway, the profile Desktop started it for).
+process was started for (its launch home). Desktop always starts the messaging gateway as APEX's
+default profile (apps/desktop/electron/apex-gateway.ts ``MESSAGING_GATEWAY_PROFILE``; upstream
+refuses a gateway of a named profile once several exist), so on Desktop the IM is APEX's.
 
 - That profile's own value (its ``.env``, secret sources, managed env) still wins.
 - No other profile's scope changes, so exactly one adapter connects to each app and its messages

@@ -13,10 +13,12 @@
  */
 
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
 
 import { test } from 'vitest'
 
-import { buildGatewayRunArgs, imEntryStoreHasBinding } from './apex-gateway'
+import { buildGatewayRunArgs, imEntryStoreHasBinding, MESSAGING_GATEWAY_PROFILE } from './apex-gateway'
 
 test('buildGatewayRunArgs: default (no profile) is `gateway run --replace`', () => {
   assert.deepEqual(buildGatewayRunArgs(), ['gateway', 'run', '--replace'])
@@ -92,4 +94,35 @@ test('imEntryStoreHasBinding: true when ANY channel is bound, even beside an emp
     }),
     true
   )
+})
+
+// hc-1171: with several assistants upstream refuses a gateway run as a named profile (exit 78), so
+// Desktop always runs it as APEX's default profile, whichever assistant it starts with.
+test('hc-1171: the messaging gateway runs as the default profile, never as a named one', () => {
+  assert.equal(MESSAGING_GATEWAY_PROFILE, null)
+  assert.deepEqual(buildGatewayRunArgs(MESSAGING_GATEWAY_PROFILE), ['gateway', 'run', '--replace'])
+})
+
+const mainCode = fs.readFileSync(path.join(import.meta.dirname, 'main.ts'), 'utf8').replace(/^\s*\/\/.*$/gm, '')
+
+function mainBody(signature: string): string {
+  const start = mainCode.indexOf(signature)
+
+  assert.ok(start >= 0, `${signature} is missing from main.ts`)
+
+  return mainCode.slice(start, mainCode.indexOf('\n}\n', start) + 2)
+}
+
+test('hc-1171: every path that starts the messaging gateway starts it as the default profile', () => {
+  const callArgs = [...mainCode.matchAll(/(?<![\w.])(?<!function )startMessagingGateway\(([^)]*)\)/g)].map(match => match[1].trim())
+
+  assert.ok(callArgs.length >= 2, `expected the restart and reconcile paths, found ${callArgs.length}`)
+  assert.deepEqual([...new Set(callArgs)], ['MESSAGING_GATEWAY_PROFILE'])
+
+  for (const signature of ['async function restartMessagingGateway(', 'async function reconcileMessagingGateway(']) {
+    assert.ok(!mainBody(signature).includes('readActiveDesktopProfile'), `${signature} must not follow the startup assistant`)
+  }
+
+  // A running gateway is judged against the same fixed profile, so switching assistants never restarts it.
+  assert.match(mainBody('async function reconcileMessagingGateway('), /messagingGatewayRuntime\.profile === MESSAGING_GATEWAY_PROFILE/)
 })
