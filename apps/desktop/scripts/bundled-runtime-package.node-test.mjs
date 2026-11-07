@@ -5,6 +5,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 
+import { bundleVenvComponent, syncBundleVenv } from '../../../scripts/build-runtime-bundle.mjs'
 import { assertBundledRuntimePackage, readBundledRuntimePin, sha256File, stageBundledRuntime } from './bundled-runtime-package.mjs'
 
 function fixture(root, { platform = 'darwin', arch = 'arm64', omit = '', embeddedCommit, mutate = () => {}, pythonVersion = '3.11.15' } = {}) {
@@ -18,7 +19,7 @@ function fixture(root, { platform = 'darwin', arch = 'arm64', omit = '', embedde
     schema: 1, kind: 'apexnodes-runtime-bundle', framework: 'hermes-agent', key,
     runtime_commit: pin.runtime_commit, min_desktop_version: pin.min_desktop_version, os: osName, arch,
     components: {
-      python: { path: python }, venv: { path: 'venv', relocatable: true, sync: 'uv sync --extra all --locked', uv_version: pin.uv_version },
+      python: { path: python }, venv: bundleVenvComponent(pin.uv_version),
       node: { path: '.runtime/node' }, uv: { path: `.runtime/bin/uv${osName === 'win' ? '.exe' : ''}` },
       ripgrep: { path: `.runtime/bin/rg${osName === 'win' ? '.exe' : ''}` },
       ...(osName === 'win' ? { git: { path: '.runtime/git', flavor: 'PortableGit', shell: 'bin/bash.exe' } } : {})
@@ -53,6 +54,32 @@ function fixture(root, { platform = 'darwin', arch = 'arm64', omit = '', embedde
   fs.writeFileSync(path.join(out, path.basename(archive).replace('.tar.gz', '.manifest.json')), JSON.stringify(manifest))
   return { out, resources: path.join(root, 'resources'), options: { platform, arch, pin }, archive, manifest }
 }
+
+test('hc-1170: the bundle venv gets every extra an APEX feature installs on first use', () => {
+  for (const devUnlocked of [false, true]) {
+    const calls = []
+    syncBundleVenv((cmd, argv, opts) => calls.push({ cmd, argv, opts }), 'uv', { cwd: '/stage', env: { A: '1' }, devUnlocked })
+    assert.equal(calls.length, 1)
+    const { cmd, argv, opts } = calls[0]
+    assert.equal(cmd, 'uv')
+    assert.deepEqual(opts, { cwd: '/stage', env: { A: '1' } })
+    const extras = argv.flatMap((arg, i) => (argv[i - 1] === '--extra' ? [arg] : []))
+    assert.equal(argv[0], 'sync')
+    assert.deepEqual(extras.slice(0, 1), ['all'])
+    for (const extra of ['feishu', 'anthropic', 'doc-extract']) assert.ok(extras.includes(extra), extra)
+    assert.equal(argv.includes('--locked'), !devUnlocked)
+  }
+})
+
+test('hc-1170: a bundle synced with [all] alone is refused', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-runtime-package-'))
+  try {
+    const f = fixture(root, { mutate: manifest => { manifest.components.venv.sync = 'uv sync --extra all --locked' } })
+    assert.throws(() => stageBundledRuntime(f.out, f.resources, f.options), /missing runnable, relocatable components/)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
 
 test('staging ships the matching native archive and refuses actual copied-byte corruption', () => {
   for (const [platform, arch] of [['darwin', 'arm64'], ['darwin', 'x64'], ['win32', 'x64']]) {
