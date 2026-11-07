@@ -1,0 +1,30 @@
+{
+  "package": {
+    "name": "openfilm",
+    "version": "0.3.0",
+    "tarball": "https://registry.npmjs.org/openfilm/-/openfilm-0.3.0.tgz",
+    "integrity": "sha512-j874i3XnKY1ImdD2HWTAfviJFwsBVx7BfCCf20Fd83XZY/Wn5mmvOnMDV4dUqDFra0QmwGwtx30Bl0XXbUCIuw=="
+  },
+  "source": {
+    "repository": "https://github.com/openfilm/openfilm.git",
+    "tag": "v0.3.0",
+    "commit": "7713d38c8ddc860e1b8e517bb8b0f180988f8f73",
+    "packageDir": "packages/openfilm"
+  },
+  "testDependencies": {
+    "playwright-core": {
+      "version": "1.61.1",
+      "tarball": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.61.1.tgz",
+      "integrity": "sha512-h7Qlt6m4REp25qvIdvbDtVmD4LqVXfpRxhORv9L0jzETM05p4fuPJ3dKyuSXQxDSbXnmS79HAgi9589lGSpLkg=="
+    }
+  },
+  "patches": ["patches/0001-keep-track-fields.patch"],
+  "upstreamTests": [
+    "studio/server/person-merge.test.mjs",
+    "studio/server/person-edits.test.mjs",
+    "studio/server/film.test.mjs",
+    "studio/server/ops.test.mjs",
+    "studio/server/caption-tracks.test.mjs",
+    "studio/server/captions.test.mjs"
+  ]
+}

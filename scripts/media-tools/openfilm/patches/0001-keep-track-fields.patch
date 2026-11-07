@@ -1,0 +1,434 @@
+diff --git a/src/film-doc.d.mts b/src/film-doc.d.mts
+index 2f1aadd..63832b1 100644
+--- a/src/film-doc.d.mts
++++ b/src/film-doc.d.mts
+@@ -87,6 +87,8 @@ export type FilmDoc = {
+ }
+ 
+ export declare const FILM_FILE: 'film.html';
++/** The fields a track has in film.html, its clips first. */
++export declare const TRACK_FIELDS: readonly string[];
+ export declare const DEFAULT_STAGE: Readonly<{ w: number; h: number }>;
+ export declare const SPEED_MIN: number;
+ export declare const SPEED_MAX: number;
+diff --git a/src/film-doc.mjs b/src/film-doc.mjs
+index 91e6c33..84068db 100644
+--- a/src/film-doc.mjs
++++ b/src/film-doc.mjs
+@@ -140,7 +140,7 @@ const BOX_FIELDS = ['x', 'y', 'w', 'h', 'r'];
+ const PAGE_SIZE_MAX = 8192;
+ /** A copy of `row` with only `fields`, in that order: what is written back reads the same every time. */
+ const ordered = (row, fields) => Object.fromEntries(fields.filter((k) => row[k] !== undefined).map((k) => [k, row[k]]));
+-const TRACK_FIELDS = ['clips', 'locked', 'hidden', 'muted', 'attrs', 'captions'];
++export const TRACK_FIELDS = ['clips', 'locked', 'hidden', 'muted', 'attrs', 'captions'];
+ /** A caption track's `<track>` (SPEC §1 Captions): what it may say. */
+ const CAPTION_KINDS = ['captions', 'subtitles'];
+ const CAPTION_FIELDS = ['src', 'kind', 'srclang', 'label'];
+diff --git a/studio/server/person-edits.mjs b/studio/server/person-edits.mjs
+index d59ab70..5e26ac2 100644
+--- a/studio/server/person-edits.mjs
++++ b/studio/server/person-edits.mjs
+@@ -34,7 +34,7 @@ import { basename, join } from 'node:path';
+ import { Worker } from 'node:worker_threads';
+ import { deflateRawSync, inflateRawSync } from 'node:zlib';
+ import { replaceFile, tempPath } from './atomic.mjs';
+-import { compare, hashOf, keepFilm, keptClips, keptHash, keptSize, keptValue, lineDistance, linesNew, mergeLines, mergeWrite } from './person-merge.mjs';
++import { compare, hashOf, keepFilm, keptClips, keptHash, keptSize, keptValue, LANE, lineDistance, linesNew, mergeLines, mergeWrite } from './person-merge.mjs';
+ 
+ /** @typedef {import('./ops.mjs').FilmValue} FilmValue @typedef {import('./ops.mjs').Op} Op @typedef {import('./person-merge.mjs').KeptFilm} KeptFilm */
+ /**
+@@ -625,15 +625,18 @@ export function noteSaid(/** @type {string} */ id) {
+ function words(/** @type {string} */ key) {
+   const [kind, id, name, more] = key.split('\0');
+   const at = (/** @type {string} */ n) => (n ? `overrides at ${JSON.parse(n)[0]}` : 'fade');
++  /* a caption track, by its file (person-merge.mjs LANE) */
++  const lane = id?.startsWith(LANE) ? `the caption track ${id.slice(LANE.length).split('\u0002')[0]}` : '';
++  const flags = /** @type {Record<string, string>} */ ({ hidden: 'shown or hidden', muted: 'muted or not', locked: 'locked or not' });
+   switch (kind) {
+-    case 'clip': return `clip ${id}`;
++    case 'clip': return lane || `clip ${id}`;
+     case 'field': return `clip ${id} ${name}`;
+     case 'box': case 'attrs': return `clip ${id} ${kind}.${name}`;
+     case 'entry': return `clip ${id} ${at(name)}`;
+     case 'prop': return `clip ${id} ${at(name)} ${more}`;
+     case 'style': return `clip ${id} ${at(name)} style.${more}`;
+     case 'track': return `clip ${id} track`;
+-    case 'flag': return `a track ${name === 'hidden' ? 'shown or hidden' : name === 'muted' ? 'muted or not' : 'locked or not'}`;
++    case 'flag': return name in flags ? `${lane || 'a track'} ${flags[name]}` : `${lane || 'a track'}: its ${name}`;
+     case 'order': return 'the tracks\' order';
+     case 'film': return 'film.html as a whole (your write could not be merged; it is kept aside in the project\'s history)';
+     default: return 'the stage size';
+diff --git a/studio/server/person-merge.mjs b/studio/server/person-merge.mjs
+index ab12b6e..da6d2f3 100644
+--- a/studio/server/person-merge.mjs
++++ b/studio/server/person-merge.mjs
+@@ -11,7 +11,7 @@
+  * changed by the writer only, the writer's; by the person (or Studio) only, theirs; by both, differently, the person's.
+  */
+ import { createHash } from 'node:crypto';
+-import { readFilm } from '../../src/film-doc.mjs';
++import { readFilm, TRACK_FIELDS } from '../../src/film-doc.mjs';
+ 
+ /** @typedef {import('./ops.mjs').FilmValue} FilmValue @typedef {import('./ops.mjs').Clip} Clip @typedef {import('./ops.mjs').Track} Track */
+ /**
+@@ -48,6 +48,42 @@ export function alike(a, b) {
+ /** An overrides entry's name: what it points at. The entry without `at` is the clip's own (its fades). */
+ const entryName = (/** @type {Record<string, unknown>} */ e) => (e && 'at' in e ? JSON.stringify([e.at, e.n ?? null, e.copy ?? null]) : '');
+ const FLAGS = /** @type {const} */ (['locked', 'hidden', 'muted']);
++/**
++ * A track's other fields: all film-doc.mjs reads but its clips and flags (its <section>'s attributes, a caption track's
++ * <track>, any added later). Each is a unit merged whole, named as a flag is (`flag␀id␀field`), so a merge drops none.
++ */
++const VALUES = TRACK_FIELDS.filter((f) => f !== 'clips' && !(/** @type {readonly string[]} */ (FLAGS)).includes(f));
++/** All a track has besides its clips. */
++const FIELDS = [...FLAGS, ...VALUES];
++/** A track's field as a unit has it: a flag set is `true`, one not set none; another field as it is. */
++const fieldOf = (/** @type {Track | undefined} */ track, /** @type {string} */ f) => {
++  const v = /** @type {Record<string, unknown> | undefined} */ (track)?.[f];
++  return (/** @type {readonly string[]} */ (FLAGS)).includes(f) ? (v ? true : undefined) : v;
++};
++/**
++ * A track without clips (a caption track: its <track> alone) is named by its file, as a clip by its id: `LANE` and the
++ * file (a second track of one file, `␂2` after it). The name stands where a clip's id would in a unit's name (the track
++ * there: `clip␀name`; its fields: `flag␀name␀field`), and is no clip's id.
++ */
++export const LANE = '\u0001';
++/** Tracks' names, by their caption files (null: a track with clips, or without a caption file: '' for it). */
++function laneNames(/** @type {(string | null)[]} */ files) {
++  /** @type {Map<string, number>} */
++  const seen = new Map();
++  return files.map((file) => {
++    if (file === null) return '';
++    const n = (seen.get(file) ?? 0) + 1;
++    seen.set(file, n);
++    return `${LANE}${file}${n > 1 ? `\u0002${n}` : ''}`;
++  });
++}
++/** A film's tracks' names: each caption track's, '' for the others. */
++const lanesOf = (/** @type {FilmValue} */ film) => laneNames(film.tracks.map((t) => (!t.clips.length && t.captions ? t.captions.src : null)));
++/** A film's caption tracks by name, each with its place. */
++const byLane = (/** @type {FilmValue} */ film) => {
++  const names = lanesOf(film);
++  return new Map(film.tracks.flatMap((track, t) => (names[t] ? [/** @type {[string, { track: Track, t: number }]} */ ([names[t], { track, t }])] : [])));
++};
+ /** A clip's fields that have a value when left out (film.html writes none for it): left out and that value are alike. */
+ const DEFAULTS = /** @type {Record<string, unknown>} */ ({ at: 0, volume: 1, speed: 1 });
+ const orDefault = (/** @type {string} */ key, /** @type {unknown} */ v) => (v === undefined ? DEFAULTS[key] : v);
+@@ -57,24 +93,30 @@ const orDefault = (/** @type {string} */ key, /** @type {unknown} */ v) => (v ==
+ /**
+  * The film's units, by name: `clip␀id` (there), `field␀id␀name`, `box␀id␀key`, `attrs␀id␀key`, `entry␀id␀name` (there),
+  * `prop␀id␀name␀prop`, `style␀id␀name␀key`, `track␀id` (the clips it shares a track with), `flag␀id␀flag` (its
+- * track's), `order` (the tracks, each as its clips), `stage`. What two versions differ by; what a note names.
++ * track's flags and other fields), `order` (the tracks, each as its clips), `stage`; a caption track's, as a clip's,
++ * by its name (`LANE`). What two versions differ by; what a note names.
+  * @param {FilmValue} film @returns {Map<string, unknown>}
+  */
+ export function unitsOf(film) {
+   /** @type {Map<string, unknown>} */
+   const out = new Map();
++  const lanes = lanesOf(film);
+   out.set('stage', film.stage);
+-  out.set('order', film.tracks.map((t) => t.clips.map((c) => c.id).sort()));
+-  for (const track of film.tracks) {
++  out.set('order', film.tracks.map((t, i) => (lanes[i] ? [lanes[i]] : t.clips.map((c) => c.id).sort())));
++  const fields = (/** @type {Track} */ track, /** @type {string} */ id) => {
++    for (const f of FIELDS) { const v = fieldOf(track, f); if (v !== undefined) out.set(`flag\0${id}\0${f}`, v); }
++  };
++  film.tracks.forEach((track, i) => {
++    if (lanes[i]) { out.set(`clip\0${lanes[i]}`, true); fields(track, lanes[i]); }
+     const ids = track.clips.map((c) => c.id);
+     for (const clip of track.clips) {
+       const id = clip.id;
+       out.set(`clip\0${id}`, true);
+       out.set(`track\0${id}`, ids.filter((x) => x !== id).sort());
+-      for (const f of FLAGS) if (track[f]) out.set(`flag\0${id}\0${f}`, true);
++      fields(track, id);
+       clipUnits(clip, out);
+     }
+-  }
++  });
+   return out;
+ }
+ 
+@@ -103,36 +145,47 @@ function clipUnits(/** @type {Clip} */ clip, /** @type {Map<string, unknown>} */
+ /**
+  * A film as Studio keeps it among its versions: its stage and each clip as JSON, by track, with the track's flags. A
+  * track alike in the version before is that version's (the same object), so a version of a long film costs only what
+- * changed; and versions are compared clip by clip as strings first (`compare`), which is quick.
+- * @typedef {{ flags: string, ids: string[], clips: string[] }} KeptTrack
++ * changed; and versions are compared clip by clip as strings first (`compare`), which is quick. A track's other fields
++ * (`VALUES`) are kept as one string (`NONE`: none); a caption track has its name (`lane`, '' for the others).
++ * @typedef {{ flags: string, values: string, lane: string, ids: string[], clips: string[] }} KeptTrack
+  * @typedef {{ stage: string, tracks: KeptTrack[] }} KeptFilm
+  */
+ 
++/** A track's fields but its clips and flags, as one string (`canon`); `NONE` for none. */
++const valuesOf = (/** @type {Track} */ t) => {
++  const own = Object.fromEntries(VALUES.flatMap((f) => (fieldOf(t, f) === undefined ? [] : [[f, fieldOf(t, f)]])));
++  return Object.keys(own).length ? canon(own) : NONE;
++};
++
+ /** `film` as kept, sharing what is alike with `before` (the version before it). @returns {KeptFilm} */
+ export function keepFilm(/** @type {FilmValue} */ film, /** @type {KeptFilm | null} */ before = null) {
+   /** @type {Map<string, KeptTrack> | null} */
+   let byIds = null;
++  const lanes = lanesOf(film);
+   const tracks = film.tracks.map((t, i) => {
+     const flags = FLAGS.filter((f) => t[f]).join(' ');
++    const values = valuesOf(t);
++    const lane = lanes[i];
+     const ids = t.clips.map((c) => c.id);
+     const clips = t.clips.map((c) => JSON.stringify(c));
+     let was = before?.tracks[i];
+-    if (before && !(was && was.ids.length === ids.length && was.ids.every((id, k) => id === ids[k]))) {
+-      byIds ??= new Map(before.tracks.map((x) => [x.ids.join('\0'), x]));
+-      was = byIds.get(ids.join('\0')) ?? was;
++    /* the track before: the one with these clips; a caption track (no clips to tell it by), the one of its file */
++    if (before && !(was && was.lane === lane && was.ids.length === ids.length && was.ids.every((id, k) => id === ids[k]))) {
++      byIds ??= new Map(before.tracks.map((x) => [x.lane || x.ids.join('\0'), x]));
++      was = byIds.get(lane || ids.join('\0')) ?? was;
+     }
+-    if (!was) return { flags, ids, clips };
+-    if (was.flags === flags && was.clips.length === clips.length && clips.every((c, k) => c === was.clips[k])) return was;
++    if (!was) return { flags, values, lane, ids, clips };
++    if (was.flags === flags && was.values === values && was.lane === lane && was.clips.length === clips.length && clips.every((c, k) => c === was.clips[k])) return was;
+     /* a clip alike before is the string before, kept once */
+     const old = new Map(was.clips.map((c) => [c, c]));
+-    return { flags, ids, clips: clips.map((c) => old.get(c) ?? c) };
++    return { flags, values, lane, ids, clips: clips.map((c) => old.get(c) ?? c) };
+   });
+   return { stage: film.stage === undefined ? NONE : JSON.stringify(film.stage), tracks };
+ }
+ 
+ /** A film kept back as its value. @returns {FilmValue} */
+ export function keptValue(/** @type {KeptFilm} */ kept) {
+-  const tracks = kept.tracks.map((t) => /** @type {Track} */ ({ clips: t.clips.map((c) => JSON.parse(c)), ...Object.fromEntries(t.flags ? t.flags.split(' ').map((f) => [f, true]) : []) }));
++  const tracks = kept.tracks.map((t) => /** @type {Track} */ ({ clips: t.clips.map((c) => JSON.parse(c)), ...Object.fromEntries(t.flags ? t.flags.split(' ').map((f) => [f, true]) : []), ...(t.values === NONE ? {} : JSON.parse(t.values)) }));
+   return kept.stage === NONE ? { tracks } : { stage: JSON.parse(kept.stage), tracks };
+ }
+ 
+@@ -142,7 +195,7 @@ const trackHashes = new WeakMap();
+ export function keptHash(/** @type {KeptFilm} */ kept) {
+   const of = (/** @type {KeptTrack} */ t) => {
+     let h = trackHashes.get(t);
+-    if (!h) trackHashes.set(t, (h = hashOf(`${t.flags}\n${t.clips.join('\n')}`)));
++    if (!h) trackHashes.set(t, (h = hashOf(`${t.flags}\n${t.values === NONE ? '' : `${t.values}\n`}${t.clips.join('\n')}`)));
+     return h;
+   };
+   return hashOf(`${kept.stage}\n${kept.tracks.map(of).join('\n')}`);
+@@ -151,7 +204,7 @@ export function keptHash(/** @type {KeptFilm} */ kept) {
+ export const keptClips = (/** @type {KeptFilm} */ kept) => kept.tracks.reduce((n, t) => n + t.ids.length, 0);
+ /** A kept film's size in bytes, as far as its strings go (`only`: just these tracks). */
+ export const keptSize = (/** @type {KeptFilm} */ kept, /** @type {(t: KeptTrack) => boolean} */ only = () => true) =>
+-  kept.stage.length + kept.tracks.filter(only).reduce((n, t) => n + t.clips.reduce((m, c) => m + c.length, 0), 0);
++  kept.stage.length + kept.tracks.filter(only).reduce((n, t) => n + (t.values === NONE ? 0 : t.values.length) + t.clips.reduce((m, c) => m + c.length, 0), 0);
+ 
+ /** @type {WeakMap<KeptTrack, string>} */
+ const trackClips = new WeakMap();
+@@ -181,12 +234,17 @@ export function compare(w, v, cache = {}) {
+     const there = new Set(v.tracks.flatMap((t) => t.ids));
+     for (const id of at.keys()) if (!there.has(id)) lone.add(id);
+   }
++  /* caption tracks (no clips) by name: one only one has, as a clip */
++  const lanes = new Map(w.tracks.flatMap((t, i) => (t.lane ? [/** @type {[string, number]} */ ([t.lane, i])] : [])));
++  const theirLanes = new Set(v.tracks.map((t) => t.lane).filter(Boolean));
++  for (const name of [...theirLanes, ...lanes.keys()]) if (!lanes.has(name) || !theirLanes.has(name)) lone.add(name);
+   for (const id of lone) apart.push(`clip\0${id}`);
+   let n = 0;
+-  for (const id of lone) if (at.has(id)) n += 1 + (cache.changed?.get(id) ?? 0);
++  for (const id of lone) if (at.has(id) || lanes.has(id)) n += 1 + (cache.changed?.get(id) ?? 0);
+   if (v.stage !== w.stage && !alike(parse(v.stage), parse(w.stage))) { n++; apart.push('stage'); }
+   /* each track as the clips both have, sorted: where clips are */
+   const sorted = (/** @type {KeptTrack} */ t) => {
++    if (t.lane) return lone.has(t.lane) ? '' : t.lane;
+     const out = (/** @type {string} */ id) => lone.has(id) || skip.has(id);
+     if ((lone.size || skip.size) && t.ids.some(out)) return t.ids.filter((id) => !out(id)).sort().join('\0');
+     let s = trackClips.get(t);
+@@ -201,10 +259,9 @@ export function compare(w, v, cache = {}) {
+     if (!here) return;
+     const tw = w.tracks[here[0]];
+     if (sw[here[0]] !== sv[i]) { n++; moved.push(id); }
+-    if (tw.flags !== tv.flags) {
+-      const has = (/** @type {KeptTrack} */ t, /** @type {string} */ f) => t.flags.split(' ').includes(f);
+-      for (const f of FLAGS) if (has(tw, f) !== has(tv, f)) { n++; apart.push(`flag\0${id}\0${f}`); }
+-    }
++    const fields = fieldsApart(tw, tv, id);
++    n += fields.length;
++    apart.push(...fields);
+     const cv = tv.clips[j];
+     let got = clips.get(cv);
+     if (!got) {
+@@ -215,9 +272,30 @@ export function compare(w, v, cache = {}) {
+     n += got.n;
+     apart.push(...got.keys);
+   }));
++  for (const tv of v.tracks) {
++    const at = tv.lane ? lanes.get(tv.lane) : undefined;
++    if (at === undefined) continue;
++    const fields = fieldsApart(w.tracks[at], tv, tv.lane);
++    n += fields.length;
++    apart.push(...fields);
++  }
+   return { distance: n, apart, moved };
+ }
+ const parse = (/** @type {string} */ s) => (s === NONE ? undefined : JSON.parse(s));
++/** The fields two kept tracks differ in (flags, then the others), as units of the clip or caption track `id`. */
++function fieldsApart(/** @type {KeptTrack} */ a, /** @type {KeptTrack} */ b, /** @type {string} */ id) {
++  /** @type {string[]} */
++  const out = [];
++  if (a.flags !== b.flags) {
++    const has = (/** @type {KeptTrack} */ t, /** @type {string} */ f) => t.flags.split(' ').includes(f);
++    for (const f of FLAGS) if (has(a, f) !== has(b, f)) out.push(`flag\0${id}\0${f}`);
++  }
++  if (a.values !== b.values) {
++    const va = parse(a.values) ?? {}, vb = parse(b.values) ?? {};
++    for (const f of VALUES) if (!alike(va[f], vb[f])) out.push(`flag\0${id}\0${f}`);
++  }
++  return out;
++}
+ /**
+  * The units two clips of one id differ in (an overrides entry one lacks as that entry alone), and how far `a` (the
+  * write's) is from `b` (as `distance` counts).
+@@ -365,9 +443,11 @@ function likeness(/** @type {Clip} */ a, /** @type {Clip} */ b) {
+  */
+ function stale(write, versions, at, apart, over = []) {
+   const ids = new Set(apart.map((k) => k.split('\0')[1] ?? ''));
+-  /* the units of the clips named, from the tracks they are on (all of a film's, when a unit names no clip) */
+-  const part = (/** @type {FilmValue} */ f) => unitsOf(ids.has('') ? f : { ...f, tracks: f.tracks.filter((t) => t.clips.some((c) => ids.has(c.id))) });
+-  const kept = (/** @type {KeptFilm} */ k) => part(keptValue(ids.has('') ? k : { ...k, tracks: k.tracks.filter((t) => t.ids.some((id) => ids.has(id))) }));
++  /* the units of the clips named, from the tracks they are on (all of a film's, when a unit names no clip, or a
++     caption track: a track's name may change with the tracks left out) */
++  const whole = ids.has('') || [...ids].some((id) => id.startsWith(LANE));
++  const part = (/** @type {FilmValue} */ f) => unitsOf(whole ? f : { ...f, tracks: f.tracks.filter((t) => t.clips.some((c) => ids.has(c.id))) });
++  const kept = (/** @type {KeptFilm} */ k) => part(keptValue(whole ? k : { ...k, tracks: k.tracks.filter((t) => t.ids.some((id) => ids.has(id))) }));
+   const w = part(write), now = kept(versions[at]);
+   for (let i = 0; i < at; i++) {
+     if (over[i]) continue;
+@@ -555,7 +635,8 @@ export function mergeWrite({ ours, write, versions, over = [], gaps = [], added
+   /* the notes the write agrees with: by the tracks of the clips they name, alone, unless one names no clip (the order,
+      the stage): then by the whole films */
+   const named = new Set(notes.map((k) => k.split('\0')[1] ?? ''));
+-  const only = (/** @type {FilmValue} */ f) => unitsOf(named.has('') ? f : { ...f, tracks: f.tracks.filter((t) => t.clips.some((c) => named.has(c.id))) });
++  const all = named.has('') || [...named].some((id) => id.startsWith(LANE));
++  const only = (/** @type {FilmValue} */ f) => unitsOf(all ? f : { ...f, tracks: f.tracks.filter((t) => t.clips.some((c) => named.has(c.id))) });
+   const [uw, ur] = [only(write), only(result)];
+   return { value: result, kept: kept.map(rename), base: index, note, renamed: [...back], agreed: notes.filter((k) => alike(uw.get(k), ur.get(k))) };
+ }
+@@ -627,6 +708,30 @@ export function merge3(base, ours, theirs, doubt = new Set(), owns = (/** @type
+       clips.set(id, structuredClone(w));
+     }
+   }
++  /* the caption tracks (no clips: by name), there or not as a clip is; those only ours has, placed as ours has them */
++  const [LB, LO, LW] = [base, ours, theirs].map(byLane);
++  /** @type {Set<string>} */
++  const lanes = new Set();
++  /** @type {Set<string>} */
++  const lanesOurs = new Set();
++  for (const name of new Set([...LB.keys(), ...LO.keys(), ...LW.keys()])) {
++    const b = LB.get(name)?.track, o = LO.get(name)?.track, w = LW.get(name)?.track;
++    if (o && w) { lanes.add(name); continue; }
++    if (o) {
++      const person = (b !== undefined && FIELDS.some((f) => !alike(fieldOf(o, f), fieldOf(b, f)) && owns(`flag\0${name}\0${f}`))) || [...doubt].some((k) => k.split('\0')[1] === name && owns(k));
++      if (b && !doubt.has(`clip\0${name}`) && !person) continue;
++      lanes.add(name);
++      lanesOurs.add(name);
++      kept.add(`clip\0${name}`);
++    } else if (w) {
++      if ((doubt.has(`clip\0${name}`) && owns(`clip\0${name}`)) || (b && owns(`clip\0${name}`))) { kept.add(`clip\0${name}`); continue; }
++      if (b && alike(w, b) && !doubt.has(`clip\0${name}`)) continue;
++      lanes.add(name);
++    }
++  }
++  /** @type {Map<Track, string>} the result's caption tracks, by name */
++  const named = new Map();
++  const theirNames = lanesOf(theirs), ourNames = lanesOf(ours);
+   /* the tracks: the writer's, with the person's moves of clips and the clips only ours has put back */
+   const stable = new Set([...clips.keys()].filter((id) => B.has(id) && O.has(id) && W.has(id)));
+   const movedByOurs = moved(ours, base, stable), movedByTheirs = moved(theirs, base, stable);
+@@ -639,10 +744,20 @@ export function merge3(base, ours, theirs, doubt = new Set(), owns = (/** @type
+     placeOurs.add(id);
+   }
+   /** @type {Track[]} */
+-  const tracks = theirs.tracks.map((t) => ({ ...t, clips: t.clips.filter((c) => clips.has(c.id) && !placeOurs.has(c.id)).map((c) => /** @type {Clip} */ (clips.get(c.id))) }));
++  const tracks = theirs.tracks.map((t, i) => {
++    const track = { ...t, clips: t.clips.filter((c) => clips.has(c.id) && !placeOurs.has(c.id)).map((c) => /** @type {Clip} */ (clips.get(c.id))) };
++    if (lanes.has(theirNames[i])) named.set(track, theirNames[i]);
++    return track;
++  });
+   /* the person's placings: on a track with clips it shares one with in ours, else on one of its own where ours has it */
+   const touched = new Set(/** @type {Track[]} */ ([]));
+   for (const [t, track] of ours.tracks.entries()) {
++    if (lanesOurs.has(ourNames[t])) {
++      const made = structuredClone(track);
++      tracks.splice(Math.min(t, tracks.length), 0, made);
++      named.set(made, ourNames[t]);
++      continue;
++    }
+     for (const c of track.clips) {
+       if (!placeOurs.has(c.id)) continue;
+       const others = new Set(track.clips.map((x) => x.id).filter((x) => x !== c.id && clips.has(x)));
+@@ -656,16 +771,23 @@ export function merge3(base, ours, theirs, doubt = new Set(), owns = (/** @type
+   }
+   for (const t of touched) t.clips.sort((a, b) => Number(a.at ?? 0) - Number(b.at ?? 0));
+   /** @type {FilmValue} */
+-  let film = { tracks: tracks.filter((t) => t.clips.length) };
++  let film = { tracks: tracks.filter((t) => t.clips.length || named.has(t)) };
+   /* the stage, the tracks' order and their flags */
+   const stage = pick(base.stage, ours.stage, theirs.stage, doubt.has('stage'), owns('stage'));
+   if (stage.from === 'o' && !alike(stage.v, theirs.stage)) kept.add('stage');
+   if (stage.v !== undefined) film = { stage: structuredClone(/** @type {FilmValue['stage']} */ (stage.v)), ...film };
+-  film = orderTracks(film, base, ours, theirs, kept, doubt.has('order'), owns('order'));
+-  /* the first of a film's tracks with one of `track`'s clips */
+-  const [tb, to, tw] = [B, O, W].map((m) => (/** @type {Track} */ track) => Math.min(...track.clips.map((c) => m.get(c.id)?.t ?? Infinity)));
++  film = orderTracks(film, base, ours, theirs, kept, doubt.has('order'), owns('order'), named);
++  /* the first of a film's tracks with one of `track`'s clips; a caption track, the one of its name */
++  const [tb, to, tw] = [[B, LB], [O, LO], [W, LW]].map(([m, l]) => (/** @type {Track} */ track) => {
++    const name = named.get(track);
++    if (name) return /** @type {Map<string, { t: number }>} */ (l).get(name)?.t ?? Infinity;
++    return Math.min(...track.clips.map((c) => /** @type {Map<string, { t: number }>} */ (m).get(c.id)?.t ?? Infinity));
++  });
+   for (const track of film.tracks) {
+-    const ids = track.clips.map((c) => c.id);
++    const name = named.get(track);
++    /* a caption track only one side has is as that side has it (as a clip is) */
++    if (name && !(LO.has(name) && LW.has(name))) continue;
++    const ids = name ? [name] : track.clips.map((c) => c.id);
+     const where = new Map([[base, tb(track)], [ours, to(track)], [theirs, tw(track)]]);
+     const of = (/** @type {FilmValue} */ f) => f.tracks[/** @type {number} */ (where.get(f))];
+     for (const f of FLAGS) {
+@@ -674,6 +796,15 @@ export function merge3(base, ours, theirs, doubt = new Set(), owns = (/** @type
+       if (got.v) track[f] = true;
+       else delete track[f];
+     }
++    /* its other fields, each whole, as its flags */
++    const value = (/** @type {FilmValue} */ film, /** @type {string} */ f) => fieldOf(of(film), f);
++    const fields = /** @type {Record<string, unknown>} */ (track);
++    for (const f of VALUES) {
++      const got = pick(value(base, f), value(ours, f), value(theirs, f), ids.some((id) => doubt.has(`flag\0${id}\0${f}`)), ids.some((id) => owns(`flag\0${id}\0${f}`)));
++      if (got.from === 'o' && !alike(value(theirs, f), got.v)) kept.add(`flag\0${ids[0]}\0${f}`);
++      if (got.v === undefined) delete fields[f];
++      else fields[f] = structuredClone(got.v);
++    }
+   }
+   return { value: film, kept: [...kept].filter((k) => owns(k) || unsure.forPerson.has(k)) };
+ }
+@@ -835,11 +966,15 @@ function mergeOverrides(/** @type {string} */ id, /** @type {any} */ b, /** @typ
+ }
+ 
+ /** The result's tracks in the writer's order, or in ours where the person reordered them since the base. */
+-function orderTracks(/** @type {FilmValue} */ film, /** @type {FilmValue} */ base, /** @type {FilmValue} */ ours, /** @type {FilmValue} */ theirs, /** @type {Set<string>} */ kept, unsure = false, mine = true) {
+-  /* each of the result's tracks: where it is in `f`, by a clip they share (-1: none) */
++function orderTracks(/** @type {FilmValue} */ film, /** @type {FilmValue} */ base, /** @type {FilmValue} */ ours, /** @type {FilmValue} */ theirs, /** @type {Set<string>} */ kept, unsure = false, mine = true, /** @type {Map<Track, string>} */ named = new Map()) {
++  /* each of the result's tracks: where it is in `f`, by a clip they share, a caption track by its name (-1: none) */
+   const rank = (/** @type {FilmValue} */ f) => {
+-    const at = byId(f);
+-    return film.tracks.map((t) => { const i = Math.min(...t.clips.map((c) => at.get(c.id)?.t ?? Infinity)); return i === Infinity ? -1 : i; });
++    const at = byId(f), lanes = byLane(f);
++    return film.tracks.map((t) => {
++      const name = named.get(t);
++      const i = name ? lanes.get(name)?.t ?? Infinity : Math.min(...t.clips.map((c) => at.get(c.id)?.t ?? Infinity));
++      return i === Infinity ? -1 : i;
++    });
+   };
+   const [pb, po, pw] = [base, ours, theirs].map(rank);
+   /* the order of the tracks all three know, as each has it */
