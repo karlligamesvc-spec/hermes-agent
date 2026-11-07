@@ -483,6 +483,7 @@ import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
 import { LEGACY_OAUTH_PARTITION, resolveOauthPartition } from './oauth-partition'
 import { mintGatewayWsTicket as mintOauthGatewayWsTicket, requestWithOauthFallback } from './oauth-rest-request'
 import { wireOauthSessionResponse } from './oauth-session-response'
+import { createOpenfilmStudio } from './openfilm-studio'
 import { armPackagedRuntimeUpdate, bundledEnginePin, createPackagedRuntimeGate, installPackagedRuntime, offlineBundledOutcome, packagedEngineKeptBack, packagedRuntimeMatchesPin, packagedRuntimeShipped, readPackagedRuntime, shouldInstallPackagedRuntime } from './packaged-runtime'
 import { repairEngineMarker } from './packaged-runtime-marker'
 import { createParentStartMarkerResolver, parentWatchdogEnv } from './parent-process-identity'
@@ -512,6 +513,7 @@ import { poolTouchKeys } from './pool-touch-scope'
 import { createKeepAwake } from './power-save'
 import { capturePreviewContents } from './preview-capture'
 import { PreviewReachRegistry } from './preview-reach'
+import { previewUrlTarget } from './preview-url-target'
 import {
   createPrimaryRemoteConnection,
   FirstRunSetupResetError,
@@ -1608,7 +1610,6 @@ const MEDIA_MIME_TYPES = {
 const PREVIEW_HTML_EXTENSIONS = new Set(['.html', '.htm'])
 const PREVIEW_PDF_EXTENSIONS = new Set(['.pdf'])
 const PREVIEW_WATCH_DEBOUNCE_MS = 120
-const LOCAL_PREVIEW_HOSTS = new Set(['0.0.0.0', '127.0.0.1', '::1', '[::1]', 'localhost'])
 const TEXT_PREVIEW_MAX_BYTES = 512 * 1024
 
 const PREVIEW_LANGUAGE_BY_EXT = {
@@ -6819,10 +6820,6 @@ async function writeComposerImage(buffer, ext = '.png', name = '') {
   return filePath
 }
 
-function previewLabelForUrl(url) {
-  return `${url.host}${url.pathname === '/' ? '' : url.pathname}`
-}
-
 function expandUserPath(filePath) {
   const value = String(filePath || '').trim()
 
@@ -6877,30 +6874,6 @@ async function previewFileTarget(rawTarget, baseDir) {
     previewKind,
     source: raw,
     url: pathToFileURL(resolved).toString()
-  }
-}
-
-function previewUrlTarget(rawTarget) {
-  const raw = String(rawTarget || '').trim()
-  const url = new URL(raw)
-
-  if (!['http:', 'https:'].includes(url.protocol)) {
-    return null
-  }
-
-  if (!LOCAL_PREVIEW_HOSTS.has(url.hostname.toLowerCase())) {
-    return null
-  }
-
-  if (url.hostname === '0.0.0.0') {
-    url.hostname = '127.0.0.1'
-  }
-
-  return {
-    kind: 'url',
-    label: previewLabelForUrl(url),
-    source: raw,
-    url: url.toString()
   }
 }
 
@@ -22724,6 +22697,27 @@ ipcMain.handle('hermes:workflowDomain:localVideoReadiness', async () => {
     return { ok: false, basicToolsReady: false, missing: [], renderVerified: false }
   }
 })
+
+// PROTOTYPE, off unless this install sets APEXNODES_OPENFILM_STUDIO=1: OpenFilm
+// Studio as the preview pane's editor for an agent's film.html. Studio runs in a
+// child with the engine's PATH (its bundled ffmpeg first); see openfilm-studio.ts.
+const openfilmStudio = createOpenfilmStudio({
+  env: process.env,
+  hermesHome: HERMES_HOME,
+  execPath: process.execPath,
+  basePath: () =>
+    buildDesktopBackendPath({
+      hermesHome: HERMES_HOME,
+      runtimeRoot: ACTIVE_HERMES_ROOT,
+      venvRoot: VENV_ROOT,
+      currentPath: pathWithHermesManagedNode()
+    }),
+  log: rememberLog
+})
+
+ipcMain.handle('hermes:openfilmStudio:status', () => openfilmStudio.status())
+ipcMain.handle('hermes:openfilmStudio:open', (_event, folder) => openfilmStudio.open(folder))
+app.on('will-quit', () => openfilmStudio.stop())
 
 ipcMain.handle('hermes:workflowDomain:startGoal', async (_event, payload) => {
   const context = workflowDomainIpcContext()

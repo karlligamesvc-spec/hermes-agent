@@ -1,5 +1,11 @@
 import { atom, computed } from 'nanostores'
 
+import {
+  $openfilmStudioOn,
+  OPENFILM_STUDIO_TAB_ID,
+  openfilmProjectFolder,
+  openfilmStudioUrl
+} from '@/lib/openfilm-studio'
 import { persistentAtom } from '@/lib/persisted'
 import { readKey } from '@/lib/storage'
 import { normalize } from '@/lib/text'
@@ -383,6 +389,42 @@ function previewTargetForSource(target: PreviewTarget, source: PreviewRecordSour
  *  its target so a stale label/path can't outlive the thing it points at. The
  *  only way anything reaches a preview. */
 export function openPreview(target: PreviewTarget, source: PreviewRecordSource = 'manual') {
+  const filmFolder = $openfilmStudioOn.get() ? openfilmProjectFolder(target) : null
+
+  if (filmFolder) {
+    void openFilmInStudio(filmFolder, target, source)
+
+    return
+  }
+
+  showPreview(target, source)
+}
+
+/** PROTOTYPE (lib/openfilm-studio.ts): an agent's film.html opens in OpenFilm
+ *  Studio, in a tab of its own that is never persisted (Studio's address lives
+ *  one launch); the file itself opens as before when Studio can't. */
+async function openFilmInStudio(folder: string, target: PreviewTarget, source: PreviewRecordSource) {
+  const url = await openfilmStudioUrl(folder)
+
+  if (!url) {
+    showPreview(target, source)
+
+    return
+  }
+
+  const tab: PreviewTab = {
+    id: OPENFILM_STUDIO_TAB_ID,
+    target: { kind: 'url', label: folder.split(/[\\/]/).pop() || 'film', source: target.source, transient: true, url }
+  }
+
+  const current = $previewTabs.get()
+  const index = current.findIndex(item => item.id === tab.id)
+
+  $previewTabs.set(index === -1 ? [...current, tab] : current.map((item, i) => (i === index ? tab : item)))
+  selectRightRailTab(tab.id)
+}
+
+function showPreview(target: PreviewTarget, source: PreviewRecordSource) {
   const resolved = previewTargetForSource(target, source)
   const current = $previewTabs.get()
   const id = resolved.kind === 'url' ? browserTabId(current) : previewTabId(resolved)
