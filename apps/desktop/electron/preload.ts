@@ -431,6 +431,12 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     get: () => ipcRenderer.invoke('hermes:agentProxy:get'),
     set: payload => ipcRenderer.invoke('hermes:agentProxy:set', payload)
   },
+  // PROTOTYPE, off unless APEXNODES_OPENFILM_STUDIO=1: OpenFilm Studio for an
+  // agent's film.html in the preview pane. See electron/openfilm-studio.ts.
+  openfilmStudio: {
+    status: () => ipcRenderer.invoke('hermes:openfilmStudio:status'),
+    open: folder => ipcRenderer.invoke('hermes:openfilmStudio:open', folder)
+  },
   // Platform client-config sync — informational read of the cached versioned
   // config (no network). Application happens in the MAIN process pre-gateway
   // (main.cjs applyClientConfigToRuntime); the renderer no longer applies.
