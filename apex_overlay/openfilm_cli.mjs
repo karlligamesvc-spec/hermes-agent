@@ -9,6 +9,13 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 
 const root = path.resolve(import.meta.dirname, '..')
+
+// APEX pins OpenFilm with its own patches (scripts/media-tools/openfilm): `openfilm update` would fetch the newest from
+// npm in its place. The toolkit updates with APEX.
+if (process.argv[2] === 'update') {
+  console.error('APEX 钉住了 OpenFilm 的版本(带 APEX 的补丁),它随 APEX 一起更新：不用 openfilm update')
+  process.exit(2)
+}
 const venvPython = path.join(root, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
 // Desktop gives Agent commands its engine's interpreter as APEX_PYTHON (backend-env.ts, hc-926).
 const python = process.env.APEX_PYTHON && fs.existsSync(process.env.APEX_PYTHON) ? process.env.APEX_PYTHON : venvPython

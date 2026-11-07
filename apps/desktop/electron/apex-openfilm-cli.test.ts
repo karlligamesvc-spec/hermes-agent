@@ -72,6 +72,14 @@ describe('the openfilm command', () => {
     }
   )
 
+  test('update is refused before anything runs: the toolkit is pinned and patched', () => {
+    const result = run(stand(), ['update'])
+
+    expect(result.status).toBe(2)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toContain('不用 openfilm update')
+  })
+
   test.skipIf(process.platform === 'win32')('off: says so and runs nothing, with the setup’s own exit code', () => {
     const result = run(stand(2), ['look'])
 
