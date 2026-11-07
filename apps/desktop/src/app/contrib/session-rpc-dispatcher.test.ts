@@ -46,6 +46,7 @@ const { _resetSessionOwnerHintsForTests, setCronSessions, setMessagingSessions, 
 const { isSessionOwnerResolutionError } = await import('@/store/session-owner-resolution')
 const { $sessionTiles } = await import('@/store/session-states')
 const { makeSessionInfo } = await import('@/test/session-info')
+const { setSingleEngineFlagForTest } = await import('@/store/single-engine')
 
 function dispatcher(
   ambientRequest = vi.fn(async () => ({ ambient: true })),
@@ -277,5 +278,57 @@ describe('createSessionRpcDispatcher: stale runtime recovery', () => {
     await expect(request('session.activate', { session_id: 'rt-omar' })).rejects.toThrow('session not found')
 
     expect(sessionMocks.requestSessionResume).not.toHaveBeenCalled()
+  })
+})
+
+describe('createSessionRpcDispatcher: hc-1166 one engine for every assistant', () => {
+  // APEX's thread lookup right after a click on APEX, while the conversation being left is still selected.
+  const lookup = { include_hidden: true, limit: 20, profile: 'default', title: 'APEX 主线' }
+
+  afterEach(() => setSingleEngineFlagForTest(false))
+
+  it('sends a session-less RPC that names its profile to that profile, not to the selected conversation', async () => {
+    setSingleEngineFlagForTest(true)
+    setSessions([makeSessionInfo({ connection_id: 'local', id: 'stored-omar', profile: 'omar' })])
+    const { ambientRequest, request } = dispatcher(undefined, 'stored-omar')
+
+    await expect(request('session.list', lookup)).resolves.toEqual({ profiled: true })
+
+    expect(gatewayMocks.requestGatewayForProfile).toHaveBeenCalledWith(
+      'default',
+      'session.list',
+      lookup,
+      undefined,
+      undefined
+    )
+    expect(gatewayMocks.requestGatewayForAgent).not.toHaveBeenCalled()
+    expect(ambientRequest).not.toHaveBeenCalled()
+  })
+
+  it('keeps the selected conversation as the route while each assistant has an engine of its own', async () => {
+    setSessions([makeSessionInfo({ connection_id: 'local', id: 'stored-omar', profile: 'omar' })])
+    const { request } = dispatcher(undefined, 'stored-omar')
+
+    await expect(request('session.list', lookup)).resolves.toEqual({ routed: true })
+
+    // The engine already open answers for the profile the call names; nothing else is dialled.
+    expect(gatewayMocks.requestGatewayForAgent).toHaveBeenCalledWith('local', 'omar', 'session.list', lookup)
+    expect(gatewayMocks.requestGatewayForProfile).not.toHaveBeenCalled()
+  })
+
+  it('still routes an RPC that names a session by that session, whatever profile it also names', async () => {
+    setSingleEngineFlagForTest(true)
+    setSessions([makeSessionInfo({ connection_id: 'local', id: 'stored-omar', profile: 'omar' })])
+    const { request } = dispatcher(undefined, 'stored-default')
+
+    await expect(request('session.usage', { profile: 'default', session_id: 'rt-omar' })).resolves.toEqual({
+      routed: true
+    })
+
+    expect(gatewayMocks.requestGatewayForAgent).toHaveBeenCalledWith('local', 'omar', 'session.usage', {
+      profile: 'default',
+      session_id: 'rt-omar'
+    })
+    expect(gatewayMocks.requestGatewayForProfile).not.toHaveBeenCalled()
   })
 })

@@ -1,9 +1,13 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ClientSessionState } from '@/app/types'
 
+import { $mainThreadsByProfile, type MainThreadState } from './main-thread'
 import { $sessions } from './session'
 import { clearAllSessionStates, publishSessionState } from './session-states'
+import { setSingleEngineFlagForTest } from './single-engine'
+import { $singleThreadFlag } from './single-thread'
+import { botRosterFrom, resetBotRosterForTest, setMultiBotFlagForTest } from './single-thread-bots'
 
 const desktopWindow = window as unknown as { hermesDesktop?: Window['hermesDesktop'] }
 const setActiveWork = vi.fn()
@@ -57,5 +61,53 @@ describe('active work bridge', () => {
     $sessions.set([session('s1', 'Fix login'), session('s2', 'Something else')])
 
     expect(setActiveWork).not.toHaveBeenCalled()
+  })
+})
+
+// hc-1166: with one engine the quit stops every assistant's turn, and every assistant's thread has the same
+// title, so the confirmation says whose turns they are.
+describe('one engine for every assistant', () => {
+  beforeEach(() => {
+    $singleThreadFlag.set(true)
+    setMultiBotFlagForTest(true)
+    resetBotRosterForTest(
+      botRosterFrom([{ name: 'writer', ui_meta: { apex: { created: 1, name: '小红书文案' } } }], () => true)
+    )
+    $mainThreadsByProfile.set({
+      default: {
+        ids: ['stored-apex'],
+        profile: 'default',
+        rootId: 'stored-apex',
+        status: 'found',
+        tipId: 'stored-apex'
+      },
+      writer: {
+        ids: ['stored-writer'],
+        profile: 'writer',
+        rootId: 'stored-writer',
+        status: 'found',
+        tipId: 'stored-writer'
+      }
+    } as unknown as Record<string, MainThreadState>)
+    $sessions.set([session('stored-apex', 'APEX 主线'), session('stored-writer', 'APEX 主线')])
+  })
+
+  afterEach(() => {
+    setSingleEngineFlagForTest(false)
+    $mainThreadsByProfile.set({})
+    resetBotRosterForTest()
+    setMultiBotFlagForTest(false)
+    $singleThreadFlag.set(false)
+  })
+
+  it.each([
+    [true, ['APEX', '小红书文案']],
+    [false, ['APEX 主线', 'APEX 主线']]
+  ])('switch %s: names the assistants working', (on, titles) => {
+    setSingleEngineFlagForTest(on)
+    publishSessionState('runtime-apex', busy('stored-apex', true))
+    publishSessionState('runtime-writer', busy('stored-writer', true))
+
+    expect(setActiveWork).toHaveBeenLastCalledWith({ count: 2, ids: ['stored-apex', 'stored-writer'], titles })
   })
 })

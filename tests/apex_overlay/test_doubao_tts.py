@@ -84,6 +84,29 @@ def test_foreign_profile_never_borrows_default_key(monkeypatch, tmp_path):
     assert adapter.connection() == ('other-owner-key', adapter.PUBLIC_BASE)
 
 
+def test_an_assistant_hosted_on_one_engine_speaks_with_the_accounts_key(monkeypatch, tmp_path):
+    """hc-1166: with one engine for every assistant, the account's key is every assistant's, as it was
+    in an engine of its own; its own key still wins, and with the switch off nothing is borrowed."""
+    import hermes_constants
+    from hermes_cli import config, env_loader
+    current = tmp_path / 'profiles' / 'apex-bot-2'
+    current.mkdir(parents=True)
+    monkeypatch.setattr(hermes_constants, 'get_hermes_home', lambda: current)
+    monkeypatch.setattr(hermes_constants, 'get_process_hermes_home', lambda: tmp_path)
+    monkeypatch.setattr(env_loader, 'hydrate_profile_secret_sources', lambda home: {})
+    monkeypatch.setattr(env_loader, '_LOADED_DOTENV_KEYS', set())
+    monkeypatch.setattr(config, 'load_config', dict)
+    monkeypatch.setenv('TOOLS_GATEWAY_KEY', 'account-key')
+    monkeypatch.setenv('HERMES_PLATFORM_API_BASE', 'http://staging-platform')
+    monkeypatch.setenv('HERMES_DESKTOP', '1')
+    monkeypatch.setenv('APEX_MULTI_BOT_SINGLE_ENGINE', '0')
+    assert adapter.connection() == ('', adapter.PUBLIC_BASE)
+    monkeypatch.setenv('APEX_MULTI_BOT_SINGLE_ENGINE', '1')
+    assert adapter.connection() == ('account-key', 'http://staging-platform')
+    (current / '.env').write_text('TOOLS_GATEWAY_KEY=its-own-key\n', encoding='utf-8')
+    assert adapter.connection()[0] == 'its-own-key'
+
+
 def test_real_plugin_discovery_cached_defaults_and_file_delivery(tmp_path):
     """Real plugin loader + tool + HTTP + filesystem, with only vendor audio stubbed."""
     import os

@@ -71,6 +71,8 @@ _SEAM_MODULES = (
     "apex_identity",
     # hc-1116 upstream wording (first-contact /help, Hermes in notices) on APEX surfaces.
     "upstream_copy",
+    # hc-1166 one engine hosting every assistant: account credentials and maintenance per assistant.
+    "hosted_profiles",
 )
 
 
