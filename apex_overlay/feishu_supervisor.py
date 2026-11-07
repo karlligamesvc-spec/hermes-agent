@@ -78,6 +78,7 @@ working on stock upstream behavior) but never raises.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import functools
 import logging
 import os
@@ -103,8 +104,10 @@ _FEISHU_PLATFORM_NAME = "feishu"
 _WRAPPED_METHODS = ("connect", "disconnect", "on_processing_start", "on_processing_complete")
 
 # The reconnect-ladder + heartbeat helpers bound onto the adapter class. Pure
-# additions (upstream has none of these names); the seam-test asserts they are
-# all present after instrumentation.
+# additions: upstream must have none of these names, or binding ours replaces its
+# method under its own callers (hc-1174: upstream grew ``_teardown_ws_thread(ws_client,
+# ws_thread_loop)`` for ``disconnect``, ours took only ``self``, and every disconnect
+# raised TypeError). The seam-test reads upstream's source and turns red on a clash.
 _BOUND_HELPERS = (
     "_start_ws_supervisor",
     "_cancel_ws_supervisor",
@@ -112,7 +115,7 @@ _BOUND_HELPERS = (
     "_websocket_appears_dead",
     "_reconnect_websocket_with_backoff",
     "_verify_ws_alive",
-    "_teardown_ws_thread",
+    "_apex_teardown_ws_thread",
     "_maybe_start_heartbeat",
     "_stop_heartbeat",
     "_cancel_all_heartbeats",
@@ -336,13 +339,14 @@ def _websocket_appears_dead(self) -> bool:
     return getattr(client, "_conn", None) is None
 
 
-async def _teardown_ws_thread(self) -> None:
+async def _apex_teardown_ws_thread(self) -> None:
     """Stop the running websocket client thread and its event loop.
 
     Used by the reconnect ladder, which rebuilds the socket without releasing
-    the app lock or marking the adapter disconnected (upstream's ``disconnect``
-    keeps its own inline teardown for the intentional-shutdown path). Safe to
-    call when no thread runs.
+    the app lock or marking the adapter disconnected. Upstream's ``disconnect``
+    keeps its own ``_teardown_ws_thread(ws_client, ws_thread_loop)`` (CLOSE frame
+    first) for the intentional-shutdown path; this one has its own name so it
+    never replaces that. Safe to call when no thread runs.
 
     This also unwedges the zombie thread the lark SDK leaves behind on a
     silent drop: ``Client.start`` blocks forever on an internal keep-alive
@@ -352,10 +356,8 @@ async def _teardown_ws_thread(self) -> None:
     """
     client = getattr(self, "_ws_client", None)
     if client is not None:
-        try:
+        with contextlib.suppress(AttributeError):  # a client without the attribute has no SDK retry to stop
             client._auto_reconnect = False
-        except Exception:
-            pass
     self._ws_client = None
 
     ws_thread_loop = getattr(self, "_ws_thread_loop", None)
@@ -421,7 +423,7 @@ async def _reconnect_websocket_with_backoff(self) -> None:
             if not self._running or getattr(self, "_intentional_disconnect", False):
                 return
             try:
-                await self._teardown_ws_thread()
+                await self._apex_teardown_ws_thread()
                 await asyncio.wait_for(
                     self._connect_websocket(), _FEISHU_WS_RECONNECT_CONNECT_TIMEOUT
                 )
@@ -723,7 +725,7 @@ def _instrument_feishu_adapter_class(adapter_cls) -> bool:
     adapter_cls._websocket_appears_dead = _websocket_appears_dead
     adapter_cls._reconnect_websocket_with_backoff = _reconnect_websocket_with_backoff
     adapter_cls._verify_ws_alive = _verify_ws_alive
-    adapter_cls._teardown_ws_thread = _teardown_ws_thread
+    adapter_cls._apex_teardown_ws_thread = _apex_teardown_ws_thread
     adapter_cls._maybe_start_heartbeat = _maybe_start_heartbeat
     adapter_cls._stop_heartbeat = _stop_heartbeat
     adapter_cls._cancel_all_heartbeats = _cancel_all_heartbeats
