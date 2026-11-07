@@ -82,6 +82,19 @@ _TOOL_SEAMS = (
         "than APEX may lose the platform tools and Feishu, and their sessions are "
         "not auto-archived or curated.",
     ),
+    (
+        "cron_account_env",
+        "apex-overlay: hc-1169 cron account credentials seam did not fully apply (see "
+        "prior error). With several assistants, every cron job runs without the "
+        "account's web search, platform tools and Feishu / WeChat credentials; web "
+        "search falls back to a keyless backend without saying so.",
+    ),
+    (
+        "im_launch_profile",
+        "apex-overlay: hc-1171 IM launch-profile seam did not fully apply (see prior "
+        "error). With several assistants, the messaging gateway configures neither "
+        "Feishu nor WeChat and the bound bot never connects.",
+    ),
 )
 
 

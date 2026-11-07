@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 import { removeOwnedRuntimeTree } from '../../../scripts/runtime-bundle-offline-smoke.mjs'
+import { DESKTOP_BUNDLE_SYNC } from '../../../scripts/runtime-bundle-extras.mjs'
 
 const desktopRoot = path.resolve(import.meta.dirname, '..')
 const repositoryRoot = path.resolve(desktopRoot, '../..')
@@ -78,7 +79,7 @@ export function validateBundledRuntimeManifest(manifest, pin, platform, arch) {
   }
   const components = manifest.components
   if (!/^\.runtime\/py\/cpython-[A-Za-z0-9_.-]+$/.test(components?.python?.path || '') || components.venv?.relocatable !== true ||
-      components.venv.path !== 'venv' || components.venv.sync !== 'uv sync --extra all --locked' || components.venv.uv_version !== pin.uv_version || components.node?.path !== '.runtime/node' ||
+      components.venv.path !== 'venv' || components.venv.sync !== DESKTOP_BUNDLE_SYNC || components.venv.uv_version !== pin.uv_version || components.node?.path !== '.runtime/node' ||
       components.uv?.path !== `.runtime/bin/uv${osName === 'win' ? '.exe' : ''}` ||
       components.ripgrep?.path !== `.runtime/bin/rg${osName === 'win' ? '.exe' : ''}` ||
       manifest.fixup?.script !== 'scripts/build-runtime-bundle.mjs' || !/^[0-9a-f]{64}$/.test(manifest.files_index?.sha256 || '')) {

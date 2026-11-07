@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from agent import secret_scope
-from apex_overlay import hosted_profiles
+from apex_overlay import cron_account_env, hosted_profiles
 from hermes_constants import get_hermes_home, reset_hermes_home_override, set_hermes_home_override
 
 ON = {"HERMES_DESKTOP": "1", "APEX_MULTI_BOT_SINGLE_ENGINE": "1"}
@@ -151,6 +151,11 @@ def test_after_reload_env_drops_an_injected_name_every_profile_reads_it_as_the_e
         secret_scope.reset_secret_scope(launch)
 
 
+def test_hosted_assistants_and_cron_fires_share_one_list_of_account_names():
+    """One list: a name Desktop starts injecting reaches hosted assistants and cron fires alike."""
+    assert hosted_profiles.ACCOUNT_ENV_NAMES is cron_account_env.ACCOUNT_ENV_NAMES
+
+
 def test_the_shared_names_are_the_accounts_and_never_a_provider_or_relay_secret():
     from plugins.apexnodes_gateway import DESKTOP_SPAWN_ENV_CONTRACT
 
@@ -158,7 +163,7 @@ def test_the_shared_names_are_the_accounts_and_never_a_provider_or_relay_secret(
 
     assert len(names) == len(hosted_profiles.ACCOUNT_ENV_NAMES)
     assert set(DESKTOP_SPAWN_ENV_CONTRACT) <= names
-    assert not names & set(hosted_profiles.PER_ASSISTANT_GATES)
+    assert not names & set(cron_account_env.PER_ASSISTANT_GATES)
     assert not names & {"API_SERVER_KEY", "MODEL_API_KEY", "HERMES_DASHBOARD_SESSION_TOKEN"}
     assert not [n for n in names if n.startswith(("GATEWAY_RELAY_", "AUXILIARY_"))]
     assert [n for n in names if n.endswith("_API_KEY")] == ["SEARXNG_API_KEY"]

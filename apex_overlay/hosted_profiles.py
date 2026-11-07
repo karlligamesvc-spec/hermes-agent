@@ -23,7 +23,8 @@ each assistant:
 
    - the profile's own value (its ``.env`` or secret sources) wins;
    - a value the launch profile's own ``.env`` loaded is APEX's, never shared;
-   - the authorization gates (``PER_ASSISTANT_GATES``) are policy per assistant, never shared.
+   - the authorization gates (``cron_account_env.PER_ASSISTANT_GATES``) are policy per assistant,
+     never shared (they are not in ``ACCOUNT_ENV_NAMES``).
 
    ``reload.env`` deletes declared names its home's ``.env`` lacks from ``os.environ``, so
    a shared name missing there is read from the environment frozen when hosting started,
@@ -47,33 +48,12 @@ from types import ModuleType
 
 from apex_overlay import post_import
 
+# One list of the account's names for every seam that lends them to a profile: hc-1169 cron fires
+# use the same one, and apps/desktop/electron/apex-cron-account-env.test.ts checks it against what
+# Desktop injects.
+from apex_overlay.cron_account_env import ACCOUNT_ENV_NAMES
+
 logger = logging.getLogger(__name__)
-
-#: The credentials and endpoints Desktop injects into every engine it spawns that belong to the
-#: signed-in account (or this machine), not to one assistant: the platform tools
-#: (apex-platform-tools.ts PLATFORM_TOOL_ENV_KEYS), web search (backend-env.ts), the Feishu app
-#: (apex-feishu.ts) and the IM 入口 bindings (apex-im-entry.ts CHANNEL_ENV_DESCRIPTORS).
-#: apps/desktop/electron/apex-single-engine-env.test.ts reads both tuples and turns red when
-#: Desktop injects a name neither lists.
-ACCOUNT_ENV_NAMES = (
-    "TOOLS_GATEWAY_KEY",
-    "TOOLS_GATEWAY_BASE",
-    "HERMES_PLATFORM_API_BASE",
-    "SEARXNG_URL",
-    "SEARXNG_API_KEY",
-    "FEISHU_APP_ID",
-    "FEISHU_APP_SECRET",
-    "FEISHU_DOMAIN",
-    "FEISHU_HOME_CHANNEL",
-    "WEIXIN_ACCOUNT_ID",
-    "WEIXIN_TOKEN",
-    "WEIXIN_BASE_URL",
-    "WEIXIN_HOME_CHANNEL",
-)
-
-#: Injected by Desktop too, but who may talk to an assistant is that assistant's policy, read only
-#: by the messaging gateway's own process: never shared.
-PER_ASSISTANT_GATES = ("FEISHU_ALLOWED_USERS", "WEIXIN_ALLOWED_USERS", "WEIXIN_DM_POLICY")
 
 _SECRET_SCOPE_MODULE = "agent.secret_scope"
 _MAINTENANCE_MODULE = "hermes_cli.web_server_sessions"
