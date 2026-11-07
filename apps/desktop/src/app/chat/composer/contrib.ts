@@ -43,12 +43,40 @@ export const COMPOSER_AREAS = {
 export interface ComposerDraft {
   text: string
   attachments?: ComposerAttachment[]
+  /**
+   * Set when the send carries more than its words to the app's submit — a
+   * queued entry's target, a display kind or text, a voice-live turn. Such a
+   * send can be rewritten, passed on or cancelled, never taken over
+   * ({@link COMPOSER_SEND_TAKEN}): whoever sent it later would not have those.
+   */
+  bound?: true
 }
+
+/**
+ * A middleware's answer for a send it took over: it keeps the words and sends
+ * them itself later (or hands them back). The composer clears as for a sent
+ * message; the rest of the chain and the app's submit do not run.
+ */
+export const COMPOSER_SEND_TAKEN: unique symbol = Symbol('composer-send-taken')
+
+export type ComposerMiddlewareResult = ComposerDraft | null | typeof COMPOSER_SEND_TAKEN
 
 /** Payload of a `composer.middleware` data contribution. */
 export interface ComposerMiddleware {
-  /** Rewrite (return a draft), pass through (same draft), or cancel (null). */
-  handler: (draft: ComposerDraft) => ComposerDraft | null | Promise<ComposerDraft | null>
+  /** Rewrite (return a draft), pass through (same draft), cancel (null), or take it over. */
+  handler: (draft: ComposerDraft) => ComposerMiddlewareResult | Promise<ComposerMiddlewareResult>
+}
+
+/** The submit options the composer passes beside the words alone; anything else makes a draft `bound`. */
+const UNBOUND_SUBMIT_OPTIONS: ReadonlySet<string> = new Set(['attachments', 'composerScope'])
+
+/** The draft a send's words and options give the middleware chain. */
+export function composerDraftFor(text: string, options?: { attachments?: ComposerAttachment[] }): ComposerDraft {
+  const bound = Object.entries(options ?? {}).some(
+    ([key, value]) => value !== undefined && !UNBOUND_SUBMIT_OPTIONS.has(key)
+  )
+
+  return { text, attachments: options?.attachments, ...(bound ? { bound: true } : {}) }
 }
 
 /** One row a `composer.atCompletions` source offers for the current query. */
@@ -88,10 +116,11 @@ export interface ComposerAttachmentProvider {
 /**
  * Run the ordered middleware chain over a draft. Contributions execute in
  * registry order (`order`, then registration order); the first `null` wins
- * and cancels the send. A throwing handler is treated as pass-through so a
- * broken plugin can't eat messages.
+ * and cancels the send, the first {@link COMPOSER_SEND_TAKEN} takes it over
+ * (for a `bound` draft that is a cancel). A throwing handler is treated as
+ * pass-through so a broken plugin can't eat messages.
  */
-export async function runComposerMiddleware(draft: ComposerDraft): Promise<ComposerDraft | null> {
+export async function runComposerMiddleware(draft: ComposerDraft): Promise<ComposerMiddlewareResult> {
   let current = draft
 
   for (const contribution of registry.getArea(COMPOSER_AREAS.middleware)) {
@@ -104,6 +133,10 @@ export async function runComposerMiddleware(draft: ComposerDraft): Promise<Compo
     try {
       const next = await middleware.handler(current)
 
+      if (next === COMPOSER_SEND_TAKEN) {
+        return current.bound ? null : next
+      }
+
       if (next === null) {
         return null
       }
@@ -115,6 +148,29 @@ export async function runComposerMiddleware(draft: ComposerDraft): Promise<Compo
   }
 
   return current
+}
+
+/**
+ * A send through the chain, then the app's submit with the draft the chain
+ * left: false when a middleware cancelled it; true, without submitting, when
+ * one took it over (it sends it later itself, so the composer clears).
+ */
+export async function submitThroughComposerMiddleware<Options extends { attachments?: ComposerAttachment[] }>(
+  text: string,
+  options: Options | undefined,
+  submit: (text: string, options: Options & { attachments?: ComposerAttachment[] }) => Promise<boolean> | boolean
+): Promise<boolean> {
+  const draft = await runComposerMiddleware(composerDraftFor(text, options))
+
+  if (draft === COMPOSER_SEND_TAKEN) {
+    return true
+  }
+
+  if (!draft) {
+    return false
+  }
+
+  return submit(draft.text, { ...(options as Options), attachments: draft.attachments })
 }
 
 /** Attach-menu entries contributed by plugins/core, with stable render keys. */

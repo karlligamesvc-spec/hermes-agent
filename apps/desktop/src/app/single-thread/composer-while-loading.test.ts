@@ -4,7 +4,7 @@ import { setSingleThreadFlagForTest } from '@/store/single-thread'
 import { setMultiBotFlagForTest } from '@/store/single-thread-bots'
 import { setToolViewMode } from '@/store/tool-view'
 
-import { composerHiddenWhileLoading } from './composer-while-loading'
+import { composerDisabledWhileConnecting, composerHiddenWhileLoading } from './composer-while-loading'
 
 afterEach(() => {
   setMultiBotFlagForTest(false)
@@ -26,5 +26,22 @@ describe('hc-1146 the composer while a conversation’s history loads', () => {
     expect(composerHiddenWhileLoading(true)).toBe(hidden)
     // Not loading, it is never what hides the composer.
     expect(composerHiddenWhileLoading(false)).toBe(false)
+  })
+})
+
+describe('hc-1146 the composer while the gateway is not open (the engine starting, a reconnect)', () => {
+  it.each([
+    ['both switches off', false, false, 'product', true],
+    ['single-thread alone', true, false, 'product', true],
+    ['developer mode with both on', true, true, 'technical', true],
+    ['several assistants: a send waits for the gateway instead', true, true, 'product', false]
+  ] as const)('with %s, sends refused while connecting: %s', (_label, singleThread, multiBot, toolView, disabled) => {
+    setToolViewMode(toolView)
+    setSingleThreadFlagForTest(singleThread)
+    setMultiBotFlagForTest(multiBot)
+
+    expect(composerDisabledWhileConnecting(false)).toBe(disabled)
+    // Open, it never refuses.
+    expect(composerDisabledWhileConnecting(true)).toBe(false)
   })
 })

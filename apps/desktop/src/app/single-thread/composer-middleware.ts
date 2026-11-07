@@ -17,13 +17,20 @@
  *   the text stays in the composer.
  *   Fail closed: a send that cannot be placed in the thread must not mint a
  *   second one.
+ * - hc-1146: with several assistants on, a send made while the thread is only
+ *   opening (the assistant's engine starting, its thread being looked up or
+ *   its conversation loading) is held instead (held-sends.ts): it shows above
+ *   the composer as waiting and goes out once the thread is on screen.
+ *   Only a plain send is held; one bound to options (a queued entry, machine
+ *   text, a voice-live turn) still stays where it came from.
  */
 
-import { atom } from 'nanostores'
+import { atom, computed } from 'nanostores'
 
-import type { ComposerDraft } from '@/app/chat/composer/contrib'
+import { COMPOSER_SEND_TAKEN, type ComposerDraft, type ComposerMiddlewareResult } from '@/app/chat/composer/contrib'
 import { SESSION_COMPRESS_TIMEOUT_MS } from '@/app/session/hooks/use-prompt-actions/slash'
 import { singleThreadChatCopyNow } from '@/i18n/single-thread-chat'
+import { holdSend } from '@/store/held-sends'
 import {
   $mainThread,
   isMainThreadStoredId,
@@ -33,10 +40,10 @@ import {
   resolveMainThread
 } from '@/store/main-thread'
 import { dismissNotification, notify } from '@/store/notifications'
-import { normalizeProfileKey } from '@/store/profile'
-import { $activeSessionId, $busy, $messages, $selectedStoredSessionId, $sessions } from '@/store/session'
+import { $activeGatewayProfile, normalizeProfileKey } from '@/store/profile'
+import { $activeSessionId, $busy, $gatewayState, $messages, $selectedStoredSessionId, $sessions } from '@/store/session'
 import { isSingleThreadMode } from '@/store/single-thread'
-import { $currentBotProfile, isMultiBotMode } from '@/store/single-thread-bots'
+import { $currentBotProfile, $multiBotMode, isMultiBotMode } from '@/store/single-thread-bots'
 
 import {
   isRestartRequest,
@@ -125,10 +132,105 @@ export function conversationLoading(): boolean {
   return isMultiBotMode() && $selectedStoredSessionId.get() !== null && !$activeSessionId.get()
 }
 
+/**
+ * Where a send made now would go, for the active profile `profileKey` — one
+ * rule for this middleware and for releasing a held send (held-sends.ts):
+ *
+ * - `connecting` (hc-1146, several assistants only): the gateway is not open —
+ *   the main engine still starting, or a reconnect; with one assistant the
+ *   composer refuses sends itself then (composer-while-loading.ts);
+ * - `switching` (hc-1077): another assistant was asked for and is not the one
+ *   answering yet; the thread on hand is still the previous one's;
+ * - `looking-up`: the thread is not known yet (or the lookup is running);
+ * - `unavailable`: the lookup failed;
+ * - `elsewhere`: an earlier conversation is on screen, read-only;
+ * - `new`: there is no thread yet and nothing else is on screen: the send starts it;
+ * - `selecting`: the thread exists and the shell is on its way there;
+ * - `loading` (hc-1146): it is selected but its conversation is still loading;
+ * - `thread`: it is on screen and bound.
+ */
+export type SendPlace =
+  'connecting' | 'elsewhere' | 'loading' | 'looking-up' | 'new' | 'selecting' | 'switching' | 'thread' | 'unavailable'
+
+export function sendPlace(profileKey: string): SendPlace {
+  if (isMultiBotMode() && $gatewayState.get() !== 'open') {
+    return 'connecting'
+  }
+
+  if (isMultiBotMode() && $currentBotProfile.get() !== profileKey) {
+    return 'switching'
+  }
+
+  const thread = $mainThread.get()
+  const storedId = $selectedStoredSessionId.get()
+
+  if (thread.status === 'unknown' || thread.status === 'loading') {
+    return 'looking-up'
+  }
+
+  if (thread.status === 'error') {
+    return 'unavailable'
+  }
+
+  if (thread.status === 'absent') {
+    return storedId ? 'elsewhere' : 'new'
+  }
+
+  if (!storedId) {
+    return 'selecting'
+  }
+
+  if (conversationLoading()) {
+    return 'loading'
+  }
+
+  return isMainThreadStoredId(storedId, thread, $sessions.get()) ? 'thread' : 'elsewhere'
+}
+
+/** The thread is on its way: a send now can neither go in nor be told it is in the wrong place. */
+export function threadOpening(place: SendPlace): boolean {
+  return (
+    place === 'connecting' ||
+    place === 'switching' ||
+    place === 'looking-up' ||
+    place === 'selecting' ||
+    place === 'loading'
+  )
+}
+
+/** {@link sendPlace} for the active profile, for what renders it (subscribe; never `.get()` it unwatched). */
+export const $sendPlace = computed(
+  [
+    $multiBotMode,
+    $gatewayState,
+    $currentBotProfile,
+    $activeGatewayProfile,
+    $mainThread,
+    $selectedStoredSessionId,
+    $activeSessionId,
+    $sessions
+  ],
+  (_multiBot, _gateway, _current, active) => sendPlace(normalizeProfileKey(active))
+)
+
 function refuse(message: string): null {
   notify({ kind: 'info', message })
 
   return null
+}
+
+/**
+ * The thread is opening. hc-1146: with several assistants on, a plain send waits
+ * for it, held for the assistant on screen; otherwise it stays in the composer.
+ */
+function waitForThread(draft: ComposerDraft, message: string): ComposerMiddlewareResult {
+  if (!isMultiBotMode() || draft.bound) {
+    return refuse(message)
+  }
+
+  holdSend($currentBotProfile.get(), draft)
+
+  return COMPOSER_SEND_TAKEN
 }
 
 /** The middleware itself. `request` is read at call time so it always reaches the live socket. */
@@ -136,51 +238,40 @@ export async function singleThreadSend(
   draft: ComposerDraft,
   request: () => null | RequestGateway,
   profile: () => string
-): Promise<ComposerDraft | null> {
+): Promise<ComposerMiddlewareResult> {
   if (!isSingleThreadMode()) {
     return draft
   }
 
   const copy = singleThreadChatCopyNow()
-
-  // hc-1077: the thread on hand is the previous assistant's until the switch lands.
-  if (isMultiBotMode() && $currentBotProfile.get() !== normalizeProfileKey(profile())) {
-    return refuse(copy.threadOpening)
-  }
-
-  const thread = $mainThread.get()
-  const storedId = $selectedStoredSessionId.get()
+  const place = sendPlace(normalizeProfileKey(profile()))
   const gateway = request()
 
-  if (thread.status === 'unknown' || thread.status === 'loading' || thread.status === 'error') {
-    if (gateway && thread.status !== 'loading') {
+  if (place === 'connecting' || place === 'switching') {
+    return waitForThread(draft, copy.threadOpening)
+  }
+
+  if (place === 'looking-up' || place === 'unavailable') {
+    if (gateway && $mainThread.get().status !== 'loading') {
       void resolveMainThread(gateway, profile())
     }
 
-    return refuse(thread.status === 'error' ? copy.threadUnavailable : copy.threadOpening)
+    return place === 'unavailable' ? refuse(copy.threadUnavailable) : waitForThread(draft, copy.threadOpening)
   }
 
-  if (thread.status === 'absent') {
-    if (storedId) {
-      return refuse(copy.readOnlyLine)
-    }
+  if (place === 'elsewhere') {
+    return refuse(copy.readOnlyLine)
+  }
 
+  if (place === 'new') {
     $pendingThreadClaim.set({ at: Date.now(), profile: profile() })
 
     return draft
   }
 
-  if (!storedId) {
+  if (place === 'selecting' || place === 'loading') {
     // The thread exists and the shell is on its way there: wait for it rather than start another.
-    return refuse(copy.threadOpening)
-  }
-
-  if (conversationLoading()) {
-    return refuse(copy.threadOpening)
-  }
-
-  if (!isMainThreadStoredId(storedId, thread, $sessions.get())) {
-    return refuse(copy.readOnlyLine)
+    return waitForThread(draft, copy.threadOpening)
   }
 
   if (!gateway) {

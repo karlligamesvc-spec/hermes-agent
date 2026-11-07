@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { COMPOSER_SEND_TAKEN, type ComposerMiddlewareResult } from '@/app/chat/composer/contrib'
 import { setRuntimeI18nLocale } from '@/i18n'
 import type { ChatMessage } from '@/lib/chat-messages'
+import { $heldSends, resetHeldSendsForTest } from '@/store/held-sends'
 import {
   $mainThread,
   $threadSegmentStarts,
@@ -10,7 +12,7 @@ import {
   resetMainThreadForTest
 } from '@/store/main-thread'
 import { $activeGatewayProfile } from '@/store/profile'
-import { $activeSessionId, $busy, $messages, $selectedStoredSessionId, $sessions } from '@/store/session'
+import { $activeSessionId, $busy, $gatewayState, $messages, $selectedStoredSessionId, $sessions } from '@/store/session'
 import { setSingleThreadFlagForTest } from '@/store/single-thread'
 import { $botIntent, setMultiBotFlagForTest } from '@/store/single-thread-bots'
 
@@ -18,8 +20,11 @@ import {
   $pendingThreadClaim,
   claimCreatedThread,
   type RequestGateway,
+  type SendPlace,
+  sendPlace,
   singleThreadSend,
-  startThreadSegment
+  startThreadSegment,
+  threadOpening
 } from './composer-middleware'
 
 const notices = vi.hoisted(() => [] as string[])
@@ -69,6 +74,9 @@ function message(id: string, timestamp: number): ChatMessage {
 
 const draft = (text: string) => ({ attachments: [], text })
 
+/** The words a send let through (null when it was refused or held). */
+const sentText = (result: ComposerMiddlewareResult) => (result && typeof result === 'object' ? result.text : null)
+
 const send = (text: string, request: RequestGateway) =>
   singleThreadSend(
     draft(text),
@@ -79,6 +87,7 @@ const send = (text: string, request: RequestGateway) =>
 beforeEach(() => {
   setRuntimeI18nLocale('zh')
   setSingleThreadFlagForTest(true)
+  $gatewayState.set('open')
   notices.length = 0
 })
 
@@ -91,6 +100,8 @@ afterEach(() => {
   $messages.set([])
   $sessions.set([])
   $busy.set(false)
+  $gatewayState.set('idle')
+  resetHeldSendsForTest()
 })
 
 describe('hc-1014 composer middleware: the switch off', () => {
@@ -308,18 +319,39 @@ describe('hc-1077 a send while another assistant is being switched to', () => {
   it.each([
     ['in APEX’s thread', 'thread-root'],
     ['on the empty draft the switch dropped to', null]
-  ])('stays in the composer %s: the thread on hand is the previous assistant’s', async (_label, selected) => {
+  ])(
+    'is held for the assistant asked for %s: the thread on hand is the previous assistant’s (hc-1146)',
+    async (_label, selected) => {
+      setMultiBotFlagForTest(true)
+      noteMainThreadClaimed('default', 'thread-root')
+      $selectedStoredSessionId.set(selected)
+      $botIntent.set('writer')
+
+      const { calls, request } = gateway()
+
+      expect(await send('标题写 3 个', request)).toBe(COMPOSER_SEND_TAKEN)
+      expect($heldSends.get()).toMatchObject([{ profile: 'writer', text: '标题写 3 个' }])
+      expect(notices).toEqual([])
+      expect(calls).toEqual([])
+      expect($pendingThreadClaim.get()).toBeNull()
+    }
+  )
+
+  it('a send bound to options (a queued entry, machine text) still stays where it came from', async () => {
     setMultiBotFlagForTest(true)
     noteMainThreadClaimed('default', 'thread-root')
-    $selectedStoredSessionId.set(selected)
+    $selectedStoredSessionId.set('thread-root')
     $botIntent.set('writer')
 
-    const { calls, request } = gateway()
-
-    expect(await send('标题写 3 个', request)).toBeNull()
+    expect(
+      await singleThreadSend(
+        { ...draft('标题写 3 个'), bound: true },
+        () => gateway().request,
+        () => 'default'
+      )
+    ).toBeNull()
     expect(notices).toEqual(['正在打开对话，稍等一下再发。'])
-    expect(calls).toEqual([])
-    expect($pendingThreadClaim.get()).toBeNull()
+    expect($heldSends.get()).toEqual([])
   })
 
   it('goes out once the assistant asked for is the one answering', async () => {
@@ -338,7 +370,7 @@ describe('hc-1077 a send while another assistant is being switched to', () => {
       () => 'writer'
     )
 
-    expect(sent?.text).toBe('标题写 3 个')
+    expect(sentText(sent)).toBe('标题写 3 个')
   })
 
   it('with the switch off, a pending profile change changes nothing here', async () => {
@@ -348,7 +380,7 @@ describe('hc-1077 a send while another assistant is being switched to', () => {
     $sessions.set([])
     $messages.set([message('m1', now() - 60)])
 
-    expect((await send('标题写 3 个', gateway().request))?.text).toBe('标题写 3 个')
+    expect(sentText(await send('标题写 3 个', gateway().request))).toBe('标题写 3 个')
   })
 })
 
@@ -374,20 +406,196 @@ describe('hc-1146 a send while a switched-to assistant’s conversation still lo
       () => 'writer'
     )
 
-  it('stays in the composer until the conversation is bound (the composer is on screen meanwhile)', async () => {
+  it('is held until the conversation is bound (the composer is on screen meanwhile; hc-1146)', async () => {
     setMultiBotFlagForTest(true)
     onWritersThread(false)
     const { calls, request } = gateway()
 
-    expect(await sendAsWriter(request)).toBeNull()
-    expect(notices).toEqual(['正在打开对话，稍等一下再发。'])
+    expect(await sendAsWriter(request)).toBe(COMPOSER_SEND_TAKEN)
+    expect($heldSends.get()).toMatchObject([{ profile: 'writer', text: '标题写 3 个' }])
+    expect(notices).toEqual([])
     expect(calls).toEqual([])
   })
 
   it('with one assistant nothing changes: the composer is hidden while loading, and a send is not held here', async () => {
     onWritersThread(false)
 
-    expect((await sendAsWriter(gateway().request))?.text).toBe('标题写 3 个')
+    expect(sentText(await sendAsWriter(gateway().request))).toBe('标题写 3 个')
     expect(notices).toEqual([])
+  })
+})
+
+describe('hc-1146 where a send made now would go (one rule for the middleware and the held-send release)', () => {
+  afterEach(() => {
+    setMultiBotFlagForTest(false)
+    $botIntent.set(null)
+    $activeGatewayProfile.set('default')
+  })
+
+  type Setup = () => void
+
+  const found = () => noteMainThreadClaimed('default', 'thread-root')
+
+  const threadStatus = (status: 'error' | 'loading' | 'unknown' | 'absent') => () =>
+    $mainThread.set({ ids: [], profile: 'default', rootId: null, status, tipId: null })
+
+  it.each<[string, boolean, Setup, SendPlace]>([
+    ['another assistant asked for, not answering yet', true, () => (found(), $botIntent.set('writer')), 'switching'],
+    ['the thread not known yet', false, threadStatus('unknown'), 'looking-up'],
+    ['the lookup running', false, threadStatus('loading'), 'looking-up'],
+    ['the lookup failed', false, threadStatus('error'), 'unavailable'],
+    [
+      'no thread yet, an old chat on screen',
+      false,
+      () => (threadStatus('absent')(), $selectedStoredSessionId.set('older')),
+      'elsewhere'
+    ],
+    ['no thread yet, nothing on screen', false, threadStatus('absent'), 'new'],
+    ['the thread found, not selected yet', false, found, 'selecting'],
+    [
+      'selected, its conversation not bound (several assistants)',
+      true,
+      () => (found(), $selectedStoredSessionId.set('thread-root')),
+      'loading'
+    ],
+    [
+      'selected, not bound, one assistant (its composer is hidden meanwhile)',
+      false,
+      () => (found(), $selectedStoredSessionId.set('thread-root')),
+      'thread'
+    ],
+    [
+      'an earlier conversation',
+      false,
+      () => (found(), $selectedStoredSessionId.set('older'), $activeSessionId.set('rt')),
+      'elsewhere'
+    ],
+    [
+      'the thread, bound',
+      true,
+      () => (found(), $selectedStoredSessionId.set('thread-root'), $activeSessionId.set('rt')),
+      'thread'
+    ],
+    [
+      'the gateway not open (the engine starting), several assistants',
+      true,
+      () => (
+        found(),
+        $selectedStoredSessionId.set('thread-root'),
+        $activeSessionId.set('rt'),
+        $gatewayState.set('connecting')
+      ),
+      'connecting'
+    ],
+    [
+      'the gateway not open, one assistant (its composer refuses the send itself)',
+      false,
+      () => (
+        found(),
+        $selectedStoredSessionId.set('thread-root'),
+        $activeSessionId.set('rt'),
+        $gatewayState.set('connecting')
+      ),
+      'thread'
+    ]
+  ])('%s', (_label, multiBot, setup, place) => {
+    setMultiBotFlagForTest(multiBot)
+    setup()
+
+    expect(sendPlace('default')).toBe(place)
+  })
+
+  it.each<[SendPlace, boolean]>([
+    ['connecting', true],
+    ['switching', true],
+    ['looking-up', true],
+    ['selecting', true],
+    ['loading', true],
+    ['unavailable', false],
+    ['elsewhere', false],
+    ['new', false],
+    ['thread', false]
+  ])('%s is an opening thread: %s', (place, opening) => {
+    expect(threadOpening(place)).toBe(opening)
+  })
+})
+
+describe('hc-1146 every 「正在打开对话」 exit holds a send while several assistants are on', () => {
+  beforeEach(() => setMultiBotFlagForTest(true))
+
+  afterEach(() => {
+    setMultiBotFlagForTest(false)
+    $botIntent.set(null)
+    $activeGatewayProfile.set('default')
+  })
+
+  it.each<[string, () => void, string, string[]]>([
+    [
+      'connecting (the engine starting: no lookup yet)',
+      () => (
+        $mainThread.set({ ids: [], profile: 'default', rootId: null, status: 'unknown', tipId: null }),
+        $gatewayState.set('connecting')
+      ),
+      'default',
+      []
+    ],
+    ['switching', () => (noteMainThreadClaimed('default', 'thread-root'), $botIntent.set('writer')), 'writer', []],
+    [
+      'looking-up (unknown: the lookup starts)',
+      () => $mainThread.set({ ids: [], profile: 'default', rootId: null, status: 'unknown', tipId: null }),
+      'default',
+      ['session.list']
+    ],
+    [
+      'looking-up (loading)',
+      () => $mainThread.set({ ids: [], profile: 'default', rootId: null, status: 'loading', tipId: null }),
+      'default',
+      []
+    ],
+    ['selecting', () => noteMainThreadClaimed('default', 'thread-root'), 'default', []],
+    [
+      'loading',
+      () => (noteMainThreadClaimed('default', 'thread-root'), $selectedStoredSessionId.set('thread-root')),
+      'default',
+      []
+    ]
+  ])('%s: taken, held for the assistant on screen, no notice', async (_exit, setup, profile, methods) => {
+    setup()
+    const { calls, request } = gateway()
+    const attachments = [{ id: 'a1', kind: 'image', label: 'shot.png' }] as never[]
+
+    expect(
+      await singleThreadSend(
+        { attachments, text: '标题写 3 个' },
+        () => request,
+        () => 'default'
+      )
+    ).toBe(COMPOSER_SEND_TAKEN)
+    expect($heldSends.get()).toMatchObject([{ attachments, profile, text: '标题写 3 个' }])
+    expect(notices).toEqual([])
+    expect(calls.map(call => call.method)).toEqual(methods)
+  })
+
+  it.each([
+    [
+      'the lookup failed',
+      () => $mainThread.set({ ids: [], profile: 'default', rootId: null, status: 'error', tipId: null }),
+      '暂时连不上对话，消息还在输入框里，稍后再发。'
+    ],
+    [
+      'an earlier conversation',
+      () => (
+        noteMainThreadClaimed('default', 'thread-root'),
+        $selectedStoredSessionId.set('older'),
+        $activeSessionId.set('rt')
+      ),
+      '这是更早的对话，只能看。'
+    ]
+  ] as const)('%s is not an opening thread: refused as before, nothing held', async (_label, setup, notice) => {
+    setup()
+
+    expect(await send('标题写 3 个', gateway().request)).toBeNull()
+    expect(notices).toEqual([notice])
+    expect($heldSends.get()).toEqual([])
   })
 })

@@ -4,6 +4,7 @@ import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useCallback, u
 
 import { useTourMarker } from '@/app/chat/tour-marker'
 import { useHudComposerDrag } from '@/app/hud/composer-drag'
+import { ComposerStripHead } from '@/app/single-thread/composer-strip-head'
 import { ComposerTriggerPopover, useAtCompletions } from '@/app/single-thread/handoff/composer-at'
 import { composerFill, composerFloatingStrip, composerSurfaceGlass } from '@/components/chat/composer-dock'
 import { $chatOnboardingSolo, $chatOnboardingThreadIds } from '@/components/onboarding-chat/assembly'
@@ -42,7 +43,7 @@ import {
   shouldDisableComposerInput,
   slashArgStage
 } from './composer-utils'
-import { COMPOSER_AREAS, runComposerMiddleware } from './contrib'
+import { COMPOSER_AREAS, submitThroughComposerMiddleware } from './contrib'
 import { ComposerDirectiveActions } from './directive-actions'
 import { COMPOSER_DROP_ACTIVE_CLASS, COMPOSER_DROP_FADE_CLASS } from './drop-affordance'
 import { markActiveComposer, onComposerAttachImagesRequest } from './focus'
@@ -66,7 +67,6 @@ import { useSlashCompletions } from './hooks/use-slash-completions'
 import { useSessionStatusPresence } from './hooks/use-status-presence'
 import { shouldConvertPasteToAttachment } from './large-paste'
 import { ActionBadges } from './micro-actions'
-import { ComposerPasteActions } from './paste-action-chips'
 import { notePastedText } from './paste-actions'
 import { pasteCopiedFiles } from './paste-files'
 import { chipTypedPathOnSpace, pathifyRefs } from './path-refs'
@@ -171,13 +171,7 @@ export function ChatBar({
         return true
       }
 
-      const draft = await runComposerMiddleware({ text: value, attachments: options?.attachments })
-
-      if (!draft) {
-        return false
-      }
-
-      return onSubmitProp(draft.text, { ...options, attachments: draft.attachments })
+      return submitThroughComposerMiddleware(value, options, onSubmitProp)
     },
     [onSubmitProp]
   )
@@ -1243,7 +1237,7 @@ export function ChatBar({
               5px transparent grab margin — so both strips carry the same inset
               and share one left edge with it. */}
           <div className={cn(composerFloatingStrip, 'px-[5px] pb-1.5 empty:hidden')}>
-            <ComposerPasteActions
+            <ComposerStripHead
               disabled={inputDisabled}
               onSend={request => {
                 loadIntoComposer(request, scope.attachments.$attachments.get())

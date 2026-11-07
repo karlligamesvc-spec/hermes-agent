@@ -288,7 +288,8 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
   const gatewayState = useStore($gatewayState)
   const location = useLocation()
   useContributions(ROUTES_AREA)
-  useSingleThreadShell(actions.requestGateway)
+  // The actions bag is mutated in place: read the submit at send time.
+  useSingleThreadShell(actions.requestGateway, (text, options) => actions.onSubmit(text, options))
   const routeContributions = contributedRoutes()
   const workflowRunOpen = workflowRunIdForPath(location.pathname) !== null
   const projectDetailOpen = projectIdForPath(location.pathname) !== null

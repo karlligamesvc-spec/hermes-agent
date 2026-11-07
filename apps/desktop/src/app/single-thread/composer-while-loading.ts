@@ -18,3 +18,15 @@ import { isMultiBotMode } from '@/store/single-thread-bots'
 export function composerHiddenWhileLoading(loading: boolean): boolean {
   return loading && !isMultiBotMode()
 }
+
+/**
+ * hc-1146: whether the chat view's composer refuses sends while the gateway is
+ * not open (the main engine starting, a reconnect). Off (one assistant,
+ * developer mode) it does, as it always did: Enter does nothing until the
+ * gateway is back. With several assistants on it does not — a send made then
+ * waits above the composer and goes out once the gateway and the thread are
+ * there (composer-middleware.ts `connecting`, held-send-release.ts).
+ */
+export function composerDisabledWhileConnecting(gatewayOpen: boolean): boolean {
+  return !gatewayOpen && !isMultiBotMode()
+}

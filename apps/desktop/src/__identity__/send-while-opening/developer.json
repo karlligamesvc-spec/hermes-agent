@@ -1,0 +1,106 @@
+{
+  "switching": {
+    "afterSend": {
+      "composer": "",
+      "dock": null,
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
+    },
+    "stillOpening": {
+      "composer": "",
+      "dock": null,
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
+    },
+    "afterOpen": {
+      "composer": "",
+      "dock": null,
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
+    }
+  },
+  "looking-up": {
+    "afterSend": {
+      "composer": "",
+      "dock": null,
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
+    },
+    "stillOpening": {
+      "composer": "",
+      "dock": null,
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
+    },
+    "afterOpen": {
+      "composer": "",
+      "dock": null,
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
+    }
+  },
+  "selecting": {
+    "afterSend": {
+      "composer": "",
+      "dock": null,
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
+    },
+    "stillOpening": {
+      "composer": "",
+      "dock": null,
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
+    },
+    "afterOpen": {
+      "composer": "",
+      "dock": null,
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
+    }
+  },
+  "loading": {
+    "afterSend": {
+      "composer": "",
+      "dock": null,
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
+    },
+    "stillOpening": {
+      "composer": "",
+      "dock": null,
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
+    },
+    "afterOpen": {
+      "composer": "",
+      "dock": null,
+      "notices": [],
+      "sent": [
+        "帮我写 3 个标题"
+      ]
+    }
+  }
+}
