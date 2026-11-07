@@ -71,6 +71,8 @@ _SEAM_MODULES = (
     "apex_identity",
     # hc-1116 upstream wording (first-contact /help, Hermes in notices) on APEX surfaces.
     "upstream_copy",
+    # hc-1171 the IM 入口's apps belong to the profile the process was started for (several profiles).
+    "im_launch_profile",
 )
 
 
