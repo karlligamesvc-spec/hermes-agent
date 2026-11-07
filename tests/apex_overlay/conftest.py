@@ -71,6 +71,8 @@ _SEAM_MODULES = (
     "apex_identity",
     # hc-1116 upstream wording (first-contact /help, Hermes in notices) on APEX surfaces.
     "upstream_copy",
+    # hc-1166 one engine hosting every assistant: account credentials and maintenance per assistant.
+    "hosted_profiles",
     # hc-1169 cron fires get the account's credentials when a process serves several profiles.
     "cron_account_env",
     # hc-1171 the IM 入口's apps belong to the profile the process was started for (several profiles).

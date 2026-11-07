@@ -12,19 +12,32 @@
 import { computed } from 'nanostores'
 
 import type { HermesActiveWork } from '@/global'
+import { $mainThreadsByProfile } from '@/store/main-thread'
 import { $sessions } from '@/store/session'
 import { $workingSessionIds } from '@/store/session-states'
+import { $singleEngineFlag } from '@/store/single-engine'
+import { $botRoster, botNameForProfile } from '@/store/single-thread-bots'
+import { profileOfThreadStoredId } from '@/store/single-thread-presence'
+
+/**
+ * hc-1166: with one engine every assistant's turn is the quit's to stop, and
+ * every assistant's thread has the same title, so the confirmation lists whose
+ * turns they are — 「小红书文案」, not 「APEX 主线」 or "1 more".
+ */
+function assistantOf(storedId: string): null | string {
+  return $singleEngineFlag.get() ? botNameForProfile(profileOfThreadStoredId(storedId)) : null
+}
 
 // hc-1100: `ids` also feeds the main process's ledger of turns a quit cuts off (electron/apex-turn-ledger.ts).
 const $activeWork = computed(
-  [$workingSessionIds, $sessions],
+  [$workingSessionIds, $sessions, $singleEngineFlag, $mainThreadsByProfile, $botRoster],
   (workingIds, sessions): HermesActiveWork & { ids: string[] } => {
     const titleById = new Map(sessions.map(session => [session.id, session.title?.trim() ?? '']))
 
     return {
       count: workingIds.length,
       ids: [...workingIds],
-      titles: workingIds.map(id => titleById.get(id) ?? '').filter(Boolean)
+      titles: workingIds.map(id => assistantOf(id) ?? titleById.get(id) ?? '').filter(Boolean)
     }
   }
 )

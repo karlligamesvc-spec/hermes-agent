@@ -19,6 +19,7 @@ import {
   setVaultUnlockRequest
 } from '@/store/prompts'
 import { rememberServerRequest } from '@/store/server-requests'
+import { engineEventProfile } from '@/store/single-engine-owner'
 import { requestScrollToBottom } from '@/store/thread-scroll'
 import { $toursEnabled } from '@/store/tours'
 
@@ -200,7 +201,7 @@ const approval: Handler = ctx => {
         { id: 'approve', text: translateNow('notifications.native.approveAction') },
         { id: 'reject', text: translateNow('notifications.native.rejectAction') }
       ],
-      body: approvalNotificationBody(command, description, request.profile),
+      body: approvalNotificationBody(command, description, engineEventProfile(request.profile, sessionId)),
       kind: 'approval',
       sessionId: sessionId || null,
       title: translateNow('notifications.native.approvalTitle')

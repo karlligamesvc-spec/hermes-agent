@@ -76,6 +76,13 @@ _TOOL_SEAMS = (
         "notices may name Hermes or tell the user to run hermes commands.",
     ),
     (
+        "hosted_profiles",
+        "apex-overlay: hc-1166 hosted assistants seam did not fully apply (see "
+        "prior error). With one engine hosting every assistant, assistants other "
+        "than APEX may lose the platform tools and Feishu, and their sessions are "
+        "not auto-archived or curated.",
+    ),
+    (
         "cron_account_env",
         "apex-overlay: hc-1169 cron account credentials seam did not fully apply (see "
         "prior error). With several assistants, every cron job runs without the "

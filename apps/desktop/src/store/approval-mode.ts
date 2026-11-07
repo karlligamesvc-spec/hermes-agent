@@ -1,5 +1,7 @@
 import { atom } from 'nanostores'
 
+import { $singleEngineFlag } from './single-engine'
+
 export type ApprovalMode = 'manual' | 'off' | 'smart'
 export type ApprovalModeRequester = (method: string, params?: Record<string, unknown>) => Promise<unknown>
 
@@ -11,6 +13,11 @@ export const $approvalModes = atom<Record<string, ApprovalMode>>({})
 
 function profileKey(profile: string): string {
   return profile.trim() || 'default'
+}
+
+/** hc-1166: on one engine shared by every assistant the call names whose config it reads or writes. */
+function whose(key: string): { profile?: string } {
+  return $singleEngineFlag.get() ? { profile: key } : {}
 }
 
 function nextRevision(profile: string): number {
@@ -53,7 +60,7 @@ export async function syncApprovalModeForProfile(
 ): Promise<ApprovalMode> {
   const key = profileKey(profile)
   const revision = nextRevision(key)
-  const result = (await requestGateway('config.get', { key: 'approvals.mode' })) as { value?: string }
+  const result = (await requestGateway('config.get', { key: 'approvals.mode', ...whose(key) })) as { value?: string }
   const mode = normalizeApprovalMode(result?.value)
 
   if (revisions.get(key) === revision) {
@@ -76,7 +83,8 @@ export async function setApprovalModeForProfile(
   try {
     const result = (await requestGateway('config.set', {
       key: 'approvals.mode',
-      value: mode
+      value: mode,
+      ...whose(key)
     })) as { value?: string }
 
     const authoritative = normalizeApprovalMode(result?.value)

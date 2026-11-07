@@ -349,7 +349,7 @@ function isPrimaryRegistryRoute(connectionId: null | string, profile: string): b
 }
 
 /** True when `connectionId` is the window's already-attached source AND that
- *  source is a one-host-many-profiles remote (`sharedRemote`). Named member
+ *  source serves many profiles on one host (`sharedRemote`; hc-1166 `sharedPrimary`). Named member
  *  profiles on that host must reuse the primary socket — a registry secondary
  *  dials a second WebSocket at the same Tailscale URL, which accept/closes in
  *  ~30ms (`messages=1`) and never runs `session.create` (#96493). Isolated
@@ -383,7 +383,7 @@ async function isAttachedSharedRemote(
       `Timed out resolving shared-remote route for "${key}"`
     )
 
-    return Boolean(conn && typeof conn === 'object' && (conn as { sharedRemote?: boolean }).sharedRemote === true)
+    return conn?.sharedRemote === true || conn?.sharedPrimary === true
   } catch {
     // Probe failed. A secondary at this already-attached source is the #96493
     // ghost WebSocket (accept/close, messages=1). Prefer the primary until a

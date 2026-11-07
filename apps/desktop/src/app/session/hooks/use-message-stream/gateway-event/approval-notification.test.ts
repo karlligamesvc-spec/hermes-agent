@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { ClientSessionState } from '@/app/types'
 import { setRuntimeI18nLocale } from '@/i18n'
+import { $mainThreadsByProfile, type MainThreadState } from '@/store/main-thread'
 import { clearAllPrompts } from '@/store/prompts'
+import { clearAllSessionStates, publishSessionState } from '@/store/session-states'
+import { setSingleEngineFlagForTest } from '@/store/single-engine'
 import { $singleThreadFlag } from '@/store/single-thread'
 import { botRosterFrom, resetBotRosterForTest, setMultiBotFlagForTest } from '@/store/single-thread-bots'
 import { setToolViewMode } from '@/store/tool-view'
@@ -54,6 +58,9 @@ afterEach(() => {
   setMultiBotFlagForTest(false)
   resetBotRosterForTest()
   clearAllPrompts()
+  setSingleEngineFlagForTest(false)
+  $mainThreadsByProfile.set({})
+  clearAllSessionStates()
 })
 
 describe('the approval notification', () => {
@@ -84,5 +91,28 @@ describe('hc-1077 with several assistants on', () => {
 
     expect(approve('writer')).toMatch(/^小红书文案 想在你的电脑上运行一段程序，用来做字幕。/)
     expect(approve('default')).toMatch(/^APEX 想在你的电脑上运行一段程序/)
+  })
+
+  // hc-1166: one engine tags every request APEX's; the session's thread says whose it is.
+  it('with one engine names the assistant whose thread the session is on', () => {
+    $singleThreadFlag.set(true)
+    setMultiBotFlagForTest(true)
+    resetBotRosterForTest(
+      botRosterFrom([{ name: 'writer', ui_meta: { apex: { created: 1, name: '小红书文案' } } }], () => true)
+    )
+    $mainThreadsByProfile.set({
+      writer: { ids: ['stored-a'], profile: 'writer', rootId: 'stored-a', status: 'found', tipId: 'stored-a' }
+    } as unknown as Record<string, MainThreadState>)
+    publishSessionState('session-a', {
+      busy: true,
+      needsInput: false,
+      storedSessionId: 'stored-a'
+    } as ClientSessionState)
+
+    expect(approve('default')).toMatch(/^APEX 想在你的电脑上运行一段程序/)
+
+    setSingleEngineFlagForTest(true)
+
+    expect(approve('default')).toMatch(/^小红书文案 想在你的电脑上运行一段程序，用来做字幕。/)
   })
 })

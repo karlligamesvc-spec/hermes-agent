@@ -13,6 +13,7 @@ import { $activeGatewayProfile, normalizeProfileKey } from '@/store/profile'
 import { replayPendingApproval } from '@/store/prompts'
 import { setSessionProviderWait } from '@/store/provider-wait'
 import { isSessionGone } from '@/store/session-gone-latch'
+import { engineEventProfile } from '@/store/single-engine-owner'
 import { setSessionDraftingTool } from '@/store/tool-drafting'
 
 import { handleDesktopBridgeEvent } from './desktop-bridge'
@@ -140,8 +141,11 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
       // 'default'. Compare the composite (connectionId, profile) scope with
       // registryBackendScopeKey — untagged primary events keep the legacy
       // bare-profile behavior byte-identical.
+      // hc-1166: with one engine every event carries APEX's tag; engineEventProfile says whose it is.
       const fromActiveSource = (): boolean =>
-        (!event.profile || normalizeProfileKey(event.profile) === normalizeProfileKey($activeGatewayProfile.get())) &&
+        (!event.profile ||
+          normalizeProfileKey(engineEventProfile(event.profile, event.session_id, event.type)) ===
+            normalizeProfileKey($activeGatewayProfile.get())) &&
         registryBackendScopeKey(event.connectionId ?? null, event.profile ?? null) ===
           registryBackendScopeKey(activeGatewayConnectionId(), event.profile ?? null)
 

@@ -1,11 +1,16 @@
 /**
- * hc-1169: a cron job fires with the signed-in account's credentials in every
- * Desktop process (backend, each assistant's engine, messaging gateway), even
- * when that process serves several assistants. The engine's APEX overlay
- * (apex_overlay/cron_account_env.py) adds the names in ACCOUNT_ENV_NAMES to a
- * fire's scope and never the gates in PER_ASSISTANT_GATES. Every name Desktop
- * injects for the account has to be in exactly one of the two, or cron jobs
- * lose a credential the moment Desktop starts injecting a new one.
+ * The account's credentials Desktop injects into every process it spawns
+ * (backend, each assistant's engine, messaging gateway) are listed once, in
+ * apex_overlay/cron_account_env.py: ACCOUNT_ENV_NAMES are the account's and
+ * PER_ASSISTANT_GATES stay each assistant's own policy. Two engine seams lend
+ * the account's names to a profile from that one list:
+ * - hc-1169 cron_account_env: a cron fire, when the process serves several
+ *   assistants;
+ * - hc-1166 hosted_profiles: every assistant one engine hosts (single-engine
+ *   switch).
+ * Every name Desktop injects for the account has to be in exactly one of the
+ * two tuples, or a cron job or a hosted assistant loses a credential the
+ * moment Desktop starts injecting a new one.
  *
  * Run with: npx vitest run electron/apex-cron-account-env.test.ts --project electron
  */
@@ -68,4 +73,16 @@ test('cron fires get every credential the platform tools and web search are spaw
     [...PLATFORM_TOOL_ENV_KEYS, 'SEARXNG_URL', 'SEARXNG_API_KEY'].filter(name => !shared.has(name)),
     []
   )
+})
+
+test('the web search pair is only injected for a signed-in account', () => {
+  const signedOut = buildDesktopBackendEnv({
+    currentEnv: {},
+    hermesHome: '/apex/home',
+    platform: 'darwin',
+    runtimeRoot: '/apex/runtime',
+    venvRoot: '/apex/runtime/venv'
+  })
+
+  assert.equal(Object.keys(signedOut).filter(name => name.startsWith('SEARXNG_')).length, 0)
 })
