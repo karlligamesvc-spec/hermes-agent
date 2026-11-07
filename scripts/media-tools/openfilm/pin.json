@@ -11,14 +11,15 @@
     "commit": "7713d38c8ddc860e1b8e517bb8b0f180988f8f73",
     "packageDir": "packages/openfilm"
   },
-  "testDependencies": {
+  "dependencies": {
     "playwright-core": {
       "version": "1.61.1",
       "tarball": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.61.1.tgz",
       "integrity": "sha512-h7Qlt6m4REp25qvIdvbDtVmD4LqVXfpRxhORv9L0jzETM05p4fuPJ3dKyuSXQxDSbXnmS79HAgi9589lGSpLkg=="
     }
   },
-  "patches": ["patches/0001-keep-track-fields.patch"],
+  "patches": ["patches/0001-keep-track-fields.patch", "patches/0002-host-chromium.patch"],
+  "guards": ["track-fields.test.mjs", "chromium.test.mjs"],
   "upstreamTests": [
     "studio/server/person-merge.test.mjs",
     "studio/server/person-edits.test.mjs",

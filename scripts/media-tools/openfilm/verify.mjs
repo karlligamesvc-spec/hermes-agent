@@ -1,16 +1,19 @@
-// Verifies the OpenFilm patches pinned here (hc-1175) before an OpenFilm toolkit is built with them:
-//   1. fetches the pinned openfilm package (checked against its integrity) and the upstream source at the pinned commit;
+// Verifies the OpenFilm patches pinned here (hc-1175, hc-1176) before an OpenFilm toolkit is built with them:
+//   1. fetches the pinned openfilm package and its pinned dependencies (each checked against its integrity), and the
+//      upstream source at the pinned commit;
 //   2. checks that every file a patch touches is the same in both, so upstream's tests run the code that ships;
 //   3. applies the patches to both (each must apply cleanly, with no rejects);
-//   4. runs the guard (track-fields.test.mjs) on the patched package, the reverse check (each part of the fix taken
-//      out turns the guard red), and upstream's own tests of what the patches touch on the patched source.
-// Writes only under the work folder, which must be empty. Needs node, git, tar and patch.
+//   4. runs the guards (pin.json guards) on the patched package, the reverse check (each part of the patches taken
+//      out turns a guard red), and upstream's own tests of what the patches touch on the patched source.
+// Leaves the patched package in <work>/npm/package with its dependencies in <work>/npm/node_modules (the toolkit's
+// files: build_toolkit.py packs them). Writes only under the work folder, which must be empty. Needs node, git, tar
+// and patch.
 //   node scripts/media-tools/openfilm/verify.mjs <empty work folder>
 // APEX_NPM_REGISTRY replaces the npm registry in the pinned tarball links (integrity is checked all the same).
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -85,16 +88,28 @@ for (const dir of [pkg, source]) {
 }
 console.log(`patched openfilm ${version} (npm package and ${pin.source.tag} source) with ${patches.length} patch(es)`)
 
+/* openfilm's dependencies, pinned too (the version it asks for): beside the package, as the toolkit has them, and in
+   the source */
+const wanted = JSON.parse(readFileSync(join(pkg, 'package.json'), 'utf8')).dependencies ?? {}
+assert.deepEqual(
+  Object.keys(pin.dependencies).sort(),
+  Object.keys(wanted).sort(),
+  'pin.json pins other dependencies than openfilm has'
+)
+for (const [name, dep] of Object.entries(pin.dependencies)) {
+  assert.equal(dep.version, wanted[name], `openfilm asks for ${name} ${wanted[name]}, pin.json has ${dep.version}`)
+  const unpacked = await npmPackage(dep, join(work, 'deps', name))
+  for (const into of [join(work, 'npm', 'node_modules'), join(source, 'node_modules')]) {
+    mkdirSync(into, { recursive: true })
+    cpSync(unpacked, join(into, name), { recursive: true })
+  }
+}
+
 const env = { ...process.env, OPENFILM_PACKAGE: pkg, OPENFILM_NO_BROWSER: '1', OPENFILM_NO_UPDATE_CHECK: '1' }
-run(process.execPath, ['--test', join(here, 'track-fields.test.mjs')], { env })
+run(process.execPath, ['--test', ...pin.guards.map(g => join(here, g))], { env })
 run(process.execPath, [join(here, 'reverse-verify.mjs')], { env })
 
-/* upstream's tests of what the patches touch, on the patched source: they import playwright-core, pinned too */
-for (const [name, dep] of Object.entries(pin.testDependencies)) {
-  const unpacked = await npmPackage(dep, join(work, 'deps', name))
-  mkdirSync(join(source, 'node_modules'), { recursive: true })
-  renameSync(unpacked, join(source, 'node_modules', name))
-}
+/* upstream's tests of what the patches touch, on the patched source */
 for (const test of pin.upstreamTests) assert.ok(existsSync(join(source, test)), `${test} is not in the source`)
 /* (no browsers: these tests must not need one) */
 run(process.execPath, ['--test', '--test-concurrency=1', ...pin.upstreamTests], {
