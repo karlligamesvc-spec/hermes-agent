@@ -1,20 +1,41 @@
 name: Desktop synchronized release
 
-# Production Desktop releases build, notarize and publish Mac arm64 only. The
-# reusable macOS workflow runs from this caller's exact SHA; the final job
-# rejects identity or public-feed drift.
+# Production Desktop releases build, notarize and publish Mac arm64. Windows x64
+# joins only at a fixed version the owner names: dispatch with windows=true and
+# this same run also builds Windows, publishes it when publish=true, and reads
+# both feeds back. Both reusable workflows run from this caller's exact SHA, so
+# both platforms carry one commit and one version; the final job rejects
+# identity or public-feed drift.
 #
-# Two feeds are frozen and never built, published or read back here:
-# - Windows x64 is paused after 0.17.66. Installed Windows shells keep polling
-#   desktop/win-x64/, which stays at 0.17.66. desktop-windows.yml stays for
-#   diagnostics: a direct dispatch is artifact-only, nothing calls it with
-#   publish, and scripts/release/upload-desktop-cos.py refuses that prefix.
-# - Mac x64 (Intel) stopped after 0.17.63; desktop/mac-x64/ stays at 0.17.63.
+# windows=false (the default) runs nothing for Windows: the windows job is
+# skipped, desktop/win-x64/ stays at the last fixed version that published it,
+# installed Windows shells keep polling it, and the readback does not read it.
+# scripts/release/upload-desktop-cos.py writes desktop/win-x64/ only when the
+# Windows publish job passes --windows-release, and only this file calls that
+# workflow. A direct dispatch of desktop-windows.yml is artifact-only.
+#
+# Mac x64 (Intel) stopped after 0.17.63; desktop/mac-x64/ stays at 0.17.63 and is
+# never built, published or read back here.
+#
+# One platform live, the other failed (windows=true, publish=true): there is no
+# cross-platform publish gate. Each platform uploads its binaries first and flips
+# its feed last. Cancel only while no feed has flipped; that leaves nothing a user
+# can see. Once one feed is live, let the run end, then run
+# `gh run rerun <run-id> --failed` on this same run, so the same commit and version
+# finish. Windows republishes from its build artifact (kept 3 days); Mac rebuilds
+# and notarizes the same commit. Never publish the missing platform from another
+# commit under this version. If it cannot be finished from this commit, it stays at
+# its previous version until the next fixed version, and this run stays red.
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the Mac arm64 updater feed to production COS
+        description: Publish the updater feeds this run builds to production COS
+        required: false
+        type: boolean
+        default: false
+      windows:
+        description: Also build, publish and read back Windows x64 (only at a fixed version the owner names)
         required: false
         type: boolean
         default: false
@@ -30,9 +51,20 @@ jobs:
       publish: ${{ inputs.publish }}
     secrets: inherit
 
+  windows:
+    name: Build Windows x64
+    if: ${{ inputs.windows }}
+    uses: ./.github/workflows/desktop-windows.yml
+    with:
+      publish: ${{ inputs.publish }}
+    secrets: inherit
+
   verify-release-parity:
     name: Verify same SHA/version and public feeds
-    needs: [macos]
+    needs: [macos, windows]
+    # The windows job is skipped unless the run includes Windows, and a skipped need
+    # would skip this job by default. The first step checks the windows result.
+    if: ${{ !cancelled() && needs.macos.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -42,6 +74,20 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: 22
+
+      - name: Assert the run built exactly the platforms it was asked for
+        env:
+          RELEASE_WINDOWS: ${{ inputs.windows }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+        run: |
+          set -euo pipefail
+          if [ "$RELEASE_WINDOWS" = "true" ]; then
+            test "$WINDOWS_RESULT" = "success"
+          else
+            test "$RELEASE_WINDOWS" = "false"
+            test "$WINDOWS_RESULT" = "skipped"
+          fi
+          echo "release platforms OK: windows=$RELEASE_WINDOWS ($WINDOWS_RESULT)"
 
       - name: Assert the macOS workflow packaged the release identity
         env:
@@ -62,9 +108,40 @@ jobs:
           test "$MAC_RUNTIME_VERSION" = "$PINNED_RUNTIME_VERSION"
           echo "release identity OK (mac-arm64): version=$MAC_VERSION sha=$CALLER_SHA"
 
+      - name: Assert the Windows workflow packaged the same release identity
+        if: ${{ inputs.windows }}
+        env:
+          CALLER_SHA: ${{ github.sha }}
+          MAC_VERSION: ${{ needs.macos.outputs.version }}
+          WINDOWS_SHA: ${{ needs.windows.outputs.source_sha }}
+          WINDOWS_VERSION: ${{ needs.windows.outputs.version }}
+          WINDOWS_RUNTIME_COMMIT: ${{ needs.windows.outputs.runtime_commit }}
+          WINDOWS_RUNTIME_VERSION: ${{ needs.windows.outputs.runtime_version }}
+          WINDOWS_IDENTITY_VERIFIED: ${{ needs.windows.outputs.identity_verified }}
+        run: |
+          set -euo pipefail
+          test -n "$WINDOWS_SHA" && test -n "$WINDOWS_VERSION"
+          test "$WINDOWS_SHA" = "$CALLER_SHA"
+          PACKAGE_VERSION="$(node -e "process.stdout.write(require('./apps/desktop/package.json').version)")"
+          test "$WINDOWS_VERSION" = "$PACKAGE_VERSION"
+          test "$WINDOWS_VERSION" = "$MAC_VERSION"
+          test "$WINDOWS_IDENTITY_VERIFIED" = "true"
+          PINNED_RUNTIME_COMMIT="$(node -e "process.stdout.write(require('./apps/desktop/bundled-runtime.json').runtime_commit)")"
+          PINNED_RUNTIME_VERSION="$(node -e "process.stdout.write(require('./apps/desktop/bundled-runtime.json').runtime_version)")"
+          test "$WINDOWS_RUNTIME_COMMIT" = "$PINNED_RUNTIME_COMMIT"
+          test "$WINDOWS_RUNTIME_VERSION" = "$PINNED_RUNTIME_VERSION"
+          echo "release identity OK (win-x64): version=$WINDOWS_VERSION sha=$CALLER_SHA"
+
       - name: Assert the production updater feed advanced
         if: ${{ inputs.publish }}
         working-directory: apps/desktop
         env:
           EXPECTED_VERSION: ${{ needs.macos.outputs.version }}
-        run: node scripts/verify-cross-platform-release.mjs --expected-version "$EXPECTED_VERSION"
+          RELEASE_WINDOWS: ${{ inputs.windows }}
+        run: |
+          set -euo pipefail
+          if [ "$RELEASE_WINDOWS" = "true" ]; then
+            node scripts/verify-cross-platform-release.mjs --expected-version "$EXPECTED_VERSION" --include-windows
+          else
+            node scripts/verify-cross-platform-release.mjs --expected-version "$EXPECTED_VERSION"
+          fi

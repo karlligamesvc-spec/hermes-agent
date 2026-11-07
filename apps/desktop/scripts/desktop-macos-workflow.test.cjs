@@ -135,7 +135,7 @@ test('Windows keeps the default uploader budget under its own outer bound', () =
   // leave a transfer worker running behind the next outer attempt.
   const publishStep = namedStep(fs.readFileSync(windowsWorkflowPath, 'utf8'), 'Publish installer + updater feed to Tencent COS')
   assert.match(publishStep, /Invoke-BoundedProcess -FilePath \$python -TimeoutSeconds \$budget/)
-  assert.match(publishStep, /"scripts\/release\/upload-desktop-cos\.py", "--file", \$LocalPath, "--key", \$Key\)/)
+  assert.match(publishStep, /"scripts\/release\/upload-desktop-cos\.py", "--file", \$LocalPath, "--key", \$Key, "--windows-release"\)/)
   assert.doesNotMatch(publishStep, /--budget-from-size/)
 })
 
@@ -160,8 +160,8 @@ test('macOS matrix stages and reads back the requested package architecture', ()
 })
 
 test('the macOS matrix builds only arm64 and the parity readback covers exactly what it builds', async () => {
-  // Mac x64 (Intel) stopped after 0.17.63 and Windows x64 after 0.17.66. A feed built but
-  // not read back would advance unchecked; one read back but not built fails every release.
+  // Mac x64 (Intel) stopped after 0.17.63. A feed built but not read back would advance
+  // unchecked; one read back but not built fails every release.
   const source = workflowSource()
   const matrixAt = source.indexOf('      matrix:')
   assert.notEqual(matrixAt, -1, 'missing build matrix')
@@ -170,8 +170,12 @@ test('the macOS matrix builds only arm64 and the parity readback covers exactly 
   assert.deepEqual(arches, ['arm64'])
   assert.doesNotMatch(source, /runner: macos-\d+-intel/)
 
-  const { DEFAULT_FEEDS } = await import(pathToFileURL(path.resolve(__dirname, 'verify-cross-platform-release.mjs')).href)
-  assert.deepEqual(DEFAULT_FEEDS.map(feed => feed.platform), arches.map(arch => `mac-${arch}`))
+  const { MAC_FEEDS, WINDOWS_FEED } = await import(pathToFileURL(path.resolve(__dirname, 'verify-cross-platform-release.mjs')).href)
+  assert.deepEqual(MAC_FEEDS.map(feed => feed.platform), arches.map(arch => `mac-${arch}`))
+  // A release with windows=true reads back exactly the prefix the Windows publish job writes.
+  const prefixes = [...fs.readFileSync(windowsWorkflowPath, 'utf8').matchAll(/-Prefix "([^"]+)"/g)].map(match => match[1])
+  assert.deepEqual(prefixes, ['desktop/win-x64'])
+  assert.equal(new URL(WINDOWS_FEED.url).pathname, '/desktop/win-x64/latest.yml')
 })
 
 test('direct single-platform dispatches are artifact-only', () => {
@@ -213,31 +217,147 @@ test('release identity steps are valid Bash on both platform workflows', () => {
   }
 })
 
-test('the production coordinator builds only Mac arm64 and ends in a parity readback', () => {
-  // Windows x64 is paused after 0.17.66: installed Windows shells keep polling desktop/win-x64/.
-  const source = fs.readFileSync(synchronizedWorkflowPath, 'utf8')
+function releaseJobs(source) {
   const jobs = source.slice(source.indexOf('\njobs:\n'))
-  const uses = [...jobs.matchAll(/^ +uses: \.\/\.github\/workflows\/(\S+)$/gm)].map(match => match[1])
+  const heads = [...jobs.matchAll(/^ {2}([a-z][\w-]*):$/gm)]
+  return Object.fromEntries(heads.map((match, index) => [match[1], jobs.slice(match.index, heads[index + 1]?.index ?? jobs.length)]))
+}
 
-  assert.deepEqual(uses, ['desktop-macos.yml'])
-  assert.deepEqual([...jobs.matchAll(/^ {2}([a-z][\w-]*):$/gm)].map(match => match[1]), ['macos', 'verify-release-parity'])
-  assert.match(source, /needs: \[macos\]/)
-  assert.doesNotMatch(source, /needs\.windows\b/)
-  assert.match(source, /test "\$MAC_SHA" = "\$CALLER_SHA"/)
-  assert.match(source, /test "\$MAC_VERSION" = "\$PACKAGE_VERSION"/)
-  assert.match(source, /test "\$MAC_RUNTIME_COMMIT" = "\$PINNED_RUNTIME_COMMIT"/)
-  assert.match(source, /test "\$MAC_RUNTIME_VERSION" = "\$PINNED_RUNTIME_VERSION"/)
-  assert.match(source, /verify-cross-platform-release\.mjs --expected-version/)
+function releaseInputs(source) {
+  const block = source.slice(source.indexOf('  workflow_dispatch:'), source.indexOf('\npermissions:'))
+  return Object.fromEntries([...block.matchAll(/^ {6}([a-z][\w-]*):\n((?: {8}.*\n)+)/gm)].map(match => [match[1], match[2]]))
+}
+
+function runStep(source, name, { env = {}, cwd, path: extraPath } = {}) {
+  const script = bashRunBody(namedStep(source, name))
+  return spawnSync('bash', ['-c', script], {
+    cwd,
+    env: { ...process.env, ...(extraPath ? { PATH: `${extraPath}:${process.env.PATH}` } : {}), ...env },
+    encoding: 'utf8'
+  })
+}
+
+test('the release builds Mac arm64 every time and Windows x64 only when dispatched with windows=true', () => {
+  // Windows ships at fixed versions the owner names; every other release leaves desktop/win-x64/ alone.
+  const source = fs.readFileSync(synchronizedWorkflowPath, 'utf8')
+  const jobs = releaseJobs(source)
+  const inputs = releaseInputs(source)
+
+  assert.deepEqual(Object.keys(jobs), ['macos', 'windows', 'verify-release-parity'])
+  assert.deepEqual(Object.keys(inputs), ['publish', 'windows'])
+  for (const [name, block] of Object.entries(inputs)) {
+    assert.match(block, /^ {8}type: boolean$/m, `${name} must be a boolean input`)
+    assert.match(block, /^ {8}default: false$/m, `${name} must default to false`)
+  }
+  // A misspelt input in an if: or env: evaluates to empty, which would silently drop Windows.
+  for (const [, name] of source.matchAll(/\binputs\.([A-Za-z_][\w-]*)/g)) {
+    assert.ok(name in inputs, `desktop-release.yml reads an undeclared input: inputs.${name}`)
+  }
+
+  assert.match(jobs.macos, /^ {4}uses: \.\/\.github\/workflows\/desktop-macos\.yml$/m)
+  assert.doesNotMatch(jobs.macos, /^ {4}if:/m, 'Mac arm64 is built by every release')
+  assert.match(jobs.macos, /^ {6}publish: \$\{\{ inputs\.publish \}\}$/m)
+
+  assert.match(jobs.windows, /^ {4}uses: \.\/\.github\/workflows\/desktop-windows\.yml$/m)
+  assert.match(jobs.windows, /^ {4}if: \$\{\{ inputs\.windows \}\}$/m)
+  assert.match(jobs.windows, /^ {6}publish: \$\{\{ inputs\.publish \}\}$/m)
+
+  const parity = jobs['verify-release-parity']
+  assert.match(parity, /^ {4}needs: \[macos, windows\]$/m)
+  // Without a status function the skipped windows job would skip the readback of a Mac-only release.
+  assert.match(parity, /^ {4}if: \$\{\{ !cancelled\(\) && needs\.macos\.result == 'success' \}\}$/m)
+  assert.match(namedStep(source, 'Assert the Windows workflow packaged the same release identity'), /^ {8}if: \$\{\{ inputs\.windows \}\}$/m)
+  assert.match(namedStep(source, 'Assert the production updater feed advanced'), /^ {8}if: \$\{\{ inputs\.publish \}\}$/m)
 })
 
-test('no workflow calls desktop-windows.yml, so its publish job cannot run', () => {
+test('only desktop-release.yml calls desktop-windows.yml, from its windows-gated job', () => {
   // A direct dispatch has no publish input (see the artifact-only test above); a workflow_call
-  // with publish would be the only way to advance desktop/win-x64/, which stays at 0.17.66.
+  // with publish is the only way to run the job that advances desktop/win-x64/.
   const dir = path.dirname(windowsWorkflowPath)
   const callers = fs.readdirSync(dir)
     .filter(name => /\.ya?ml$/.test(name))
     .filter(name => /^\s*uses:\s*\.\/\.github\/workflows\/desktop-windows\.ya?ml\b/m.test(fs.readFileSync(path.join(dir, name), 'utf8')))
-  assert.deepEqual(callers, [])
+  assert.deepEqual(callers, ['desktop-release.yml'])
+
+  const jobs = releaseJobs(fs.readFileSync(synchronizedWorkflowPath, 'utf8'))
+  const calling = Object.entries(jobs).filter(([, block]) => /desktop-windows\.ya?ml/.test(block)).map(([name]) => name)
+  assert.deepEqual(calling, ['windows'])
+})
+
+test('the parity job fails unless the run built exactly the platforms it was asked for', () => {
+  const source = fs.readFileSync(synchronizedWorkflowPath, 'utf8')
+  for (const [windows, result, status] of [
+    ['true', 'success', 0],
+    ['true', 'failure', 1],
+    ['true', 'cancelled', 1],
+    ['true', 'skipped', 1],
+    ['false', 'skipped', 0],
+    ['false', 'success', 1],
+    ['', 'skipped', 1]
+  ]) {
+    const run = runStep(source, 'Assert the run built exactly the platforms it was asked for', {
+      env: { RELEASE_WINDOWS: windows, WINDOWS_RESULT: result }
+    })
+    assert.equal(run.status, status, `windows=${JSON.stringify(windows)} result=${result}: ${run.stdout}${run.stderr}`)
+  }
+})
+
+test('the Windows identity check rejects a package that differs from the Mac one or the pins', () => {
+  const source = fs.readFileSync(synchronizedWorkflowPath, 'utf8')
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-release-identity-'))
+  const sha = 'a'.repeat(40)
+  const pin = { runtime_commit: 'b'.repeat(40), runtime_version: 'v2026.11.07-fork.bbbbbbbb' }
+  fs.mkdirSync(path.join(root, 'apps/desktop'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'apps/desktop/package.json'), JSON.stringify({ version: '0.17.73' }))
+  fs.writeFileSync(path.join(root, 'apps/desktop/bundled-runtime.json'), JSON.stringify(pin))
+  const mac = {
+    CALLER_SHA: sha, MAC_SHA: sha, MAC_VERSION: '0.17.73',
+    MAC_RUNTIME_COMMIT: pin.runtime_commit, MAC_RUNTIME_VERSION: pin.runtime_version
+  }
+  const windows = {
+    CALLER_SHA: sha, MAC_VERSION: '0.17.73', WINDOWS_SHA: sha, WINDOWS_VERSION: '0.17.73',
+    WINDOWS_RUNTIME_COMMIT: pin.runtime_commit, WINDOWS_RUNTIME_VERSION: pin.runtime_version,
+    WINDOWS_IDENTITY_VERIFIED: 'true'
+  }
+  try {
+    const macRun = runStep(source, 'Assert the macOS workflow packaged the release identity', { cwd: root, env: mac })
+    assert.equal(macRun.status, 0, macRun.stderr)
+    for (const [label, override, status] of [
+      ['one release identity', {}, 0],
+      ['another commit', { WINDOWS_SHA: 'c'.repeat(40) }, 1],
+      ['no commit reported', { WINDOWS_SHA: '' }, 1],
+      ['another version than the package', { WINDOWS_VERSION: '0.17.66', MAC_VERSION: '0.17.66' }, 1],
+      ['another version than Mac', { MAC_VERSION: '0.17.72' }, 1],
+      ['PE identity not verified', { WINDOWS_IDENTITY_VERIFIED: '' }, 1],
+      ['another engine commit', { WINDOWS_RUNTIME_COMMIT: 'd'.repeat(40) }, 1],
+      ['another engine label', { WINDOWS_RUNTIME_VERSION: 'v2026.10.28-fork.d6af670c' }, 1]
+    ]) {
+      const run = runStep(source, 'Assert the Windows workflow packaged the same release identity', {
+        cwd: root, env: { ...windows, ...override }
+      })
+      assert.equal(run.status, status, `${label}: ${run.stdout}${run.stderr}`)
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }) }
+})
+
+test('the readback reads the Windows feed exactly when the run includes Windows', () => {
+  const source = fs.readFileSync(synchronizedWorkflowPath, 'utf8')
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-release-readback-'))
+  const calls = path.join(bin, 'calls')
+  fs.writeFileSync(path.join(bin, 'node'), '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$CALLS"\n', { mode: 0o755 })
+  try {
+    for (const [windows, args] of [
+      ['true', 'scripts/verify-cross-platform-release.mjs --expected-version 0.17.73 --include-windows'],
+      ['false', 'scripts/verify-cross-platform-release.mjs --expected-version 0.17.73']
+    ]) {
+      fs.rmSync(calls, { force: true })
+      const run = runStep(source, 'Assert the production updater feed advanced', {
+        path: bin, env: { CALLS: calls, EXPECTED_VERSION: '0.17.73', RELEASE_WINDOWS: windows }
+      })
+      assert.equal(run.status, 0, run.stderr)
+      assert.deepEqual(fs.readFileSync(calls, 'utf8').trim().split('\n'), [args])
+    }
+  } finally { fs.rmSync(bin, { recursive: true, force: true }) }
 })
 
 test('the production coordinator release identity check is valid Bash', () => {

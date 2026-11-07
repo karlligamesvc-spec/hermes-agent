@@ -1,9 +1,9 @@
 """Upload one owned Desktop release file with bounded parallel COS parts.
 
 Mac and Windows workflows keep their binary-before-feed ordering and use this
-same uploader. Only the Mac arm64 feed is published now: Windows x64 is paused
-after 0.17.66 (see upload_and_verify). Supplier credentials stay in the workflow
-environment.
+same uploader. Every release publishes the Mac arm64 feed; the Windows x64 feed
+only at a fixed version whose release includes Windows (see owned_key_pattern).
+Supplier credentials stay in the workflow environment.
 """
 from __future__ import annotations
 
@@ -37,6 +37,10 @@ BUDGET_RATE_FLOOR = 128 * 1024
 BUDGET_OVERHEAD_SECONDS = 600
 BUDGET_CAP_SECONDS = 90 * 60
 
+# Passed only by desktop-windows.yml's publish job, which runs only inside a
+# desktop-release.yml run dispatched with windows=true.
+WINDOWS_RELEASE = '--windows-release'
+
 
 def size_budget_workers(local: Path) -> int:
     try:
@@ -47,11 +51,17 @@ def size_budget_workers(local: Path) -> int:
     return max(DEFAULT_WORKERS, math.ceil(budget / WORKER_SECONDS))
 
 
-def upload_and_verify(local: Path, key: str, client) -> dict:
-    # desktop/mac-x64/ and desktop/win-x64/ are left out on purpose: Intel is no longer
-    # built and Windows is paused. Installed shells keep polling those feeds, which must
-    # stay at 0.17.63 (Intel) and 0.17.66 (Windows).
-    if not re.fullmatch(r'desktop/mac-arm64/[A-Za-z0-9_.-]+', key):
+def owned_key_pattern(windows_release: bool) -> str:
+    # Each publish leg writes only its own feed. Without WINDOWS_RELEASE that is
+    # desktop/mac-arm64/, and desktop/win-x64/ stays at the last fixed version that
+    # installed Windows shells keep polling. desktop/mac-x64/ is never written: Intel
+    # stopped after 0.17.63.
+    prefix = 'win-x64' if windows_release else 'mac-arm64'
+    return rf'desktop/{prefix}/[A-Za-z0-9_.-]+'
+
+
+def upload_and_verify(local: Path, key: str, client, *, windows_release: bool = False) -> dict:
+    if not re.fullmatch(owned_key_pattern(windows_release), key):
         raise ValueError('invalid Desktop object key')
     if not local.is_file() or local.is_symlink() or local.stat().st_size == 0:
         raise ValueError('missing or empty release file')
@@ -85,6 +95,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--file', type=Path, required=True)
     parser.add_argument('--key', required=True)
+    parser.add_argument(WINDOWS_RELEASE, dest='windows_release', action='store_true')
     args = parser.parse_args()
     identity = os.environ.get('COS_SECRET_ID', '')
     secret = os.environ.get('COS_SECRET_KEY', '')
@@ -107,7 +118,7 @@ def main() -> int:
             AutoSwitchDomainOnRetry=True,
         ))
         try:
-            result = upload_and_verify(args.file, args.key, client)
+            result = upload_and_verify(args.file, args.key, client, windows_release=args.windows_release)
         except CosClientError:
             if attempt == 2:
                 raise
