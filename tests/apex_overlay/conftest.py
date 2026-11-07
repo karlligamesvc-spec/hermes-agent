@@ -77,6 +77,8 @@ _SEAM_MODULES = (
     "cron_account_env",
     # hc-1171 the IM 入口's apps belong to the profile the process was started for (several profiles).
     "im_launch_profile",
+    # hc-1174 the Feishu SDK's websocket address is logged without its credentials.
+    "lark_log_redaction",
 )
 
 
