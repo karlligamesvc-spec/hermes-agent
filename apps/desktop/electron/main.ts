@@ -483,7 +483,7 @@ import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
 import { LEGACY_OAUTH_PARTITION, resolveOauthPartition } from './oauth-partition'
 import { mintGatewayWsTicket as mintOauthGatewayWsTicket, requestWithOauthFallback } from './oauth-rest-request'
 import { wireOauthSessionResponse } from './oauth-session-response'
-import { createOpenfilmStudio } from './openfilm-studio'
+import { createOpenfilmStudio, registerOpenfilmStudio } from './openfilm-studio'
 import { armPackagedRuntimeUpdate, bundledEnginePin, createPackagedRuntimeGate, installPackagedRuntime, offlineBundledOutcome, packagedEngineKeptBack, packagedRuntimeMatchesPin, packagedRuntimeShipped, readPackagedRuntime, shouldInstallPackagedRuntime } from './packaged-runtime'
 import { repairEngineMarker } from './packaged-runtime-marker'
 import { createParentStartMarkerResolver, parentWatchdogEnv } from './parent-process-identity'
@@ -22712,12 +22712,15 @@ const openfilmStudio = createOpenfilmStudio({
       venvRoot: VENV_ROOT,
       currentPath: pathWithHermesManagedNode()
     }),
+  enginePython: async () => {
+    const backend = await ensureRuntime(resolveHermesBackend([]))
+
+    return backend.command ? { command: backend.command, cwd: backend.root, env: backend.env ?? {} } : null
+  },
   log: rememberLog
 })
 
-ipcMain.handle('hermes:openfilmStudio:status', () => openfilmStudio.status())
-ipcMain.handle('hermes:openfilmStudio:open', (_event, folder) => openfilmStudio.open(folder))
-app.on('will-quit', () => openfilmStudio.stop())
+registerOpenfilmStudio(openfilmStudio, ipcMain, app)
 
 ipcMain.handle('hermes:workflowDomain:startGoal', async (_event, payload) => {
   const context = workflowDomainIpcContext()

@@ -435,7 +435,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // agent's film.html in the preview pane. See electron/openfilm-studio.ts.
   openfilmStudio: {
     status: () => ipcRenderer.invoke('hermes:openfilmStudio:status'),
-    open: folder => ipcRenderer.invoke('hermes:openfilmStudio:open', folder)
+    open: folder => ipcRenderer.invoke('hermes:openfilmStudio:open', folder),
+    prefetch: () => ipcRenderer.invoke('hermes:openfilmStudio:prefetch')
   },
   // Platform client-config sync — informational read of the cached versioned
   // config (no network). Application happens in the MAIN process pre-gateway

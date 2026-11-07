@@ -1,4 +1,5 @@
 import { reportFirstBuildToolComplete } from '@/components/onboarding-chat/first-build'
+import { noteAgentTool } from '@/lib/openfilm-studio'
 import { invalidateSlashCompletions } from '@/lib/slash-completion-cache'
 import { refreshBackgroundProcesses } from '@/store/composer-status'
 import { flashPetActivity, setPetActivity } from '@/store/pet'
@@ -57,6 +58,8 @@ export function handleToolEvent(ctx: GatewayEventContext): boolean {
 
     flushQueuedDeltas(sessionId)
     upsertToolCall(sessionId, toTodoPayload(payload) ?? payload, 'running', event.type, occurredAt)
+    // hc-1176: the first video tool has the editor's toolkit installed meanwhile (off unless Studio is on).
+    noteAgentTool(payload?.name)
 
     if (isActiveEvent) {
       setPetActivity({ reasoning: false, toolRunning: true })

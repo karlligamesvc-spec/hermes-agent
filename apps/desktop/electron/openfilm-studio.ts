@@ -1,15 +1,19 @@
 /**
- * openfilm-studio.ts — PROTOTYPE, off unless this install turns it on: OpenFilm
- * Studio as the editor in the preview pane.
+ * openfilm-studio.ts — off unless this install turns it on: OpenFilm Studio as
+ * the editor in the preview pane (hc-1173 prototype, hc-1176 toolkit download).
  *
- * Studio is OpenFilm's editor (openfilm@0.3.0, MIT): a timeline over an agent's
- * `film.html`, where a person retypes a caption, moves a title or splits a clip,
- * and Studio writes that back into the same files for the agent to read. APEX
- * does not ship it. An install turns it on with APEXNODES_OPENFILM_STUDIO=1 and
- * points APEXNODES_OPENFILM_TOOLKIT at a folder holding `node_modules/openfilm`
- * (and, in `browsers/`, the Chromium Playwright downloads for it). The
- * platform's `desktop_features` cannot turn it on: an install without the
- * toolkit would only get an error.
+ * Studio is OpenFilm's editor (openfilm@0.3.0, MIT, with APEX's patches): a
+ * timeline over an agent's `film.html`, where a person retypes a caption, moves
+ * a title or splits a clip, and Studio writes that back into the same files for
+ * the agent to read. An install turns it on with APEXNODES_OPENFILM_STUDIO=1
+ * (the platform's `desktop_features` cannot). APEX does not ship the toolkit
+ * Studio runs from: the engine downloads it from APEX COS
+ * (`python -m apex_overlay.media_tools openfilm`), in the background the first
+ * time an agent works on a video (`prefetch`), and names it in
+ * `<HERMES_HOME>/tool-cache/openfilm/ready.json`, written last. It draws in the
+ * agent browser's Chromium (OPENFILM_CHROMIUM). Until then a film opens as it
+ * always did. A development build may instead point APEXNODES_OPENFILM_TOOLKIT
+ * at a folder holding `node_modules/openfilm` (and Playwright's `browsers/`).
  *
  * Studio runs in a child process: this app's own binary run as Node
  * (ELECTRON_RUN_AS_NODE), running a small host that calls `startStudio()` from
@@ -25,14 +29,14 @@
  */
 
 import { type ChildProcess, spawn as nodeSpawn } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { delimiter, isAbsolute, join } from 'node:path'
 
 import { envSwitch } from './apex-desktop-features'
 
-/** This install's switch: only `1` (or true/yes/on) turns the prototype on. */
+/** This install's switch: only `1` (or true/yes/on) turns it on. */
 export const OPENFILM_STUDIO_ENV = 'APEXNODES_OPENFILM_STUDIO'
-/** The folder holding `node_modules/openfilm` (an absolute path). */
+/** A development build's toolkit: the folder holding `node_modules/openfilm` (an absolute path). */
 export const OPENFILM_TOOLKIT_ENV = 'APEXNODES_OPENFILM_TOOLKIT'
 /** Optional: a folder with ffmpeg + ffprobe put before the engine's own (a dev build runs no installed engine). */
 export const OPENFILM_FFMPEG_DIR_ENV = 'APEXNODES_OPENFILM_FFMPEG_DIR'
@@ -44,6 +48,12 @@ const HOST_FILE = 'apex-studio-host.mjs'
 const HOST_MARK = '@@apex-openfilm '
 const READY_TIMEOUT_MS = 60_000
 const OPEN_TIMEOUT_MS = 15_000
+/** The engine's install of the toolkit (and of the Chromium it draws in) may take this long on a slow line. */
+const INSTALL_TIMEOUT_MS = 45 * 60_000
+/** After a failed install, a new one waits this long, then starts on the next trigger: no retry storm, no prompt. */
+const RETRY_AFTER_MS = 10 * 60_000
+/** The engine module that installs the toolkit and writes ready.json. */
+const INSTALL_ARGS = ['-m', 'apex_overlay.media_tools', 'openfilm']
 
 /** The variables of main's environment the child keeps; everything else stays in main. */
 const KEPT_ENV = [
@@ -75,35 +85,71 @@ const KEPT_ENV = [
 ]
 
 export type OpenfilmStudioPlan =
-  | { on: false; reason: 'no_toolkit' | 'switch_off' }
-  | { browsers: null | string; dataRoot: string; on: true; serverModule: string; toolkit: string }
+  { on: false; reason: 'switch_off' } | { dataRoot: string; devToolkit: null | string; on: true; ready: string }
 
-/** Whether this launch runs the prototype, and from where. Pure. */
-export function planOpenfilmStudio(
-  env: Record<string, string | undefined>,
-  hermesHome: string,
-  exists: (path: string) => boolean = existsSync
-): OpenfilmStudioPlan {
+/** The toolkit Studio runs from: its folder, its server module, and the browser it draws in. */
+export interface OpenfilmToolkit {
+  /** A development toolkit's Playwright browsers (PLAYWRIGHT_BROWSERS_PATH). */
+  browsers: null | string
+  /** The agent browser's Chromium (OPENFILM_CHROMIUM), for the installed toolkit. */
+  chromium: null | string
+  serverModule: string
+  toolkit: string
+}
+
+/** Whether this launch runs Studio, and where its data and its toolkit are. Pure. */
+export function planOpenfilmStudio(env: Record<string, string | undefined>, hermesHome: string): OpenfilmStudioPlan {
   if (envSwitch(env[OPENFILM_STUDIO_ENV]) !== true) {
     return { on: false, reason: 'switch_off' }
   }
 
-  const toolkit = String(env[OPENFILM_TOOLKIT_ENV] ?? '').trim()
-  const serverModule = toolkit && isAbsolute(toolkit) ? join(toolkit, ...SERVER_MODULE) : ''
-
-  if (!serverModule || !exists(serverModule)) {
-    return { on: false, reason: 'no_toolkit' }
-  }
-
-  const browsers = join(toolkit, 'browsers')
+  const devToolkit = String(env[OPENFILM_TOOLKIT_ENV] ?? '').trim()
 
   return {
     on: true,
-    toolkit,
-    serverModule,
-    browsers: exists(browsers) ? browsers : null,
-    dataRoot: join(hermesHome, 'openfilm')
+    dataRoot: join(hermesHome, 'openfilm'),
+    ready: join(hermesHome, 'tool-cache', 'openfilm', 'ready.json'),
+    devToolkit: devToolkit || null
   }
+}
+
+/**
+ * The toolkit Studio can run from now, or null while there is none: a
+ * development build's own, else the one the engine installed, as its
+ * ready.json names it (written last, so never a half-done install) and only
+ * while its files are there. Read each time: the engine may finish at any moment.
+ */
+export function findOpenfilmToolkit(
+  plan: Extract<OpenfilmStudioPlan, { on: true }>,
+  exists: (path: string) => boolean = existsSync,
+  read: (path: string) => string = path => readFileSync(path, 'utf8')
+): null | OpenfilmToolkit {
+  if (plan.devToolkit !== null) {
+    const serverModule = isAbsolute(plan.devToolkit) ? join(plan.devToolkit, ...SERVER_MODULE) : ''
+    const browsers = join(plan.devToolkit, 'browsers')
+
+    return serverModule && exists(serverModule)
+      ? { toolkit: plan.devToolkit, serverModule, browsers: exists(browsers) ? browsers : null, chromium: null }
+      : null
+  }
+
+  let said: { chromium?: unknown; toolkit?: unknown } | null = null
+
+  try {
+    said = JSON.parse(read(plan.ready))
+  } catch {
+    return null
+  }
+
+  const toolkit = typeof said?.toolkit === 'string' && isAbsolute(said.toolkit) ? said.toolkit : ''
+  const chromium = typeof said?.chromium === 'string' && isAbsolute(said.chromium) ? said.chromium : ''
+  const serverModule = toolkit ? join(toolkit, ...SERVER_MODULE) : ''
+
+  if (!serverModule || !exists(serverModule) || !chromium || !exists(chromium)) {
+    return null
+  }
+
+  return { toolkit, serverModule, browsers: null, chromium }
 }
 
 /** Studio's folders, all inside APEX's data folder (never ~/.openfilm or ~/Movies/OpenFilm). */
@@ -119,13 +165,14 @@ export function openfilmStudioFolders(dataRoot: string): Record<string, string> 
 
 /**
  * The child's whole environment: a short list kept from main's, Studio's
- * folders, no browser of its own and no npm update check, and a PATH that finds
- * the engine's ffmpeg and ffprobe before anything else (OpenFilm looks for them
- * only on PATH). `basePath` is the PATH the engine itself gets, whose first
- * entries are the engine's bundled tools.
+ * folders, no browser window of its own and no npm update check, the browser
+ * it draws in, and a PATH that finds the engine's ffmpeg and ffprobe before
+ * anything else (OpenFilm looks for them only on PATH). `basePath` is the PATH
+ * the engine itself gets, whose first entries are the engine's bundled tools.
  */
 export function studioChildEnv(
   plan: Extract<OpenfilmStudioPlan, { on: true }>,
+  toolkit: OpenfilmToolkit,
   env: Record<string, string | undefined>,
   basePath: string
 ): Record<string, string> {
@@ -141,7 +188,7 @@ export function studioChildEnv(
 
   const ffmpegDir = String(env[OPENFILM_FFMPEG_DIR_ENV] ?? '').trim()
 
-  const path = [isAbsolute(ffmpegDir) ? ffmpegDir : '', join(plan.toolkit, 'node_modules', '.bin'), basePath]
+  const path = [isAbsolute(ffmpegDir) ? ffmpegDir : '', join(toolkit.toolkit, 'node_modules', '.bin'), basePath]
     .filter(Boolean)
     .join(delimiter)
 
@@ -150,9 +197,10 @@ export function studioChildEnv(
     ...openfilmStudioFolders(plan.dataRoot),
     OPENFILM_NO_BROWSER: '1',
     OPENFILM_NO_UPDATE_CHECK: '1',
-    ...(plan.browsers ? { PLAYWRIGHT_BROWSERS_PATH: plan.browsers } : {}),
+    ...(toolkit.chromium ? { OPENFILM_CHROMIUM: toolkit.chromium } : {}),
+    ...(toolkit.browsers ? { PLAYWRIGHT_BROWSERS_PATH: toolkit.browsers } : {}),
     ELECTRON_RUN_AS_NODE: '1',
-    APEX_OPENFILM_SERVER_MODULE: plan.serverModule,
+    APEX_OPENFILM_SERVER_MODULE: toolkit.serverModule,
     PATH: path
   }
 }
@@ -218,12 +266,21 @@ interface RunningStudio {
 }
 
 export type OpenfilmStudioOpen =
-  | { code: 'not_a_film' | 'off' | 'open_failed' | 'start_failed'; message: string; ok: false }
+  | { code: 'not_a_film' | 'not_ready' | 'off' | 'open_failed' | 'start_failed'; message: string; ok: false }
   | { ok: true; url: string }
+
+/** How main runs the engine's Python: its interpreter, the folder its modules resolve from, the variables it adds. */
+export interface EnginePython {
+  command: string
+  cwd: string
+  env: Record<string, string | undefined>
+}
 
 export interface OpenfilmStudioDeps {
   /** The PATH the engine gets (its bundled tools first), read when Studio starts. */
   basePath: () => string
+  /** The engine's Python, to install the toolkit with; null when there is no engine yet. */
+  enginePython?: () => Promise<EnginePython | null>
   env: Record<string, string | undefined>
   /** This app's binary: run as Node for the host. */
   execPath: string
@@ -231,15 +288,26 @@ export interface OpenfilmStudioDeps {
   fetchImpl?: typeof fetch
   hermesHome: string
   log?: (line: string) => void
+  now?: () => number
   readyTimeoutMs?: number
   spawn?: typeof nodeSpawn
+}
+
+export interface OpenfilmStudioStatus {
+  on: boolean
+  /** The engine is installing the toolkit now. */
+  preparing: boolean
+  /** A toolkit is there: a film opens in Studio. */
+  ready: boolean
 }
 
 export interface OpenfilmStudio {
   /** The Studio address that opens `folder` (a project: it holds film.html), Studio started first if needed. */
   open: (folder: unknown) => Promise<OpenfilmStudioOpen>
   plan: OpenfilmStudioPlan
-  status: () => { on: boolean }
+  /** Have the engine install the toolkit in the background, unless it is there, on its way, or just failed. */
+  prefetch: () => 'off' | 'preparing' | 'ready' | 'started' | 'waiting'
+  status: () => OpenfilmStudioStatus
   /** Ask Studio to stop (app quit); it also stops by itself when main's pipe closes. */
   stop: () => void
 }
@@ -249,24 +317,113 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
   const exists = deps.exists ?? existsSync
   const spawn = deps.spawn ?? nodeSpawn
   const fetchImpl = deps.fetchImpl ?? fetch
-  const plan = planOpenfilmStudio(deps.env, deps.hermesHome, exists)
+  const now = deps.now ?? Date.now
+  const plan = planOpenfilmStudio(deps.env, deps.hermesHome)
   let child: ChildProcess | null = null
   let starting: null | Promise<RunningStudio> = null
+  let installing: null | Promise<boolean> = null
+  let failedAt: null | number = null
 
   if (deps.env[OPENFILM_STUDIO_ENV] !== undefined) {
     log(
       plan.on === true
-        ? `[openfilm-studio] prototype on: toolkit ${plan.toolkit}, data ${plan.dataRoot}`
-        : `[openfilm-studio] prototype stays off (${plan.reason})`
+        ? `[openfilm-studio] on: data ${plan.dataRoot}, toolkit ${plan.devToolkit ?? plan.ready}`
+        : `[openfilm-studio] stays off (${plan.reason})`
     )
   }
 
-  function start(on: Extract<OpenfilmStudioPlan, { on: true }>): Promise<RunningStudio> {
+  const toolkitNow = () => (plan.on === true ? findOpenfilmToolkit(plan, exists) : null)
+
+  function prefetch(): ReturnType<OpenfilmStudio['prefetch']> {
+    if (plan.on === false) {
+      return 'off'
+    }
+
+    if (toolkitNow()) {
+      return 'ready'
+    }
+
+    if (installing) {
+      return 'preparing'
+    }
+
+    if (failedAt !== null && now() - failedAt < RETRY_AFTER_MS) {
+      return 'waiting'
+    }
+
+    const attempt = install()
+    installing = attempt
+    void attempt.then(ok => {
+      installing = null
+      failedAt = ok ? null : now()
+    })
+
+    return 'started'
+  }
+
+  /** The engine installs the toolkit and the browser it draws in, then writes ready.json; true once it has. */
+  async function install(): Promise<boolean> {
+    let engine: EnginePython | null = null
+
+    try {
+      engine = (await deps.enginePython?.()) ?? null
+    } catch (error) {
+      log(`[openfilm-studio] no engine to install the toolkit with: ${error instanceof Error ? error.message : error}`)
+    }
+
+    if (!engine) {
+      return false
+    }
+
+    log('[openfilm-studio] installing the toolkit in the background')
+
+    return new Promise<boolean>(resolve => {
+      let said = ''
+      let timer: ReturnType<typeof setTimeout> | undefined
+      let proc: ChildProcess
+
+      const done = (ok: boolean, why: string) => {
+        clearTimeout(timer)
+        log(ok ? '[openfilm-studio] toolkit installed' : `[openfilm-studio] toolkit not installed: ${why}`)
+        resolve(ok)
+      }
+
+      try {
+        proc = spawn(engine.command, INSTALL_ARGS, {
+          cwd: engine.cwd,
+          // As the engine runs: main's environment, APEX's data folder, the engine's own variables.
+          env: { ...deps.env, HERMES_HOME: deps.hermesHome, ...engine.env },
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true
+        })
+      } catch (error) {
+        done(false, error instanceof Error ? error.message : String(error))
+
+        return
+      }
+
+      for (const stream of [proc.stdout, proc.stderr]) {
+        stream?.setEncoding('utf8')
+        stream?.on('data', (chunk: string) => {
+          said = (said + chunk).slice(-2000)
+        })
+      }
+
+      timer = setTimeout(() => proc.kill(), INSTALL_TIMEOUT_MS)
+      proc.once('error', error => done(false, error.message))
+      proc.once('exit', (code, signal) => {
+        const last = said.trim().split(/\r?\n/).pop() ?? ''
+        done(code === 0 && toolkitNow() !== null, last || `exit ${signal ?? code}`)
+      })
+    })
+  }
+
+  function start(on: Extract<OpenfilmStudioPlan, { on: true }>, toolkit: OpenfilmToolkit): Promise<RunningStudio> {
     if (starting) {
       return starting
     }
 
-    const attempt = launch(on)
+    const attempt = launch(on, toolkit)
     starting = attempt
     // A failed start is not kept: the next open tries again.
     attempt.catch(() => {
@@ -278,7 +435,7 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
     return attempt
   }
 
-  function launch(on: Extract<OpenfilmStudioPlan, { on: true }>): Promise<RunningStudio> {
+  function launch(on: Extract<OpenfilmStudioPlan, { on: true }>, toolkit: OpenfilmToolkit): Promise<RunningStudio> {
     return new Promise<RunningStudio>((resolve, reject) => {
       mkdirSync(on.dataRoot, { recursive: true })
       const hostFile = join(on.dataRoot, HOST_FILE)
@@ -286,7 +443,7 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
 
       const proc = spawn(deps.execPath, [hostFile], {
         cwd: on.dataRoot,
-        env: studioChildEnv(on, deps.env, deps.basePath()),
+        env: studioChildEnv(on, toolkit, deps.env, deps.basePath()),
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true
       })
@@ -386,10 +543,17 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
       return { ok: false, code: 'not_a_film', message: `not a folder with ${FILM_FILE}` }
     }
 
+    const toolkit = toolkitNow()
+
+    if (!toolkit) {
+      // The film opens as it always did meanwhile; the toolkit is fetched now if it was not already.
+      return { ok: false, code: 'not_ready', message: `the editor is getting ready (${prefetch()})` }
+    }
+
     let studio: RunningStudio
 
     try {
-      studio = await start(plan)
+      studio = await start(plan, toolkit)
     } catch (error) {
       return { ok: false, code: 'start_failed', message: error instanceof Error ? error.message : String(error) }
     }
@@ -432,5 +596,23 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
     }, 8_000).unref()
   }
 
-  return { open, plan, status: () => ({ on: plan.on }), stop }
+  const status = (): OpenfilmStudioStatus => ({
+    on: plan.on,
+    ready: toolkitNow() !== null,
+    preparing: installing !== null
+  })
+
+  return { open, plan, prefetch, status, stop }
+}
+
+/** Main's side: the window asks for the status, a Studio address, a background install; quitting stops Studio. */
+export function registerOpenfilmStudio(
+  studio: OpenfilmStudio,
+  ipcMain: { handle(channel: string, listener: (event: any, ...args: any[]) => unknown): void },
+  app: { on(event: 'will-quit', listener: () => void): unknown }
+): void {
+  ipcMain.handle('hermes:openfilmStudio:status', () => studio.status())
+  ipcMain.handle('hermes:openfilmStudio:open', (_event, folder) => studio.open(folder))
+  ipcMain.handle('hermes:openfilmStudio:prefetch', () => studio.prefetch())
+  app.on('will-quit', () => studio.stop())
 }

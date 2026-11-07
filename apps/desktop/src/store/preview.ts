@@ -1,16 +1,19 @@
 import { atom, computed } from 'nanostores'
 
+import { openfilmStudioCopyNow } from '@/i18n/openfilm-studio'
 import {
   $openfilmStudioOn,
   OPENFILM_STUDIO_TAB_ID,
   openfilmProjectFolder,
-  openfilmStudioUrl
+  openfilmStudioUrl,
+  waitForOpenfilmEditor
 } from '@/lib/openfilm-studio'
 import { persistentAtom } from '@/lib/persisted'
 import { readKey } from '@/lib/storage'
 import { normalize } from '@/lib/text'
 
 import { $rightRailActiveTabId, type RightRailTabId, selectRightRailTab } from './layout'
+import { notify } from './notifications'
 import { canOpenBrowserWindow, openBrowserInNewWindow } from './windows'
 
 /**
@@ -400,17 +403,29 @@ export function openPreview(target: PreviewTarget, source: PreviewRecordSource =
   showPreview(target, source)
 }
 
-/** PROTOTYPE (lib/openfilm-studio.ts): an agent's film.html opens in OpenFilm
- *  Studio, in a tab of its own that is never persisted (Studio's address lives
- *  one launch); the file itself opens as before when Studio can't. */
+/** lib/openfilm-studio.ts: an agent's film.html opens in OpenFilm Studio, in a
+ *  tab of its own that is never persisted (Studio's address lives one launch);
+ *  the file itself opens as before when Studio can't. Before the editor is
+ *  installed it plays as before, says so once, and switches to the editor when
+ *  it is ready, if it is still what the pane shows. */
 async function openFilmInStudio(folder: string, target: PreviewTarget, source: PreviewRecordSource) {
-  const url = await openfilmStudioUrl(folder)
+  const opened = await openfilmStudioUrl(folder)
 
-  if (!url) {
-    showPreview(target, source)
+  if (!opened.ok) {
+    const id = showPreview(target, source)
+
+    if (opened.code === 'not_ready') {
+      notify({ id: 'openfilm-studio-preparing', kind: 'info', message: openfilmStudioCopyNow().preparing })
+      waitForOpenfilmEditor(
+        () => $rightRailActiveTabId.get() === id && $previewTabs.get().some(tab => tab.id === id),
+        () => void openFilmInStudio(folder, target, source)
+      )
+    }
 
     return
   }
+
+  const url = opened.url
 
   const tab: PreviewTab = {
     id: OPENFILM_STUDIO_TAB_ID,
@@ -424,7 +439,7 @@ async function openFilmInStudio(folder: string, target: PreviewTarget, source: P
   selectRightRailTab(tab.id)
 }
 
-function showPreview(target: PreviewTarget, source: PreviewRecordSource) {
+function showPreview(target: PreviewTarget, source: PreviewRecordSource): RightRailTabId {
   const resolved = previewTargetForSource(target, source)
   const current = $previewTabs.get()
   const id = resolved.kind === 'url' ? browserTabId(current) : previewTabId(resolved)
@@ -433,6 +448,8 @@ function showPreview(target: PreviewTarget, source: PreviewRecordSource) {
 
   $previewTabs.set(index === -1 ? [...current, tab] : current.map((item, i) => (i === index ? tab : item)))
   selectRightRailTab(id)
+
+  return id
 }
 
 const blankPage = (): PreviewTarget => ({ kind: 'url', label: 'Browser', source: 'about:blank', url: 'about:blank' })
