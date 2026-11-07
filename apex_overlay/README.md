@@ -177,6 +177,17 @@ not changed and nothing is routed to Doubao.
 `test_the_wrapped_engine_choice_is_still_where_upstream_calls_it` pins the
 upstream symbol and its call site.
 
+hc-1163: Scheduler decides which vendor speaks (`TTS_PROVIDER`: Doubao
+seed-tts-2.0 or Bailian Qwen-Audio-3.1-TTS-Plus). The provider key stays
+`doubao` so existing profile configs keep working, and the model-facing text
+says 「平台配音」 without naming a vendor or model. `instructions` is not
+offered: the runtime hands plugin providers none (`_dispatch_to_plugin_provider`
+takes text, path, provider and config) and this provider sends none, so its
+description says the parameter is unused. The end-to-end test in
+`test_real_plugin_discovery_cached_defaults_and_file_delivery` passes
+`instructions` from the tool call and checks that the description and the
+request body agree.
+
 Requires the companion Scheduler route before rollout. This change alone does
 not publish a Desktop installer or change the production runtime pin.
 
