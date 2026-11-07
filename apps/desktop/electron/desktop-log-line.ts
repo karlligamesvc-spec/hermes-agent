@@ -14,6 +14,22 @@
  * `stamp` defaults to now; callers that batch multiple lines (a single
  * stdout chunk) pass one shared stamp so the group reads as one event.
  */
+/**
+ * hc-1174: query parameters that are credentials. The Feishu SDK logs its
+ * websocket address with them (`connected to wss://…?…&access_key=…&ticket=…`),
+ * and a child's stdout reaches this file as is. The engine masks them at the
+ * SDK's logger too (apex_overlay/lark_log_redaction.py CREDENTIAL_PARAMS, the
+ * same names); this covers anything else a child prints.
+ */
+export const CREDENTIAL_QUERY_PARAMS = Object.freeze(['access_key', 'ticket'])
+
+const CREDENTIAL_QUERY = new RegExp(`([?&](?:${CREDENTIAL_QUERY_PARAMS.join('|')})=)[^&\\s'"<>]+`, 'gi')
+
+/** `text` with the value of every credential query parameter replaced by `***`. */
+export function maskCredentialQueryParams(text: string): string {
+  return text.replace(CREDENTIAL_QUERY, '$1***')
+}
+
 export function formatDesktopLogLine(text: string, stamp = new Date().toISOString()): string {
-  return `[${stamp}] [hermes] ${text}`
+  return `[${stamp}] [hermes] ${maskCredentialQueryParams(text)}`
 }

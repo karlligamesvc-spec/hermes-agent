@@ -88,6 +88,12 @@ _TOOL_SEAMS = (
         "error). With several assistants, the messaging gateway configures neither "
         "Feishu nor WeChat and the bound bot never connects.",
     ),
+    (
+        "lark_log_redaction",
+        "apex-overlay: hc-1174 Feishu log redaction seam did not apply (see prior "
+        "error). The Feishu SDK's websocket address, credentials included "
+        "(access_key, ticket), is written to the logs as is.",
+    ),
 )
 
 
