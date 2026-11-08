@@ -107,6 +107,12 @@ _TOOL_SEAMS = (
         "Changing where a scheduled job delivers no longer says when its result will "
         "reach no chat, so a Desktop chat may promise the result comes back.",
     ),
+    (
+        "cron_desktop_delivery",
+        "apex-overlay: hc-1186 Desktop cron delivery seam did not fully apply (see prior "
+        "error). A scheduled job made in a Desktop chat does not post its result back into "
+        "that chat; the chat then says so instead of promising it.",
+    ),
 )
 
 

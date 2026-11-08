@@ -83,6 +83,8 @@ _SEAM_MODULES = (
     "cron_result_prompt",
     # hc-1183 a cron update that leaves the job delivering nowhere says so, as create does.
     "cron_update_notice",
+    # hc-1186 a job made in a Desktop chat posts its result back into that chat.
+    "cron_desktop_delivery",
 )
 
 

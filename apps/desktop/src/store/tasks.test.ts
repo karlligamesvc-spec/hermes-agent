@@ -124,6 +124,26 @@ describe('task notifications reach the OS', () => {
     expect(notify).toHaveBeenCalledWith(expect.objectContaining({ sessionId: undefined, focusSessionId: undefined }))
   })
 
+  it('leaves a job that posts its result back into its chat to that notification (hc-1186)', () => {
+    setWindowState({ focused: false, hidden: true })
+    const id = freshId()
+    const origin = { apex_desktop_origin: { session_id: 'chat-1' }, deliver: 'origin' }
+    setCronJobs([{ ...task(id, null, true), ...origin }])
+    setCronJobs([{ ...task(id, 'ok', false), ...origin }])
+
+    expect(notify).not.toHaveBeenCalled()
+  })
+
+  it('still notifies for a save-only job made in a chat (nothing comes back there)', () => {
+    setWindowState({ focused: false, hidden: true })
+    const id = freshId()
+    const origin = { apex_desktop_origin: { session_id: 'chat-1' }, deliver: 'local' }
+    setCronJobs([{ ...task(id, null, true), ...origin }])
+    setCronJobs([{ ...task(id, 'ok', false), ...origin }])
+
+    expect(notify).toHaveBeenCalledTimes(1)
+  })
+
   it('respects the backgroundDone switch in Settings › 通知', () => {
     setWindowState({ focused: false, hidden: true })
     setNativeNotifyKind('backgroundDone', false)

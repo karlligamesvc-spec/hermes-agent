@@ -16,6 +16,7 @@ import { isSessionGone } from '@/store/session-gone-latch'
 import { engineEventProfile } from '@/store/single-engine-owner'
 import { setSessionDraftingTool } from '@/store/tool-drafting'
 
+import { handleCronResultEvent } from './cron-result'
 import { handleDesktopBridgeEvent } from './desktop-bridge'
 import { handleInputRequestEvent } from './input-requests'
 import { handleLifecycleEvent } from './lifecycle'
@@ -80,6 +81,8 @@ const PROVIDER_WAIT_SUPERSEDING_EVENT_TYPES = new Set([
 // Ordered family handlers; each consumes its own event types and reports
 // whether it did, so dispatch stops at the first taker.
 const HANDLERS: GatewayEventHandler[] = [
+  // Never takes the event: it notifies, and lifecycle still refreshes the cron list.
+  handleCronResultEvent,
   handleLifecycleEvent,
   handleSessionInfoEvent,
   handleControlEvent,
