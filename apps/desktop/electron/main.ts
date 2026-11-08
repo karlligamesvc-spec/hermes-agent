@@ -341,6 +341,7 @@ import {
   findDesktopDeepLink,
   registerApexDesktopProtocol
 } from './desktop-deep-link'
+import { applyMacDockIcon, DEV_PROTOCOL_SKIPPED_LOG, planApexDesktopProtocol } from './desktop-dev-launch'
 import {
   provisionDeviceBody,
   provisionKeyRevokeUrl,
@@ -15032,10 +15033,7 @@ function createWindow() {
 
   if (IS_MAC) {
     mainWindow.setWindowButtonPosition?.(WINDOW_BUTTON_POSITION)
-
-    if (icon) {
-      app.dock?.setIcon(icon)
-    }
+    applyMacDockIcon(app.dock, icon, process)
   }
 
   if (!IS_MAC) {
@@ -18246,21 +18244,16 @@ ipcMain.handle('hermes:deep-link-ready', () => {
 
 function registerDeepLinkProtocol() {
   try {
-    const developmentLaunch =
-      process.defaultApp && process.argv.length >= 2
-        ? {
-            // Dev: include the Electron entry script so the OS relaunches the
-            // same application rather than the bare Electron executable.
-            entryScript: path.resolve(process.argv[1]),
-            executable: process.execPath
-          }
-        : undefined
+    // A development launch leaves apexnodes:// to the installed APEX unless opted in.
+    const { developmentLaunch, register } = planApexDesktopProtocol(process)
 
     const decision = registerOsLoginProtocolForPolicy(DESKTOP_LAUNCH_POLICY, () =>
-      registerApexDesktopProtocol(app, developmentLaunch)
+      register ? registerApexDesktopProtocol(app, developmentLaunch) : false
     )
 
-    if (!decision.attempted) {
+    if (!register) {
+      rememberLog(DEV_PROTOCOL_SKIPPED_LOG)
+    } else if (!decision.attempted) {
       rememberLog('[deeplink] OS protocol registration disabled by embedded diagnostic policy')
     } else if (!decision.registered) {
       rememberLog('[deeplink] OS rejected apexnodes protocol registration')
