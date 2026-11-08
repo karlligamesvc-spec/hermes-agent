@@ -1,8 +1,8 @@
 // `openfilm` in APEX's engine (hc-1177): OpenFilm's own CLI, unchanged, from the toolkit the engine installed
 // (apex_overlay/media_tools.py ensure_openfilm, installed first when it is not yet), run with the folders of the
 // editor Desktop shows, so `openfilm look` finds that Studio and tells the Agent what the person changed; with no
-// browser window, the Agent browser's Chromium, and APEX's ffmpeg first on PATH. Off, like the editor, unless
-// Desktop's switch is on (apex_overlay/film_project.py says which, and what to run with).
+// browser window, the Agent browser's Chromium, and APEX's ffmpeg first on PATH. Off, like the editor, unless the
+// editor is open to this account (apex_overlay/film_project.py asks the Scheduler, and says what to run with).
 import { execFile, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'

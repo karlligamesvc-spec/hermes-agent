@@ -1,13 +1,15 @@
 /**
- * Off unless this install sets APEXNODES_OPENFILM_STUDIO=1
- * (electron/openfilm-studio.ts): a local `film.html`, an agent's OpenFilm edit,
- * opens in OpenFilm Studio, the editor, instead of as an HTML page — once the
- * engine has installed Studio's toolkit (hc-1176). The first video tool an
- * agent runs starts that install in the background; a film opened before it is
- * done plays as it always did and switches to the editor when it is.
+ * Only for an account the Scheduler opens the editor to
+ * (electron/openfilm-studio.ts, hc-1178): a local `film.html`, an agent's
+ * OpenFilm edit, opens in OpenFilm Studio, the editor, instead of as an HTML
+ * page — once the engine has installed Studio's toolkit (hc-1176). The first
+ * video tool an agent runs starts that install in the background; a film opened
+ * before it is done plays as it always did and switches to the editor when it is.
  *
- * Main settles the switch at launch; this window asks it once. Until the answer
- * says on, and whenever it is off, nothing here changes how a preview opens.
+ * Main holds the account's answer; this window asks it when it opens and again
+ * whenever an agent starts a tool (a sign-in may come after the window opened,
+ * and a film.html only ever comes from an agent's tools). Until the answer says
+ * on, and whenever it is off, nothing here changes how a preview opens.
  */
 
 import { atom } from 'nanostores'
@@ -66,11 +68,32 @@ export async function openfilmStudioUrl(folder: string): Promise<OpenfilmStudioO
   }
 }
 
-/** An agent started tool `name`: a video tool has main install the toolkit, unless it is there or on its way. */
+/** Ask main whether the editor is open to this account now; an answer that does not come keeps the last one. */
+export function refreshOpenfilmStudioOn(): Promise<boolean> {
+  return Promise.resolve(window.hermesDesktop?.openfilmStudio?.status?.()).then(
+    status => {
+      $openfilmStudioOn.set(status?.on === true)
+
+      return $openfilmStudioOn.get()
+    },
+    () => $openfilmStudioOn.get()
+  )
+}
+
+/**
+ * An agent started tool `name`: the answer is asked again, and a video tool has
+ * main install the toolkit, unless it is there or on its way.
+ */
 export function noteAgentTool(name: unknown): void {
-  if ($openfilmStudioOn.get() && typeof name === 'string' && OPENFILM_VIDEO_TOOLS.has(name)) {
-    void Promise.resolve(window.hermesDesktop?.openfilmStudio?.prefetch?.()).catch(() => undefined)
+  if (!window.hermesDesktop?.openfilmStudio) {
+    return
   }
+
+  void refreshOpenfilmStudioOn().then(on => {
+    if (on && typeof name === 'string' && OPENFILM_VIDEO_TOOLS.has(name)) {
+      void Promise.resolve(window.hermesDesktop?.openfilmStudio?.prefetch?.()).catch(() => undefined)
+    }
+  })
 }
 
 let waiting: null | ReturnType<typeof setInterval> = null
@@ -112,8 +135,5 @@ export function waitForOpenfilmEditor(shown: () => boolean, onReady: () => void)
 }
 
 if (typeof window !== 'undefined') {
-  void Promise.resolve(window.hermesDesktop?.openfilmStudio?.status?.()).then(
-    status => $openfilmStudioOn.set(status?.on === true),
-    () => undefined
-  )
+  void refreshOpenfilmStudioOn()
 }

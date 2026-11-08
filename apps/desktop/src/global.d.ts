@@ -455,7 +455,7 @@ declare global {
         get: () => Promise<DesktopClientConfigState>
         onArrived?: (callback: (state: DesktopClientConfigState) => void) => () => void
       }
-      // Off unless APEXNODES_OPENFILM_STUDIO=1 (electron/openfilm-studio.ts): OpenFilm Studio
+      // Only for an account the Scheduler opens it to (electron/openfilm-studio.ts): OpenFilm Studio
       // for an agent's film.html in the preview pane, once the engine has installed its toolkit.
       openfilmStudio?: {
         status: () => Promise<{ on: boolean; preparing: boolean; ready: boolean }>

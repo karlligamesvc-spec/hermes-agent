@@ -167,6 +167,8 @@ describe('opening an agent film.html', () => {
   })
 
   describe('an agent starting a video tool', () => {
+    const settled = () => new Promise(done => setTimeout(done, 0))
+
     it.each([
       ['generate_video', true],
       ['video_generate', true],
@@ -174,21 +176,54 @@ describe('opening an agent film.html', () => {
       ['terminal', false],
       ['browser_navigate', false],
       [undefined, false]
-    ])('%s has main install the editor: %s', (tool, installs) => {
+    ])('%s has main install the editor: %s', async (tool, installs) => {
       $openfilmStudioOn.set(true)
       const bridge = stubStudio(async () => ({ ok: true, url: STUDIO_URL }))
 
       noteAgentTool(tool)
+      await vi.waitFor(() => expect(bridge.status).toHaveBeenCalled())
+      await settled()
 
       expect(vi.mocked(bridge.prefetch).mock.calls.length).toBe(installs ? 1 : 0)
     })
 
-    it('installs nothing while the switch is off', () => {
-      const bridge = stubStudio(async () => ({ ok: true, url: STUDIO_URL }))
+    it('installs nothing while the editor is not open to this account, even if it was', async () => {
+      $openfilmStudioOn.set(true)
+
+      const bridge = stubStudio(async () => ({ ok: true, url: STUDIO_URL }), {
+        on: false,
+        ready: false,
+        preparing: false
+      })
 
       noteAgentTool('generate_video')
+      await vi.waitFor(() => expect(bridge.status).toHaveBeenCalled())
+      await settled()
 
       expect(bridge.prefetch).not.toHaveBeenCalled()
+      expect($openfilmStudioOn.get()).toBe(false)
+    })
+
+    it('an account opened after the window: the next tool an agent starts turns the editor on', async () => {
+      const bridge = stubStudio(async () => ({ ok: true, url: STUDIO_URL }))
+
+      noteAgentTool('terminal')
+
+      await vi.waitFor(() => expect($openfilmStudioOn.get()).toBe(true))
+      expect(bridge.prefetch).not.toHaveBeenCalled()
+    })
+
+    it('an answer that does not come keeps the last one', async () => {
+      $openfilmStudioOn.set(true)
+      const bridge = stubStudio(async () => ({ ok: true, url: STUDIO_URL }))
+      vi.mocked(bridge.status).mockRejectedValueOnce(new Error('main is busy'))
+
+      noteAgentTool('generate_video')
+      await vi.waitFor(() => expect(bridge.status).toHaveBeenCalled())
+      await settled()
+
+      expect($openfilmStudioOn.get()).toBe(true)
+      expect(bridge.prefetch).toHaveBeenCalledOnce()
     })
   })
 })
