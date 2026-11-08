@@ -8,6 +8,7 @@ import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { isDesktopFsRemoteMode } from '@/lib/desktop-fs'
 import { normalizeOrLocalPreviewTarget, openPreviewTargetInBrowser } from '@/lib/local-preview'
+import { $openfilmStudioOn, openfilmProjectFolder } from '@/lib/openfilm-studio'
 import { cn } from '@/lib/utils'
 import { notifyError } from '@/store/notifications'
 import { $previewTabSources, closePreviewForSource, openPreview } from '@/store/preview'
@@ -62,6 +63,15 @@ export const PreviewStatusRow = memo(function PreviewStatusRow({ item, onDismiss
     try {
       const target = await resolveTarget()
 
+      // An agent's film.html, for an account the editor is open to, opens in
+      // that editor in the preview pane (lib/openfilm-studio.ts): the agent
+      // tells the user to click it there, and a browser can only play it.
+      if ($openfilmStudioOn.get() && openfilmProjectFolder(target)) {
+        openPreview(target, 'tool-result')
+
+        return
+      }
+
       // A file:// URL resolved in remote mode names a file on the backend
       // host, not on the machine running Electron. Keep local files and
       // ordinary URLs on the browser path, but route remote files through the
@@ -91,8 +101,9 @@ export const PreviewStatusRow = memo(function PreviewStatusRow({ item, onDismiss
         />
       }
       // Plain click opens the link in the browser, except remote files which
-      // only the in-app gateway-backed preview can read. ⌘/Ctrl-click always
-      // uses the in-app preview pane. (isOpen still toggles the pane closed.)
+      // only the in-app gateway-backed preview can read, and an agent's
+      // film.html when the account has the editor. ⌘/Ctrl-click always uses
+      // the in-app preview pane. (isOpen still toggles the pane closed.)
       onActivate={event => {
         if (event.metaKey || event.ctrlKey) {
           void togglePreview()
