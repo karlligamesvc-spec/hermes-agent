@@ -8,9 +8,11 @@ slider, SMS code), stop and ask the user to finish it in the window, then contin
 type a password, never try to solve the check. A login usually holds after once, because
 the profile persists.
 
-Only the Desktop product chat gets it: ``platform == "desktop"`` with single-thread mode
-on (``APEX_SINGLE_THREAD_ACTIVE=1``). IM, the terminal, cron and api_server have no window
-on the user's screen to hand control to. A subagent inherits its parent's prompt.
+Only the Desktop product chat gets it, with the same gate as the result-delivery rule:
+``platform == "desktop"``, single-thread mode on (``APEX_SINGLE_THREAD_ACTIVE=1``), and not
+developer mode. IM, the terminal, cron and api_server have no window on the user's screen to
+hand control to; developer mode keeps the hc-1131 identity-layer prompt byte-identical to
+clean main. A subagent inherits its parent's prompt.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ import logging
 from typing import Any, Mapping
 
 from apex_overlay import single_thread_prompt
+from apex_overlay.result_delivery_prompt import developer_mode
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +42,7 @@ def render_section(session_info: Mapping[str, Any] | None = None) -> str:
     """The fixed section in Desktop product chat, else "" (the runtime then adds none)."""
     if (session_info or {}).get("platform") != "desktop":
         return ""
-    if not single_thread_prompt.switch_on():
+    if not single_thread_prompt.switch_on() or developer_mode():
         return ""
     return BROWSER_LOGIN_PROMPT
 

@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from apex_overlay import result_delivery_prompt
+from apex_overlay import browser_login_prompt, result_delivery_prompt
 from hermes_cli.plugins_dispatch import PLUGIN_SECTIONS_END, format_system_prompt_section
 
 HERE = Path(__file__).resolve().parent
@@ -94,15 +94,29 @@ def _golden() -> dict[str, dict[str, str]]:
     }
 
 
+def _heading(section_id: str) -> str:
+    """The ``## Plugin Context: <id>`` line a section renders under, from the real formatter."""
+    return format_system_prompt_section(section_id, "").split("\n", 1)[0]
+
+
 def _expected(name: str, platform: str) -> str:
     golden = _golden()[SURFACES[name].golden][platform]
     if (name, platform) != ("desktop-product-mode", "desktop"):
         return golden
-    # The last section, since its id sorts after every other one.
+    # Sections render in sorted-id order (plugins_dispatch.render_system_prompt_sections).
+    # hc-1179 apex.browser-login sorts between apex.approval-rules and apex.honesty, so it goes
+    # in just before the apex.honesty heading.
+    honesty = _heading("apex.honesty")
+    assert golden.count(honesty) == 1
+    browser = format_system_prompt_section(
+        browser_login_prompt.SECTION_ID, browser_login_prompt.BROWSER_LOGIN_PROMPT)
+    golden = golden.replace(honesty, f"{browser}\n\n{honesty}")
+    # hc-1131 apex.user-results sorts after every other section: the last block before END.
     end = f"\n{PLUGIN_SECTIONS_END}"
     assert golden.count(end) == 1
-    section = format_system_prompt_section(result_delivery_prompt.SECTION_ID, result_delivery_prompt.RESULT_DELIVERY_PROMPT)
-    return golden.replace(end, f"\n\n{section}{end}")
+    results = format_system_prompt_section(
+        result_delivery_prompt.SECTION_ID, result_delivery_prompt.RESULT_DELIVERY_PROMPT)
+    return golden.replace(end, f"\n\n{results}{end}")
 
 
 def test_write_goldens_when_asked(tmp_path_factory):
@@ -152,5 +166,18 @@ def test_only_product_modes_chat_carries_the_rule(tmp_path_factory):
         for name in SURFACES
         for platform, prompt in _prompts(tmp_path_factory, name).items()
         if result_delivery_prompt.RESULT_DELIVERY_PROMPT in prompt
+    }
+    assert carrying == {("desktop-product-mode", "desktop")}
+
+
+def test_only_product_mode_desktop_carries_the_browser_login_rule(tmp_path_factory):
+    """hc-1179: the browser-login handoff, exactly like the result-delivery rule, appears in one
+    surface only — product-mode desktop — and never in developer mode, IM, the terminal, cron,
+    the cloud, or any non-desktop platform."""
+    carrying = {
+        (name, platform)
+        for name in SURFACES
+        for platform, prompt in _prompts(tmp_path_factory, name).items()
+        if browser_login_prompt.BROWSER_LOGIN_PROMPT in prompt
     }
     assert carrying == {("desktop-product-mode", "desktop")}
