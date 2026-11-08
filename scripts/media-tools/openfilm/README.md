@@ -25,6 +25,11 @@ goes away once upstream ships the same fix.
   - On a Mac that browser is Chrome for Testing 153. Rendering 3 s of a real project with it and with Playwright's
     headless shell 149 gave frames with SSIM ≥ 0.985, the difference looking like encoder noise.
   - On Windows it is the headless shell 152 that Hypit renders with.
+- **0003-hosted-studio.** With `OPENFILM_HOSTED=1`, OpenFilm's CLI never starts, restarts or replaces a Studio. It
+  uses the one that is running, or carries on without one, as `look` and `render` already can.
+  - Why: in APEX, Desktop runs Studio and stops it when APEX quits. Without the patch, an agent's `openfilm look` or
+    `render` on a project Desktop has not opened starts a detached Studio of its own, which nothing stops.
+  - APEX sets `OPENFILM_HOSTED=1` for every `openfilm` the agent runs.
 
 ## Checking and building
 
@@ -42,8 +47,8 @@ python scripts/media-tools/openfilm/build_toolkit.py [--check] <empty work folde
    - The guards (`pin.json` `guards`). `track-fields.test.mjs` takes every field of `TRACK_FIELDS` but `clips` through
      these cases: "the person edits, the agent writes over it", "the agent changes it", "the person changes it", "the
      merge fails", and more. It needs a sample for each field, so a field added upstream fails it until covered.
-     `chromium.test.mjs` pins patch 0002.
-   - `reverse-verify.mjs`, which takes each of the 13 parts of the patches back out of a copy, one at a time. The text
+     `chromium.test.mjs` pins patch 0002, `hosted-studio.test.mjs` patch 0003.
+   - `reverse-verify.mjs`, which takes each of the 14 parts of the patches back out of a copy, one at a time. The text
      must be found exactly once, and each removal must turn a guard red.
    - Upstream's own tests of what the patches touch (`upstreamTests`), with no browsers.
 
@@ -74,3 +79,44 @@ an agent works on a video.
 3. It writes `tool-cache/openfilm/ready.json`, which names both.
 
 Desktop reads only `ready.json`.
+
+## The agent side (hc-1177)
+
+The engine's bundled Node puts `openfilm` on the agent's PATH (`scripts/runtime-node-shims.mjs`). The command is
+`apex_overlay/openfilm_cli.mjs`. It is off unless Desktop's editor switch (`APEXNODES_OPENFILM_STUDIO`) is on. When on,
+it installs the toolkit if needed (`python -m apex_overlay.film_project env`, which uses `ensure_openfilm`), then runs
+OpenFilm's own CLI unchanged with:
+
+- the same `OPENFILM_HOME` and other folders as Desktop's editor, so `openfilm look` finds that Studio and reports
+  the person's edits;
+- `OPENFILM_NO_BROWSER=1`;
+- `OPENFILM_HOSTED=1` (patch 0003): it uses Desktop's Studio, or carries on without one, and never starts its own;
+- the agent browser's Chromium;
+- APEX's ffmpeg first on PATH.
+
+No Studio outlives APEX, whoever started it:
+
+- Desktop's own runs as its child and stops when APEX quits.
+- While the switch is on, Desktop also puts the folders, `OPENFILM_HOSTED=1` and `OPENFILM_NO_BROWSER=1` in main's
+  environment, which every engine started after it inherits. Any other OpenFilm the engine runs then works in
+  APEX's folders.
+- Before Desktop starts its own Studio, it reads `run.json` there. A Studio named in it that is not Desktop's is
+  asked to quit (`/api/quit` with its key), and ended if it does not go. Desktop does not take it over: it was
+  started with another environment, and OpenFilm's CLI may replace it. Another app's own Studio (it answers 423) is
+  left to that app.
+- When APEX quits, any other Studio in APEX's folders is ended too, even if no film was ever opened. This covers the
+  one `run.json` names and any that would not quit earlier.
+  - Ending one: only while its command line still names OpenFilm, so a process that took a gone Studio's pid is
+    never touched.
+  - macOS and Linux: SIGTERM, which Studio's supervisor passes on, then SIGKILL five seconds later from a shell
+    that outlives APEX.
+  - Windows: `taskkill /T /F` on the whole tree. A signal there ends one process, and the supervisor would start
+    Studio again.
+
+`python -m apex_overlay.film_project` is what the edit skill runs around a `film.html` the person may change:
+
+- `diff <project>` lists what changed since the agent's last write: caption text cue by cue, clips added, removed or
+  split, overrides, caption tracks and track flags. `openfilm look` does not report caption text or splits.
+- `write <project> <draft>` writes `film.html`, waits for the editor to merge it, then checks that every caption
+  track and clip the agent wrote, and every one the person added, is still there. It reads `film.html` with its own
+  parser and does not use OpenFilm's merge. A loss exits with code 1 and leaves the agent's copy as it was.

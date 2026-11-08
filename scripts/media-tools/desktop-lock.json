@@ -179,14 +179,15 @@
     "version": "0.3.0",
     "patches": [
       "0001-keep-track-fields",
-      "0002-host-chromium"
+      "0002-host-chromium",
+      "0003-hosted-studio"
     ],
     "dependencies": {
       "playwright-core": "1.61.1"
     },
     "license": "MIT (openfilm, patched: not the OpenFilm product); Apache-2.0 (playwright-core)",
-    "bytes": 40715829,
-    "sha256": "8b00bae8a7dd422425d8503bf1bc85eea663e88dd512191a3d16a0b69101a1b0",
-    "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/openfilm/0.3.0/8b00bae8a7dd422425d8503bf1bc85eea663e88dd512191a3d16a0b69101a1b0/openfilm-toolkit.tgz"
+    "bytes": 40716107,
+    "sha256": "9890ddffe7994efeda3b5057448ffe79744bd30b6704e815654ad7f34b9a188d",
+    "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/openfilm/0.3.0/9890ddffe7994efeda3b5057448ffe79744bd30b6704e815654ad7f34b9a188d/openfilm-toolkit.tgz"
   }
 }

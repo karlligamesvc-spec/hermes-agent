@@ -25,10 +25,17 @@
  * (`studioChildEnv` passes a short list), and so that a Studio crash is not an
  * APEX crash. The host's stdin is a pipe from main: when APEX goes, Studio goes.
  *
+ * No other Studio outlives APEX (hc-1177). The agent's `openfilm` runs hosted
+ * (OPENFILM_HOSTED=1, APEX's patch 0003): it uses this Studio and never starts
+ * one. Main's environment carries the same, so whatever else the engine runs
+ * with OpenFilm works in APEX's folders, where Desktop sees it in run.json. A
+ * Studio run.json names that is not Desktop's is asked to quit before Desktop
+ * starts its own, and ended when APEX quits.
+ *
  * Electron-free: unit-tested with `vitest --project electron`.
  */
 
-import { type ChildProcess, spawn as nodeSpawn } from 'node:child_process'
+import { type ChildProcess, spawn as nodeSpawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { delimiter, isAbsolute, join } from 'node:path'
 
@@ -48,6 +55,11 @@ const HOST_FILE = 'apex-studio-host.mjs'
 const HOST_MARK = '@@apex-openfilm '
 const READY_TIMEOUT_MS = 60_000
 const OPEN_TIMEOUT_MS = 15_000
+/** Another Studio asked to quit has this long to answer, and then this long to be gone. */
+const QUIT_ANSWER_MS = 3_000
+const QUIT_GONE_MS = 5_000
+/** A Studio ended at APEX's quit (asked, on macOS and Linux) is ended hard this long after, should it still be there. */
+const HARD_END_AFTER_S = 5
 /** The engine's install of the toolkit (and of the Chromium it draws in) may take this long on a slow line. */
 const INSTALL_TIMEOUT_MS = 45 * 60_000
 /** After a failed install, a new one waits this long, then starts on the next trigger: no retry storm, no prompt. */
@@ -160,6 +172,119 @@ export function openfilmStudioFolders(dataRoot: string): Record<string, string> 
     OPENFILM_SAVED: join(dataRoot, 'saved'),
     OPENFILM_SKILLS: join(dataRoot, 'skills'),
     OPENFILM_EXPORTS: join(dataRoot, 'exports')
+  }
+}
+
+/**
+ * What every process the engine runs gets from main's environment: OpenFilm in
+ * Studio's folders, hosted (the CLI never starts a Studio: APEX's patch 0003),
+ * no browser window, no npm update check. Set only while the switch is on.
+ */
+export function openfilmAgentEnv(plan: Extract<OpenfilmStudioPlan, { on: true }>): Record<string, string> {
+  return {
+    ...openfilmStudioFolders(plan.dataRoot),
+    OPENFILM_HOSTED: '1',
+    OPENFILM_NO_BROWSER: '1',
+    OPENFILM_NO_UPDATE_CHECK: '1'
+  }
+}
+
+/** The Studio a run.json names: OpenFilm writes it in OPENFILM_HOME once Studio listens, and removes it as it stops. */
+export interface AdvertisedStudio {
+  key: string
+  origin: string
+  pid: number
+  /** The openfilm CLI's supervisor, which starts Studio again if it ends unexpectedly. */
+  supervisor: null | number
+}
+
+export function readAdvertisedStudio(
+  home: string,
+  read: (path: string) => string = path => readFileSync(path, 'utf8')
+): AdvertisedStudio | null {
+  let said: { key?: unknown; origin?: unknown; pid?: unknown; supervisor?: unknown } | null = null
+
+  try {
+    said = JSON.parse(read(join(home, 'run.json')))
+  } catch {
+    return null
+  }
+
+  const pid = Number(said?.pid)
+  const supervisor = Number(said?.supervisor)
+
+  return Number.isInteger(pid) && pid > 0 && typeof said?.origin === 'string' && typeof said?.key === 'string'
+    ? {
+        pid,
+        supervisor: Number.isInteger(supervisor) && supervisor > 0 ? supervisor : null,
+        origin: said.origin,
+        key: said.key
+      }
+    : null
+}
+
+/** What Desktop does to a Studio it did not start. */
+export interface StudioProcesses {
+  alive: (pid: number) => boolean
+  /** Its command line names OpenFilm: never a process that took a gone Studio's pid. */
+  isOpenfilm: (pid: number) => boolean
+  /** Ends it and what it started; returns at once. */
+  end: (pid: number) => void
+}
+
+export function systemStudioProcesses(
+  platform: NodeJS.Platform = process.platform,
+  run: typeof spawnSync = spawnSync,
+  spawn: typeof nodeSpawn = nodeSpawn
+): StudioProcesses {
+  const windows = platform === 'win32'
+
+  return {
+    alive: pid => {
+      try {
+        process.kill(pid, 0)
+
+        return true
+      } catch (error) {
+        return (error as NodeJS.ErrnoException).code === 'EPERM'
+      }
+    },
+    isOpenfilm: pid => {
+      const said = windows
+        ? run(
+            'powershell.exe',
+            [
+              '-NoProfile',
+              '-NonInteractive',
+              '-Command',
+              `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`
+            ],
+            { encoding: 'utf8', timeout: 10_000, windowsHide: true }
+          )
+        : run('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8', timeout: 3_000 })
+
+      return /openfilm/i.test(String(said.stdout ?? ''))
+    },
+    end: pid => {
+      if (windows) {
+        // The whole tree: on Windows a signal ends one process, and the supervisor would start Studio again.
+        run('taskkill', ['/PID', String(pid), '/T', '/F'], { timeout: 10_000, windowsHide: true })
+
+        return
+      }
+
+      try {
+        // Studio closes on SIGTERM (its supervisor passes it on); whatever is still there a few seconds later is
+        // ended hard, by a shell that outlives APEX.
+        process.kill(pid, 'SIGTERM')
+        spawn('/bin/sh', ['-c', `sleep ${HARD_END_AFTER_S}; kill -9 ${pid} 2>/dev/null`], {
+          detached: true,
+          stdio: 'ignore'
+        }).unref()
+      } catch {
+        // gone already
+      }
+    }
   }
 }
 
@@ -289,6 +414,8 @@ export interface OpenfilmStudioDeps {
   hermesHome: string
   log?: (line: string) => void
   now?: () => number
+  /** What is done to a Studio Desktop did not start (system calls by default). */
+  processes?: StudioProcesses
   readyTimeoutMs?: number
   spawn?: typeof nodeSpawn
 }
@@ -308,7 +435,7 @@ export interface OpenfilmStudio {
   /** Have the engine install the toolkit in the background, unless it is there, on its way, or just failed. */
   prefetch: () => 'off' | 'preparing' | 'ready' | 'started' | 'waiting'
   status: () => OpenfilmStudioStatus
-  /** Ask Studio to stop (app quit); it also stops by itself when main's pipe closes. */
+  /** App quit: Studio stops (it also does when main's pipe closes), and so does any other in APEX's folders. */
   stop: () => void
 }
 
@@ -319,6 +446,9 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
   const fetchImpl = deps.fetchImpl ?? fetch
   const now = deps.now ?? Date.now
   const plan = planOpenfilmStudio(deps.env, deps.hermesHome)
+  const processes = deps.processes ?? systemStudioProcesses()
+  /** Other Studios that would not quit when Desktop started its own: ended at APEX's quit. */
+  const others = new Map<number, AdvertisedStudio>()
   let child: ChildProcess | null = null
   let starting: null | Promise<RunningStudio> = null
   let installing: null | Promise<boolean> = null
@@ -423,7 +553,7 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
       return starting
     }
 
-    const attempt = launch(on, toolkit)
+    const attempt = stopOthers(on).then(() => launch(on, toolkit))
     starting = attempt
     // A failed start is not kept: the next open tries again.
     attempt.catch(() => {
@@ -433,6 +563,70 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
     })
 
     return attempt
+  }
+
+  /**
+   * A Studio run.json names that is not Desktop's: one the openfilm CLI started
+   * (an agent's `look` or `render` before any film was opened, from a toolkit
+   * without APEX's patch 0003). Desktop does not take it over (it was started
+   * with someone else's environment, and the CLI may replace it): it is asked to
+   * quit, then ended if it does not go. Another app's own (it answers 423) is
+   * left to that app.
+   */
+  async function stopOthers(on: Extract<OpenfilmStudioPlan, { on: true }>): Promise<void> {
+    const other = readAdvertisedStudio(openfilmStudioFolders(on.dataRoot).OPENFILM_HOME)
+
+    if (!other || !processes.alive(other.pid)) {
+      return
+    }
+
+    const answer = await fetchImpl(`${other.origin}/api/quit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-studio-key': other.key },
+      body: '{}',
+      signal: AbortSignal.timeout(QUIT_ANSWER_MS)
+    })
+      .then(response => response.status)
+      .catch(() => 0)
+
+    if (answer === 423) {
+      log(`[openfilm-studio] another app's Studio runs in APEX's folders (pid ${other.pid}); left to that app`)
+
+      return
+    }
+
+    const gone = () => !processes.alive(other.pid) && !(other.supervisor && processes.alive(other.supervisor))
+
+    const goneWithin = async (ms: number) => {
+      for (let waited = 0; !gone() && waited < ms; waited += 100) {
+        await new Promise(done => setTimeout(done, 100))
+      }
+
+      return gone()
+    }
+
+    if ((answer === 200 && (await goneWithin(QUIT_GONE_MS))) || (end(other) && (await goneWithin(QUIT_GONE_MS)))) {
+      log(`[openfilm-studio] stopped another Studio in APEX's folders (pid ${other.pid})`)
+
+      return
+    }
+
+    // Still there (or its pid is now another program's): looked at again when APEX quits.
+    others.set(other.pid, other)
+  }
+
+  /** Ends another Studio's processes, each only while its command line still names OpenFilm. */
+  function end(other: AdvertisedStudio): boolean {
+    let ended = false
+
+    for (const pid of [other.supervisor, other.pid]) {
+      if (pid && processes.alive(pid) && processes.isOpenfilm(pid)) {
+        processes.end(pid)
+        ended = true
+      }
+    }
+
+    return ended
   }
 
   function launch(on: Extract<OpenfilmStudioPlan, { on: true }>, toolkit: OpenfilmToolkit): Promise<RunningStudio> {
@@ -580,6 +774,29 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
   }
 
   function stop() {
+    stopOwn()
+
+    if (plan.on === false) {
+      return
+    }
+
+    // Any other Studio in APEX's folders ends with APEX: the one run.json names now, and any that would not quit.
+    const named = readAdvertisedStudio(openfilmStudioFolders(plan.dataRoot).OPENFILM_HOME)
+
+    if (named && named.pid !== child?.pid) {
+      others.set(named.pid, named)
+    }
+
+    for (const other of others.values()) {
+      if (end(other)) {
+        log(`[openfilm-studio] ended another Studio in APEX's folders (pid ${other.pid}) as APEX quits`)
+      }
+    }
+
+    others.clear()
+  }
+
+  function stopOwn() {
     const proc = child
 
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
@@ -605,12 +822,21 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
   return { open, plan, prefetch, status, stop }
 }
 
-/** Main's side: the window asks for the status, a Studio address, a background install; quitting stops Studio. */
+/**
+ * Main's side: the window asks for the status, a Studio address, a background
+ * install; quitting stops Studio. While the switch is on, main's environment
+ * (`env`, which every engine started after this inherits) gets `openfilmAgentEnv`.
+ */
 export function registerOpenfilmStudio(
   studio: OpenfilmStudio,
   ipcMain: { handle(channel: string, listener: (event: any, ...args: any[]) => unknown): void },
-  app: { on(event: 'will-quit', listener: () => void): unknown }
+  app: { on(event: 'will-quit', listener: () => void): unknown },
+  env: Record<string, string | undefined> = process.env
 ): void {
+  if (studio.plan.on === true) {
+    Object.assign(env, openfilmAgentEnv(studio.plan))
+  }
+
   ipcMain.handle('hermes:openfilmStudio:status', () => studio.status())
   ipcMain.handle('hermes:openfilmStudio:open', (_event, folder) => studio.open(folder))
   ipcMain.handle('hermes:openfilmStudio:prefetch', () => studio.prefetch())
