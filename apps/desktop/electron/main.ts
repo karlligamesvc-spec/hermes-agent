@@ -22698,9 +22698,8 @@ ipcMain.handle('hermes:workflowDomain:localVideoReadiness', async () => {
   }
 })
 
-// PROTOTYPE, only for an account the Scheduler opens it to (hc-1178): OpenFilm
-// Studio as the preview pane's editor for an agent's film.html. Studio runs in a
-// child with the engine's PATH (its bundled ffmpeg first); see openfilm-studio.ts.
+// PROTOTYPE, only for an account the Scheduler opens it to (hc-1178): OpenFilm Studio as the preview pane's editor
+// for an agent's film.html, in a child with the engine's PATH (its bundled ffmpeg first); see openfilm-studio.ts.
 const openfilmStudio = createOpenfilmStudio({
   env: process.env,
   hermesHome: HERMES_HOME,
