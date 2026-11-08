@@ -1,4 +1,7 @@
-"""hc-1183: a Desktop chat says where a scheduled job's result goes, and never that it comes back here.
+"""hc-1183 / hc-1186: a Desktop chat says where a scheduled job's result goes, matching what the engine does.
+
+With hc-1186's delivery seam in place the result comes back into the chat (and to a bound Feishu or WeChat);
+without it the section keeps hc-1183's wording, that it does not come back here.
 
 test_result_delivery_prompt_identity.py checks every surface's whole prompt in a fresh process (only Desktop
 chats carry this section). These tests pin the section itself: who gets it, what it says, when it names the
@@ -15,6 +18,7 @@ from agent.system_prompt import build_system_prompt
 from apex_overlay import (
     approval_rules_prompt,
     chatcut,
+    cron_desktop_delivery,
     cron_result_prompt,
     desktop_version,
     handoff,
@@ -32,6 +36,8 @@ from run_agent import AIAgent
 DESKTOP = {"platform": "desktop"}
 PLAIN = cron_result_prompt.prompt()
 WITH_PAGE = cron_result_prompt.prompt(cron_result_prompt.WHERE_TO_LOOK)
+NOT_BACK = cron_result_prompt.prompt(comes_back=False)
+REAL_ARMED = cron_desktop_delivery.armed
 
 
 @pytest.fixture
@@ -44,6 +50,7 @@ def root(tmp_path, monkeypatch):
     monkeypatch.setenv(single_thread_prompt.SWITCH_ENV, "1")
     monkeypatch.delenv(chatcut.KEY_ENV, raising=False)
     monkeypatch.delenv(chatcut.BASE_ENV, raising=False)
+    monkeypatch.setattr(cron_desktop_delivery, "armed", lambda: True)  # hc-1186's seam in place
     return home
 
 
@@ -61,6 +68,31 @@ def _mark_developer_mode(home: Path) -> None:
 
 def test_a_desktop_chat_carries_the_rule(root):
     assert cron_result_prompt.render_section(DESKTOP) == PLAIN
+
+
+def test_without_the_delivery_seam_it_says_the_result_does_not_come_back(root, monkeypatch):
+    """What the chat promises follows what the engine does: no seam, no promise."""
+    monkeypatch.setattr(cron_desktop_delivery, "armed", lambda: False)
+    assert cron_result_prompt.render_section(DESKTOP) == NOT_BACK
+    assert "不会出现在这个对话里" in NOT_BACK and "回到这个对话里。" not in NOT_BACK.split("\n")[1]
+
+
+def test_armed_follows_the_real_scheduler_patch(root, monkeypatch):
+    """armed() reads the scheduler's own sender once it is loaded, not a flag set at discovery."""
+    from cron import scheduler
+
+    # The fixture stands in for the seam; this test reads the real check (installing scans the
+    # sandboxed HERMES_HOME for pending results, never the user's).
+    monkeypatch.setattr(cron_desktop_delivery, "armed", REAL_ARMED)
+
+    monkeypatch.setattr(scheduler, "_deliver_result", scheduler._deliver_result)
+    original = scheduler._deliver_result
+    if getattr(original, cron_desktop_delivery._MARK, False):
+        original = original.__wrapped__
+        monkeypatch.setattr(scheduler, "_deliver_result", original)
+    assert cron_desktop_delivery.armed() is False
+    assert cron_desktop_delivery._install_scheduler(scheduler) is True
+    assert cron_desktop_delivery.armed() is True
 
 
 @pytest.mark.parametrize(
@@ -118,9 +150,9 @@ def test_the_settings_page_it_names_is_the_one_desktop_shows():
 @pytest.mark.parametrize(
     ("rule", "phrases"),
     [
-        pytest.param(0, ("后台单独跑", "不会出现在这个对话里"), id="not-back-here"),
-        pytest.param(1, ("飞书或微信", "那边的私聊", "只保存在本机的除外", "只保存在这台电脑上"), id="where-it-goes"),
-        pytest.param(2, ("照实告诉用户结果会去哪、在哪看", "不要说结果会回到这个对话里", "以它为准"), id="say-so"),
+        pytest.param(0, ("后台单独跑", "「定时任务结果」", "自动回到这个对话里"), id="back-here"),
+        pytest.param(1, ("飞书或微信", "也会同时发到那边的私聊", "只保存在本机的，不回对话也不发出去"), id="also-im"),
+        pytest.param(2, ("照实告诉用户结果会回到这个对话", "连着飞书或微信的也会发到那边", "以它为准"), id="say-so"),
     ],
 )
 def test_what_the_rule_says(rule, phrases):
@@ -128,7 +160,21 @@ def test_what_the_rule_says(rule, phrases):
         assert phrase in cron_result_prompt.rules()[rule]
 
 
-@pytest.mark.parametrize("text", [PLAIN, WITH_PAGE], ids=["plain", "with-page"])
+@pytest.mark.parametrize(
+    ("rule", "phrases"),
+    [
+        pytest.param(0, ("后台单独跑", "不会出现在这个对话里"), id="not-back-here"),
+        pytest.param(1, ("飞书或微信", "那边的私聊", "只保存在本机的除外", "只保存在这台电脑上"), id="where-it-goes"),
+        pytest.param(2, ("照实告诉用户结果会去哪、在哪看", "不要说结果会回到这个对话里", "以它为准"), id="say-so"),
+    ],
+)
+def test_what_the_fallback_says(rule, phrases):
+    for phrase in phrases:
+        assert phrase in cron_result_prompt.rules(comes_back=False)[rule]
+
+
+@pytest.mark.parametrize("text", [PLAIN, WITH_PAGE, NOT_BACK, cron_result_prompt.prompt(cron_result_prompt.WHERE_TO_LOOK, False)],
+                         ids=["plain", "with-page", "fallback", "fallback-with-page"])
 def test_every_rule_reaches_the_prompt_within_the_section_cap(text):
     assert text.startswith(cron_result_prompt.HEADER + "\n")
     assert text.count("\n- ") == len(cron_result_prompt.rules())

@@ -9,8 +9,11 @@ create result says so, in English; still, in the hc-1166 acceptance run (0.17.74
 the result would come back into the conversation. The ``deliver`` field of the tool schema reads "Omit to address
 the chat/topic this job was created from", which is true only for IM chats.
 
-So every Desktop chat gets this section: the result does not come back here, where it goes instead, and to tell
-the user so. Desktop is told apart the way apex.honesty does it (``honesty_prompt.on_desktop``), so a cloud
+So every Desktop chat gets this section, saying where the result goes and to tell the user so. Since hc-1186
+(``cron_desktop_delivery``) a job made in a Desktop chat posts its result back into that chat, and with Feishu or
+WeChat bound also to that home channel; the section says exactly that while that seam is in place
+(``cron_desktop_delivery.armed()``), and falls back to hc-1183's wording ("it does not come back here") when it
+is not, so what the assistant promises always matches what the engine does. Desktop is told apart the way apex.honesty does it (``honesty_prompt.on_desktop``), so a cloud
 container's prompt stays as it was; subagents, cron runs and IM chats have another platform and get nothing.
 The page to open it is named only where it exists: product mode with an APEX account has
 设置 › 助手与记录 › 定时运行 (apps/desktop product-settings.ts ``PRODUCT_VIEWS``); developer mode and an own key
@@ -34,7 +37,15 @@ WHERE_TO_LOOK = "，用户在「设置 › 助手与记录 › 定时运行」�
 HEADER = "【定时任务的结果去哪 · 平台规则】"
 
 
-def rules(where: str = "") -> tuple[str, ...]:
+def rules(where: str = "", comes_back: bool = True) -> tuple[str, ...]:
+    if comes_back:
+        return (
+            "在这里建的定时任务，到点后在后台单独跑，跑完的结果会作为一条「定时任务结果」自动回到这个对话里。",
+            "APEX 连着飞书或微信时，结果也会同时发到那边的私聊；任务设成只保存在本机的，不回对话也不发出去，"
+            f"只保存在这台电脑上{where}。",
+            "建好或改好定时任务后，照实告诉用户结果会回到这个对话（连着飞书或微信的也会发到那边）；"
+            "工具返回说结果不会投递时，以它为准。",
+        )
     return (
         "在这里建的定时任务，到点后在后台单独跑，跑出的结果不会出现在这个对话里。",
         "APEX 连着飞书或微信时，结果会发到那边的私聊（任务设成只保存在本机的除外）；"
@@ -44,8 +55,8 @@ def rules(where: str = "") -> tuple[str, ...]:
     )
 
 
-def prompt(where: str = "") -> str:
-    return HEADER + "\n" + "\n".join(f"- {rule}" for rule in rules(where))
+def prompt(where: str = "", comes_back: bool = True) -> str:
+    return HEADER + "\n" + "\n".join(f"- {rule}" for rule in rules(where, comes_back))
 
 
 def settings_page_shown() -> bool:
@@ -57,11 +68,11 @@ def settings_page_shown() -> bool:
 
 def render_section(session_info: Mapping[str, Any] | None = None) -> str:
     """The section in a Desktop chat, else "" (the runtime then adds none)."""
-    from apex_overlay import honesty_prompt
+    from apex_overlay import cron_desktop_delivery, honesty_prompt
 
     if (session_info or {}).get("platform") != "desktop" or not honesty_prompt.on_desktop():
         return ""
-    return prompt(WHERE_TO_LOOK if settings_page_shown() else "")
+    return prompt(WHERE_TO_LOOK if settings_page_shown() else "", comes_back=cron_desktop_delivery.armed())
 
 
 def apply(ctx: Any) -> bool:
