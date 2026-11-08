@@ -79,6 +79,10 @@ _SEAM_MODULES = (
     "im_launch_profile",
     # hc-1174 the Feishu SDK's websocket address is logged without its credentials.
     "lark_log_redaction",
+    # hc-1183 a Desktop chat says where a scheduled job's result goes.
+    "cron_result_prompt",
+    # hc-1183 a cron update that leaves the job delivering nowhere says so, as create does.
+    "cron_update_notice",
 )
 
 
