@@ -66,12 +66,15 @@ def ready_toolkit(home: Path) -> dict | None:
 
 
 def openfilm_env(home: Path, ready: dict) -> dict:
-    """What OpenFilm's CLI runs with: Desktop's editor folders, no browser window, the Agent browser's Chromium."""
+    """What OpenFilm's CLI runs with: Desktop's editor folders, no browser window, the Agent browser's Chromium, and
+    hosted: it uses the Studio Desktop runs and never starts one of its own, which nothing would stop when APEX quits
+    (OPENFILM_HOSTED, APEX's patch 0003)."""
     root = home / 'openfilm'
     return {
         **{name: str(root / folder) for name, folder in FOLDERS.items()},
         'OPENFILM_NO_BROWSER': '1',
         'OPENFILM_NO_UPDATE_CHECK': '1',
+        'OPENFILM_HOSTED': '1',
         'OPENFILM_CHROMIUM': ready['chromium'],
     }
 

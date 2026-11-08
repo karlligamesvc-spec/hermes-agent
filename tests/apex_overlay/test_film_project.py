@@ -84,8 +84,19 @@ def test_env_runs_openfilm_with_the_editor_folders_no_browser_and_the_agent_brow
     assert said['cli'] == str(ready['toolkit'] / 'node_modules/openfilm/bin/openfilm.mjs')
     assert said['env'] == {
         **{name: str(tmp_path / 'openfilm' / folder) for name, folder in film_project.FOLDERS.items()},
-        'OPENFILM_NO_BROWSER': '1', 'OPENFILM_NO_UPDATE_CHECK': '1', 'OPENFILM_CHROMIUM': str(ready['chromium']),
+        'OPENFILM_NO_BROWSER': '1', 'OPENFILM_NO_UPDATE_CHECK': '1', 'OPENFILM_HOSTED': '1',
+        'OPENFILM_CHROMIUM': str(ready['chromium']),
     }
+
+
+def test_hosted_is_the_switch_the_toolkit_patch_reads():
+    # OPENFILM_HOSTED=1 is what keeps the agent's openfilm from starting a Studio nothing stops (patch 0003): the
+    # name and the value the patch tests must be the ones env gives.
+    patch = (ROOT / 'scripts/media-tools/openfilm/patches/0003-hosted-studio.patch').read_text(encoding='utf-8')
+    pin = json.loads((ROOT / 'scripts/media-tools/openfilm/pin.json').read_text(encoding='utf-8'))
+    assert "+  if (process.env.OPENFILM_HOSTED === '1') {" in patch
+    assert 'patches/0003-hosted-studio.patch' in pin['patches']
+    assert film_project.openfilm_env(Path('/h'), {'chromium': '/c'})['OPENFILM_HOSTED'] == '1'
 
 
 def test_env_installs_the_toolkit_first_when_it_is_not_there(tmp_path, monkeypatch, capsys):

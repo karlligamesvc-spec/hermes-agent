@@ -1,4 +1,4 @@
-// Reverse check for the OpenFilm keep-track-fields patch: each part of the fix, taken back out of a copy of the patched
+// Reverse check for the OpenFilm patches: each part of the fix, taken back out of a copy of the patched
 // package (an exact text that must be found exactly once), has to turn track-fields.test.mjs red, and the copy as
 // patched has to pass it.
 //   OPENFILM_PACKAGE=<patched openfilm package> node reverse-verify.mjs
@@ -119,6 +119,13 @@ export const INJECTIONS = [
     find: ': own ? { executablePath: own } : {}',
     replace: ': {}',
     fails: ['every headless launch starts the Chromium', 'nothing is downloaded in its place']
+  },
+  {
+    part: 'with OPENFILM_HOSTED=1 the CLI never starts, restarts or replaces a Studio (patch 0003)',
+    file: 'studio/client.mjs',
+    find: "if (process.env.OPENFILM_HOSTED === '1') {",
+    replace: 'if (false) {',
+    fails: ['starts none and carries on without it', 'never replaced, even when asked for a fresh one']
   }
 ]
 
