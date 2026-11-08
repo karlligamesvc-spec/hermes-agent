@@ -1,0 +1,36 @@
+name: OpenFilm patches
+
+# hc-1175: APEX's OpenFilm toolkit is the pinned package (scripts/media-tools/openfilm/pin.json) with the patches in
+# scripts/media-tools/openfilm/patches applied. This gate fires only on changes to that folder or to this file, so a
+# pull request that changes a patch, the pin, the guard or the reverse check always runs it, and no other pull request
+# can turn it red. verify.mjs checks both pins (npm integrity, upstream commit), applies the patches, then runs the
+# guard, the reverse check and upstream's own tests of what the patches touch (about a minute).
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/media-tools/openfilm/**'
+      - '.github/workflows/openfilm-patch.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/media-tools/openfilm/**'
+      - '.github/workflows/openfilm-patch.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify the OpenFilm patches
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Pins, patches, guard, reverse check, upstream tests
+        run: node scripts/media-tools/openfilm/verify.mjs "$RUNNER_TEMP/openfilm-verify"
