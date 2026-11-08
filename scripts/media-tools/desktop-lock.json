@@ -182,12 +182,15 @@
       "0002-host-chromium",
       "0003-hosted-studio"
     ],
+    "editor": [
+      "0001-apex-editor"
+    ],
     "dependencies": {
       "playwright-core": "1.61.1"
     },
-    "license": "MIT (openfilm, patched: not the OpenFilm product); Apache-2.0 (playwright-core)",
-    "bytes": 40716107,
-    "sha256": "9890ddffe7994efeda3b5057448ffe79744bd30b6704e815654ad7f34b9a188d",
-    "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/openfilm/0.3.0/9890ddffe7994efeda3b5057448ffe79744bd30b6704e815654ad7f34b9a188d/openfilm-toolkit.tgz"
+    "license": "MIT (openfilm, patched: not the OpenFilm product; its editor rebuilt as APEX's); Apache-2.0 (playwright-core)",
+    "bytes": 41612524,
+    "sha256": "5254c8a04a735240ab10ec0a23aedc524cc0b49c37ca0990052f14d8c8a95571",
+    "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/openfilm/0.3.0/5254c8a04a735240ab10ec0a23aedc524cc0b49c37ca0990052f14d8c8a95571/openfilm-toolkit.tgz"
   }
 }

@@ -1,0 +1,713 @@
+diff --git a/studio/ui/apex/brand.mjs b/studio/ui/apex/brand.mjs
+new file mode 100644
+index 0000000..fd2ffd0
+--- /dev/null
++++ b/studio/ui/apex/brand.mjs
+@@ -0,0 +1,33 @@
++/**
++ * APEX's editor (hc-1188) never shows the OpenFilm name: a modified OpenFilm may not carry it (OpenFilm's trademark
++ * terms). `withoutBrand` rewrites a text in one of Studio's languages so that where it named OpenFilm it says "the
++ * editor", as that language says it at the start of a sentence and inside one. vite.config.ts runs it over each
++ * language's table (src/i18n/<code>.ts) as the editor is built, so the built editor holds no such phrase at all.
++ */
++
++/** the editor, in each language: as a sentence (or a quoted phrase) begins it, inside one, and as an owner */
++export const EDITOR = {
++  en: { start: 'The editor', inside: 'the editor', owner: ['The editor’s', 'the editor’s'] },
++  'zh-CN': { start: '编辑器', inside: '编辑器' },
++  ja: { start: 'エディター', inside: 'エディター' },
++  ko: { start: '편집기', inside: '편집기' },
++  es: { start: 'El editor', inside: 'el editor' },
++};
++
++/** Languages written without spaces between words: the name's own spaces go with it, but beside a Latin word. */
++const UNSPACED = new Set(['zh-CN', 'ja']);
++
++/** `text` (a phrase, or a whole table's source) in `language`, with "the editor" where it named OpenFilm. */
++export function withoutBrand(text, language) {
++  const word = EDITOR[language] ?? EDITOR.en;
++  /* English already saying "the" before the name: the editor, not "the the editor" */
++  const said = word === EDITOR.en ? text.replace(/\b([Tt]he) OpenFilm(['’]s)?/g, (_, the, owned) => `${the} editor${owned ? '’s' : ''}`) : text;
++  return said.replace(/( ?)OpenFilm(['’]s)?( ?)/g, (match, lead, owned, trail, at, all) => {
++    const before = all.slice(0, at);
++    const start = /(^|[.!?:。！？：'"`]\s*)$/.test(before + lead);
++    const term = owned && word.owner ? word.owner[start ? 0 : 1] : start ? word.start : word.inside;
++    if (!UNSPACED.has(language)) return `${lead}${term}${trail}`;
++    const after = all[at + match.length] ?? '';
++    return `${/[A-Za-z0-9}]$/.test(before) ? lead : ''}${term}${/^[A-Za-z0-9{]/.test(after) ? trail : ''}`;
++  });
++}
+diff --git a/studio/ui/index.html b/studio/ui/index.html
+index c0c3c8b..9e36761 100644
+--- a/studio/ui/index.html
++++ b/studio/ui/index.html
+@@ -1,15 +1,17 @@
+ <!doctype html>
+-<html lang="en">
++<html lang="zh-CN">
+ <head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+-<title>OpenFilm Studio</title>
+-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%228%206%2084%2092%22%20role%3D%22img%22%20aria-label%3D%22OpenFilm%22%3E%3Ctitle%3EOpenFilm%3C%2Ftitle%3E%3Cstyle%3E.i%7Bfill%3A%23111%7D%40media%20(prefers-color-scheme%3Adark)%7B.i%7Bfill%3A%23fff%7D%7D%3C%2Fstyle%3E%3Cmask%20id%3D%22gap%22%20maskUnits%3D%22userSpaceOnUse%22%20x%3D%220%22%20y%3D%220%22%20width%3D%22100%22%20height%3D%22100%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22%23fff%22%2F%3E%3Cpath%20d%3D%22M17%2012H37Q40%2012%2040%2015V27Q40%2029%2038.5%2030.5L31%2037V88Q31%2092%2027%2092Q23%2092%2023%2088V37L15.5%2030.5Q14%2029%2014%2027V15Q14%2012%2017%2012Z%22%20stroke%3D%22%23000%22%20stroke-width%3D%227%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fmask%3E%3Cg%20class%3D%22i%22%20mask%3D%22url(%23gap)%22%3E%3Crect%20x%3D%2222%22%20y%3D%2212%22%20width%3D%2264%22%20height%3D%2220%22%20rx%3D%225%22%2F%3E%3Crect%20x%3D%2225%22%20y%3D%2244%22%20width%3D%2247%22%20height%3D%2219%22%20rx%3D%225%22%2F%3E%3C%2Fg%3E%3Cpath%20class%3D%22i%22%20d%3D%22M17%2012H37Q40%2012%2040%2015V27Q40%2029%2038.5%2030.5L31%2037V88Q31%2092%2027%2092Q23%2092%2023%2088V37L15.5%2030.5Q14%2029%2014%2027V15Q14%2012%2017%2012Z%22%2F%3E%3C%2Fsvg%3E">
++<title>剪辑</title>
+ <script>
+-  /* the theme before the first paint, so the wrong one never flashes: dark unless the person chose another */
++  /* APEX's editor (hc-1188): Studio in APEX Desktop, which hosts it (lib/host.ts), so it leaves out what only makes
++     sense in a browser; light first, as APEX is, unless the person chose another */
++  window.openfilmHost = { version: 1, name: 'APEX' };
++  /* the theme before the first paint, so the wrong one never flashes */
+   (function () {
+-    var t = 'dark';
+-    try { t = localStorage.getItem('openfilm.theme') || 'dark'; } catch (e) {}
++    var t = 'light';
++    try { t = localStorage.getItem('openfilm.theme') || 'light'; } catch (e) {}
+     if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+     document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
+   })();
+diff --git a/studio/ui/src/App.tsx b/studio/ui/src/App.tsx
+index 6fc385d..cbdcf24 100644
+--- a/studio/ui/src/App.tsx
++++ b/studio/ui/src/App.tsx
+@@ -16,7 +16,6 @@ import { BrandLoadingScreen } from './components/BrandLoadingScreen';
+ import { ProjectsPopover } from './components/ProjectsLibrary';
+ import { Launcher } from './components/Launcher';
+ import { studioHost } from './lib/host';
+-import { WhatsNew } from './components/WhatsNew';
+ import { sourcesApi } from './lib/project-sources';
+ import { LIST_WAIT_MS, within } from './lib/projects-page';
+ 
+@@ -87,7 +86,8 @@ export function App() {
+           <ProjectsPopover open currentProjectId="" onOpen={(next) => go(`/projects/${next}`)} onCurrentRemoved={() => {}} />
+         </div>
+       );
+-  return <>{page}<ConnectionNotice /><WhatsNew /></>;
++  /* APEX's editor (hc-1188): no OpenFilm release notes after an update; the editor comes with APEX */
++  return <>{page}<ConnectionNotice /></>;
+ }
+ 
+ /**
+diff --git a/studio/ui/src/components/BrandLoadingScreen.tsx b/studio/ui/src/components/BrandLoadingScreen.tsx
+index 7bd35f3..83ecfc0 100644
+--- a/studio/ui/src/components/BrandLoadingScreen.tsx
++++ b/studio/ui/src/components/BrandLoadingScreen.tsx
+@@ -15,7 +15,6 @@
+  * one loading screen that stays lit throughout, not two that flash in turn.
+  */
+ import { useT } from '@/i18n';
+-import { BrandLogo } from './BrandLogo';
+ 
+ export function BrandLoadingScreen({
+   labelKey,
+@@ -38,7 +37,6 @@ export function BrandLoadingScreen({
+     >
+       {/* Kept small: an enlarged logo in the middle of the screen looks like a splash ad, while
+           this screen only means "one moment". The bar below is what moves. */}
+-      <span className="text-[var(--text)]"><BrandLogo size={34} /></span>
+ 
+       {labelKey ? (
+         <p className="mt-6 text-[14px] font-medium tracking-[-0.01em] text-[var(--text)]">
+diff --git a/studio/ui/src/components/BrandLogo.tsx b/studio/ui/src/components/BrandLogo.tsx
+index f6d252f..7a0150b 100644
+--- a/studio/ui/src/components/BrandLogo.tsx
++++ b/studio/ui/src/components/BrandLogo.tsx
+@@ -1,25 +1,9 @@
+-import React from 'react';
++import { Settings } from 'lucide-react';
+ 
+ /*
+- * The mark: a playhead over two clips, forming an F, in the surrounding text's color. The clips are cut away around
+- * the playhead (a real gap, so whatever is behind shows through), which keeps the playhead's shape in one color.
++ * APEX's editor (hc-1188) carries no OpenFilm mark (OpenFilm's trademark terms: a modified version has its own name and
++ * look). Where Studio drew it, the button opens Settings, so it is a settings gear.
+  */
+-const VIEWBOX = '8 6 84 92';
+-const PLAYHEAD = 'M17 12H37Q40 12 40 15V27Q40 29 38.5 30.5L31 37V88Q31 92 27 92Q23 92 23 88V37L15.5 30.5Q14 29 14 27V15Q14 12 17 12Z';
+-
+ export function BrandLogo({ size = 18 }: { size?: number }) {
+-  const gap = `openfilm-gap-${React.useId().replace(/:/g, '')}`;
+-  return (
+-    <svg width={size} height={size} viewBox={VIEWBOX} fill="currentColor" className="block shrink-0" role="img" aria-label="OpenFilm">
+-      <mask id={gap} maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+-        <rect width="100" height="100" fill="#fff" />
+-        <path d={PLAYHEAD} stroke="#000" strokeWidth="7" strokeLinejoin="round" />
+-      </mask>
+-      <g mask={`url(#${gap})`}>
+-        <rect x="22" y="12" width="64" height="20" rx="5" />
+-        <rect x="25" y="44" width="47" height="19" rx="5" />
+-      </g>
+-      <path d={PLAYHEAD} />
+-    </svg>
+-  );
++  return <Settings size={size} strokeWidth={1.75} className="block shrink-0" aria-hidden="true" />;
+ }
+diff --git a/studio/ui/src/components/ProjectsLibrary.tsx b/studio/ui/src/components/ProjectsLibrary.tsx
+index 4dcad1e..83bff22 100644
+--- a/studio/ui/src/components/ProjectsLibrary.tsx
++++ b/studio/ui/src/components/ProjectsLibrary.tsx
+@@ -235,7 +235,8 @@ const COVER_WAIT_MS = 4000;
+ 
+ export function LauncherSwitch({ view, onView }: { view: LauncherView; onView: (view: LauncherView) => void }) {
+   const t = useT();
+-  return <TitleSwitch items={[{ id: 'projects' as const, label: t('launcher.projects') }, { id: 'examples' as const, label: t('launcher.examples') }]} value={view} onChange={onView} />;
++  /* APEX's editor (hc-1188): no examples from GitHub, so the projects only */
++  return <TitleSwitch items={[{ id: 'projects' as const, label: t('launcher.projects') }]} value={view} onChange={onView} />;
+ }
+ 
+ 
+diff --git a/studio/ui/src/components/ProjectsView.tsx b/studio/ui/src/components/ProjectsView.tsx
+index acc7368..63b7895 100644
+--- a/studio/ui/src/components/ProjectsView.tsx
++++ b/studio/ui/src/components/ProjectsView.tsx
+@@ -7,7 +7,7 @@
+ import React from 'react';
+ import { createPortal } from 'react-dom';
+ import {
+-  ArrowLeft, Check, ChevronDown, ChevronRight, Clock3, Folder, FolderInput, FolderOpen, FolderPlus, FolderSearch, Github, LayoutGrid, List, MoreHorizontal, Pencil, Plus, Search, SlidersHorizontal, Trash2, Video, X,
++  ArrowLeft, Check, ChevronDown, ChevronRight, Clock3, Folder, FolderInput, FolderOpen, FolderPlus, FolderSearch, LayoutGrid, List, MoreHorizontal, Pencil, Plus, Search, SlidersHorizontal, Trash2, Video, X,
+ } from 'lucide-react';
+ import type { Example } from '@/lib/project-sources';
+ import { ExamplesSection } from './ProjectSources';
+@@ -611,7 +611,7 @@ function NewProjectListRow({ creating, onNewProject, onOpenFolder, onGetFromGitH
+ }
+ 
+ /** "Import from ⌄": the ways to start from a film that exists, a folder on this computer or a repository on GitHub. */
+-function ImportMenu({ creating, onOpenFolder, onGetFromGitHub, className }: Required<Omit<NewProjectProps, 'onNewProject'>> & { className: string }) {
++function ImportMenu({ creating, onOpenFolder, className }: Required<Omit<NewProjectProps, 'onNewProject'>> & { className: string }) {
+   const t = useT();
+   const [anchor, setAnchor] = React.useState<{ x: number; y: number; top: number } | null>(null);
+   const button = React.useRef<HTMLButtonElement>(null);
+@@ -640,8 +640,8 @@ function ImportMenu({ creating, onOpenFolder, onGetFromGitHub, className }: Requ
+           trigger={button}
+           onClose={() => setAnchor(null)}
+           items={[
++            /* APEX's editor (hc-1188): a folder on this computer, not a repository on GitHub */
+             { id: 'folder', icon: <FolderOpen size={14} />, label: t('projects.openFolder'), onSelect: onOpenFolder },
+-            { id: 'github', icon: <Github size={14} />, label: t('projects.getFromGitHub'), onSelect: onGetFromGitHub },
+           ]}
+         />
+       ) : null}
+diff --git a/studio/ui/src/components/library/LibraryDrawer.tsx b/studio/ui/src/components/library/LibraryDrawer.tsx
+index a15f225..784cfae 100644
+--- a/studio/ui/src/components/library/LibraryDrawer.tsx
++++ b/studio/ui/src/components/library/LibraryDrawer.tsx
+@@ -37,7 +37,9 @@ import { useLibraryArrangement } from './arrangement';
+ type Category = 'media' | 'skill' | 'voice' | 'captions' | LibraryCategory;
+ /* OpenFilm's order (the person's own in Settings › Advanced, lib/library-categories): the media, the skills, then the
+    templates, the most a film is made with at once */
+-export const CATEGORIES: Category[] = ['media', 'skill', 'template', 'captions', 'voice', 'sound', 'music', 'text', 'sticker', 'filter', 'effect', 'transition'];
++/* APEX's editor (hc-1188): what is on this computer; not the skills to discover, nor the voices, sounds and music of
++   OpenFilm's service, which APEX's editor never reaches */
++export const CATEGORIES: Category[] = ['media', 'template', 'captions', 'text', 'sticker', 'filter', 'effect', 'transition'];
+ 
+ /** The side bar's starred line: a category's things the person starred ('' is all of it, else one of its groups). */
+ const FAVORITES = STARRED;
+diff --git a/studio/ui/src/components/library/TextStyleSample.tsx b/studio/ui/src/components/library/TextStyleSample.tsx
+index 26d1b1c..15225fc 100644
+--- a/studio/ui/src/components/library/TextStyleSample.tsx
++++ b/studio/ui/src/components/library/TextStyleSample.tsx
+@@ -10,7 +10,7 @@ import { TEXT_DEFAULTS } from '@/lib/text-look';
+ /* the display fonts the text component comes with (library/text/text/files/fonts), on Studio's page under names of
+    their own, so that no font menu here takes them for fonts this computer has */
+ const FONTS = [['Smiley Sans', 'SmileySans.woff2', 'woff2'], ['ZCOOL KuaiLe', 'ZCOOLKuaiLe.ttf', 'truetype']] as const;
+-const OWN = 'OpenFilm Text ';
++const OWN = 'APEX Text '; /* APEX's editor (hc-1188): no OpenFilm name, even unseen */
+ let fontsIn = false;
+ function putFontsIn(): void {
+   if (fontsIn || typeof document === 'undefined') return;
+diff --git a/studio/ui/src/components/settings/SettingsModal.tsx b/studio/ui/src/components/settings/SettingsModal.tsx
+index 0d2e173..25839f2 100644
+--- a/studio/ui/src/components/settings/SettingsModal.tsx
++++ b/studio/ui/src/components/settings/SettingsModal.tsx
+@@ -8,7 +8,7 @@
+ import React from 'react';
+ import { createPortal } from 'react-dom';
+ import { X, Settings2, Keyboard, Sun, Moon, Monitor, Boxes, Bot, Search, SquareTerminal, Loader2, SlidersHorizontal, ChevronUp, ChevronDown } from 'lucide-react';
+-import { LANGUAGES, phrasesUnder, useLanguage, useLanguageChoice, useT, type LanguageChoice } from '@/i18n';
++import { phrasesUnder, useLanguage, useT } from '@/i18n';
+ import { studioHost, type HostDeveloper, type HostUpdateState } from '@/lib/host';
+ import { showWhatsNew } from '@/lib/whats-new';
+ import { usePreviewPrefs, writePreviewPref } from '@/lib/preview-prefs';
+@@ -17,8 +17,6 @@ import { useWebUpdate } from '../UpdateButton';
+ import { api, type StudioPrefs, type StudioVersion } from '@/api';
+ import { AgentsSection } from './AgentsSection';
+ import { DiagnosticsGroup } from './DiagnosticsGroup';
+-import { ModelsSection } from './ModelsSection';
+-import { SettingsSelect } from './SettingsSelect';
+ import { ShortcutsSection } from './ShortcutsSection';
+ import { SettingsButton, SettingsGroup, SettingsItem, SettingsPage, SettingsSegmented, SettingsSwitch } from './ui';
+ import { useThemeMode, type ThemeMode } from './theme';
+@@ -33,17 +31,15 @@ export type SettingsSection = 'general' | 'agents' | 'models' | 'developer' | 's
+ 
+ /* the nav, in groups: what OpenFilm does, then help (Agents only inside an app with a chat: lib/host.ts `agents`;
+    Advanced for what is already set for the best experience; Developer always, for its diagnostics) */
++/* APEX's editor (hc-1188): no Services (APEX's assistant makes media, not services connected here) and no Developer
++   (its diagnostics are for OpenFilm's issues) */
+ const NAV: Array<{ group: 'settings' | 'help'; sections: SettingsSection[] }> = [
+-  { group: 'settings', sections: ['general', ...(studioHost?.agents ? ['agents' as const] : []), 'models'] },
+-  { group: 'help', sections: ['shortcuts', 'advanced', 'developer'] },
++  { group: 'settings', sections: ['general', ...(studioHost?.agents ? ['agents' as const] : [])] },
++  { group: 'help', sections: ['shortcuts', 'advanced'] },
+ ];
+ 
+-/** where OpenFilm lives, linked at the foot of the nav */
+-const LINKS = [
+-  { label: 'settings.links.github', href: 'https://github.com/openfilm/openfilm' },
+-  { label: 'settings.links.examples', href: 'https://github.com/openfilm/examples' },
+-  { label: 'settings.links.site', href: 'https://openfilm.dev' },
+-];
++/** APEX's editor links nowhere outside APEX (hc-1188) */
++const LINKS: Array<{ label: string; href: string }> = [];
+ 
+ const SECTION_ICON: Record<SettingsSection, React.ReactNode> = {
+   general: <Settings2 size={18} strokeWidth={1.75} />,
+@@ -191,8 +187,6 @@ export function SettingsModal({ open, onClose, section: opening }: SettingsModal
+             {showing ? <h2 id="settings-title" className="mb-7 text-[22px] font-semibold tracking-[-0.015em] text-[var(--text)]">{t(`settings.sections.${showing}`)}</h2> : null}
+             {showing === 'general' && <GeneralSection />}
+             {showing === 'agents' && <AgentsSection />}
+-            {showing === 'models' && <ModelsSection />}
+-            {showing === 'developer' && <DeveloperSection />}
+             {showing === 'shortcuts' && <ShortcutsSection />}
+             {showing === 'advanced' && <AdvancedSection />}
+             </div>
+@@ -207,7 +201,6 @@ export function SettingsModal({ open, onClose, section: opening }: SettingsModal
+ function GeneralSection() {
+   const t = useT();
+   const [mode, setMode] = useThemeMode();
+-  const [language, setLanguage] = useLanguageChoice();
+ 
+   return (
+     <SettingsPage>
+@@ -228,25 +221,10 @@ function GeneralSection() {
+             />
+           )}
+         />
+-        <SettingsItem
+-          title={t('settings.appearance.language')}
+-          description={t('settings.appearance.languageHint')}
+-          control={(
+-            /* each language named in itself, so a person who cannot read the one shown still finds theirs */
+-            <SettingsSelect<LanguageChoice>
+-              label={t('settings.appearance.language')}
+-              value={language}
+-              onChange={setLanguage}
+-              options={[
+-                { value: 'system', label: t('settings.appearance.languageSystem') },
+-                ...LANGUAGES.map((l) => ({ value: l.code, label: l.name })),
+-              ]}
+-            />
+-          )}
+-        />
++        {/* APEX's editor speaks APEX's language (Desktop sets it): no choice of its own here (hc-1188) */}
+       </SettingsGroup>
+       <StorageGroup />
+-      {studioHost?.update?.onState ? <AppAboutGroup /> : <AboutGroup />}
++      <ApexAboutGroup />
+     </SettingsPage>
+   );
+ }
+@@ -379,7 +357,37 @@ function AdvancedSection() {
+  * This Studio's version and whether npm has a newer openfilm. In the desktop app, Studio comes with the app and is
+  * updated with it; anywhere else the person (or their agent) runs the latest, and the CLI restarts Studio on it.
+  */
+-function AboutGroup() {
++/**
++ * About, in APEX's editor (hc-1188): what it is, and the licenses of what it is made from (OpenFilm's MIT notice
++ * among them), read from assets/apex-notices.txt when asked for. No version check: the editor comes with APEX.
++ */
++function ApexAboutGroup() {
++  const t = useT();
++  const [open, setOpen] = React.useState(false);
++  const [notices, setNotices] = React.useState<string | null>(null);
++  React.useEffect(() => {
++    if (!open || notices !== null) return;
++    void fetch('/assets/apex-notices.txt').then((r) => (r.ok ? r.text() : '')).catch(() => '').then(setNotices);
++  }, [open, notices]);
++  return (
++    <SettingsGroup title={t('settings.about.group')}>
++      <SettingsItem
++        title={t('apex.about.title')}
++        description={t('apex.about.body')}
++        control={<SettingsButton onClick={() => setOpen((o) => !o)}>{t(open ? 'apex.about.hide' : 'apex.about.notices')}</SettingsButton>}
++      >
++        {open ? (
++          <pre data-apex-notices className="mb-2 max-h-[320px] overflow-auto whitespace-pre-wrap rounded-lg bg-[var(--bg-field)] p-3 font-mono text-[11.5px] leading-relaxed text-[var(--text-muted)]">
++            {notices === null ? t('apex.about.loading') : notices || t('apex.about.failed')}
++          </pre>
++        ) : null}
++      </SettingsItem>
++    </SettingsGroup>
++  );
++}
++
++/** upstream's About (OpenFilm's version and updates): not shown in APEX's editor, kept for the rebase */
++export function AboutGroup() {
+   const t = useT();
+   const [info, setInfo] = React.useState<StudioVersion | null>(null);
+   const [state, setState] = React.useState<'idle' | 'checking' | 'failed'>('idle');
+@@ -454,7 +462,8 @@ const CHECKED_FRESH_MS = 10 * 60_000;
+  * a check answered a few minutes ago), downloaded by itself with its progress, Restart when it is ready (it installs at
+  * the next quit too). The menu's Check for Updates… stays.
+  */
+-function AppAboutGroup() {
++/** upstream's About inside OpenFilm's own app: not shown in APEX's editor, kept for the rebase */
++export function AppAboutGroup() {
+   const t = useT();
+   const language = useLanguage();
+   const update = studioHost?.update;
+@@ -524,7 +533,8 @@ function AppAboutGroup() {
+  * (lib/preview-prefs `stats`); in the app, what its chat shows of each turn: what it changed in the files, and its
+  * full log (lib/host.ts `developer`).
+  */
+-function DeveloperSection() {
++/** upstream's Developer section (OpenFilm's diagnostics): not shown in APEX's editor, kept for the rebase */
++export function DeveloperSection() {
+   const t = useT();
+   const developer = studioHost?.developer;
+   const [prefs, setPrefs] = React.useState<HostDeveloper | null>(null);
+diff --git a/studio/ui/src/components/settings/ShortcutsSection.tsx b/studio/ui/src/components/settings/ShortcutsSection.tsx
+index c9ea476..cde07cd 100644
+--- a/studio/ui/src/components/settings/ShortcutsSection.tsx
++++ b/studio/ui/src/components/settings/ShortcutsSection.tsx
+@@ -21,7 +21,7 @@ import { SettingsSelect } from './SettingsSelect';
+ import { SettingsButton, SettingsPage, SettingsSegmented, settingsError } from './ui';
+ 
+ /** The built-in schemes are named for the app whose keys they give. */
+-const SCHEME_NAMES: Record<(typeof BUILT_IN_SCHEMES)[number], string> = { openfilm: 'OpenFilm', premiere: 'Premiere Pro', fcp: 'Final Cut Pro X' };
++const SCHEME_NAMES: Record<(typeof BUILT_IN_SCHEMES)[number], string> = { openfilm: 'APEX', premiere: 'Premiere Pro', fcp: 'Final Cut Pro X' } /* APEX's editor's own keys (hc-1188) */;
+ 
+ /** A row: its words and keys; `held`: combinations pressed while another is held (K, then J). */
+ type Row = { id: string; label: string; keys: readonly string[]; action?: ActionId; held?: readonly (readonly string[])[] };
+diff --git a/studio/ui/src/components/settings/theme.ts b/studio/ui/src/components/settings/theme.ts
+index 1ef7de6..2111767 100644
+--- a/studio/ui/src/components/settings/theme.ts
++++ b/studio/ui/src/components/settings/theme.ts
+@@ -1,5 +1,5 @@
+ /**
+- * The theme: light, dark or the system's, dark until the person chooses. The choice is kept in localStorage `openfilm.theme` and shown as
++ * The theme: light, dark or the system's, light until the person chooses, as APEX is (APEX's editor, hc-1188). The choice is kept in localStorage `openfilm.theme` and shown as
+  * `<html data-theme>`; index.html applies it before the first paint, this keeps it current afterwards, in every page
+  * of Studio that is open.
+  */
+@@ -13,8 +13,8 @@ const dark = () => window.matchMedia('(prefers-color-scheme: dark)');
+ function saved(): ThemeMode {
+   try {
+     const value = localStorage.getItem(KEY);
+-    return value === 'light' || value === 'system' ? value : 'dark';
+-  } catch { return 'dark'; }
++    return value === 'dark' || value === 'system' ? value : 'light';
++  } catch { return 'light'; }
+ }
+ 
+ function apply(mode: ThemeMode) {
+@@ -42,6 +42,6 @@ export function setThemeMode(mode: ThemeMode) {
+ 
+ /** The chosen theme and a way to change it; every user of it sees the change. */
+ export function useThemeMode(): [ThemeMode, (mode: ThemeMode) => void] {
+-  const mode = React.useSyncExternalStore((on) => { listeners.add(on); return () => listeners.delete(on); }, saved, () => 'dark' as ThemeMode);
++  const mode = React.useSyncExternalStore((on) => { listeners.add(on); return () => listeners.delete(on); }, saved, () => 'light' as ThemeMode);
+   return [mode, setThemeMode];
+ }
+diff --git a/studio/ui/src/globals.css b/studio/ui/src/globals.css
+index f183ff1..62ec4d2 100644
+--- a/studio/ui/src/globals.css
++++ b/studio/ui/src/globals.css
+@@ -1,5 +1,4 @@
+ @import 'tailwindcss';
+-@import '@fontsource-variable/inter';
+ 
+ /* `dark:` follows the app's theme (`<html data-theme>`, set at startup from the saved choice), not the system's
+    directly: when the two differ, a system-driven `dark:` would paint the wrong side. */
+@@ -25,8 +24,9 @@
+ :root {
+   --font-cjk-sans: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC',
+     'Heiti SC', sans-serif;
+-  --font-sans: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+-    Arial, var(--font-cjk-sans);
++  /* APEX's editor (hc-1188): APEX's type, the system's own */
++  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', ui-sans-serif, system-ui, Roboto,
++    'Helvetica Neue', Arial, var(--font-cjk-sans);
+   --font-mono: ui-monospace, 'SFMono-Regular', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+ 
+   --radius-lg: 16px;
+@@ -41,39 +41,40 @@
+ [data-theme='light'] {
+   color-scheme: light;
+ 
+-  --bg-app: #e4e4e8;
+-  --bg-panel: #fbfbfc;
++  --bg-app: #f6f6f6;
++  --bg-panel: #ffffff;
+   --bg-raised: #ffffff;
+   /* the viewer's pane, round the picture: the panels' own white (rgb 251, 251, 252) */
+-  --bg-viewer: #fbfbfc;
++  --bg-viewer: #f4f4f5;
+   /* the one-pixel lines between the panes and under the top bar (the board under them showing through) */
+-  --dock-line: #d2d2d8;
++  --dock-line: #e3e3e5;
+   --bg-field: rgba(16, 16, 24, 0.055);
+   --bg-hover: rgba(16, 16, 24, 0.05);
+   --bg-pressed: rgba(16, 16, 24, 0.09);
+-  --bg-selected: rgba(0, 163, 174, 0.13);
++  --bg-selected: rgba(126, 108, 239, 0.13);
+ 
+-  --text: #161619;
+-  --text-muted: #5d5d63;
+-  --text-faint: #8b8b92;
++  --text: #222226;
++  --text-muted: #5c5c63;
++  --text-faint: #7a7a80;
+ 
+-  --border: rgba(16, 16, 24, 0.085);
+-  --border-strong: rgba(16, 16, 24, 0.16);
++  --border: rgba(28, 28, 32, 0.11);
++  --border-strong: rgba(28, 28, 32, 0.18);
+ 
+-  --primary: #161619;
+-  --primary-hover: #2e2e33;
++  --primary: #222226;
++  --primary-hover: #33333a;
+   --on-primary: #ffffff;
+ 
+-  --accent: #0098a3;
+-  --accent-soft: rgba(0, 163, 174, 0.12);
++  /* APEX violet (hc-1188) */
++  --accent: #7e6cef;
++  --accent-soft: rgba(126, 108, 239, 0.12);
+   --on-accent: #ffffff;
+   /* a switch turned on: the accent a step quieter, so a page of them does not glare */
+-  --switch-on: #26b0ba;
++  --switch-on: #9585f2;
+   /* what is picked among choices (tabs, a rail, a list): the accent's words on the accent's own tint, never a grey
+      that reads as merely pointed at */
+-  --bg-picked: rgba(0, 163, 174, 0.14);
++  --bg-picked: rgba(126, 108, 239, 0.14);
+   /* words selected in a field */
+-  --text-selection: rgba(0, 163, 174, 0.24);
++  --text-selection: rgba(126, 108, 239, 0.24);
+ 
+   --ok: #1f8a4c;
+   --warn: #b25e00;
+@@ -110,9 +111,9 @@
+   --folder-front: #dedede;
+   --folder-front-hi: #ececec;
+ 
+-  --brand-wind-from: #2f9e63;
+-  --brand-wind-mid: #3cbc93;
+-  --brand-wind-to: #55bfd0;
++  --brand-wind-from: #6a57e8;
++  --brand-wind-mid: #7e6cef;
++  --brand-wind-to: #a89cf5;
+ }
+ 
+ /* ── Dark ── */
+@@ -129,7 +130,7 @@
+   --bg-field: rgba(255, 255, 255, 0.08);
+   --bg-hover: rgba(255, 255, 255, 0.06);
+   --bg-pressed: rgba(255, 255, 255, 0.12);
+-  --bg-selected: rgba(0, 193, 205, 0.16);
++  --bg-selected: rgba(149, 133, 242, 0.18);
+ 
+   --text: #e6e6e6;
+   --text-muted: #a3a3a3;
+@@ -142,13 +143,13 @@
+   --primary-hover: #ffffff;
+   --on-primary: #0a0a0c;
+ 
+-  /* what is picked: words in this cyan, plainly apart from the others' white */
+-  --accent: #00c1cd;
+-  --accent-soft: rgba(0, 193, 205, 0.14);
+-  --on-accent: #00262a;
+-  --switch-on: #009aa4;
+-  --bg-picked: rgba(0, 193, 205, 0.16);
+-  --text-selection: rgba(0, 193, 205, 0.3);
++  /* what is picked: words in APEX violet, lifted for the dark (hc-1188), plainly apart from the others' white */
++  --accent: #9a8cf4;
++  --accent-soft: rgba(154, 140, 244, 0.16);
++  --on-accent: #17123a;
++  --switch-on: #7e6cef;
++  --bg-picked: rgba(154, 140, 244, 0.18);
++  --text-selection: rgba(154, 140, 244, 0.32);
+ 
+   --ok: #4cc27a;
+   --warn: #f0b03c;
+diff --git a/studio/ui/src/i18n/apex.ts b/studio/ui/src/i18n/apex.ts
+new file mode 100644
+index 0000000..8a4ee63
+--- /dev/null
++++ b/studio/ui/src/i18n/apex.ts
+@@ -0,0 +1,86 @@
++/**
++ * APEX's words over Studio's (hc-1188). Studio in APEX Desktop is APEX's editor, a modified OpenFilm: OpenFilm's
++ * trademark terms let a modified version carry neither its name nor its mark. Every phrase of Studio's that named it
++ * reads "the editor" instead, rewritten as the tables are built (../../apex/brand.mjs, a plugin in vite.config.ts);
++ * here, the phrases APEX says its own way, in each language APEX speaks (zh-CN, en, ja). The license is shown in full
++ * under Settings › General › About (assets/apex-notices.txt).
++ */
++import type { Words } from './words.ts';
++
++type Code = 'en' | 'zh-CN' | 'ja' | 'ko' | 'es';
++type Table = Words & { apex?: Record<string, Record<string, string>> };
++
++const zh: Table = {
++  connection: {
++    gone: '编辑器已停止。点一下对话框上方的片子，就会重新打开。',
++    goneApp: '编辑器已停止。点一下对话框上方的片子，就会重新打开。',
++  },
++  timeline: {
++    record: { denied: '编辑器没有麦克风权限：请在系统设置的隐私与安全性里允许 APEX 使用麦克风，然后再试。' },
++    subtitlesConnect: '生成字幕请交给 APEX：在左边的对话里让助手来做。',
++    subtitleTranslateConnect: '翻译字幕请交给 APEX：在左边的对话里让助手来做。',
++    subtitleTranslateAgent: '翻译字幕请交给 APEX：在左边的对话里让助手来做。',
++  },
++  canvas: { redraw: { noModel: '局部重绘请交给 APEX：在左边的对话里让助手来做。' } },
++  apex: {
++    about: {
++      title: 'APEX 剪辑',
++      body: '基于开源项目修改，遵循 MIT 许可。',
++      notices: '查看开源许可',
++      hide: '收起',
++      loading: '正在读取…',
++      failed: '许可文件没有读到。',
++    },
++  },
++};
++
++const en: Table = {
++  connection: {
++    gone: 'The editor has stopped. Click the film above the message box to open it again.',
++    goneApp: 'The editor has stopped. Click the film above the message box to open it again.',
++  },
++  timeline: {
++    record: { denied: 'The editor may not use the microphone: allow APEX in your system’s privacy settings and try again.' },
++    subtitlesConnect: 'Ask APEX for subtitles: your assistant in the chat on the left makes them.',
++    subtitleTranslateConnect: 'Ask APEX to translate subtitles: your assistant in the chat on the left does it.',
++    subtitleTranslateAgent: 'Ask APEX to translate subtitles: your assistant in the chat on the left does it.',
++  },
++  canvas: { redraw: { noModel: 'Ask APEX to change part of a picture: your assistant in the chat on the left does it.' } },
++  apex: {
++    about: {
++      title: 'APEX editor',
++      body: 'A modified version of an open source project, under the MIT License.',
++      notices: 'Open source licenses',
++      hide: 'Hide',
++      loading: 'Reading…',
++      failed: 'The license file could not be read.',
++    },
++  },
++};
++
++const ja: Table = {
++  connection: {
++    gone: 'エディターが停止しました。メッセージ欄の上のフィルムをクリックすると、もう一度開きます。',
++    goneApp: 'エディターが停止しました。メッセージ欄の上のフィルムをクリックすると、もう一度開きます。',
++  },
++  timeline: {
++    record: { denied: 'エディターはマイクを使えません。システムのプライバシー設定で APEX を許可してから、もう一度お試しください。' },
++    subtitlesConnect: '字幕は APEX に頼んでください。左のチャットのアシスタントが作ります。',
++    subtitleTranslateConnect: '字幕の翻訳は APEX に頼んでください。左のチャットのアシスタントが行います。',
++    subtitleTranslateAgent: '字幕の翻訳は APEX に頼んでください。左のチャットのアシスタントが行います。',
++  },
++  canvas: { redraw: { noModel: '画像の部分的な描き直しは APEX に頼んでください。左のチャットのアシスタントが行います。' } },
++  apex: {
++    about: {
++      title: 'APEX エディター',
++      body: 'オープンソースプロジェクトを改変したもので、MIT ライセンスに従います。',
++      notices: 'オープンソースライセンス',
++      hide: '閉じる',
++      loading: '読み込み中…',
++      failed: 'ライセンスファイルを読み込めませんでした。',
++    },
++  },
++};
++
++/** APEX's words by language; one a language leaves out is said in English, then as Studio says it. */
++export const apexWords: Record<Code, Table> = { en, 'zh-CN': zh, ja, ko: {}, es: {} };
+diff --git a/studio/ui/src/i18n/index.ts b/studio/ui/src/i18n/index.ts
+index a06e6b7..f720a9b 100644
+--- a/studio/ui/src/i18n/index.ts
++++ b/studio/ui/src/i18n/index.ts
+@@ -13,6 +13,7 @@ import { es } from './es.ts';
+ import { ja } from './ja.ts';
+ import { ko } from './ko.ts';
+ import { zhCN } from './zh-CN.ts';
++import { apexWords } from './apex.ts';
+ 
+ export const LANGUAGES = [
+   { code: 'en', name: 'English', words: en },
+@@ -77,14 +78,17 @@ function savedChoice(): LanguageChoice {
+ 
+ function current(): Language {
+   const choice = savedChoice();
+-  if (choice !== 'system') return choice;
+-  return typeof navigator === 'undefined' ? 'en' : languageFor(navigator.languages?.length ? navigator.languages : [navigator.language]);
++  /* APEX's editor: APEX's language, which Desktop keeps here as each page opens; Simplified Chinese until it has */
++  return choice !== 'system' ? choice : 'zh-CN';
+ }
+ 
+ /** The path in `language`'s table, else in English's, else the path itself. */
+ export function lookup(path: string, language: Language = current()): string {
+   const words = LANGUAGES.find((l) => l.code === language)?.words;
+-  return (words && language !== 'en' ? find(words, path) : null) ?? find(en, path) ?? path;
++  /* APEX's words first (./apex.ts), in this language, then in English */
++  return find(apexWords[language], path)
++    ?? (words && language !== 'en' ? find(words, path) : null)
++    ?? find(apexWords.en, path) ?? find(en, path) ?? path;
+ }
+ 
+ const listeners = new Set<() => void>();
+diff --git a/studio/ui/src/lib/font-menu.test.ts b/studio/ui/src/lib/font-menu.test.ts
+index b423592..cd61d36 100644
+--- a/studio/ui/src/lib/font-menu.test.ts
++++ b/studio/ui/src/lib/font-menu.test.ts
+@@ -71,7 +71,7 @@ test('recent, samples, and project faces in Studio', () => {
+   assert.deepEqual(cjk.flatMap((s) => s.rows.map((r) => [r.family, sampleOf(r)])), [['PingFang SC', '永'], ['Heiti SC', '永'], ['Apple Chancery', null]],
+     'an installed font\'s sample only when it draws it; a named one by its name');
+   assert.equal(localeFromName('Source Han Sans JP'), 'ja-JP');
+-  assert.equal(rowFontFamily({ family: 'Geist', project: true }), '"OpenFilm Project Geist", "Geist", system-ui');
++  assert.equal(rowFontFamily({ family: 'Geist', project: true }), '"APEX Project Geist", "Geist", system-ui');
+   const css = projectFontFaceCss([{ ...project[0]!, faces: [{ ...face('Geist', 'fonts/My Geist.ttf'), src: [{ path: 'fonts/My Geist.ttf', format: 'truetype' }, { local: 'Geist' }] }] }], 'http://localhost:5/p/t/');
+-  assert.equal(css, '@font-face { font-family: "OpenFilm Project Geist"; src: url("http://localhost:5/p/t/fonts/My%20Geist.ttf") format("truetype"), local("Geist"); font-weight: 100 900; font-style: normal; font-display: swap; }');
++  assert.equal(css, '@font-face { font-family: "APEX Project Geist"; src: url("http://localhost:5/p/t/fonts/My%20Geist.ttf") format("truetype"), local("Geist"); font-weight: 100 900; font-style: normal; font-display: swap; }');
+ });
+diff --git a/studio/ui/src/lib/font-menu.ts b/studio/ui/src/lib/font-menu.ts
+index cf1a37c..744fd1f 100644
+--- a/studio/ui/src/lib/font-menu.ts
++++ b/studio/ui/src/lib/font-menu.ts
+@@ -206,7 +206,7 @@ export function pushRecent(list: readonly string[], family: string, max = RECENT
+  * A project font is set in Studio under this prefix: named as it is, it would replace an installed font of the same
+  * name in Studio's own interface.
+  */
+-export const PROJECT_FONT_PREFIX = 'OpenFilm Project ';
++export const PROJECT_FONT_PREFIX = 'APEX Project '; /* APEX's editor (hc-1188): no OpenFilm name, even unseen */
+ 
+ /** The CSS a menu row is set in: the project's face first, then the installed one, then the system's. */
+ export function rowFontFamily(row: FontRow): string {
+diff --git a/studio/ui/vite.config.ts b/studio/ui/vite.config.ts
+index c574657..79233d5 100644
+--- a/studio/ui/vite.config.ts
++++ b/studio/ui/vite.config.ts
+@@ -2,11 +2,22 @@ import { defineConfig } from 'vite';
+ import react from '@vitejs/plugin-react';
+ import tailwind from '@tailwindcss/vite';
+ import { fileURLToPath } from 'node:url';
++import { withoutBrand } from './apex/brand.mjs';
++
++/* APEX's editor (hc-1188): each language's table without the OpenFilm name, as it is built (apex/brand.mjs) */
++const apexWords = () => ({
++  name: 'apex-words',
++  enforce: 'pre' as const,
++  transform(code: string, id: string) {
++    const table = /[\\/]src[\\/]i18n[\\/](en|zh-CN|ja|ko|es)\.ts$/.exec(id);
++    return table ? { code: withoutBrand(code, table[1]), map: null } : null;
++  },
++});
+ 
+ /* Studio's editor: built once into dist/ and served by Studio's own server (studio/server/server.mjs) */
+ export default defineConfig({
+   root: __dirname,
+-  plugins: [react(), tailwind()],
++  plugins: [apexWords(), react(), tailwind()],
+   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
+   build: { outDir: 'dist', emptyOutDir: true, target: 'es2022', sourcemap: false },
+ });

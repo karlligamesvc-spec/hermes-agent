@@ -1,8 +1,9 @@
 """Build APEX's OpenFilm toolkit (hc-1176) as one reproducible archive.
 
 The toolkit is the pinned openfilm package with this folder's patches applied, beside its pinned dependencies
-(pin.json), plus ``apex-toolkit.json`` naming what went in. ``verify.mjs`` runs first (pins, patches, guards, reverse
-check, upstream tests), and the archive holds exactly the files it verified. The same inputs always give the same
+(pin.json), and APEX's editor (``apex-editor/``, hc-1188: Studio's editor built from the pinned source with
+``editor/*.patch``), plus ``apex-toolkit.json`` naming what went in. ``verify.mjs`` runs first (pins, patches, guards,
+reverse checks, upstream tests, the editor's build and guards), and the archive holds exactly the files it verified. The same inputs always give the same
 bytes (entries sorted, no times or owners, gzip without a timestamp), so the archive's SHA-256 in desktop-lock.json
 names them; a change to a pin or a patch changes it.
 
@@ -25,25 +26,33 @@ HERE = Path(__file__).resolve().parent
 LOCK = HERE.parent / 'desktop-lock.json'
 COS = 'https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com'
 ARCHIVE = 'openfilm-toolkit.tgz'
+# APEX's editor in the toolkit (hc-1188): Desktop has Studio serve it when it is there (electron/openfilm-studio.ts)
+EDITOR = 'apex-editor'
+
+
+def _patches(paths: list[str]) -> list[dict]:
+    return [{'file': Path(p).name, 'sha256': hashlib.sha256((HERE / p).read_bytes()).hexdigest()} for p in paths]
 
 
 def _manifest(pin: dict) -> dict:
     return {
         'schema': 1,
         'openfilm': pin['package']['version'],
-        'patches': [{'file': Path(p).name, 'sha256': hashlib.sha256((HERE / p).read_bytes()).hexdigest()} for p in pin['patches']],
+        'patches': _patches(pin['patches']),
         'dependencies': {name: dep['version'] for name, dep in sorted(pin['dependencies'].items())},
+        'editor': {'dir': EDITOR, 'patches': _patches(pin['editor']['patches'])},
     }
 
 
 def _entries(work: Path, pin: dict) -> list[tuple[str, Path]]:
     """Each archive path and the verified file or folder it comes from, sorted."""
-    trees = {'node_modules/openfilm': work / 'npm' / 'package'}
-    trees.update({f'node_modules/{name}': work / 'npm' / 'node_modules' / name for name in pin['dependencies']})
+    trees = {'node_modules/openfilm': (work / 'npm' / 'package', 'package.json')}
+    trees.update({f'node_modules/{name}': (work / 'npm' / 'node_modules' / name, 'package.json') for name in pin['dependencies']})
+    trees[EDITOR] = (work / 'editor' / EDITOR, 'index.html')
     out = [('node_modules', None)]
-    for prefix, root in trees.items():
-        if not (root / 'package.json').is_file():
-            raise SystemExit(f'verify.mjs left no package at {root}')
+    for prefix, (root, marker) in trees.items():
+        if not (root / marker).is_file():
+            raise SystemExit(f'verify.mjs left no {marker} at {root}')
         out.append((prefix, root))
         for path in root.rglob('*'):
             if path.is_symlink():
@@ -85,8 +94,9 @@ def build(work: Path) -> tuple[bytes, dict]:
     entry = {
         'version': manifest['openfilm'],
         'patches': [p['file'].removesuffix('.patch') for p in manifest['patches']],
+        'editor': [p['file'].removesuffix('.patch') for p in manifest['editor']['patches']],
         'dependencies': manifest['dependencies'],
-        'license': 'MIT (openfilm, patched: not the OpenFilm product); Apache-2.0 (playwright-core)',
+        'license': "MIT (openfilm, patched: not the OpenFilm product; its editor rebuilt as APEX's); Apache-2.0 (playwright-core)",
         'bytes': len(data),
         'sha256': digest,
         'url': f'{COS}/media-tools/openfilm/{manifest["openfilm"]}/{digest}/{ARCHIVE}',

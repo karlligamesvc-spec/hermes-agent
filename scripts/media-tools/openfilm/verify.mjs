@@ -6,16 +6,19 @@
 //   4. runs the guards (pin.json guards) on the patched package, the reverse check (each part of the patches taken
 //      out turns a guard red), and upstream's own tests of what the patches touch on the patched source.
 // Leaves the patched package in <work>/npm/package with its dependencies in <work>/npm/node_modules (the toolkit's
-// files: build_toolkit.py packs them). Writes only under the work folder, which must be empty. Needs node, git, tar
-// and patch.
+// files: build_toolkit.py packs them). Then APEX's editor (hc-1188, editor/verify-editor.mjs): Studio's editor built
+// from the pinned source with editor/*.patch, left in <work>/editor/apex-editor, beside the toolkit's node_modules in
+// the archive. Writes only under the work folder, which must be empty. Needs node, git, tar, patch, and a Chrome or
+// Chromium for the editor's guards (APEX_CHROME).
 //   node scripts/media-tools/openfilm/verify.mjs <empty work folder>
 // APEX_NPM_REGISTRY replaces the npm registry in the pinned tarball links (integrity is checked all the same).
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import { npmPackage, run, sha256 } from './pinned.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const pin = JSON.parse(readFileSync(join(here, 'pin.json'), 'utf8'))
@@ -24,32 +27,6 @@ assert.ok(process.argv[2], 'usage: node verify.mjs <empty work folder>')
 mkdirSync(work, { recursive: true })
 assert.equal(readdirSync(work).length, 0, `${work} is not empty`)
 
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { stdio: 'inherit', ...options })
-  assert.equal(result.status, 0, `${command} ${args.join(' ')} failed (${result.status ?? result.signal})`)
-}
-
-/** A pinned npm tarball, checked against its integrity, unpacked into `into` (its files under `package/`). */
-async function npmPackage({ tarball, integrity }, into) {
-  const registry = process.env.APEX_NPM_REGISTRY
-  const url = registry ? tarball.replace('https://registry.npmjs.org', registry.replace(/\/$/, '')) : tarball
-  const response = await fetch(url)
-  assert.ok(response.ok, `${url}: HTTP ${response.status}`)
-  const bytes = Buffer.from(await response.arrayBuffer())
-  const [algorithm, digest] = integrity.split(/-(.*)/s)
-  assert.equal(
-    createHash(algorithm).update(bytes).digest('base64'),
-    digest,
-    `${url} does not match its pinned integrity`
-  )
-  mkdirSync(into, { recursive: true })
-  const file = join(into, 'package.tgz')
-  writeFileSync(file, bytes)
-  run('tar', ['-xzf', file, '-C', into])
-  return join(into, 'package')
-}
-
-const sha256 = file => createHash('sha256').update(readFileSync(file)).digest('hex')
 /** The files a patch changes, by their path in the package. */
 const touched = patch => [...readFileSync(patch, 'utf8').matchAll(/^\+\+\+ b\/(\S+)$/gm)].map(m => m[1])
 
@@ -117,3 +94,6 @@ run(process.execPath, ['--test', '--test-concurrency=1', ...pin.upstreamTests], 
   env: { ...env, OPENFILM_HOME: join(work, 'home'), PLAYWRIGHT_BROWSERS_PATH: join(work, 'no-browsers') }
 })
 console.log('the patches are verified')
+
+/* APEX's editor, built from the same source checkout (hc-1188) */
+run(process.execPath, [join(here, 'editor', 'verify-editor.mjs'), work, pkg, source], { env })
