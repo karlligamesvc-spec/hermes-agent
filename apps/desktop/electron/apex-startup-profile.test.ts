@@ -16,6 +16,7 @@ import { afterEach, describe, test } from 'vitest'
 import { applyDesktopFeatureSwitches } from './apex-model-tiers'
 import {
   apexOnlyStartup,
+  apexStartupPinned,
   migrateStartupProfileIfMissing,
   readStoredDesktopProfile,
   startupProfileFor,
@@ -328,17 +329,18 @@ describe('main.ts reads and writes the startup profile only through this module'
       /migrateActiveProfileIfMissing\(\)\n[\s\S]*const primaryProfile = primaryProfileKey\(\)\n[\s\S]*primaryProfilePin\.pin\(primaryProfile\)/
     )
     assert.match(body('function primaryProfileKey('), /return primaryProfilePin\.resolve\(readActiveDesktopProfile\)/)
-    // The renderer's adoptPrimaryProfile, the local IM gateway, plugin roots (fs-ipc).
+    // The renderer's adoptPrimaryProfile and plugin roots (fs-ipc).
     assert.match(
       code,
       /ipcMain\.handle\('hermes:profile:get', async \(\) => \(\{ profile: readActiveDesktopProfile\(\) \}\)\)/
     )
-    assert.match(
-      body('async function reconcileMessagingGateway('),
-      /const activeProfile = readActiveDesktopProfile\(\) \|\| null/
-    )
-    assert.match(code, /await startMessagingGateway\(readActiveDesktopProfile\(\)\)/)
     assert.match(code, /registerFsIpc\(\{[^}]*\breadActiveDesktopProfile,/)
+    // hc-1171: the local IM gateway is the one exit that deliberately does not follow the startup
+    // profile: it always runs as APEX's default (apex-gateway.ts MESSAGING_GATEWAY_PROFILE).
+    for (const signature of ['async function restartMessagingGateway(', 'async function reconcileMessagingGateway(']) {
+      assert.match(body(signature), /await startMessagingGateway\(MESSAGING_GATEWAY_PROFILE\)/)
+      assert.doesNotMatch(body(signature), /readActiveDesktopProfile/)
+    }
     // remember / set (the developer rail, ⌘1–9 and ⌘⇧[ ⌘⇧]) go through the guarded writer.
     assert.match(
       code,
@@ -348,5 +350,62 @@ describe('main.ts reads and writes the startup profile only through this module'
       code,
       /'hermes:profile:set', async \(_event, name\) => \{\n\s*assertCanMutateManagedPrimaryRouting\(\)\n\s*const next = writeActiveDesktopProfile\(name\)/
     )
+  })
+})
+
+describe('hc-1166: several assistants on one engine start that engine as APEX', () => {
+  const ONE_ENGINE = launchEnv({ APEXNODES_MULTI_BOT_SINGLE_ENGINE: '1' }, BOTH_ON)
+
+  test.each([
+    ['one engine for every assistant', ONE_ENGINE, true],
+    [
+      'the engine switch on in the platform config',
+      launchEnv({}, { desktop_features: { ...BOTH_ON.desktop_features, multi_bot_single_engine: true } }),
+      true
+    ],
+    ['an engine per assistant', LAUNCHES['several assistants on'], false],
+    [
+      'the engine switch on with single-thread off',
+      launchEnv({ APEXNODES_MULTI_BOT_SINGLE_ENGINE: '1', APEXNODES_SINGLE_THREAD: '0' }, BOTH_ON),
+      false
+    ]
+  ] as const)('%s → pinned %s', (_label, env, pinned) => {
+    assert.equal(apexStartupPinned(env), pinned)
+  })
+
+  test.each([null, 'default', 'apex-bot-2', 'work'])('stored %s → APEX', storedProfile => {
+    assert.equal(startupProfileFor(storedProfile, ONE_ENGINE), 'default')
+  })
+
+  test('another assistant is not recorded as the startup profile, with one line saying why', () => {
+    const lines: string[] = []
+
+    assert.equal(
+      startupProfileWritable('apex-bot-2', ONE_ENGINE, line => lines.push(line)),
+      false
+    )
+    assert.equal(
+      startupProfileWritable('default', ONE_ENGINE, line => lines.push(line)),
+      true
+    )
+    assert.deepEqual(lines, [
+      `[multi-bot] one engine: not recording "apex-bot-2" as the startup profile (it stays APEX's)`
+    ])
+  })
+
+  test('the heuristic does not run, and active-profile.json keeps what it held', () => {
+    const { file, deps } = installWithAssistants()
+    const lines: string[] = []
+
+    writeStored(file, { profile: 'apex-bot-2', _migrated: true })
+
+    assert.equal(
+      migrateStartupProfileIfMissing(file, deps, ONE_ENGINE, line => lines.push(line)),
+      false
+    )
+    assert.deepEqual(stored(file), { profile: 'apex-bot-2', _migrated: true })
+    assert.deepEqual(lines, [
+      '[multi-bot] one engine: the main engine starts as APEX; active-profile.json (apex-bot-2) left as it is'
+    ])
   })
 })

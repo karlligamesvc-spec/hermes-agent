@@ -52,7 +52,9 @@ import { fileURLToPath } from 'node:url'
 
 import { notarizeMacRuntimePayload, signMacRuntimePayload, verifyNotarizedMacExecutable } from './mac-runtime-payload.mjs'
 import { writeRuntimeArchive } from './runtime-bundle-archive.mjs'
+import { DESKTOP_BUNDLE_SYNC, desktopBundleSyncArgs } from './runtime-bundle-extras.mjs'
 import { probeBundledBackend, probeBundledTui, removeOwnedRuntimeTree, runtimeSmokeEnvironment } from './runtime-bundle-offline-smoke.mjs'
+import { runtimeNodeShims } from './runtime-node-shims.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -80,6 +82,17 @@ const AGENT_BROWSER_SPECS = ['agent-browser@^0.26.0', '@askjo/camofox-browser@^1
 // builds reach their installed-engine refusal through the manifests: without web/package.json,
 // `hermes dashboard` would skip its build as if it were done), .runtime/media/ffmpeg (the bundled
 // FFmpeg's corresponding source).
+/** hc-1170: sync the bundle's venv with `[all]` plus the extras APEX features install on first use
+ *  (runtime-bundle-extras.mjs); a Desktop engine can never adopt a first-use install. */
+export function syncBundleVenv(runCommand, uvHost, { cwd, env, devUnlocked = false }) {
+  runCommand(uvHost, desktopBundleSyncArgs(!devUnlocked), { cwd, env })
+}
+
+/** The manifest's record of that venv; bundled-runtime-package.mjs refuses any other `sync`. */
+export function bundleVenvComponent(uvVersion) {
+  return { path: 'venv', relocatable: true, sync: DESKTOP_BUNDLE_SYNC, uv_version: uvVersion }
+}
+
 export const BUNDLE_EXCLUDED_PATHS = Object.freeze([
   'tests', // pytest suite: outside pyproject's packages, imported only by tests/ and evals/
   'contributors', // upstream CI attribution map (scripts/audit_pr_attribution.py)
@@ -449,8 +462,9 @@ async function cmdBuild(args) {
   // relative at pack time so tar carries a location-independent symlink.
   if (target.os === 'mac') relinkMacPython(stage, pyDirRel)
 
-  // ── 5. python deps — EXACTLY the installer's hash-verified premium tier:
-  //       `uv sync --extra all --locked` (NOT --all-extras; see install.sh).
+  // ── 5. python deps — the installer's hash-verified premium tier plus the
+  //       extras APEX features need (runtime-bundle-extras.mjs, hc-1170):
+  //       `uv sync --extra all --extra … --locked` (NOT --all-extras; see install.sh).
   //       Index env is SANITIZED: a mirror index (UV_DEFAULT_INDEX=TUNA etc.)
   //       re-keys package sources and makes --locked fail "lockfile needs to
   //       be updated" (verified with uv 0.11.28) — a bundle must always be
@@ -470,7 +484,7 @@ async function cmdBuild(args) {
   } else {
     for (const k of ['UV_DEFAULT_INDEX', 'UV_INDEX_URL', 'UV_EXTRA_INDEX_URL', 'UV_INDEX', 'PIP_INDEX_URL', 'PIP_EXTRA_INDEX_URL', 'UV_NO_CONFIG']) delete syncEnv[k]
   }
-  run(uvHost, ['sync', '--extra', 'all', ...(devUnlocked ? [] : ['--locked'])], { cwd: stage, env: syncEnv })
+  syncBundleVenv(run, uvHost, { cwd: stage, env: syncEnv, devUnlocked })
 
   // ── 6. portable Node 22 (dist layout == today's HERMES_HOME/node).
   //       HERMES_NODE_DIST_BASE: same override env install.ps1's Install-Node
@@ -513,11 +527,12 @@ async function cmdBuild(args) {
   const mediaLock = JSON.parse(fs.readFileSync(path.join(stage, 'scripts/media-tools/desktop-lock.json'), 'utf8'))
   npm(['install', '--prefix', path.join(stage, '.runtime/hypit'), '--ignore-scripts',
     '--registry', mediaLock.npm.registry, `@hypit/hypit@${mediaLock.hypit.version}`])
-  const hypitBin = target.os === 'win' ? nodeStage : path.join(nodeStage, 'bin')
-  const hypitEntry = target.os === 'win' ? '../../apex_overlay/hypit_cli.mjs' : '../../../apex_overlay/hypit_cli.mjs'
-  fs.writeFileSync(path.join(hypitBin, 'hypit'), `#!/usr/bin/env node\nimport '${hypitEntry}'\n`, { mode: 0o755 })
-  if (target.os === 'win') fs.writeFileSync(path.join(hypitBin, 'hypit.cmd'),
-    '@echo off\r\n"%~dp0node.exe" "%~dp0..\\..\\apex_overlay\\hypit_cli.mjs" %*\r\n')
+  // `hypit`, and (hc-1177) `openfilm`: off unless Desktop's editor is on, its toolkit installed on first use, never
+  // in the bundle. Both are entries into apex_overlay (runtime-node-shims.mjs).
+  const nodeBin = target.os === 'win' ? nodeStage : path.join(nodeStage, 'bin')
+  for (const shim of runtimeNodeShims(target.os)) {
+    fs.writeFileSync(path.join(nodeBin, shim.file), shim.content, shim.mode ? { mode: shim.mode } : undefined)
+  }
 
   // ── 8. no repo npm trees (hc-951). The root and ui-tui installs held only
   //       build tooling. The TUI ships compiled (step 9b, hc-954) and runs on
@@ -604,7 +619,7 @@ async function cmdBuild(args) {
     components: {
       src: { path: '.', note: 'runtime source tree at bundle root (git archive, no .git)' },
       python: { path: pyDirRel, version: pyVersion, source: 'python-build-standalone (uv-managed)' },
-      venv: { path: 'venv', relocatable: true, sync: 'uv sync --extra all --locked', uv_version: uvVersion },
+      venv: bundleVenvComponent(uvVersion),
       node: { path: '.runtime/node', version: nodeVersion, npm_prefix: true, globals: AGENT_BROWSER_SPECS },
       ...(gitComponent ? { git: gitComponent } : {}),
       uv: { path: `.runtime/bin/uv${target.exe}`, version: uvVersion },

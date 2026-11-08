@@ -1,0 +1,17 @@
+diff --git a/studio/client.mjs b/studio/client.mjs
+index d081490..8f1bf8c 100644
+--- a/studio/client.mjs
++++ b/studio/client.mjs
+@@ -151,6 +151,12 @@ async function replace(/** @type {Running} */ old) {
+  */
+ export async function ensureStudio(say = () => {}, { fresh = false } = {}) {
+   const found = (await running()) ?? (await restarting());
++  /* an app that runs Studio itself, beside its own window on the editor (OPENFILM_HOSTED=1): the one it runs, as it
++     runs it; the CLI never starts, restarts or replaces one, which the app would not know to stop */
++  if (process.env.OPENFILM_HOSTED === '1') {
++    if (found) return found;
++    throw new Error('Studio is not running: the app that hosts it starts it when the person opens the film');
++  }
+   if (found && !fresh && !olderThanThis(found.version)) return found;
+   let pages = 0;
+   if (found) {

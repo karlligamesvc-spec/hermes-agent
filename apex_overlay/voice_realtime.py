@@ -36,10 +36,15 @@ def resolve_connection() -> tuple[str, str, dict]:
     home = get_hermes_home()
     secrets = dict(dotenv_values(home / '.env'))
     secrets.update(hydrate_profile_secret_sources(home))
-    # A foreign profile must never borrow the process/default profile's identity.
+    # A foreign profile must never borrow the process/default profile's identity, unless it is an
+    # assistant hosted on one engine with the account's (hc-1166).
     key = str(secrets.get('TOOLS_GATEWAY_KEY') or '')
     if home.resolve() == get_process_hermes_home().resolve():
         key = key or os.getenv('TOOLS_GATEWAY_KEY', '')
+    else:
+        from apex_overlay import hosted_profiles
+
+        key = key or hosted_profiles.account_value('TOOLS_GATEWAY_KEY')
     base = RELAY_BASE
     for entry in cfg.get('custom_providers') or []:
         if str(entry.get('name', '')).lower() == 'apex-nodes.com':

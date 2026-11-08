@@ -75,6 +75,32 @@ _TOOL_SEAMS = (
         "prior error). A new assistant's first reply may point to /help, and IM "
         "notices may name Hermes or tell the user to run hermes commands.",
     ),
+    (
+        "hosted_profiles",
+        "apex-overlay: hc-1166 hosted assistants seam did not fully apply (see "
+        "prior error). With one engine hosting every assistant, assistants other "
+        "than APEX may lose the platform tools and Feishu, and their sessions are "
+        "not auto-archived or curated.",
+    ),
+    (
+        "cron_account_env",
+        "apex-overlay: hc-1169 cron account credentials seam did not fully apply (see "
+        "prior error). With several assistants, every cron job runs without the "
+        "account's web search, platform tools and Feishu / WeChat credentials; web "
+        "search falls back to a keyless backend without saying so.",
+    ),
+    (
+        "im_launch_profile",
+        "apex-overlay: hc-1171 IM launch-profile seam did not fully apply (see prior "
+        "error). With several assistants, the messaging gateway configures neither "
+        "Feishu nor WeChat and the bound bot never connects.",
+    ),
+    (
+        "lark_log_redaction",
+        "apex-overlay: hc-1174 Feishu log redaction seam did not apply (see prior "
+        "error). The Feishu SDK's websocket address, credentials included "
+        "(access_key, ticket), is written to the logs as is.",
+    ),
 )
 
 

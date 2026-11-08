@@ -225,6 +225,7 @@ def _make_fake_adapter_cls():
             self.fatal = None
             self.sent = []
             self.edited = []
+            self.torn_down = []
 
         async def connect(self, *, is_reconnect: bool = False) -> bool:
             self._running = True
@@ -234,6 +235,12 @@ def _make_fake_adapter_cls():
 
         async def disconnect(self) -> None:
             self._running = False
+            # Like upstream: disconnect tears the socket down through its own helper,
+            # which the instrumentation must leave in place (hc-1174).
+            await self._teardown_ws_thread(self._ws_client, self._ws_thread_loop)
+
+        async def _teardown_ws_thread(self, ws_client, ws_thread_loop) -> None:
+            self.torn_down.append((ws_client, ws_thread_loop))
 
         async def on_processing_start(self, event) -> None:
             return None
@@ -566,3 +573,212 @@ def test_apex_overlay_enabled_in_config():
         "cli-config.yaml.example must list apex-overlay under plugins.enabled "
         "or the Feishu supervisor seam never loads in production."
     )
+
+
+# ---------------------------------------------------------------------------
+# 6. hc-1174: what the instrumentation adds never replaces upstream
+# ---------------------------------------------------------------------------
+#
+# Binding a helper under a name upstream already uses replaces upstream's method
+# under upstream's own callers. That happened: upstream's disconnect calls
+# ``_teardown_ws_thread(ws_client, ws_thread_loop)``, ours took only ``self``, and
+# every gateway shutdown raised TypeError before the CLOSE frame went out.
+
+# Upstream state the ladder deliberately resets when it rebuilds the socket (pinned
+# in test_seam_ws_client_state_conventions). Everything else it writes is its own.
+_SHARED_UPSTREAM_STATE = frozenset({"_ws_client", "_ws_future", "_ws_thread_loop"})
+
+
+def _upstream_adapter_names() -> tuple[set[str], set[str]]:
+    """(class-level names, instance attributes) of upstream's adapter and its gateway bases.
+
+    Read from source, not from the live class: once the seam has instrumented
+    FeishuAdapter in this process, the live class carries our names too.
+    """
+    import ast
+    from pathlib import Path
+
+    cls = _load_feishu_adapter_cls()
+    ours = [base for base in cls.__mro__ if base.__module__.split(".")[0] in {"gateway", "plugins"}]
+    assert ours and ours[0] is cls
+    class_names: set[str] = set()
+    instance_attrs: set[str] = set()
+    for base in ours:
+        tree = ast.parse(Path(inspect.getsourcefile(base)).read_text(encoding="utf-8"))
+        (node,) = [n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == base.__name__]
+        for item in node.body:
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                class_names.add(item.name)
+            elif isinstance(item, ast.Assign):
+                class_names.update(t.id for t in item.targets if isinstance(t, ast.Name))
+            elif isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
+                class_names.add(item.target.id)
+        for sub in ast.walk(node):
+            if (
+                isinstance(sub, ast.Attribute)
+                and isinstance(sub.value, ast.Name)
+                and sub.value.id == "self"
+                and isinstance(sub.ctx, ast.Store)
+            ):
+                instance_attrs.add(sub.attr)
+    return class_names, instance_attrs
+
+
+def _class_additions() -> set[str]:
+    """Every name the instrumentation sets on an adapter class, other than the wrapped methods.
+
+    Found by instrumenting a fake that mirrors upstream (it has ``_teardown_ws_thread``),
+    counting replaced names as well as new ones: a replacement is exactly the clash to catch.
+    """
+    cls = _make_fake_adapter_cls()
+    before = dict(vars(cls))
+    assert feishu_supervisor._instrument_feishu_adapter_class(cls) is True
+    written = {name for name, value in vars(cls).items() if name not in before or before[name] is not value}
+    return written - set(feishu_supervisor._WRAPPED_METHODS)
+
+
+def test_bound_helpers_list_every_name_the_instrumentation_adds():
+    """_BOUND_HELPERS documents what the instrumentation binds, so it must be complete."""
+    flags = {"CONNECT_IN_BACKGROUND", feishu_supervisor._ACTIVE_FLAG, feishu_supervisor._MARK}
+    assert _class_additions() == set(feishu_supervisor._BOUND_HELPERS) | flags
+
+
+def test_class_additions_are_not_upstream_names():
+    upstream, _ = _upstream_adapter_names()
+    assert set(feishu_supervisor._WRAPPED_METHODS) <= upstream, "the source reader lost upstream's methods"
+    clash = sorted(_class_additions() & upstream)
+    assert not clash, (
+        f"upstream's Feishu adapter now defines {clash}; binding ours there replaces "
+        f"upstream's under its own callers. Rename ours (the _apex_ prefix)."
+    )
+
+
+def test_instance_state_the_overlay_writes_is_its_own():
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse(Path(feishu_supervisor.__file__).read_text(encoding="utf-8"))
+    written = {
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id in {"self", "adapter"}
+        and isinstance(node.ctx, ast.Store)
+    }
+    _, upstream = _upstream_adapter_names()
+    assert _SHARED_UPSTREAM_STATE <= upstream, "the ladder resets state upstream no longer has"
+    clash = sorted((written - _SHARED_UPSTREAM_STATE) & upstream)
+    assert not clash, (
+        f"upstream's Feishu adapter now keeps its own {clash}; the overlay writes "
+        f"the same attributes. Rename ours."
+    )
+
+
+def _upstream_method(name):
+    fn = getattr(_load_feishu_adapter_cls(), name)
+    while getattr(fn, feishu_supervisor._MARK, False):
+        fn = fn.__wrapped__
+    return fn
+
+
+def _call_shapes(sig: inspect.Signature):
+    """Argument shapes a caller may use: optionals left out or passed, by position or keyword."""
+    params = [
+        p for p in sig.parameters.values()
+        if p.name != "self" and p.kind not in (p.VAR_POSITIONAL, p.VAR_KEYWORD)
+    ]
+    for with_optional in (False, True):
+        for by_keyword in (False, True):
+            args, kwargs = [], {}
+            for p in params:
+                if p.default is not p.empty and not with_optional:
+                    continue
+                if p.kind is p.KEYWORD_ONLY or (by_keyword and p.kind is p.POSITIONAL_OR_KEYWORD):
+                    kwargs[p.name] = object()
+                else:
+                    args.append(object())
+            yield tuple(args), kwargs
+
+
+@pytest.mark.parametrize("name", feishu_supervisor._WRAPPED_METHODS)
+def test_wrapper_accepts_every_call_upstreams_method_accepts(name):
+    upstream_fn = _upstream_method(name)
+    wrapper = getattr(feishu_supervisor, f"_wrap_{name}")(upstream_fn)
+    upstream_sig = inspect.signature(upstream_fn)
+    wrapper_sig = inspect.signature(wrapper, follow_wrapped=False)
+    for args, kwargs in _call_shapes(upstream_sig):
+        upstream_sig.bind(object(), *args, **kwargs)
+        try:
+            wrapper_sig.bind(object(), *args, **kwargs)
+        except TypeError as exc:
+            pytest.fail(
+                f"upstream FeishuAdapter.{name}{upstream_sig} is called with "
+                f"{len(args)} positional and {sorted(kwargs)} keyword arguments; the "
+                f"overlay's wrapper{wrapper_sig} refuses that ({exc}). Update the wrapper."
+            )
+
+
+@pytest.mark.asyncio
+async def test_fake_disconnect_still_reaches_upstreams_teardown():
+    adapter = _instrumented_adapter()
+    assert await adapter.connect() is True
+    client = adapter._ws_client
+    await adapter.disconnect()
+    assert adapter.torn_down == [(client, None)]
+
+
+@pytest.mark.asyncio
+async def test_instrumented_upstream_disconnect_sends_the_close_frame(tmp_path, monkeypatch):
+    """The real upstream adapter, instrumented: disconnect closes the socket and stops its thread."""
+    import contextlib
+    import threading
+
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    from gateway.config import PlatformConfig
+
+    cls = type("InstrumentedFeishuAdapter", (_load_feishu_adapter_cls(),), {})
+    assert feishu_supervisor._instrument_feishu_adapter_class(cls) is True
+    adapter = cls(PlatformConfig())
+
+    closed = []
+
+    class _LarkClient:
+        _auto_reconnect = True
+
+        async def _disconnect(self):
+            closed.append(threading.current_thread().name)
+
+    # The SDK runs the socket on its own thread and event loop; the adapter waits on a future for it.
+    main_loop = asyncio.get_running_loop()
+    thread_exited = main_loop.create_future()
+    ws_loop = asyncio.new_event_loop()
+
+    def _ws_thread():
+        asyncio.set_event_loop(ws_loop)
+        try:
+            ws_loop.run_forever()
+        finally:
+            ws_loop.close()
+            with contextlib.suppress(RuntimeError):
+                main_loop.call_soon_threadsafe(lambda: thread_exited.done() or thread_exited.set_result(None))
+
+    thread = threading.Thread(target=_ws_thread, name="lark-ws", daemon=True)
+    thread.start()
+    adapter._ws_client = _LarkClient()
+    adapter._ws_thread_loop = ws_loop
+    adapter._ws_future = thread_exited
+    adapter._running = True
+    adapter._connection_mode = "websocket"
+
+    try:
+        await adapter.disconnect()
+    finally:
+        # A broken disconnect must fail this test, not leave a thread that hangs the run.
+        with contextlib.suppress(RuntimeError):
+            ws_loop.call_soon_threadsafe(ws_loop.stop)
+        thread.join(timeout=5)
+
+    assert closed == ["lark-ws"], "the CLOSE frame must go out once, on the socket's own thread"
+    assert ws_loop.is_closed(), "the websocket thread is still running"
+    assert adapter._ws_client is None and adapter._ws_future is None and adapter._running is False

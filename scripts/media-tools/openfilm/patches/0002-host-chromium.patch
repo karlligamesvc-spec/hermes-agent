@@ -1,0 +1,26 @@
+diff --git a/src/host.mjs b/src/host.mjs
+index f73923c..3dedba4 100644
+--- a/src/host.mjs
++++ b/src/host.mjs
+@@ -315,8 +315,9 @@ export function injectFirst(html, tag) {
+  * included), is the smaller download, starts inside agents'
+  * OS sandboxes where the full Chromium cannot, and is the build Studio's engine uses — one browser on the machine.
+  * A visible window needs the full Chromium (`headed`). A host may pick another build, add arguments and its own
+- * environment. Each browser is held to a share of the machine's memory (browser-memory.mjs): a page whose drawing
+- * takes more ends it.
++ * environment; a host that ships its own Chromium names its executable in OPENFILM_CHROMIUM, and every headless browser
++ * is that one (one that is missing fails to launch: nothing is downloaded in its place). Each browser is held to a
++ * share of the machine's memory (browser-memory.mjs): a page whose drawing takes more ends it.
+  */
+ export async function launch({ headed = false, channel = headed ? 'chromium' : null, args: extra = [], env } = {}) {
+   /* CanvasDrawElement: HTML-in-Canvas (drawElementImage, texElementImage2D), so a page can draw its own DOM into 2D or WebGL.
+@@ -326,7 +327,8 @@ export async function launch({ headed = false, channel = headed ? 'chromium' : n
+   const open = async (/** @type {string[]} */ angle) => {
+     /* a switch of no meaning to Chromium, so its process (and every one it starts) is found to be watched */
+     const marker = `--openfilm-browser=${randomUUID()}`;
+-    const browser = await chromium.launch({ ...(channel ? { channel } : {}), headless: !headed, args: [...args, ...angle, marker], ...(env ? { env } : {}) });
++    const own = channel ? null : process.env.OPENFILM_CHROMIUM;
++    const browser = await chromium.launch({ ...(channel ? { channel } : own ? { executablePath: own } : {}), headless: !headed, args: [...args, ...angle, marker], ...(env ? { env } : {}) });
+     guard(browser, marker);
+     return browser;
+   };

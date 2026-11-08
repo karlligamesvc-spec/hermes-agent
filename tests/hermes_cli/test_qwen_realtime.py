@@ -41,6 +41,20 @@ def test_foreign_profile_never_borrows_process_key(homes):
     assert voice.resolve_connection()[0] == 'default-process-identity'
 
 
+def test_an_assistant_hosted_on_one_engine_uses_the_accounts_key(homes, monkeypatch):
+    """hc-1166: one engine for every assistant shares the account's key, as an engine of its own did."""
+    from hermes_cli import env_loader
+    from hermes_cli.web_server_profiles import _config_profile_scope
+    monkeypatch.setattr(env_loader, '_LOADED_DOTENV_KEYS', set())
+    monkeypatch.setenv('HERMES_DESKTOP', '1')
+    monkeypatch.setenv('APEX_MULTI_BOT_SINGLE_ENGINE', '1')
+    with _config_profile_scope('worker'):
+        assert voice.resolve_connection()[0] == 'default-process-identity'
+    monkeypatch.setenv('APEX_MULTI_BOT_SINGLE_ENGINE', '0')
+    with _config_profile_scope('worker'):
+        assert voice.resolve_connection()[0] == ''
+
+
 def test_actual_provider_configuration_and_model_are_profile_local(homes):
     from hermes_cli.web_server_profiles import _config_profile_scope
     _root, worker = homes

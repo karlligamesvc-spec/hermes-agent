@@ -14,6 +14,7 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 from agent.tts_provider import TTSProvider
+from apex_overlay import hosted_profiles
 
 logger = logging.getLogger(__name__)
 
@@ -122,13 +123,17 @@ def connection() -> tuple[str, str]:
     same_home = home.resolve() == get_process_hermes_home().resolve()
     if same_home and not key:
         key = next((os.environ[k] for k in keys if os.environ.get(k)), '')
+    if not same_home and not key:  # hc-1166: one engine hosting every assistant shares the account's key
+        key = hosted_profiles.account_value('TOOLS_GATEWAY_KEY')
     if not key:
         for item in load_config().get('custom_providers') or []:
             if item.get('name', '').lower() == 'apex-nodes.com':
                 key = str(item.get('api_key') or '')
                 break
-    # A foreign profile must not inherit the process identity or private endpoint.
-    base = (os.getenv('HERMES_PLATFORM_API_BASE') or PUBLIC_BASE) if same_home else PUBLIC_BASE
+    # A foreign profile must not inherit the process identity or private endpoint, unless it is an
+    # assistant hosted on one engine with the account's (hc-1166).
+    own_base = os.getenv('HERMES_PLATFORM_API_BASE') if same_home else hosted_profiles.account_value('HERMES_PLATFORM_API_BASE')
+    base = own_base or PUBLIC_BASE
     return key, base.rstrip('/')
 
 

@@ -454,6 +454,50 @@ const ROUTES = [
       requestPath: '/api/config'
     },
     expected: { backend: 'pool', descriptorProfile: null, scopePath: false }
+  },
+  {
+    name: 'hc-1166: with one engine for every assistant, a local assistant shares the primary, scoped per request',
+    profile: 'apex-bot-2',
+    opts: { primaryProfile: 'default', globalRemote: false, profileRemoteOverride: false, localSharedPrimary: true },
+    expected: { backend: 'primary', descriptorProfile: 'apex-bot-2', scopePath: true }
+  },
+  {
+    name: 'hc-1166: with one engine, even a write that used to keep a pooled backend goes to the primary',
+    profile: 'apex-bot-2',
+    opts: {
+      primaryProfile: 'default',
+      globalRemote: false,
+      profileRemoteOverride: false,
+      localSharedPrimary: true,
+      requestMethod: 'PATCH',
+      requestPath: '/api/sessions/session-1'
+    },
+    expected: { backend: 'primary', descriptorProfile: 'apex-bot-2', scopePath: true }
+  },
+  {
+    name: 'hc-1166: with one engine, APEX itself stays the unscoped primary',
+    profile: 'default',
+    opts: { primaryProfile: 'default', localSharedPrimary: true },
+    expected: { backend: 'primary', descriptorProfile: null, scopePath: false }
+  },
+  {
+    name: 'hc-1166: an assistant with its own remote override keeps its pooled backend',
+    profile: 'apex-bot-2',
+    opts: { primaryProfile: 'default', globalRemote: false, profileRemoteOverride: true, localSharedPrimary: true },
+    expected: { backend: 'pool', descriptorProfile: null, scopePath: false }
+  },
+  {
+    name: 'hc-1166: a stored local profile under a remote primary is not moved onto that remote',
+    profile: 'pm',
+    opts: {
+      primaryProfile: 'default',
+      globalRemote: false,
+      profileRemoteOverride: false,
+      primaryRemoteActive: true,
+      ownEntry: true,
+      localSharedPrimary: true
+    },
+    expected: { backend: 'pool', descriptorProfile: null, scopePath: false }
   }
 ]
 
@@ -536,6 +580,14 @@ test('pathForRegistryBackendRequest uses the resolved registry backend scope', (
     ),
     '/api/profiles/sessions/sidebar?recents_profile=remote-research&recents_exclude=cron%2Cdesktop'
   )
+})
+
+test('hc-1166: pathForRegistryBackendRequest scopes a call for the local primary that serves every assistant', () => {
+  assert.equal(
+    pathForRegistryBackendRequest('/api/sessions/s-1?include_compacted=true', 'apex-bot-3', { sharedPrimary: true }),
+    '/api/sessions/s-1?include_compacted=true&profile=apex-bot-3'
+  )
+  assert.equal(pathForRegistryBackendRequest('/api/config', 'apex-bot-3', {}), '/api/config')
 })
 
 // --- pathWithGlobalRemoteProfile ---

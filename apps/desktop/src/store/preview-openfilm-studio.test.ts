@@ -1,12 +1,15 @@
 /**
- * PROTOTYPE (lib/openfilm-studio.ts): with this install's switch on, an agent's
- * film.html opens in OpenFilm Studio; off, opening a preview is unchanged.
+ * lib/openfilm-studio.ts: with this install's switch on, an agent's film.html
+ * opens in OpenFilm Studio once its toolkit is installed, and before that plays
+ * as it always did and switches over when it is; off, opening a preview is
+ * unchanged. A video tool an agent starts has main install the toolkit.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { $openfilmStudioOn, OPENFILM_STUDIO_TAB_ID } from '@/lib/openfilm-studio'
+import { $openfilmStudioOn, noteAgentTool, OPENFILM_READY_POLL_MS, OPENFILM_STUDIO_TAB_ID } from '@/lib/openfilm-studio'
 
 import { $rightRailActiveTabId } from './layout'
+import { $notifications } from './notifications'
 import { $previewTabs, closeRightRail, openPreview, type PreviewTarget } from './preview'
 
 const STUDIO_URL = 'http://127.0.0.1:53327/open?key=k&to=%2Fprojects%2Fp1'
@@ -17,8 +20,13 @@ function fileTarget(path: string): PreviewTarget {
 
 type StudioBridge = NonNullable<Window['hermesDesktop']['openfilmStudio']>
 
-function stubStudio(open: StudioBridge['open']) {
-  const bridge: StudioBridge = { open: vi.fn(open), status: vi.fn(async () => ({ on: true })) }
+function stubStudio(open: StudioBridge['open'], status = { on: true, ready: true, preparing: false }) {
+  const bridge: StudioBridge = {
+    open: vi.fn(open),
+    prefetch: vi.fn(async () => 'started' as const),
+    status: vi.fn(async () => status)
+  }
+
   window.hermesDesktop = { ...(window.hermesDesktop ?? {}), openfilmStudio: bridge } as Window['hermesDesktop']
 
   return bridge
@@ -103,5 +111,84 @@ describe('opening an agent film.html', () => {
 
     expect(bridge.open).not.toHaveBeenCalled()
     expect($previewTabs.get()).toHaveLength(1)
+  })
+
+  describe('before the editor is installed', () => {
+    const FILM = '/work/cook/film.html'
+    const FILE_TAB = 'file:file:///work/cook/film.html'
+
+    function notReadyYet() {
+      $openfilmStudioOn.set(true)
+      const status = { on: true, ready: false, preparing: true }
+
+      const bridge = stubStudio(async () => {
+        return status.ready ? { ok: true, url: STUDIO_URL } : { ok: false, code: 'not_ready', message: 'getting ready' }
+      }, status)
+
+      return { bridge, status }
+    }
+
+    afterEach(() => vi.useRealTimers())
+
+    it('plays the film as before, says once that the editor is coming, and switches when it is ready', async () => {
+      vi.useFakeTimers()
+      const { bridge, status } = notReadyYet()
+
+      openPreview(fileTarget(FILM), 'explicit-link')
+
+      await vi.waitFor(() => expect($previewTabs.get().map(tab => tab.id)).toEqual([FILE_TAB]))
+      expect($rightRailActiveTabId.get()).toBe(FILE_TAB)
+      expect($notifications.get().filter(n => n.id === 'openfilm-studio-preparing')).toHaveLength(1)
+
+      await vi.advanceTimersByTimeAsync(OPENFILM_READY_POLL_MS * 3)
+      expect($rightRailActiveTabId.get()).toBe(FILE_TAB)
+
+      status.ready = true
+      await vi.advanceTimersByTimeAsync(OPENFILM_READY_POLL_MS)
+      await vi.waitFor(() => expect($rightRailActiveTabId.get()).toBe(OPENFILM_STUDIO_TAB_ID))
+      expect(bridge.open).toHaveBeenLastCalledWith('/work/cook')
+    })
+
+    it('does not jump to the editor once the person has moved on from the film', async () => {
+      vi.useFakeTimers()
+      const { bridge, status } = notReadyYet()
+
+      openPreview(fileTarget(FILM), 'explicit-link')
+      await vi.waitFor(() => expect($rightRailActiveTabId.get()).toBe(FILE_TAB))
+      openPreview(fileTarget('/work/cook/notes.md'), 'explicit-link')
+      const calls = vi.mocked(bridge.open).mock.calls.length
+
+      status.ready = true
+      await vi.advanceTimersByTimeAsync(OPENFILM_READY_POLL_MS * 3)
+
+      expect($rightRailActiveTabId.get()).toBe('file:file:///work/cook/notes.md')
+      expect(vi.mocked(bridge.open).mock.calls.length).toBe(calls)
+    })
+  })
+
+  describe('an agent starting a video tool', () => {
+    it.each([
+      ['generate_video', true],
+      ['video_generate', true],
+      ['video_breakdown', true],
+      ['terminal', false],
+      ['browser_navigate', false],
+      [undefined, false]
+    ])('%s has main install the editor: %s', (tool, installs) => {
+      $openfilmStudioOn.set(true)
+      const bridge = stubStudio(async () => ({ ok: true, url: STUDIO_URL }))
+
+      noteAgentTool(tool)
+
+      expect(vi.mocked(bridge.prefetch).mock.calls.length).toBe(installs ? 1 : 0)
+    })
+
+    it('installs nothing while the switch is off', () => {
+      const bridge = stubStudio(async () => ({ ok: true, url: STUDIO_URL }))
+
+      noteAgentTool('generate_video')
+
+      expect(bridge.prefetch).not.toHaveBeenCalled()
+    })
   })
 })

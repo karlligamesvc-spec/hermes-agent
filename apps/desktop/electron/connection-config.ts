@@ -564,6 +564,8 @@ export interface ProfileRouteOptions {
   profileRemoteOverride?: boolean
   /** The primary profile's own backend resolves to a remote host. */
   primaryRemoteActive?: boolean
+  /** hc-1166: several assistants on one engine — every local profile is served by the primary. */
+  localSharedPrimary?: boolean
   /** A stored per-profile entry exists for this profile (local or remote). */
   ownEntry?: boolean
   requestMethod?: null | string
@@ -679,7 +681,7 @@ function localPrimaryRequestScope(opts: ProfileRouteOptions): boolean | null {
 
 /**
  * The one place that answers "which backend serves profile P, and does its
- * REST path need a profile scope?". Six routes, in precedence order:
+ * REST path need a profile scope?". Seven routes, in precedence order:
  *
  *  1. The primary profile owns a local/window backend outright; on a global
  *     remote its label is still carried per request because launch home can
@@ -690,9 +692,12 @@ function localPrimaryRequestScope(opts: ProfileRouteOptions): boolean | null {
  *     one host serves every profile — so it is scoped per request instead.
  *  4. An unknown profile under a remote primary shares that remote backend.
  *     A stored local profile remains isolated in its own backend.
- *  5. A local profile REST request that the primary backend can safely scope
+ *  5. hc-1166: with several assistants on one engine, every local profile
+ *     shares the primary backend like case 3 — the engine binds each call's
+ *     profile home — so switching assistants never starts a process.
+ *  6. A local profile REST request that the primary backend can safely scope
  *     reuses that backend, with `?profile=` when the handler accepts it.
- *  6. Any other local profile gets its own pooled backend, spawned with
+ *  7. Any other local profile gets its own pooled backend, spawned with
  *     `--profile`, so its `HERMES_HOME` scopes it.
  *
  * Routing used to be spread across three overlapping predicates that each
@@ -737,6 +742,10 @@ function resolveProfileBackendRoute(profile, opts: ProfileRouteOptions = {}): Pr
     // A stored local profile must not be redirected into the remote primary,
     // even when its REST endpoint supports profile scoping.
     return { backend: 'pool', descriptorProfile: null, scopePath: false }
+  }
+
+  if (opts.localSharedPrimary) {
+    return { backend: 'primary', descriptorProfile: scopedProfile, scopePath: true }
   }
 
   const localScope = localPrimaryRequestScope(opts)
@@ -872,17 +881,19 @@ function pathWithProfileScope(path, profile) {
 
 export interface RegistryBackendRequestScope {
   remoteProfile?: null | string
+  sharedPrimary?: boolean
   sharedRemote?: boolean
 }
 
 /**
- * Scope a REST path for a resolved registry backend. Shared remotes serve
- * multiple profiles from one process and need an explicit profile query;
+ * Scope a REST path for a resolved registry backend. Shared remotes, and the
+ * local primary serving every assistant (hc-1166), serve multiple profiles
+ * from one process and need an explicit profile query;
  * isolated SSH backends already own one profile but may translate a Desktop
  * alias in an existing self-profile filter.
  */
 function pathForRegistryBackendRequest(path, profile, backend: RegistryBackendRequestScope) {
-  return backend.sharedRemote
+  return backend.sharedRemote || backend.sharedPrimary
     ? pathWithProfileScope(path, profile)
     : translateSelfProfileQuery(path, profile, backend.remoteProfile)
 }

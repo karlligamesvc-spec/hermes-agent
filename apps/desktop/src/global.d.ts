@@ -455,16 +455,17 @@ declare global {
         get: () => Promise<DesktopClientConfigState>
         onArrived?: (callback: (state: DesktopClientConfigState) => void) => () => void
       }
-      // PROTOTYPE, off unless APEXNODES_OPENFILM_STUDIO=1 (electron/openfilm-studio.ts):
-      // OpenFilm Studio for an agent's film.html in the preview pane.
+      // Off unless APEXNODES_OPENFILM_STUDIO=1 (electron/openfilm-studio.ts): OpenFilm Studio
+      // for an agent's film.html in the preview pane, once the engine has installed its toolkit.
       openfilmStudio?: {
-        status: () => Promise<{ on: boolean }>
+        status: () => Promise<{ on: boolean; preparing: boolean; ready: boolean }>
         open: (
           folder: string
         ) => Promise<
           | { ok: true; url: string }
-          | { ok: false; code: 'not_a_film' | 'off' | 'open_failed' | 'start_failed'; message: string }
+          | { ok: false; code: 'not_a_film' | 'not_ready' | 'off' | 'open_failed' | 'start_failed'; message: string }
         >
+        prefetch: () => Promise<'off' | 'preparing' | 'ready' | 'started' | 'waiting'>
       }
       // Continuous auth gate: fires when a backend call returns 401 (login lost)
       // or 403 account_disabled (account abnormal). The renderer clears auth and

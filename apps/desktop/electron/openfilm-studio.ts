@@ -1,15 +1,19 @@
 /**
- * openfilm-studio.ts — PROTOTYPE, off unless this install turns it on: OpenFilm
- * Studio as the editor in the preview pane.
+ * openfilm-studio.ts — off unless this install turns it on: OpenFilm Studio as
+ * the editor in the preview pane (hc-1173 prototype, hc-1176 toolkit download).
  *
- * Studio is OpenFilm's editor (openfilm@0.3.0, MIT): a timeline over an agent's
- * `film.html`, where a person retypes a caption, moves a title or splits a clip,
- * and Studio writes that back into the same files for the agent to read. APEX
- * does not ship it. An install turns it on with APEXNODES_OPENFILM_STUDIO=1 and
- * points APEXNODES_OPENFILM_TOOLKIT at a folder holding `node_modules/openfilm`
- * (and, in `browsers/`, the Chromium Playwright downloads for it). The
- * platform's `desktop_features` cannot turn it on: an install without the
- * toolkit would only get an error.
+ * Studio is OpenFilm's editor (openfilm@0.3.0, MIT, with APEX's patches): a
+ * timeline over an agent's `film.html`, where a person retypes a caption, moves
+ * a title or splits a clip, and Studio writes that back into the same files for
+ * the agent to read. An install turns it on with APEXNODES_OPENFILM_STUDIO=1
+ * (the platform's `desktop_features` cannot). APEX does not ship the toolkit
+ * Studio runs from: the engine downloads it from APEX COS
+ * (`python -m apex_overlay.media_tools openfilm`), in the background the first
+ * time an agent works on a video (`prefetch`), and names it in
+ * `<HERMES_HOME>/tool-cache/openfilm/ready.json`, written last. It draws in the
+ * agent browser's Chromium (OPENFILM_CHROMIUM). Until then a film opens as it
+ * always did. A development build may instead point APEXNODES_OPENFILM_TOOLKIT
+ * at a folder holding `node_modules/openfilm` (and Playwright's `browsers/`).
  *
  * Studio runs in a child process: this app's own binary run as Node
  * (ELECTRON_RUN_AS_NODE), running a small host that calls `startStudio()` from
@@ -21,18 +25,25 @@
  * (`studioChildEnv` passes a short list), and so that a Studio crash is not an
  * APEX crash. The host's stdin is a pipe from main: when APEX goes, Studio goes.
  *
+ * No other Studio outlives APEX (hc-1177). The agent's `openfilm` runs hosted
+ * (OPENFILM_HOSTED=1, APEX's patch 0003): it uses this Studio and never starts
+ * one. Main's environment carries the same, so whatever else the engine runs
+ * with OpenFilm works in APEX's folders, where Desktop sees it in run.json. A
+ * Studio run.json names that is not Desktop's is asked to quit before Desktop
+ * starts its own, and ended when APEX quits.
+ *
  * Electron-free: unit-tested with `vitest --project electron`.
  */
 
-import { type ChildProcess, spawn as nodeSpawn } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { type ChildProcess, spawn as nodeSpawn, spawnSync } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { delimiter, isAbsolute, join } from 'node:path'
 
 import { envSwitch } from './apex-desktop-features'
 
-/** This install's switch: only `1` (or true/yes/on) turns the prototype on. */
+/** This install's switch: only `1` (or true/yes/on) turns it on. */
 export const OPENFILM_STUDIO_ENV = 'APEXNODES_OPENFILM_STUDIO'
-/** The folder holding `node_modules/openfilm` (an absolute path). */
+/** A development build's toolkit: the folder holding `node_modules/openfilm` (an absolute path). */
 export const OPENFILM_TOOLKIT_ENV = 'APEXNODES_OPENFILM_TOOLKIT'
 /** Optional: a folder with ffmpeg + ffprobe put before the engine's own (a dev build runs no installed engine). */
 export const OPENFILM_FFMPEG_DIR_ENV = 'APEXNODES_OPENFILM_FFMPEG_DIR'
@@ -44,6 +55,17 @@ const HOST_FILE = 'apex-studio-host.mjs'
 const HOST_MARK = '@@apex-openfilm '
 const READY_TIMEOUT_MS = 60_000
 const OPEN_TIMEOUT_MS = 15_000
+/** Another Studio asked to quit has this long to answer, and then this long to be gone. */
+const QUIT_ANSWER_MS = 3_000
+const QUIT_GONE_MS = 5_000
+/** A Studio ended at APEX's quit (asked, on macOS and Linux) is ended hard this long after, should it still be there. */
+const HARD_END_AFTER_S = 5
+/** The engine's install of the toolkit (and of the Chromium it draws in) may take this long on a slow line. */
+const INSTALL_TIMEOUT_MS = 45 * 60_000
+/** After a failed install, a new one waits this long, then starts on the next trigger: no retry storm, no prompt. */
+const RETRY_AFTER_MS = 10 * 60_000
+/** The engine module that installs the toolkit and writes ready.json. */
+const INSTALL_ARGS = ['-m', 'apex_overlay.media_tools', 'openfilm']
 
 /** The variables of main's environment the child keeps; everything else stays in main. */
 const KEPT_ENV = [
@@ -75,35 +97,71 @@ const KEPT_ENV = [
 ]
 
 export type OpenfilmStudioPlan =
-  | { on: false; reason: 'no_toolkit' | 'switch_off' }
-  | { browsers: null | string; dataRoot: string; on: true; serverModule: string; toolkit: string }
+  { on: false; reason: 'switch_off' } | { dataRoot: string; devToolkit: null | string; on: true; ready: string }
 
-/** Whether this launch runs the prototype, and from where. Pure. */
-export function planOpenfilmStudio(
-  env: Record<string, string | undefined>,
-  hermesHome: string,
-  exists: (path: string) => boolean = existsSync
-): OpenfilmStudioPlan {
+/** The toolkit Studio runs from: its folder, its server module, and the browser it draws in. */
+export interface OpenfilmToolkit {
+  /** A development toolkit's Playwright browsers (PLAYWRIGHT_BROWSERS_PATH). */
+  browsers: null | string
+  /** The agent browser's Chromium (OPENFILM_CHROMIUM), for the installed toolkit. */
+  chromium: null | string
+  serverModule: string
+  toolkit: string
+}
+
+/** Whether this launch runs Studio, and where its data and its toolkit are. Pure. */
+export function planOpenfilmStudio(env: Record<string, string | undefined>, hermesHome: string): OpenfilmStudioPlan {
   if (envSwitch(env[OPENFILM_STUDIO_ENV]) !== true) {
     return { on: false, reason: 'switch_off' }
   }
 
-  const toolkit = String(env[OPENFILM_TOOLKIT_ENV] ?? '').trim()
-  const serverModule = toolkit && isAbsolute(toolkit) ? join(toolkit, ...SERVER_MODULE) : ''
-
-  if (!serverModule || !exists(serverModule)) {
-    return { on: false, reason: 'no_toolkit' }
-  }
-
-  const browsers = join(toolkit, 'browsers')
+  const devToolkit = String(env[OPENFILM_TOOLKIT_ENV] ?? '').trim()
 
   return {
     on: true,
-    toolkit,
-    serverModule,
-    browsers: exists(browsers) ? browsers : null,
-    dataRoot: join(hermesHome, 'openfilm')
+    dataRoot: join(hermesHome, 'openfilm'),
+    ready: join(hermesHome, 'tool-cache', 'openfilm', 'ready.json'),
+    devToolkit: devToolkit || null
   }
+}
+
+/**
+ * The toolkit Studio can run from now, or null while there is none: a
+ * development build's own, else the one the engine installed, as its
+ * ready.json names it (written last, so never a half-done install) and only
+ * while its files are there. Read each time: the engine may finish at any moment.
+ */
+export function findOpenfilmToolkit(
+  plan: Extract<OpenfilmStudioPlan, { on: true }>,
+  exists: (path: string) => boolean = existsSync,
+  read: (path: string) => string = path => readFileSync(path, 'utf8')
+): null | OpenfilmToolkit {
+  if (plan.devToolkit !== null) {
+    const serverModule = isAbsolute(plan.devToolkit) ? join(plan.devToolkit, ...SERVER_MODULE) : ''
+    const browsers = join(plan.devToolkit, 'browsers')
+
+    return serverModule && exists(serverModule)
+      ? { toolkit: plan.devToolkit, serverModule, browsers: exists(browsers) ? browsers : null, chromium: null }
+      : null
+  }
+
+  let said: { chromium?: unknown; toolkit?: unknown } | null = null
+
+  try {
+    said = JSON.parse(read(plan.ready))
+  } catch {
+    return null
+  }
+
+  const toolkit = typeof said?.toolkit === 'string' && isAbsolute(said.toolkit) ? said.toolkit : ''
+  const chromium = typeof said?.chromium === 'string' && isAbsolute(said.chromium) ? said.chromium : ''
+  const serverModule = toolkit ? join(toolkit, ...SERVER_MODULE) : ''
+
+  if (!serverModule || !exists(serverModule) || !chromium || !exists(chromium)) {
+    return null
+  }
+
+  return { toolkit, serverModule, browsers: null, chromium }
 }
 
 /** Studio's folders, all inside APEX's data folder (never ~/.openfilm or ~/Movies/OpenFilm). */
@@ -118,14 +176,128 @@ export function openfilmStudioFolders(dataRoot: string): Record<string, string> 
 }
 
 /**
+ * What every process the engine runs gets from main's environment: OpenFilm in
+ * Studio's folders, hosted (the CLI never starts a Studio: APEX's patch 0003),
+ * no browser window, no npm update check. Set only while the switch is on.
+ */
+export function openfilmAgentEnv(plan: Extract<OpenfilmStudioPlan, { on: true }>): Record<string, string> {
+  return {
+    ...openfilmStudioFolders(plan.dataRoot),
+    OPENFILM_HOSTED: '1',
+    OPENFILM_NO_BROWSER: '1',
+    OPENFILM_NO_UPDATE_CHECK: '1'
+  }
+}
+
+/** The Studio a run.json names: OpenFilm writes it in OPENFILM_HOME once Studio listens, and removes it as it stops. */
+export interface AdvertisedStudio {
+  key: string
+  origin: string
+  pid: number
+  /** The openfilm CLI's supervisor, which starts Studio again if it ends unexpectedly. */
+  supervisor: null | number
+}
+
+export function readAdvertisedStudio(
+  home: string,
+  read: (path: string) => string = path => readFileSync(path, 'utf8')
+): AdvertisedStudio | null {
+  let said: { key?: unknown; origin?: unknown; pid?: unknown; supervisor?: unknown } | null = null
+
+  try {
+    said = JSON.parse(read(join(home, 'run.json')))
+  } catch {
+    return null
+  }
+
+  const pid = Number(said?.pid)
+  const supervisor = Number(said?.supervisor)
+
+  return Number.isInteger(pid) && pid > 0 && typeof said?.origin === 'string' && typeof said?.key === 'string'
+    ? {
+        pid,
+        supervisor: Number.isInteger(supervisor) && supervisor > 0 ? supervisor : null,
+        origin: said.origin,
+        key: said.key
+      }
+    : null
+}
+
+/** What Desktop does to a Studio it did not start. */
+export interface StudioProcesses {
+  alive: (pid: number) => boolean
+  /** Its command line names OpenFilm: never a process that took a gone Studio's pid. */
+  isOpenfilm: (pid: number) => boolean
+  /** Ends it and what it started; returns at once. */
+  end: (pid: number) => void
+}
+
+export function systemStudioProcesses(
+  platform: NodeJS.Platform = process.platform,
+  run: typeof spawnSync = spawnSync,
+  spawn: typeof nodeSpawn = nodeSpawn
+): StudioProcesses {
+  const windows = platform === 'win32'
+
+  return {
+    alive: pid => {
+      try {
+        process.kill(pid, 0)
+
+        return true
+      } catch (error) {
+        return (error as NodeJS.ErrnoException).code === 'EPERM'
+      }
+    },
+    isOpenfilm: pid => {
+      const said = windows
+        ? run(
+            'powershell.exe',
+            [
+              '-NoProfile',
+              '-NonInteractive',
+              '-Command',
+              `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`
+            ],
+            { encoding: 'utf8', timeout: 10_000, windowsHide: true }
+          )
+        : run('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8', timeout: 3_000 })
+
+      return /openfilm/i.test(String(said.stdout ?? ''))
+    },
+    end: pid => {
+      if (windows) {
+        // The whole tree: on Windows a signal ends one process, and the supervisor would start Studio again.
+        run('taskkill', ['/PID', String(pid), '/T', '/F'], { timeout: 10_000, windowsHide: true })
+
+        return
+      }
+
+      try {
+        // Studio closes on SIGTERM (its supervisor passes it on); whatever is still there a few seconds later is
+        // ended hard, by a shell that outlives APEX.
+        process.kill(pid, 'SIGTERM')
+        spawn('/bin/sh', ['-c', `sleep ${HARD_END_AFTER_S}; kill -9 ${pid} 2>/dev/null`], {
+          detached: true,
+          stdio: 'ignore'
+        }).unref()
+      } catch {
+        // gone already
+      }
+    }
+  }
+}
+
+/**
  * The child's whole environment: a short list kept from main's, Studio's
- * folders, no browser of its own and no npm update check, and a PATH that finds
- * the engine's ffmpeg and ffprobe before anything else (OpenFilm looks for them
- * only on PATH). `basePath` is the PATH the engine itself gets, whose first
- * entries are the engine's bundled tools.
+ * folders, no browser window of its own and no npm update check, the browser
+ * it draws in, and a PATH that finds the engine's ffmpeg and ffprobe before
+ * anything else (OpenFilm looks for them only on PATH). `basePath` is the PATH
+ * the engine itself gets, whose first entries are the engine's bundled tools.
  */
 export function studioChildEnv(
   plan: Extract<OpenfilmStudioPlan, { on: true }>,
+  toolkit: OpenfilmToolkit,
   env: Record<string, string | undefined>,
   basePath: string
 ): Record<string, string> {
@@ -141,7 +313,7 @@ export function studioChildEnv(
 
   const ffmpegDir = String(env[OPENFILM_FFMPEG_DIR_ENV] ?? '').trim()
 
-  const path = [isAbsolute(ffmpegDir) ? ffmpegDir : '', join(plan.toolkit, 'node_modules', '.bin'), basePath]
+  const path = [isAbsolute(ffmpegDir) ? ffmpegDir : '', join(toolkit.toolkit, 'node_modules', '.bin'), basePath]
     .filter(Boolean)
     .join(delimiter)
 
@@ -150,9 +322,10 @@ export function studioChildEnv(
     ...openfilmStudioFolders(plan.dataRoot),
     OPENFILM_NO_BROWSER: '1',
     OPENFILM_NO_UPDATE_CHECK: '1',
-    ...(plan.browsers ? { PLAYWRIGHT_BROWSERS_PATH: plan.browsers } : {}),
+    ...(toolkit.chromium ? { OPENFILM_CHROMIUM: toolkit.chromium } : {}),
+    ...(toolkit.browsers ? { PLAYWRIGHT_BROWSERS_PATH: toolkit.browsers } : {}),
     ELECTRON_RUN_AS_NODE: '1',
-    APEX_OPENFILM_SERVER_MODULE: plan.serverModule,
+    APEX_OPENFILM_SERVER_MODULE: toolkit.serverModule,
     PATH: path
   }
 }
@@ -218,12 +391,21 @@ interface RunningStudio {
 }
 
 export type OpenfilmStudioOpen =
-  | { code: 'not_a_film' | 'off' | 'open_failed' | 'start_failed'; message: string; ok: false }
+  | { code: 'not_a_film' | 'not_ready' | 'off' | 'open_failed' | 'start_failed'; message: string; ok: false }
   | { ok: true; url: string }
+
+/** How main runs the engine's Python: its interpreter, the folder its modules resolve from, the variables it adds. */
+export interface EnginePython {
+  command: string
+  cwd: string
+  env: Record<string, string | undefined>
+}
 
 export interface OpenfilmStudioDeps {
   /** The PATH the engine gets (its bundled tools first), read when Studio starts. */
   basePath: () => string
+  /** The engine's Python, to install the toolkit with; null when there is no engine yet. */
+  enginePython?: () => Promise<EnginePython | null>
   env: Record<string, string | undefined>
   /** This app's binary: run as Node for the host. */
   execPath: string
@@ -231,16 +413,29 @@ export interface OpenfilmStudioDeps {
   fetchImpl?: typeof fetch
   hermesHome: string
   log?: (line: string) => void
+  now?: () => number
+  /** What is done to a Studio Desktop did not start (system calls by default). */
+  processes?: StudioProcesses
   readyTimeoutMs?: number
   spawn?: typeof nodeSpawn
+}
+
+export interface OpenfilmStudioStatus {
+  on: boolean
+  /** The engine is installing the toolkit now. */
+  preparing: boolean
+  /** A toolkit is there: a film opens in Studio. */
+  ready: boolean
 }
 
 export interface OpenfilmStudio {
   /** The Studio address that opens `folder` (a project: it holds film.html), Studio started first if needed. */
   open: (folder: unknown) => Promise<OpenfilmStudioOpen>
   plan: OpenfilmStudioPlan
-  status: () => { on: boolean }
-  /** Ask Studio to stop (app quit); it also stops by itself when main's pipe closes. */
+  /** Have the engine install the toolkit in the background, unless it is there, on its way, or just failed. */
+  prefetch: () => 'off' | 'preparing' | 'ready' | 'started' | 'waiting'
+  status: () => OpenfilmStudioStatus
+  /** App quit: Studio stops (it also does when main's pipe closes), and so does any other in APEX's folders. */
   stop: () => void
 }
 
@@ -249,24 +444,116 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
   const exists = deps.exists ?? existsSync
   const spawn = deps.spawn ?? nodeSpawn
   const fetchImpl = deps.fetchImpl ?? fetch
-  const plan = planOpenfilmStudio(deps.env, deps.hermesHome, exists)
+  const now = deps.now ?? Date.now
+  const plan = planOpenfilmStudio(deps.env, deps.hermesHome)
+  const processes = deps.processes ?? systemStudioProcesses()
+  /** Other Studios that would not quit when Desktop started its own: ended at APEX's quit. */
+  const others = new Map<number, AdvertisedStudio>()
   let child: ChildProcess | null = null
   let starting: null | Promise<RunningStudio> = null
+  let installing: null | Promise<boolean> = null
+  let failedAt: null | number = null
 
   if (deps.env[OPENFILM_STUDIO_ENV] !== undefined) {
     log(
       plan.on === true
-        ? `[openfilm-studio] prototype on: toolkit ${plan.toolkit}, data ${plan.dataRoot}`
-        : `[openfilm-studio] prototype stays off (${plan.reason})`
+        ? `[openfilm-studio] on: data ${plan.dataRoot}, toolkit ${plan.devToolkit ?? plan.ready}`
+        : `[openfilm-studio] stays off (${plan.reason})`
     )
   }
 
-  function start(on: Extract<OpenfilmStudioPlan, { on: true }>): Promise<RunningStudio> {
+  const toolkitNow = () => (plan.on === true ? findOpenfilmToolkit(plan, exists) : null)
+
+  function prefetch(): ReturnType<OpenfilmStudio['prefetch']> {
+    if (plan.on === false) {
+      return 'off'
+    }
+
+    if (toolkitNow()) {
+      return 'ready'
+    }
+
+    if (installing) {
+      return 'preparing'
+    }
+
+    if (failedAt !== null && now() - failedAt < RETRY_AFTER_MS) {
+      return 'waiting'
+    }
+
+    const attempt = install()
+    installing = attempt
+    void attempt.then(ok => {
+      installing = null
+      failedAt = ok ? null : now()
+    })
+
+    return 'started'
+  }
+
+  /** The engine installs the toolkit and the browser it draws in, then writes ready.json; true once it has. */
+  async function install(): Promise<boolean> {
+    let engine: EnginePython | null = null
+
+    try {
+      engine = (await deps.enginePython?.()) ?? null
+    } catch (error) {
+      log(`[openfilm-studio] no engine to install the toolkit with: ${error instanceof Error ? error.message : error}`)
+    }
+
+    if (!engine) {
+      return false
+    }
+
+    log('[openfilm-studio] installing the toolkit in the background')
+
+    return new Promise<boolean>(resolve => {
+      let said = ''
+      let timer: ReturnType<typeof setTimeout> | undefined
+      let proc: ChildProcess
+
+      const done = (ok: boolean, why: string) => {
+        clearTimeout(timer)
+        log(ok ? '[openfilm-studio] toolkit installed' : `[openfilm-studio] toolkit not installed: ${why}`)
+        resolve(ok)
+      }
+
+      try {
+        proc = spawn(engine.command, INSTALL_ARGS, {
+          cwd: engine.cwd,
+          // As the engine runs: main's environment, APEX's data folder, the engine's own variables.
+          env: { ...deps.env, HERMES_HOME: deps.hermesHome, ...engine.env },
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true
+        })
+      } catch (error) {
+        done(false, error instanceof Error ? error.message : String(error))
+
+        return
+      }
+
+      for (const stream of [proc.stdout, proc.stderr]) {
+        stream?.setEncoding('utf8')
+        stream?.on('data', (chunk: string) => {
+          said = (said + chunk).slice(-2000)
+        })
+      }
+
+      timer = setTimeout(() => proc.kill(), INSTALL_TIMEOUT_MS)
+      proc.once('error', error => done(false, error.message))
+      proc.once('exit', (code, signal) => {
+        const last = said.trim().split(/\r?\n/).pop() ?? ''
+        done(code === 0 && toolkitNow() !== null, last || `exit ${signal ?? code}`)
+      })
+    })
+  }
+
+  function start(on: Extract<OpenfilmStudioPlan, { on: true }>, toolkit: OpenfilmToolkit): Promise<RunningStudio> {
     if (starting) {
       return starting
     }
 
-    const attempt = launch(on)
+    const attempt = stopOthers(on).then(() => launch(on, toolkit))
     starting = attempt
     // A failed start is not kept: the next open tries again.
     attempt.catch(() => {
@@ -278,7 +565,71 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
     return attempt
   }
 
-  function launch(on: Extract<OpenfilmStudioPlan, { on: true }>): Promise<RunningStudio> {
+  /**
+   * A Studio run.json names that is not Desktop's: one the openfilm CLI started
+   * (an agent's `look` or `render` before any film was opened, from a toolkit
+   * without APEX's patch 0003). Desktop does not take it over (it was started
+   * with someone else's environment, and the CLI may replace it): it is asked to
+   * quit, then ended if it does not go. Another app's own (it answers 423) is
+   * left to that app.
+   */
+  async function stopOthers(on: Extract<OpenfilmStudioPlan, { on: true }>): Promise<void> {
+    const other = readAdvertisedStudio(openfilmStudioFolders(on.dataRoot).OPENFILM_HOME)
+
+    if (!other || !processes.alive(other.pid)) {
+      return
+    }
+
+    const answer = await fetchImpl(`${other.origin}/api/quit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-studio-key': other.key },
+      body: '{}',
+      signal: AbortSignal.timeout(QUIT_ANSWER_MS)
+    })
+      .then(response => response.status)
+      .catch(() => 0)
+
+    if (answer === 423) {
+      log(`[openfilm-studio] another app's Studio runs in APEX's folders (pid ${other.pid}); left to that app`)
+
+      return
+    }
+
+    const gone = () => !processes.alive(other.pid) && !(other.supervisor && processes.alive(other.supervisor))
+
+    const goneWithin = async (ms: number) => {
+      for (let waited = 0; !gone() && waited < ms; waited += 100) {
+        await new Promise(done => setTimeout(done, 100))
+      }
+
+      return gone()
+    }
+
+    if ((answer === 200 && (await goneWithin(QUIT_GONE_MS))) || (end(other) && (await goneWithin(QUIT_GONE_MS)))) {
+      log(`[openfilm-studio] stopped another Studio in APEX's folders (pid ${other.pid})`)
+
+      return
+    }
+
+    // Still there (or its pid is now another program's): looked at again when APEX quits.
+    others.set(other.pid, other)
+  }
+
+  /** Ends another Studio's processes, each only while its command line still names OpenFilm. */
+  function end(other: AdvertisedStudio): boolean {
+    let ended = false
+
+    for (const pid of [other.supervisor, other.pid]) {
+      if (pid && processes.alive(pid) && processes.isOpenfilm(pid)) {
+        processes.end(pid)
+        ended = true
+      }
+    }
+
+    return ended
+  }
+
+  function launch(on: Extract<OpenfilmStudioPlan, { on: true }>, toolkit: OpenfilmToolkit): Promise<RunningStudio> {
     return new Promise<RunningStudio>((resolve, reject) => {
       mkdirSync(on.dataRoot, { recursive: true })
       const hostFile = join(on.dataRoot, HOST_FILE)
@@ -286,7 +637,7 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
 
       const proc = spawn(deps.execPath, [hostFile], {
         cwd: on.dataRoot,
-        env: studioChildEnv(on, deps.env, deps.basePath()),
+        env: studioChildEnv(on, toolkit, deps.env, deps.basePath()),
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true
       })
@@ -386,10 +737,17 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
       return { ok: false, code: 'not_a_film', message: `not a folder with ${FILM_FILE}` }
     }
 
+    const toolkit = toolkitNow()
+
+    if (!toolkit) {
+      // The film opens as it always did meanwhile; the toolkit is fetched now if it was not already.
+      return { ok: false, code: 'not_ready', message: `the editor is getting ready (${prefetch()})` }
+    }
+
     let studio: RunningStudio
 
     try {
-      studio = await start(plan)
+      studio = await start(plan, toolkit)
     } catch (error) {
       return { ok: false, code: 'start_failed', message: error instanceof Error ? error.message : String(error) }
     }
@@ -416,6 +774,29 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
   }
 
   function stop() {
+    stopOwn()
+
+    if (plan.on === false) {
+      return
+    }
+
+    // Any other Studio in APEX's folders ends with APEX: the one run.json names now, and any that would not quit.
+    const named = readAdvertisedStudio(openfilmStudioFolders(plan.dataRoot).OPENFILM_HOME)
+
+    if (named && named.pid !== child?.pid) {
+      others.set(named.pid, named)
+    }
+
+    for (const other of others.values()) {
+      if (end(other)) {
+        log(`[openfilm-studio] ended another Studio in APEX's folders (pid ${other.pid}) as APEX quits`)
+      }
+    }
+
+    others.clear()
+  }
+
+  function stopOwn() {
     const proc = child
 
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
@@ -432,5 +813,32 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
     }, 8_000).unref()
   }
 
-  return { open, plan, status: () => ({ on: plan.on }), stop }
+  const status = (): OpenfilmStudioStatus => ({
+    on: plan.on,
+    ready: toolkitNow() !== null,
+    preparing: installing !== null
+  })
+
+  return { open, plan, prefetch, status, stop }
+}
+
+/**
+ * Main's side: the window asks for the status, a Studio address, a background
+ * install; quitting stops Studio. While the switch is on, main's environment
+ * (`env`, which every engine started after this inherits) gets `openfilmAgentEnv`.
+ */
+export function registerOpenfilmStudio(
+  studio: OpenfilmStudio,
+  ipcMain: { handle(channel: string, listener: (event: any, ...args: any[]) => unknown): void },
+  app: { on(event: 'will-quit', listener: () => void): unknown },
+  env: Record<string, string | undefined> = process.env
+): void {
+  if (studio.plan.on === true) {
+    Object.assign(env, openfilmAgentEnv(studio.plan))
+  }
+
+  ipcMain.handle('hermes:openfilmStudio:status', () => studio.status())
+  ipcMain.handle('hermes:openfilmStudio:open', (_event, folder) => studio.open(folder))
+  ipcMain.handle('hermes:openfilmStudio:prefetch', () => studio.prefetch())
+  app.on('will-quit', () => studio.stop())
 }

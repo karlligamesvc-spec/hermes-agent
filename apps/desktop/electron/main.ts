@@ -111,7 +111,7 @@ import {
   normalizeStoredFeishu,
   parseFeishuCredentialsResponse
 } from './apex-feishu'
-import { buildGatewayRunArgs, imEntryStoreHasBinding } from './apex-gateway'
+import { buildGatewayRunArgs, imEntryStoreHasBinding, MESSAGING_GATEWAY_PROFILE } from './apex-gateway'
 import { checkLocalVideoReadiness, probeLocalVideoTool } from './apex-hypit-readiness'
 import {
   buildImEntrySpawnEnv,
@@ -161,7 +161,7 @@ import { buildPlatformToolSpawnEnv, describePlatformToolSpawnEnv } from './apex-
 import { makeRoomInPool, poolAllBusyError, reapIdlePoolEngine, stampPoolEngine } from './apex-pool-engines'
 import { guardProductBlocksInHomes, persistRelayKeyInHome } from './apex-profile-config'
 import { registerProfileConfigIpc } from './apex-profile-config-ipc'
-import { isMultiBotActive, managedProfileHomes } from './apex-profile-homes'
+import { isMultiBotActive, managedProfileHomes, withLocalSharedPrimary } from './apex-profile-homes'
 import { createQuitConfirm, ENGINE_IDLE_PATH, ENGINE_PROBE_DEADLINE_MS, localEnginesOf } from './apex-quit-confirm'
 import { fetchRelayModels, RelayTierMemo } from './apex-relay-tiers'
 import {
@@ -483,7 +483,7 @@ import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
 import { LEGACY_OAUTH_PARTITION, resolveOauthPartition } from './oauth-partition'
 import { mintGatewayWsTicket as mintOauthGatewayWsTicket, requestWithOauthFallback } from './oauth-rest-request'
 import { wireOauthSessionResponse } from './oauth-session-response'
-import { createOpenfilmStudio } from './openfilm-studio'
+import { createOpenfilmStudio, registerOpenfilmStudio } from './openfilm-studio'
 import { armPackagedRuntimeUpdate, bundledEnginePin, createPackagedRuntimeGate, installPackagedRuntime, offlineBundledOutcome, packagedEngineKeptBack, packagedRuntimeMatchesPin, packagedRuntimeShipped, readPackagedRuntime, shouldInstallPackagedRuntime } from './packaged-runtime'
 import { repairEngineMarker } from './packaged-runtime-marker'
 import { createParentStartMarkerResolver, parentWatchdogEnv } from './parent-process-identity'
@@ -11749,7 +11749,7 @@ function profileRouteOptions(profile, request?) {
   const sshOverride = profileSshOverride(config, profile)
   const key = connectionScopeKey(profile) || primaryProfileKey()
 
-  return {
+  return withLocalSharedPrimary(process.env, {
     // A desktop profile can be only a client-side routing alias. Keep backend
     // endpoint filters in the SSH target's namespace (e.g. mara → default).
     backendProfile: sshOverride?.remoteProfile,
@@ -11765,7 +11765,7 @@ function profileRouteOptions(profile, request?) {
     ownEntry: Boolean((config.profiles || {})[key]),
     requestMethod: request?.method,
     requestPath: request?.path
-  }
+  })
 }
 
 // Resolve a backend connection for the given profile, per the routing table in
@@ -21716,16 +21716,16 @@ async function restartMessagingGateway() {
     }
 
     await stopMessagingGateway()
-    await startMessagingGateway(readActiveDesktopProfile())
+    await startMessagingGateway(MESSAGING_GATEWAY_PROFILE)
   } catch (error: any) {
     rememberLog(`[im-entry] messaging gateway restart failed: ${error && error.message ? error.message : error}`)
   }
 }
 
-// Converge the messaging gateway to the current binding + profile without
-// churning a healthy one — used from the boot/local-ready path (which can fire
-// on every window reload). No binding → stopped; bound + already running under
-// the active profile → left alone; profile changed or not running → (re)started.
+// Converge the messaging gateway to the current binding without churning a
+// healthy one — used from the boot/local-ready path (which can fire on every
+// window reload). No binding → stopped; bound + running → left alone; else
+// (re)started, always as APEX's default profile (hc-1171, apex-gateway.ts).
 // Same local-backend gate as restartMessagingGateway. Never throws.
 async function reconcileMessagingGateway() {
   try {
@@ -21741,14 +21741,12 @@ async function reconcileMessagingGateway() {
       return
     }
 
-    const activeProfile = readActiveDesktopProfile() || null
-
-    if (messagingGatewayChildAlive() && messagingGatewayRuntime.profile === activeProfile) {
+    if (messagingGatewayChildAlive() && messagingGatewayRuntime.profile === MESSAGING_GATEWAY_PROFILE) {
       return
     }
 
     await stopMessagingGateway()
-    await startMessagingGateway(activeProfile)
+    await startMessagingGateway(MESSAGING_GATEWAY_PROFILE)
   } catch (error: any) {
     rememberLog(`[im-entry] messaging gateway reconcile failed: ${error && error.message ? error.message : error}`)
   }
@@ -22714,12 +22712,17 @@ const openfilmStudio = createOpenfilmStudio({
       venvRoot: VENV_ROOT,
       currentPath: pathWithHermesManagedNode()
     }),
+  enginePython: openfilmEnginePython,
   log: rememberLog
 })
 
-ipcMain.handle('hermes:openfilmStudio:status', () => openfilmStudio.status())
-ipcMain.handle('hermes:openfilmStudio:open', (_event, folder) => openfilmStudio.open(folder))
-app.on('will-quit', () => openfilmStudio.stop())
+registerOpenfilmStudio(openfilmStudio, ipcMain, app)
+
+async function openfilmEnginePython() {
+  const backend = await ensureRuntime(resolveHermesBackend([]))
+
+  return backend.command ? { command: backend.command, cwd: backend.root, env: backend.env ?? {} } : null
+}
 
 ipcMain.handle('hermes:workflowDomain:startGoal', async (_event, payload) => {
   const context = workflowDomainIpcContext()

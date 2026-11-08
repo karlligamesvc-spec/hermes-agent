@@ -25,6 +25,7 @@ import {
   setWorkspaceCwdOwner,
   setYoloActive
 } from '@/store/session'
+import { engineEventProfile } from '@/store/single-engine-owner'
 import { reportInstallMethodWarning } from '@/store/updates'
 
 import { finalizeInterruptedMessages } from '../../use-prompt-actions/rewind'
@@ -187,7 +188,7 @@ export function handleSessionInfoEvent(ctx: GatewayEventContext): boolean {
     // source tag prevents an event queued before a profile swap from being
     // attributed to the newly active profile.
     if (isActiveEvent && typeof payload?.approval_mode === 'string' && event.profile && fromActiveSource()) {
-      reconcileApprovalModeForProfile(event.profile, payload.approval_mode)
+      reconcileApprovalModeForProfile(engineEventProfile(event.profile, sessionId), payload.approval_mode)
     }
 
     if (apply) {
