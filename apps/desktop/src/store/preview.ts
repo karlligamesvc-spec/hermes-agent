@@ -3,6 +3,7 @@ import { atom, computed } from 'nanostores'
 import { openfilmStudioCopyNow } from '@/i18n/openfilm-studio'
 import {
   $openfilmStudioOn,
+  isOpenfilmStudioTab,
   OPENFILM_STUDIO_TAB_ID,
   openfilmProjectFolder,
   openfilmStudioUrl,
@@ -347,7 +348,9 @@ export function previewTabId(target: PreviewTarget): RightRailTabId {
   return `${target.kind}:${target.url}`
 }
 
-const isBrowserTab = (tab: PreviewTab): boolean => tab.target.kind === 'url'
+// The editor's tab (hc-1188) is a url target but no Browser: an address opened
+// while it shows goes to a Browser tab of its own, never into the editor.
+const isBrowserTab = (tab: PreviewTab): boolean => tab.target.kind === 'url' && !isOpenfilmStudioTab(tab.id)
 
 /** A Browser tab's id, minted the way a terminal's is — there is no identity to
  *  derive one from. Random rather than the lowest free slot: an id is never

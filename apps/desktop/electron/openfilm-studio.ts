@@ -37,6 +37,11 @@
  * Studio run.json names that is not Desktop's is asked to quit before Desktop
  * starts its own, and ended when APEX quits.
  *
+ * OpenFilm's own online sources are off (hc-1188, `openfilmOfflineEnv`): no
+ * examples or skills index from GitHub, no library download or openfilm.dev
+ * service. A toolkit that carries APEX's own build of the editor
+ * (`apex-editor/`) has Studio serve that one; any other serves Studio's own.
+ *
  * Electron-free: unit-tested with `vitest --project electron`.
  */
 
@@ -57,7 +62,14 @@ export const OPENFILM_FFMPEG_DIR_ENV = 'APEXNODES_OPENFILM_FFMPEG_DIR'
 
 export const FILM_FILE = 'film.html'
 const SERVER_MODULE = ['node_modules', 'openfilm', 'studio', 'server', 'server.mjs']
+/** APEX's own build of Studio's editor in a toolkit (hc-1188): a folder with its index.html and assets/. */
+export const APEX_EDITOR_DIR = 'apex-editor'
 const HOST_FILE = 'apex-studio-host.mjs'
+/**
+ * Where OpenFilm's own online sources point instead (hc-1188): a closed
+ * loopback port, so a library download or an openfilm.dev call fails at once.
+ */
+export const OPENFILM_OFFLINE_URL = 'http://127.0.0.1:9'
 /** Prefix of the host's own stdout lines; anything else on stdout/stderr is Studio's log. */
 const HOST_MARK = '@@apex-openfilm '
 const READY_TIMEOUT_MS = 60_000
@@ -116,6 +128,8 @@ export interface OpenfilmToolkit {
   browsers: null | string
   /** The agent browser's Chromium (OPENFILM_CHROMIUM), for the installed toolkit. */
   chromium: null | string
+  /** APEX's build of the editor when the toolkit carries one; null: Studio serves its own. */
+  editor: null | string
   serverModule: string
   toolkit: string
 }
@@ -129,6 +143,13 @@ export function planOpenfilmStudio(env: Record<string, string | undefined>, herm
     ready: join(hermesHome, 'tool-cache', 'openfilm', 'ready.json'),
     devToolkit: devToolkit || null
   }
+}
+
+/** APEX's build of the editor in `toolkit`, or null when it carries none (an older toolkit). */
+function apexEditorIn(toolkit: string, exists: (path: string) => boolean): null | string {
+  const editor = join(toolkit, APEX_EDITOR_DIR)
+
+  return exists(join(editor, 'index.html')) ? editor : null
 }
 
 /**
@@ -147,7 +168,13 @@ export function findOpenfilmToolkit(
     const browsers = join(plan.devToolkit, 'browsers')
 
     return serverModule && exists(serverModule)
-      ? { toolkit: plan.devToolkit, serverModule, browsers: exists(browsers) ? browsers : null, chromium: null }
+      ? {
+          toolkit: plan.devToolkit,
+          serverModule,
+          browsers: exists(browsers) ? browsers : null,
+          chromium: null,
+          editor: apexEditorIn(plan.devToolkit, exists)
+        }
       : null
   }
 
@@ -167,7 +194,7 @@ export function findOpenfilmToolkit(
     return null
   }
 
-  return { toolkit, serverModule, browsers: null, chromium }
+  return { toolkit, serverModule, browsers: null, chromium, editor: apexEditorIn(toolkit, exists) }
 }
 
 /** The signed-in APEX account as main holds it: the API base and the account's APEX key. */
@@ -213,16 +240,52 @@ export function openfilmStudioFolders(dataRoot: string): Record<string, string> 
   }
 }
 
+/** The empty indexes Studio reads in place of GitHub's (`openfilmOfflineEnv`), in APEX's data folder. */
+export function openfilmOfflineIndexes(dataRoot: string): { examples: string; skills: string } {
+  return { examples: join(dataRoot, 'offline', 'examples.json'), skills: join(dataRoot, 'offline', 'skills.json') }
+}
+
+/**
+ * OpenFilm's own online sources, off (hc-1188). Its examples and skills
+ * indexes, which Studio reads from GitHub as it starts, are APEX's empty ones
+ * (no examples, nothing to discover). Its library's downloads (sounds, music,
+ * voice samples, emoji stickers, local models) and the openfilm.dev service
+ * (sign-in, its hosted models, library search by meaning, which then searches
+ * by words alone) go to OPENFILM_OFFLINE_URL. A person's own services, by
+ * their own keys, are untouched.
+ */
+export function openfilmOfflineEnv(dataRoot: string): Record<string, string> {
+  const indexes = openfilmOfflineIndexes(dataRoot)
+
+  return {
+    OPENFILM_EXAMPLES_INDEX: indexes.examples,
+    OPENFILM_SKILLS_INDEX: indexes.skills,
+    OPENFILM_LIBRARY_URL: OPENFILM_OFFLINE_URL,
+    OPENFILM_API_URL: OPENFILM_OFFLINE_URL
+  }
+}
+
+/** Write the empty indexes `openfilmOfflineEnv` names, as Studio starts: a file that does not read is an error to Discover. */
+export function writeOpenfilmOfflineIndexes(dataRoot: string): void {
+  const indexes = openfilmOfflineIndexes(dataRoot)
+
+  mkdirSync(join(dataRoot, 'offline'), { recursive: true })
+  writeFileSync(indexes.examples, `${JSON.stringify({ examples: [] })}\n`)
+  writeFileSync(indexes.skills, `${JSON.stringify({ version: 1, skills: [] })}\n`)
+}
+
 /**
  * What every process the engine runs gets from main's environment: OpenFilm in
  * Studio's folders, hosted (the CLI never starts a Studio: APEX's patch 0003),
- * no browser window, no npm update check. Set on every Desktop, opened to the
- * account or not: it only changes how OpenFilm runs, and keeps any Studio in
- * APEX's folders, where Desktop ends it when APEX quits.
+ * no browser window, no npm update check, none of OpenFilm's own online
+ * sources. Set on every Desktop, opened to the account or not: it only changes
+ * how OpenFilm runs, and keeps any Studio in APEX's folders, where Desktop ends
+ * it when APEX quits.
  */
 export function openfilmAgentEnv(plan: OpenfilmStudioPlan): Record<string, string> {
   return {
     ...openfilmStudioFolders(plan.dataRoot),
+    ...openfilmOfflineEnv(plan.dataRoot),
     OPENFILM_HOSTED: '1',
     OPENFILM_NO_BROWSER: '1',
     OPENFILM_NO_UPDATE_CHECK: '1'
@@ -330,8 +393,9 @@ export function systemStudioProcesses(
 
 /**
  * The child's whole environment: a short list kept from main's, Studio's
- * folders, no browser window of its own and no npm update check, the browser
- * it draws in, and a PATH that finds the engine's ffmpeg and ffprobe before
+ * folders, no browser window of its own, no npm update check and none of
+ * OpenFilm's online sources, the browser it draws in, APEX's editor when the
+ * toolkit has it, and a PATH that finds the engine's ffmpeg and ffprobe before
  * anything else (OpenFilm looks for them only on PATH). `basePath` is the PATH
  * the engine itself gets, whose first entries are the engine's bundled tools.
  */
@@ -360,10 +424,12 @@ export function studioChildEnv(
   return {
     ...kept,
     ...openfilmStudioFolders(plan.dataRoot),
+    ...openfilmOfflineEnv(plan.dataRoot),
     OPENFILM_NO_BROWSER: '1',
     OPENFILM_NO_UPDATE_CHECK: '1',
     ...(toolkit.chromium ? { OPENFILM_CHROMIUM: toolkit.chromium } : {}),
     ...(toolkit.browsers ? { PLAYWRIGHT_BROWSERS_PATH: toolkit.browsers } : {}),
+    ...(toolkit.editor ? { APEX_OPENFILM_EDITOR_DIR: toolkit.editor } : {}),
     ELECTRON_RUN_AS_NODE: '1',
     APEX_OPENFILM_SERVER_MODULE: toolkit.serverModule,
     PATH: path
@@ -375,6 +441,7 @@ export function studioChildEnv(
  * with this process's execArgv, and an `-e` would run the host again in each.
  * `openBrowser` (sign-in, the desktop-app download, an agent's `open` when no
  * page shows the project) is reported to main, never a browser opened.
+ * `editorDir` only when the toolkit has APEX's editor: Studio's default otherwise.
  */
 export const STUDIO_HOST_SOURCE = `// Written by APEX Desktop (electron/openfilm-studio.ts) on every Studio start. Prototype; do not edit.
 import { fstatSync, openSync } from 'node:fs'
@@ -411,6 +478,7 @@ try {
     port: 0,
     stays: true,
     advertise: true,
+    ...(process.env.APEX_OPENFILM_EDITOR_DIR ? { editorDir: process.env.APEX_OPENFILM_EDITOR_DIR } : {}),
     openBrowser: url => say({ type: 'open-browser', url: String(url) })
   })
   say({ type: 'ready', origin: studio.origin, filmOrigin: studio.filmOrigin, key: studio.key })
@@ -714,6 +782,7 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
   function launch(on: OpenfilmStudioPlan, toolkit: OpenfilmToolkit): Promise<RunningStudio> {
     return new Promise<RunningStudio>((resolve, reject) => {
       mkdirSync(on.dataRoot, { recursive: true })
+      writeOpenfilmOfflineIndexes(on.dataRoot)
       const hostFile = join(on.dataRoot, HOST_FILE)
       writeFileSync(hostFile, STUDIO_HOST_SOURCE, { mode: 0o600 })
 

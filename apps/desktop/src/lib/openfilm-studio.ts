@@ -10,16 +10,78 @@
  * whenever an agent starts a tool (a sign-in may come after the window opened,
  * and a film.html only ever comes from an agent's tools). Until the answer says
  * on, and whenever it is off, nothing here changes how a preview opens.
+ *
+ * Studio's tab is APEX's editor, not a web page (hc-1188): it is called 「剪辑」
+ * and has no browser bar, browser verbs or "+", and the editor shows APEX's
+ * language rather than the computer's.
  */
 
 import { atom } from 'nanostores'
 
+import { getRuntimeI18nLocale } from '@/i18n/runtime'
+import type { Locale } from '@/i18n/types'
 import type { PreviewTarget } from '@/store/preview'
 
 export const $openfilmStudioOn = atom(false)
 
 /** The preview tab Studio lives in: one, re-fronted and re-pointed on every open. */
 export const OPENFILM_STUDIO_TAB_ID = 'url:openfilm-studio' as const
+
+/** Whether `tabId` is Studio's tab: the editor, which the pane shows without a browser's chrome. */
+export function isOpenfilmStudioTab(tabId: null | string | undefined): boolean {
+  return tabId === OPENFILM_STUDIO_TAB_ID
+}
+
+/** Where Studio's editor keeps its language (openfilm@0.3.0 studio/ui). */
+const STUDIO_LANGUAGE_KEY = 'openfilm.language'
+
+/**
+ * The language Studio's editor shows for APEX's `locale`, among those it has
+ * (en, zh-CN, ja, ko, es): Traditional Chinese reads Simplified, the nearer of
+ * the two, and Arabic reads English.
+ */
+export function openfilmStudioLanguage(locale: Locale): string {
+  if (locale === 'zh' || locale === 'zh-hant') {
+    return 'zh-CN'
+  }
+
+  return locale === 'ja' ? 'ja' : 'en'
+}
+
+/**
+ * The script that sets the editor in a Studio page to `language`. The editor
+ * keeps its language in localStorage and reads it again on a `storage` event,
+ * which a page never gets for its own writes, so the script sends one: the
+ * editor changes language in place, with no reload. → whether it changed it.
+ */
+export function openfilmStudioLanguageScript(language: string): string {
+  const key = JSON.stringify(STUDIO_LANGUAGE_KEY)
+  const value = JSON.stringify(language)
+
+  return `(() => { try { if (localStorage.getItem(${key}) === ${value}) return false; localStorage.setItem(${key}, ${value}); window.dispatchEvent(new StorageEvent('storage', { key: ${key}, newValue: ${value}, storageArea: localStorage })); return true } catch { return null } })()`
+}
+
+/**
+ * Give the editor in `webview` APEX's language, when it is Studio's tab. The
+ * pane calls this as each Studio page starts and loads, and when APEX's
+ * language changes. A guest not ready for scripts yet is left alone: its next
+ * load event tries again.
+ */
+export function applyOpenfilmStudioLanguage(
+  webview: { executeJavaScript?: (code: string) => Promise<unknown> } | null | undefined,
+  tabId: null | string | undefined,
+  locale: Locale = getRuntimeI18nLocale()
+): void {
+  if (!isOpenfilmStudioTab(tabId) || typeof webview?.executeJavaScript !== 'function') {
+    return
+  }
+
+  try {
+    void webview.executeJavaScript(openfilmStudioLanguageScript(openfilmStudioLanguage(locale))).catch(() => undefined)
+  } catch {
+    // Electron throws before the guest is attached; its did-navigate / dom-ready comes next.
+  }
+}
 
 /** The tools an agent makes, cuts or reads a video with: the first one seen starts the toolkit's install. */
 export const OPENFILM_VIDEO_TOOLS: ReadonlySet<string> = new Set([

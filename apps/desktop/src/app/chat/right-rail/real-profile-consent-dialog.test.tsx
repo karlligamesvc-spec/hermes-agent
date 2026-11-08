@@ -104,6 +104,14 @@ describe('RealProfileConsentDialog', () => {
     expect(mocks.notify).toHaveBeenCalled()
   })
 
+  // hc-1188: the editor's tab is APEX's editor, not a Browser anyone browses with, in developer mode too.
+  it('does not show on the editor’s tab', () => {
+    render(<RealProfileConsentDialog tabId="url:openfilm-studio" />)
+
+    expect(screen.queryByText(promptCopy.title)).toBeNull()
+    expect($realProfilePromptClaim.get()).toBeNull()
+  })
+
   it('does not show when real-profile browsing is already on', () => {
     mocks.loadedConfig = { browser: { use_real_profile: true } }
     render(<RealProfileConsentDialog tabId="tab-1" />)

@@ -86,6 +86,39 @@ describe('opening an agent film.html', () => {
     expect($previewTabs.get()).toHaveLength(1)
   })
 
+  // hc-1188: the editor's tab is a url target but no Browser. An address opened while it shows (an agent's
+  // link, one the person clicks) used to land in it and replace the editor with that page.
+  it.each([
+    ['while the editor shows', false],
+    ['while a Browser tab is open beside it', true]
+  ])('an address opened %s goes to a Browser tab, never into the editor', async (_label, browserFirst) => {
+    $openfilmStudioOn.set(true)
+    stubStudio(async () => ({ ok: true, url: STUDIO_URL }))
+
+    if (browserFirst) {
+      openPreview(
+        { kind: 'url', label: 'Browser', source: 'https://example.com', url: 'https://example.com' },
+        'explicit-link'
+      )
+    }
+
+    openPreview(fileTarget('/work/cook/film.html'), 'explicit-link')
+    await vi.waitFor(() => expect($rightRailActiveTabId.get()).toBe(OPENFILM_STUDIO_TAB_ID))
+    openPreview(
+      { kind: 'url', label: 'Docs', source: 'https://docs.test/a', url: 'https://docs.test/a' },
+      'explicit-link'
+    )
+
+    const studio = $previewTabs.get().find(tab => tab.id === OPENFILM_STUDIO_TAB_ID)
+    const docs = $previewTabs.get().find(tab => tab.target.url === 'https://docs.test/a')
+
+    expect(studio?.target).toMatchObject({ label: 'cook', url: STUDIO_URL })
+    expect(docs?.id).not.toBe(OPENFILM_STUDIO_TAB_ID)
+    expect($rightRailActiveTabId.get()).toBe(docs?.id)
+    // A Browser tab of its own: a new one, or the one already open, which takes the address as Browsers do.
+    expect($previewTabs.get()).toHaveLength(2)
+  })
+
   it('falls back to the file itself when Studio cannot open it', async () => {
     $openfilmStudioOn.set(true)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
