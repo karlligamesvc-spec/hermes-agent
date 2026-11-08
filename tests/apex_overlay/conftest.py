@@ -79,6 +79,10 @@ _SEAM_MODULES = (
     "im_launch_profile",
     # hc-1174 the Feishu SDK's websocket address is logged without its credentials.
     "lark_log_redaction",
+    # hc-1179 the Desktop browser window: a persistent profile + off-by-default hide-automation arg.
+    "browser_window",
+    # hc-1179 hand a browser sign-in / human check to the user (Desktop product mode).
+    "browser_login_prompt",
 )
 
 
