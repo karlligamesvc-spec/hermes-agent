@@ -83,7 +83,7 @@ Desktop reads only `ready.json`.
 ## The agent side (hc-1177)
 
 The engine's bundled Node puts `openfilm` on the agent's PATH (`scripts/runtime-node-shims.mjs`). The command is
-`apex_overlay/openfilm_cli.mjs`. It is off unless Desktop's editor switch (`APEXNODES_OPENFILM_STUDIO`) is on. When on,
+`apex_overlay/openfilm_cli.mjs`. It is off unless the editor is open to this account (see below). When on,
 it installs the toolkit if needed (`python -m apex_overlay.film_project env`, which uses `ensure_openfilm`), then runs
 OpenFilm's own CLI unchanged with:
 
@@ -97,7 +97,7 @@ OpenFilm's own CLI unchanged with:
 No Studio outlives APEX, whoever started it:
 
 - Desktop's own runs as its child and stops when APEX quits.
-- While the switch is on, Desktop also puts the folders, `OPENFILM_HOSTED=1` and `OPENFILM_NO_BROWSER=1` in main's
+- Desktop also puts the folders, `OPENFILM_HOSTED=1` and `OPENFILM_NO_BROWSER=1` in main's
   environment, which every engine started after it inherits. Any other OpenFilm the engine runs then works in
   APEX's folders.
 - Before Desktop starts its own Studio, it reads `run.json` there. A Studio named in it that is not Desktop's is
@@ -120,3 +120,26 @@ No Studio outlives APEX, whoever started it:
 - `write <project> <draft>` writes `film.html`, waits for the editor to merge it, then checks that every caption
   track and clip the agent wrote, and every one the person added, is still there. It reads `film.html` with its own
   parser and does not use OpenFilm's merge. A loss exits with code 1 and leaves the agent's copy as it was.
+
+## Who gets the editor (hc-1178)
+
+Only accounts the Scheduler opens it to: the entitlement `openfilm_editor` in apex-nodes, off on every plan and turned
+on per user with an admin override, for internal accounts. There is no install switch and no `desktop_features` key.
+
+- **Desktop's main process** (`openfilm-studio.ts`) asks `openfilm.enabled` on the Scheduler's `/tools/v1/check`,
+  with the signed-in account's APEX key, and keeps the answer for a minute.
+  - Another account (or key) asks afresh. Signed out is no.
+  - An answer that cannot be read keeps that account's last one, so a network blip does not take the editor away
+    mid-edit. With no earlier answer it is no.
+  - While the answer is no:
+    - a film.html opens as a page;
+    - no toolkit is installed;
+    - the window starts nothing.
+  - The window asks again whenever an agent starts a tool, so a sign-in after the window opened counts too.
+- **The engine** (`film_project`, and through it the agent's `openfilm`) asks the same check with its own
+  `TOOLS_GATEWAY_KEY` on every command. It keeps nothing.
+- **Skill sync.** Desktop always sends `caps=openfilm`. The Scheduler includes the `film-edit` skill only for an
+  account with the entitlement.
+- **Even when the account has no editor**, the quit sweep and the hosted environment above still apply: no Studio
+  outlives APEX.
+

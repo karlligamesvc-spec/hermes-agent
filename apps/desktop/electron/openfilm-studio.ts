@@ -1,12 +1,17 @@
 /**
- * openfilm-studio.ts — off unless this install turns it on: OpenFilm Studio as
- * the editor in the preview pane (hc-1173 prototype, hc-1176 toolkit download).
+ * openfilm-studio.ts — only for an account the server opens it to: OpenFilm
+ * Studio as the editor in the preview pane (hc-1173 prototype, hc-1176 toolkit
+ * download, hc-1178 per-account switch).
  *
  * Studio is OpenFilm's editor (openfilm@0.3.0, MIT, with APEX's patches): a
  * timeline over an agent's `film.html`, where a person retypes a caption, moves
  * a title or splits a clip, and Studio writes that back into the same files for
- * the agent to read. An install turns it on with APEXNODES_OPENFILM_STUDIO=1
- * (the platform's `desktop_features` cannot). APEX does not ship the toolkit
+ * the agent to read. Whether this account may use it is the Scheduler's answer,
+ * `openfilm.enabled` on `/tools/v1/check` with the signed-in account's APEX key
+ * (apex-nodes `openfilm_access`: the entitlement `openfilm_editor`, opened per
+ * account), kept a minute. There is no install switch and no `desktop_features`
+ * key. Signed out, not opened, or unreadable with no earlier answer: no editor,
+ * no toolkit, and a film opens as it always did. APEX does not ship the toolkit
  * Studio runs from: the engine downloads it from APEX COS
  * (`python -m apex_overlay.media_tools openfilm`), in the background the first
  * time an agent works on a video (`prefetch`), and names it in
@@ -36,13 +41,15 @@
  */
 
 import { type ChildProcess, spawn as nodeSpawn, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { delimiter, isAbsolute, join } from 'node:path'
 
-import { envSwitch } from './apex-desktop-features'
-
-/** This install's switch: only `1` (or true/yes/on) turns it on. */
-export const OPENFILM_STUDIO_ENV = 'APEXNODES_OPENFILM_STUDIO'
+/** Where the account's answer is: the Scheduler's tools check (apex-nodes `openfilm_access.open_to`). */
+export const OPENFILM_CHECK_PATH = '/tools/v1/check'
+/** An answer is kept this long; a different account (or key) asks afresh. */
+const ACCESS_TTL_MS = 60_000
+const ACCESS_TIMEOUT_MS = 5_000
 /** A development build's toolkit: the folder holding `node_modules/openfilm` (an absolute path). */
 export const OPENFILM_TOOLKIT_ENV = 'APEXNODES_OPENFILM_TOOLKIT'
 /** Optional: a folder with ffmpeg + ffprobe put before the engine's own (a dev build runs no installed engine). */
@@ -96,8 +103,12 @@ const KEPT_ENV = [
   'LOCALAPPDATA'
 ]
 
-export type OpenfilmStudioPlan =
-  { on: false; reason: 'switch_off' } | { dataRoot: string; devToolkit: null | string; on: true; ready: string }
+/** Where Studio's data and its toolkit are. */
+export interface OpenfilmStudioPlan {
+  dataRoot: string
+  devToolkit: null | string
+  ready: string
+}
 
 /** The toolkit Studio runs from: its folder, its server module, and the browser it draws in. */
 export interface OpenfilmToolkit {
@@ -109,16 +120,11 @@ export interface OpenfilmToolkit {
   toolkit: string
 }
 
-/** Whether this launch runs Studio, and where its data and its toolkit are. Pure. */
+/** Where Studio's data and its toolkit are. Pure. */
 export function planOpenfilmStudio(env: Record<string, string | undefined>, hermesHome: string): OpenfilmStudioPlan {
-  if (envSwitch(env[OPENFILM_STUDIO_ENV]) !== true) {
-    return { on: false, reason: 'switch_off' }
-  }
-
   const devToolkit = String(env[OPENFILM_TOOLKIT_ENV] ?? '').trim()
 
   return {
-    on: true,
     dataRoot: join(hermesHome, 'openfilm'),
     ready: join(hermesHome, 'tool-cache', 'openfilm', 'ready.json'),
     devToolkit: devToolkit || null
@@ -132,7 +138,7 @@ export function planOpenfilmStudio(env: Record<string, string | undefined>, herm
  * while its files are there. Read each time: the engine may finish at any moment.
  */
 export function findOpenfilmToolkit(
-  plan: Extract<OpenfilmStudioPlan, { on: true }>,
+  plan: OpenfilmStudioPlan,
   exists: (path: string) => boolean = existsSync,
   read: (path: string) => string = path => readFileSync(path, 'utf8')
 ): null | OpenfilmToolkit {
@@ -164,6 +170,38 @@ export function findOpenfilmToolkit(
   return { toolkit, serverModule, browsers: null, chromium }
 }
 
+/** The signed-in APEX account as main holds it: the API base and the account's APEX key. */
+export interface ApexAccount {
+  apiBase?: null | string
+  key?: null | string
+}
+
+/**
+ * `openfilm.enabled` on the Scheduler's tools check, asked with the account's
+ * APEX key: true or false as it says, null when it could not be read.
+ */
+export async function readOpenfilmAccess(
+  account: { apiBase: string; key: string },
+  fetchImpl: typeof fetch = fetch
+): Promise<boolean | null> {
+  try {
+    const response = await fetchImpl(`${account.apiBase.replace(/\/+$/, '')}${OPENFILM_CHECK_PATH}`, {
+      headers: { authorization: `Bearer ${account.key}` },
+      signal: AbortSignal.timeout(ACCESS_TIMEOUT_MS)
+    })
+
+    if (!response.ok) {
+      return null
+    }
+
+    const said = (await response.json()) as { openfilm?: { enabled?: unknown } } | null
+
+    return said?.openfilm?.enabled === true
+  } catch {
+    return null
+  }
+}
+
 /** Studio's folders, all inside APEX's data folder (never ~/.openfilm or ~/Movies/OpenFilm). */
 export function openfilmStudioFolders(dataRoot: string): Record<string, string> {
   return {
@@ -178,9 +216,11 @@ export function openfilmStudioFolders(dataRoot: string): Record<string, string> 
 /**
  * What every process the engine runs gets from main's environment: OpenFilm in
  * Studio's folders, hosted (the CLI never starts a Studio: APEX's patch 0003),
- * no browser window, no npm update check. Set only while the switch is on.
+ * no browser window, no npm update check. Set on every Desktop, opened to the
+ * account or not: it only changes how OpenFilm runs, and keeps any Studio in
+ * APEX's folders, where Desktop ends it when APEX quits.
  */
-export function openfilmAgentEnv(plan: Extract<OpenfilmStudioPlan, { on: true }>): Record<string, string> {
+export function openfilmAgentEnv(plan: OpenfilmStudioPlan): Record<string, string> {
   return {
     ...openfilmStudioFolders(plan.dataRoot),
     OPENFILM_HOSTED: '1',
@@ -296,7 +336,7 @@ export function systemStudioProcesses(
  * the engine itself gets, whose first entries are the engine's bundled tools.
  */
 export function studioChildEnv(
-  plan: Extract<OpenfilmStudioPlan, { on: true }>,
+  plan: OpenfilmStudioPlan,
   toolkit: OpenfilmToolkit,
   env: Record<string, string | undefined>,
   basePath: string
@@ -402,6 +442,8 @@ export interface EnginePython {
 }
 
 export interface OpenfilmStudioDeps {
+  /** The signed-in account (read each time: sign-in, sign-out and key changes count at once); null signed out. */
+  account?: () => ApexAccount | null | undefined
   /** The PATH the engine gets (its bundled tools first), read when Studio starts. */
   basePath: () => string
   /** The engine's Python, to install the toolkit with; null when there is no engine yet. */
@@ -433,8 +475,8 @@ export interface OpenfilmStudio {
   open: (folder: unknown) => Promise<OpenfilmStudioOpen>
   plan: OpenfilmStudioPlan
   /** Have the engine install the toolkit in the background, unless it is there, on its way, or just failed. */
-  prefetch: () => 'off' | 'preparing' | 'ready' | 'started' | 'waiting'
-  status: () => OpenfilmStudioStatus
+  prefetch: () => Promise<'off' | 'preparing' | 'ready' | 'started' | 'waiting'>
+  status: () => Promise<OpenfilmStudioStatus>
   /** App quit: Studio stops (it also does when main's pipe closes), and so does any other in APEX's folders. */
   stop: () => void
 }
@@ -453,19 +495,59 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
   let starting: null | Promise<RunningStudio> = null
   let installing: null | Promise<boolean> = null
   let failedAt: null | number = null
+  /** The last answer, for which account (a digest of its base and key), and when. */
+  let access: null | { at: number; open: boolean; slot: string } = null
+  let asking: null | { answer: Promise<boolean>; slot: string } = null
 
-  if (deps.env[OPENFILM_STUDIO_ENV] !== undefined) {
-    log(
-      plan.on === true
-        ? `[openfilm-studio] on: data ${plan.dataRoot}, toolkit ${plan.devToolkit ?? plan.ready}`
-        : `[openfilm-studio] stays off (${plan.reason})`
-    )
+  const toolkitNow = () => findOpenfilmToolkit(plan, exists)
+
+  /**
+   * May this account use the editor: the Scheduler's answer, kept a minute. A
+   * different account asks afresh; signed out is no. An answer that cannot be
+   * read keeps this account's last one (a network blip does not take the editor
+   * away mid-edit), or is no when there is none, and is asked again a minute on.
+   */
+  async function allowed(): Promise<boolean> {
+    const account = deps.account?.()
+    const apiBase = String(account?.apiBase ?? '').trim()
+    const key = String(account?.key ?? '').trim()
+
+    if (!apiBase || !key) {
+      return false
+    }
+
+    const slot = createHash('sha256').update(`${apiBase}\0${key}`).digest('hex')
+
+    if (access?.slot === slot && now() - access.at < ACCESS_TTL_MS) {
+      return access.open
+    }
+
+    if (asking?.slot !== slot) {
+      const answer = readOpenfilmAccess({ apiBase, key }, fetchImpl).then(said => {
+        const open = said ?? (access?.slot === slot ? access.open : false)
+
+        if (access?.slot !== slot || access.open !== open) {
+          log(`[openfilm-studio] the editor is ${open ? 'open' : 'not open'} to this account`)
+        }
+
+        access = { slot, open, at: now() }
+
+        return open
+      })
+
+      asking = { slot, answer }
+      void answer.finally(() => {
+        if (asking?.answer === answer) {
+          asking = null
+        }
+      })
+    }
+
+    return asking.answer
   }
 
-  const toolkitNow = () => (plan.on === true ? findOpenfilmToolkit(plan, exists) : null)
-
-  function prefetch(): ReturnType<OpenfilmStudio['prefetch']> {
-    if (plan.on === false) {
+  async function prefetch(): ReturnType<OpenfilmStudio['prefetch']> {
+    if (!(await allowed())) {
       return 'off'
     }
 
@@ -548,7 +630,7 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
     })
   }
 
-  function start(on: Extract<OpenfilmStudioPlan, { on: true }>, toolkit: OpenfilmToolkit): Promise<RunningStudio> {
+  function start(on: OpenfilmStudioPlan, toolkit: OpenfilmToolkit): Promise<RunningStudio> {
     if (starting) {
       return starting
     }
@@ -573,7 +655,7 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
    * quit, then ended if it does not go. Another app's own (it answers 423) is
    * left to that app.
    */
-  async function stopOthers(on: Extract<OpenfilmStudioPlan, { on: true }>): Promise<void> {
+  async function stopOthers(on: OpenfilmStudioPlan): Promise<void> {
     const other = readAdvertisedStudio(openfilmStudioFolders(on.dataRoot).OPENFILM_HOME)
 
     if (!other || !processes.alive(other.pid)) {
@@ -629,7 +711,7 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
     return ended
   }
 
-  function launch(on: Extract<OpenfilmStudioPlan, { on: true }>, toolkit: OpenfilmToolkit): Promise<RunningStudio> {
+  function launch(on: OpenfilmStudioPlan, toolkit: OpenfilmToolkit): Promise<RunningStudio> {
     return new Promise<RunningStudio>((resolve, reject) => {
       mkdirSync(on.dataRoot, { recursive: true })
       const hostFile = join(on.dataRoot, HOST_FILE)
@@ -729,19 +811,19 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
   }
 
   async function open(folder: unknown): Promise<OpenfilmStudioOpen> {
-    if (plan.on === false) {
-      return { ok: false, code: 'off', message: `OpenFilm Studio is off (${plan.reason})` }
-    }
-
     if (typeof folder !== 'string' || !isAbsolute(folder) || !exists(join(folder, FILM_FILE))) {
       return { ok: false, code: 'not_a_film', message: `not a folder with ${FILM_FILE}` }
+    }
+
+    if (!(await allowed())) {
+      return { ok: false, code: 'off', message: 'the editor is not open to this account' }
     }
 
     const toolkit = toolkitNow()
 
     if (!toolkit) {
       // The film opens as it always did meanwhile; the toolkit is fetched now if it was not already.
-      return { ok: false, code: 'not_ready', message: `the editor is getting ready (${prefetch()})` }
+      return { ok: false, code: 'not_ready', message: `the editor is getting ready (${await prefetch()})` }
     }
 
     let studio: RunningStudio
@@ -776,10 +858,6 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
   function stop() {
     stopOwn()
 
-    if (plan.on === false) {
-      return
-    }
-
     // Any other Studio in APEX's folders ends with APEX: the one run.json names now, and any that would not quit.
     const named = readAdvertisedStudio(openfilmStudioFolders(plan.dataRoot).OPENFILM_HOME)
 
@@ -813,19 +891,19 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
     }, 8_000).unref()
   }
 
-  const status = (): OpenfilmStudioStatus => ({
-    on: plan.on,
-    ready: toolkitNow() !== null,
-    preparing: installing !== null
-  })
+  const status = async (): Promise<OpenfilmStudioStatus> => {
+    const on = await allowed()
+
+    return { on, ready: on && toolkitNow() !== null, preparing: on && installing !== null }
+  }
 
   return { open, plan, prefetch, status, stop }
 }
 
 /**
  * Main's side: the window asks for the status, a Studio address, a background
- * install; quitting stops Studio. While the switch is on, main's environment
- * (`env`, which every engine started after this inherits) gets `openfilmAgentEnv`.
+ * install; quitting stops Studio. Main's environment (`env`, which every engine
+ * started after this inherits) gets `openfilmAgentEnv`.
  */
 export function registerOpenfilmStudio(
   studio: OpenfilmStudio,
@@ -833,9 +911,7 @@ export function registerOpenfilmStudio(
   app: { on(event: 'will-quit', listener: () => void): unknown },
   env: Record<string, string | undefined> = process.env
 ): void {
-  if (studio.plan.on === true) {
-    Object.assign(env, openfilmAgentEnv(studio.plan))
-  }
+  Object.assign(env, openfilmAgentEnv(studio.plan))
 
   ipcMain.handle('hermes:openfilmStudio:status', () => studio.status())
   ipcMain.handle('hermes:openfilmStudio:open', (_event, folder) => studio.open(folder))

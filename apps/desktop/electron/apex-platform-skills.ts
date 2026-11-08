@@ -66,7 +66,9 @@ function trimTrailingSlash(value) {
 // without it gets every SKILL.md minus that section, so its model never writes the block.
 // `next-steps-handoff` (hc-1089): the block's 「交给」 option, drawn as 「交给 X」 when the relay is
 // on and left out otherwise; a build without it gets the section minus that one rule line.
-const PLATFORM_SKILLS_CAPS = 'next-steps,next-steps-handoff'
+// `openfilm` (hc-1178): this build can host the OpenFilm editor (openfilm-studio.ts). The server
+// sends the film-edit skill only to an account the editor is opened to (`openfilm_editor`).
+const PLATFORM_SKILLS_CAPS = 'next-steps,next-steps-handoff,openfilm'
 const CHATCUT_ACTIVE_ENV = 'APEX_CHATCUT_ACTIVE'
 
 /**

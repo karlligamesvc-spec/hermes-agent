@@ -431,7 +431,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     get: () => ipcRenderer.invoke('hermes:agentProxy:get'),
     set: payload => ipcRenderer.invoke('hermes:agentProxy:set', payload)
   },
-  // PROTOTYPE, off unless APEXNODES_OPENFILM_STUDIO=1: OpenFilm Studio for an
+  // PROTOTYPE, only for an account the Scheduler opens it to: OpenFilm Studio for an
   // agent's film.html in the preview pane. See electron/openfilm-studio.ts.
   openfilmStudio: {
     status: () => ipcRenderer.invoke('hermes:openfilmStudio:status'),

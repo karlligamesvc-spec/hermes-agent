@@ -3,7 +3,8 @@
 Desktop can open an Agent's ``film.html`` in OpenFilm Studio, where the person retypes a caption, moves a title or
 splits a clip, and Studio writes that into the same files. These commands are what the Agent runs around that:
 
-    $APEX_PYTHON -m apex_overlay.film_project status             is the editor on here, is its toolkit installed
+    $APEX_PYTHON -m apex_overlay.film_project status             is the editor open to this account, is its toolkit
+                                                                  installed
     $APEX_PYTHON -m apex_overlay.film_project diff <project>      what changed since the Agent's last write
     $APEX_PYTHON -m apex_overlay.film_project write <project> <draft.html>
                                                                   write film.html, let the editor take it in, then
@@ -25,7 +26,12 @@ import shutil
 import sys
 import time
 
-SWITCH = 'APEXNODES_OPENFILM_STUDIO'
+#: The Scheduler's per-account answer (apex-nodes ``openfilm_access.open_to``), asked with the engine's APEX key, which
+#: Desktop's main process puts in the engine's environment while an account is signed in (apex-platform-tools.ts).
+CHECK_PATH = '/tools/v1/check'
+BASE_ENV = 'TOOLS_GATEWAY_BASE'
+KEY_ENV = 'TOOLS_GATEWAY_KEY'
+CHECK_TIMEOUT_SECONDS = 5.0
 FILM = 'film.html'
 #: OpenFilm's folders, all under HERMES_HOME/openfilm; Desktop's editor uses the same (electron/openfilm-studio.ts).
 FOLDERS = {
@@ -43,8 +49,21 @@ CLIP_TAGS = {'iframe', 'video', 'img', 'audio', 'object', 'embed'}
 
 
 def editor_on(env=os.environ) -> bool:
-    """Desktop's editor switch, read as Desktop reads it (envSwitch)."""
-    return str(env.get(SWITCH, '')).strip().lower() in {'1', 'true', 'yes', 'on'}
+    """Is the editor open to this account: ``openfilm.enabled`` on the Scheduler's tools check (hc-1178), as Desktop
+    reads it. Signed out, unreadable or anything but true is no. Asked on every command, never kept."""
+    base = str(env.get(BASE_ENV, '')).strip().rstrip('/')
+    key = str(env.get(KEY_ENV, '')).strip()
+    if not (base and key):
+        return False
+    import httpx
+
+    try:
+        answer = httpx.get(f'{base}{CHECK_PATH}', headers={'Authorization': f'Bearer {key}'},
+                           timeout=CHECK_TIMEOUT_SECONDS)
+        block = answer.json().get('openfilm') if answer.status_code == 200 else None
+    except (httpx.HTTPError, ValueError, AttributeError):
+        return False
+    return isinstance(block, dict) and block.get('enabled') is True
 
 
 def _hermes_home() -> Path:
@@ -329,11 +348,12 @@ def main(argv=None) -> int:
     if args.command in {'status', 'env'}:
         home = _hermes_home()
         ready = ready_toolkit(home)
+        on = editor_on()
         if args.command == 'status':
-            print(json.dumps({'on': editor_on(), 'ready': ready is not None}))
+            print(json.dumps({'on': on, 'ready': ready is not None}))
             return 0
-        if not editor_on():
-            print('APEX 的剪辑编辑器没开：这台电脑上不做 OpenFilm 工程', file=sys.stderr)
+        if not on:
+            print('APEX 的剪辑编辑器没开：这个账号还不能用，不做 OpenFilm 工程', file=sys.stderr)
             return 2
         if ready is None:
             from apex_overlay.media_tools import ensure_openfilm

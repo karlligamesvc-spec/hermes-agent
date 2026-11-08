@@ -17,14 +17,15 @@ import { delimiter, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import {
+  type ApexAccount,
   createOpenfilmStudio,
   findOpenfilmToolkit,
   OPENFILM_FFMPEG_DIR_ENV,
-  OPENFILM_STUDIO_ENV,
   OPENFILM_TOOLKIT_ENV,
   openfilmAgentEnv,
   planOpenfilmStudio,
   readAdvertisedStudio,
+  readOpenfilmAccess,
   redactStudioKey,
   registerOpenfilmStudio,
   studioChildEnv,
@@ -115,10 +116,38 @@ function onEnv(): Record<string, string | undefined> {
   return {
     HOME: process.env.HOME,
     TMPDIR: process.env.TMPDIR,
-    [OPENFILM_STUDIO_ENV]: '1',
     [OPENFILM_TOOLKIT_ENV]: fakeToolkit()
   }
 }
+
+/** The signed-in account as main holds it. */
+const ACCOUNT = { apiBase: 'https://scheduler.test/', key: 'apex-key-for-test' }
+
+/**
+ * The Scheduler's tools check, as Desktop asks it: `open` is its answer for this
+ * account (`unreadable` throws, as an unreachable network does). Every other
+ * address (Studio's own) is fetched for real. `asked` notes each check.
+ */
+function scheduler(open: 'unreadable' | boolean, asked: Array<{ auth: string; url: string }> = []): typeof fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+
+    if (!url.startsWith('https://scheduler.test') && /^https?:\/\/127\.0\.0\.1:/.test(url)) {
+      return fetch(input, init)
+    }
+
+    asked.push({ url, auth: String(new Headers(init?.headers).get('authorization')) })
+
+    if (open === 'unreadable') {
+      throw new Error('offline')
+    }
+
+    return new Response(JSON.stringify({ ok: true, openfilm: { enabled: open } }), { status: 200 })
+  }) as typeof fetch
+}
+
+/** What every test that runs Studio adds to createOpenfilmStudio: an account the Scheduler opens the editor to. */
+const opened = () => ({ account: () => ACCOUNT, fetchImpl: scheduler(true) })
 
 /** The toolkit as the engine installs it: its folder under tool-cache, the agent browser, and ready.json naming both. */
 function installToolkit(): { chromium: string; toolkit: string } {
@@ -132,15 +161,7 @@ function installToolkit(): { chromium: string; toolkit: string } {
   return { chromium, toolkit }
 }
 
-const onPlan = (env: Record<string, string | undefined>) => {
-  const plan = planOpenfilmStudio(env, root)
-
-  if (plan.on !== true) {
-    throw new Error(`expected Studio on, got ${JSON.stringify(plan)}`)
-  }
-
-  return plan
-}
+const onPlan = (env: Record<string, string | undefined>) => planOpenfilmStudio(env, root)
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'openfilm-studio-'))
@@ -150,48 +171,123 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-describe('the switch', () => {
-  test.each([
-    ['unset', undefined],
-    ['0', '0'],
-    ['off', 'off'],
-    ['an unknown word', 'maybe']
-  ])('%s keeps it off, whatever else is set', (_label, value) => {
-    const env = { [OPENFILM_STUDIO_ENV]: value, [OPENFILM_TOOLKIT_ENV]: fakeToolkit() }
-
-    assert.deepEqual(planOpenfilmStudio(env, '/apex'), { on: false, reason: 'switch_off' })
-  })
-
-  test('on, its data and the toolkit the engine installs are inside APEX’s data folder', () => {
-    assert.deepEqual(planOpenfilmStudio({ [OPENFILM_STUDIO_ENV]: '1' }, '/apex'), {
-      on: true,
+describe('the account', () => {
+  test('its data and the toolkit the engine installs are inside APEX’s data folder', () => {
+    assert.deepEqual(planOpenfilmStudio({}, '/apex'), {
       dataRoot: join('/apex', 'openfilm'),
       ready: join('/apex', 'tool-cache', 'openfilm', 'ready.json'),
       devToolkit: null
     })
   })
 
-  test('off, Studio is never started, nothing is installed and nothing is logged', async () => {
-    const spawn = vi.fn()
-    const enginePython = vi.fn()
+  test.each<[string, () => ApexAccount | null, 'unreadable' | boolean, number]>([
+    ['signed out (nothing is asked)', () => null, true, 0],
+    ['signed in with no key (nothing is asked)', () => ({ apiBase: ACCOUNT.apiBase, key: ' ' }), true, 0],
+    ['not opened to this account', () => ACCOUNT, false, 1],
+    ['an answer that cannot be read, with none before', () => ACCOUNT, 'unreadable', 1]
+  ])(
+    '%s: Studio is never started and nothing is installed, whatever is installed',
+    async (_label, account, says, asks) => {
+      installToolkit()
+      const spawn = vi.fn()
+      const enginePython = vi.fn()
+      const asked: Array<{ auth: string; url: string }> = []
+
+      const studio = createOpenfilmStudio({
+        env: onEnv(),
+        hermesHome: root,
+        execPath: process.execPath,
+        basePath: () => '',
+        enginePython,
+        spawn: spawn as never,
+        account,
+        fetchImpl: scheduler(says, asked)
+      })
+
+      assert.deepEqual(await studio.status(), { on: false, ready: false, preparing: false })
+      assert.deepEqual(await studio.open(filmProject('cook')), {
+        ok: false,
+        code: 'off',
+        message: 'the editor is not open to this account'
+      })
+      assert.equal(await studio.prefetch(), 'off')
+      expect(spawn).not.toHaveBeenCalled()
+      expect(enginePython).not.toHaveBeenCalled()
+      // Asked once at most (the answer is kept), and never without an account to ask for.
+      assert.equal(asked.length, asks)
+    }
+  )
+
+  test('asked with the account’s key, kept a minute, asked afresh for another account', async () => {
+    const asked: Array<{ auth: string; url: string }> = []
+    const clock = { now: 1_000 }
+    let account = ACCOUNT
     const lines: string[] = []
 
     const studio = createOpenfilmStudio({
-      env: {},
+      env: onEnv(),
       hermesHome: root,
       execPath: process.execPath,
       basePath: () => '',
-      enginePython,
-      spawn: spawn as never,
+      account: () => account,
+      fetchImpl: scheduler(true, asked),
+      now: () => clock.now,
       log: line => lines.push(line)
     })
 
-    assert.deepEqual(studio.status(), { on: false, ready: false, preparing: false })
-    assert.equal((await studio.open(filmProject('cook'))).ok, false)
-    assert.equal(studio.prefetch(), 'off')
-    expect(spawn).not.toHaveBeenCalled()
-    expect(enginePython).not.toHaveBeenCalled()
-    assert.deepEqual(lines, [])
+    assert.equal((await studio.status()).on, true)
+    assert.equal((await studio.status()).on, true)
+    assert.deepEqual(asked, [{ url: 'https://scheduler.test/tools/v1/check', auth: 'Bearer apex-key-for-test' }])
+    clock.now += 61_000
+    await studio.status()
+    assert.equal(asked.length, 2)
+    account = { ...ACCOUNT, key: 'someone-else' }
+    await studio.status()
+    assert.deepEqual(asked[2], { url: 'https://scheduler.test/tools/v1/check', auth: 'Bearer someone-else' })
+    // Each change is logged once, never the key.
+    assert.deepEqual(lines, [
+      '[openfilm-studio] the editor is open to this account',
+      '[openfilm-studio] the editor is open to this account'
+    ])
+  })
+
+  test('an answer that cannot be read keeps this account’s last one; a no a minute later closes it', async () => {
+    const clock = { now: 1_000 }
+    let says: 'unreadable' | boolean = true
+
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) =>
+      scheduler(says)(input, init)) as typeof fetch
+
+    const studio = createOpenfilmStudio({
+      env: onEnv(),
+      hermesHome: root,
+      execPath: process.execPath,
+      basePath: () => '',
+      account: () => ACCOUNT,
+      fetchImpl,
+      now: () => clock.now
+    })
+
+    assert.equal((await studio.status()).on, true)
+    says = 'unreadable'
+    clock.now += 61_000
+    assert.equal((await studio.status()).on, true, 'a network blip took the editor away')
+    says = false
+    clock.now += 61_000
+    assert.equal((await studio.status()).on, false)
+  })
+
+  test.each([
+    ['yes', { ok: true, openfilm: { enabled: true } }, 200, true],
+    ['no', { ok: true, openfilm: { enabled: false } }, 200, false],
+    ['a Scheduler without the field', { ok: true, chatcut: { enabled: true } }, 200, false],
+    ['not a boolean', { ok: true, openfilm: { enabled: 'true' } }, 200, false],
+    ['a 401', { error: 'unauthorized' }, 401, null],
+    ['a 503', {}, 503, null]
+  ])('reading the answer: %s', async (_label, body, status, expected) => {
+    const fetchImpl = (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch
+
+    assert.equal(await readOpenfilmAccess({ apiBase: 'https://s', key: 'k' }, fetchImpl), expected)
   })
 })
 
@@ -199,7 +295,7 @@ describe('finding the toolkit', () => {
   test('the one the engine installed, as ready.json names it, with the agent browser', () => {
     const { chromium, toolkit } = installToolkit()
 
-    assert.deepEqual(findOpenfilmToolkit(onPlan({ [OPENFILM_STUDIO_ENV]: '1' })), {
+    assert.deepEqual(findOpenfilmToolkit(onPlan({})), {
       toolkit,
       serverModule: join(toolkit, 'node_modules', 'openfilm', 'studio', 'server', 'server.mjs'),
       browsers: null,
@@ -228,20 +324,20 @@ describe('finding the toolkit', () => {
       spoil()
     }
 
-    assert.equal(findOpenfilmToolkit(onPlan({ [OPENFILM_STUDIO_ENV]: '1' })), null)
+    assert.equal(findOpenfilmToolkit(onPlan({})), null)
   })
 
   test.each([
     ['a relative folder', 'toolkit'],
     ['a folder without openfilm', '/nowhere/toolkit']
   ])('a development toolkit: none with %s', (_label, toolkit) => {
-    assert.equal(findOpenfilmToolkit(onPlan({ [OPENFILM_STUDIO_ENV]: '1', [OPENFILM_TOOLKIT_ENV]: toolkit })), null)
+    assert.equal(findOpenfilmToolkit(onPlan({ [OPENFILM_TOOLKIT_ENV]: toolkit })), null)
   })
 
   test('a development toolkit, with its own Playwright browsers', () => {
     const toolkit = fakeToolkit()
 
-    expect(findOpenfilmToolkit(onPlan({ [OPENFILM_STUDIO_ENV]: '1', [OPENFILM_TOOLKIT_ENV]: toolkit }))).toEqual({
+    expect(findOpenfilmToolkit(onPlan({ [OPENFILM_TOOLKIT_ENV]: toolkit }))).toEqual({
       toolkit,
       serverModule: join(toolkit, 'node_modules', 'openfilm', 'studio', 'server', 'server.mjs'),
       browsers: join(toolkit, 'browsers'),
@@ -261,7 +357,7 @@ describe("the child's environment", () => {
   }
 
   test('Studio folders under APEX data, the agent browser, no update check, the engine’s ffmpeg first, nothing else of main’s', () => {
-    const plan = onPlan({ [OPENFILM_STUDIO_ENV]: '1' })
+    const plan = onPlan({})
     const { chromium, toolkit } = installToolkit()
     const found = findOpenfilmToolkit(plan)
 
@@ -292,14 +388,14 @@ describe("the child's environment", () => {
       '/usr/bin'
     ])
 
-    for (const name of ['APEX_RELAY_KEY', 'OPENAI_API_KEY', 'HERMES_HOME', OPENFILM_STUDIO_ENV, OPENFILM_TOOLKIT_ENV]) {
+    for (const name of ['APEX_RELAY_KEY', 'OPENAI_API_KEY', 'HERMES_HOME', 'TOOLS_GATEWAY_KEY', OPENFILM_TOOLKIT_ENV]) {
       assert.equal(name in env, false, name)
     }
   })
 
   test('a development toolkit draws in its own Playwright browsers', () => {
     const toolkit = fakeToolkit()
-    const plan = onPlan({ [OPENFILM_STUDIO_ENV]: '1', [OPENFILM_TOOLKIT_ENV]: toolkit })
+    const plan = onPlan({ [OPENFILM_TOOLKIT_ENV]: toolkit })
     const found = findOpenfilmToolkit(plan)
 
     if (!found) {
@@ -335,7 +431,8 @@ describe('Studio in a child process', () => {
       execPath: process.execPath,
       basePath: () => process.env.PATH ?? '',
       log: line => lines.push(line),
-      readyTimeoutMs: 20_000
+      readyTimeoutMs: 20_000,
+      ...opened()
     })
 
     return { lines, studio }
@@ -382,10 +479,10 @@ describe('Studio in a child process', () => {
     const { chromium } = installToolkit()
 
     const { studio } = runStudio({
-      env: { HOME: process.env.HOME, TMPDIR: process.env.TMPDIR, [OPENFILM_STUDIO_ENV]: '1' }
+      env: { HOME: process.env.HOME, TMPDIR: process.env.TMPDIR }
     })
 
-    assert.deepEqual(studio.status(), { on: true, ready: true, preparing: false })
+    assert.deepEqual(await studio.status(), { on: true, ready: true, preparing: false })
     assert.equal((await studio.open(filmProject('cook'))).ok, true)
     expect(marks().find(mark => mark.started)?.env).toMatchObject({ chromium, playwrightBrowsers: null })
     studio.stop()
@@ -459,7 +556,8 @@ describe('installing the toolkit in the background', () => {
     const enginePython = vi.fn(async () => ({ command: 'engine-python', cwd: '/engine', env: { ENGINE_ONLY: '1' } }))
 
     const studio = createOpenfilmStudio({
-      env: { HOME: process.env.HOME, TMPDIR: process.env.TMPDIR, [OPENFILM_STUDIO_ENV]: '1' },
+      env: { HOME: process.env.HOME, TMPDIR: process.env.TMPDIR },
+      ...opened(),
       hermesHome: root,
       execPath: process.execPath,
       basePath: () => process.env.PATH ?? '',
@@ -486,17 +584,17 @@ describe('installing the toolkit in the background', () => {
       cwd: '/engine',
       env: { HOME: process.env.HOME, HERMES_HOME: root, ENGINE_ONLY: '1' }
     })
-    assert.deepEqual(studio.status(), { on: true, ready: false, preparing: true })
+    assert.deepEqual(await studio.status(), { on: true, ready: false, preparing: true })
 
     // More video tools meanwhile start nothing more.
-    assert.equal(studio.prefetch(), 'preparing')
+    assert.equal(await studio.prefetch(), 'preparing')
     assert.equal((await studio.open(filmProject('cook'))).ok, false)
     assert.equal(engine.runs.length, 1)
     assert.equal(enginePython.mock.calls.length, 1)
 
     engine.runs[0].finish(0)
-    await vi.waitFor(() => assert.deepEqual(studio.status(), { on: true, ready: true, preparing: false }))
-    assert.equal(studio.prefetch(), 'ready')
+    await vi.waitFor(async () => assert.deepEqual(await studio.status(), { on: true, ready: true, preparing: false }))
+    assert.equal(await studio.prefetch(), 'ready')
     assert.equal((await studio.open(filmProject('cook'))).ok, true)
     studio.stop()
     await vi.waitFor(() => expect(marks().some(mark => mark.closed)).toBe(true), { timeout: 10_000 })
@@ -506,17 +604,17 @@ describe('installing the toolkit in the background', () => {
     const engine = fakeEngine()
     const { clock, studio } = studioWith(engine)
 
-    assert.equal(studio.prefetch(), 'started')
+    assert.equal(await studio.prefetch(), 'started')
     await vi.waitFor(() => assert.equal(engine.runs.length, 1))
     engine.runs[0].finish(1)
-    await vi.waitFor(() => assert.equal(studio.status().preparing, false))
+    await vi.waitFor(async () => assert.equal((await studio.status()).preparing, false))
 
-    assert.equal(studio.status().ready, false)
-    assert.equal(studio.prefetch(), 'waiting')
+    assert.equal((await studio.status()).ready, false)
+    assert.equal(await studio.prefetch(), 'waiting')
     clock.now += 9 * 60_000
-    assert.equal(studio.prefetch(), 'waiting')
+    assert.equal(await studio.prefetch(), 'waiting')
     clock.now += 2 * 60_000
-    assert.equal(studio.prefetch(), 'started')
+    assert.equal(await studio.prefetch(), 'started')
     await vi.waitFor(() => assert.equal(engine.runs.length, 2))
   })
 
@@ -524,12 +622,12 @@ describe('installing the toolkit in the background', () => {
     const engine = fakeEngine()
     const { studio } = studioWith(engine)
 
-    studio.prefetch()
+    await studio.prefetch()
     await vi.waitFor(() => assert.equal(engine.runs.length, 1))
     engine.runs[0].finish(0, false)
-    await vi.waitFor(() => assert.equal(studio.status().preparing, false))
-    assert.equal(studio.status().ready, false)
-    assert.equal(studio.prefetch(), 'waiting')
+    await vi.waitFor(async () => assert.equal((await studio.status()).preparing, false))
+    assert.equal((await studio.status()).ready, false)
+    assert.equal(await studio.prefetch(), 'waiting')
   })
 
   test('no engine yet: nothing runs, and it counts as a failed try', async () => {
@@ -537,10 +635,10 @@ describe('installing the toolkit in the background', () => {
     const { enginePython, studio } = studioWith(engine)
     enginePython.mockResolvedValueOnce(null as never)
 
-    studio.prefetch()
-    await vi.waitFor(() => assert.equal(studio.status().preparing, false))
+    await studio.prefetch()
+    await vi.waitFor(async () => assert.equal((await studio.status()).preparing, false))
     assert.equal(engine.runs.length, 0)
-    assert.equal(studio.prefetch(), 'waiting')
+    assert.equal(await studio.prefetch(), 'waiting')
   })
 })
 
@@ -629,6 +727,7 @@ describe('a Studio Desktop did not start, in APEX’s folders', () => {
       basePath: () => process.env.PATH ?? '',
       log: line => lines.push(line),
       readyTimeoutMs: 20_000,
+      ...opened(),
       ...(processes ? { processes } : {})
     })
 
@@ -753,7 +852,7 @@ describe('a Studio Desktop did not start, in APEX’s folders', () => {
     await vi.waitFor(() => expect(marks().some(mark => mark.closed)).toBe(true), { timeout: 10_000 })
   })
 
-  test('switched off, quitting looks at no other Studio', () => {
+  test('an account the editor is not open to (or none signed in): quitting still ends another Studio there', () => {
     advertise({ pid: 4242, origin: 'http://127.0.0.1:9', key: 'theirs' })
     const { ended, processes } = fakeProcesses([4242])
 
@@ -766,7 +865,7 @@ describe('a Studio Desktop did not start, in APEX’s folders', () => {
     })
 
     studio.stop()
-    assert.deepEqual(ended, [])
+    assert.deepEqual(ended, [4242])
   })
 
   test.each([
@@ -865,7 +964,7 @@ describe('main’s wiring', () => {
       prefetch: vi.fn(() => 'started'),
       status: vi.fn(),
       stop: vi.fn(),
-      plan: {} as never
+      plan: onPlan({})
     }
 
     const env: Record<string, string | undefined> = {}
@@ -887,11 +986,21 @@ describe('main’s wiring', () => {
     assert.equal(handlers.get('hermes:openfilmStudio:prefetch')?.({}), 'started')
     quit.forEach(listener => listener())
     expect(studio.stop).toHaveBeenCalledOnce()
-    assert.deepEqual(env, {}, 'switched off, main’s environment stays as it was')
   })
 
-  test('switched on, every engine started after it runs OpenFilm hosted, in Studio’s folders', () => {
-    const plan = onPlan({ [OPENFILM_STUDIO_ENV]: '1' })
+  test('main gives the module the signed-in account: its API base and the managed APEX key the engine’s tools use', () => {
+    const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
+    const call = main.slice(main.indexOf('const openfilmStudio = createOpenfilmStudio({'))
+
+    expect(call.slice(0, call.indexOf('\n})'))).toContain(
+      'account: () => ({ apiBase: resolveApexEndpoints(process.env).apiBase, key: resolveManagedConfig().key }),'
+    )
+    // The same key the engine's tools get (desktopPlatformToolSpawnEnv), so Desktop and the engine read one answer.
+    expect(main).toContain('buildPlatformToolSpawnEnv({ apiBase, currentEnv: process.env, key: managed.key })')
+  })
+
+  test('every engine started after it runs OpenFilm hosted, in Studio’s folders, opened to the account or not', () => {
+    const plan = onPlan({})
     const env: Record<string, string | undefined> = { PATH: '/bin' }
 
     registerOpenfilmStudio(
