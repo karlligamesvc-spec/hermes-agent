@@ -125,6 +125,69 @@ def ensure_font(name: str = 'subtitle') -> Path:
     return destination
 
 
+def ensure_openfilm() -> Path:
+    """APEX's OpenFilm toolkit (hc-1176), for the editor Desktop opens an Agent's film.html in.
+
+    The toolkit (desktop-lock ``openfilm``: the pinned openfilm package with APEX's patches, and its dependencies) is
+    downloaded once from APEX COS, size and SHA-256 checked, and unpacked into HERMES_HOME/tool-cache/openfilm/<sha256>/.
+    It draws in the Agent browser's Chromium (``ensure_browser(render=True)``), never in one it downloads itself.
+    ``tool-cache/openfilm/ready.json`` is written last and names both: Desktop reads only that file, so it never sees
+    a half-done install. Returns its path.
+    """
+    from filelock import FileLock
+    from hermes_constants import get_hermes_home
+    from urllib.parse import urlsplit
+    spec = json.loads(LOCK.read_text(encoding='utf-8-sig'))['openfilm']
+    url = urlsplit(spec['url'])
+    if url.scheme != 'https' or url.hostname != COS_HOST:
+        raise ValueError('OpenFilm toolkit download must use APEX COS')
+    chromium = ensure_browser(render=True)
+    cache = Path(get_hermes_home()) / 'tool-cache' / 'openfilm'
+    cache.mkdir(parents=True, exist_ok=True)
+    destination = cache / spec['sha256']
+
+    def installed(folder: Path) -> bool:
+        try:
+            manifest = json.loads((folder / 'apex-toolkit.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return False
+        patches = [str(p.get('file', '')).removesuffix('.patch') for p in manifest.get('patches', [])]
+        return (manifest.get('openfilm') == spec['version'] and patches == spec['patches']
+                and (folder / 'node_modules/openfilm/studio/server/server.mjs').is_file())
+
+    with FileLock(str(cache / 'install.lock'), timeout=1800):
+        if not installed(destination):
+            with tempfile.TemporaryDirectory(prefix='install-', dir=cache) as temporary:
+                temporary = Path(temporary)
+                archive = temporary / 'openfilm-toolkit.tgz'
+                digest, size = hashlib.sha256(), 0
+                with urllib.request.urlopen(spec['url'], timeout=120) as response, archive.open('wb') as output:
+                    while chunk := response.read(1024 * 1024):
+                        output.write(chunk)
+                        digest.update(chunk)
+                        size += len(chunk)
+                if size != spec['bytes'] or digest.hexdigest() != spec['sha256']:
+                    raise ValueError('COS OpenFilm toolkit checksum mismatch')
+                unpacked = temporary / 'unpacked'
+                unpacked.mkdir()
+                tar = str(Path(os.environ.get('SystemRoot', 'C:/Windows')) / 'System32/tar.exe') if os.name == 'nt' else '/usr/bin/tar'
+                subprocess.run([tar, '-xzf', str(archive), '-C', str(unpacked)], stdin=subprocess.DEVNULL, check=True, timeout=300)
+                if not installed(unpacked):
+                    raise ValueError('COS OpenFilm toolkit archive is not the locked toolkit')
+                # A previous interrupted installation cannot leave a half-valid tree.
+                if destination.exists():
+                    shutil.rmtree(destination)
+                unpacked.rename(destination)
+        ready = cache / 'ready.json'
+        staged = cache / 'ready.json.tmp'
+        staged.write_text(json.dumps({
+            'schema': 1, 'version': spec['version'], 'patches': spec['patches'], 'sha256': spec['sha256'],
+            'toolkit': str(destination), 'chromium': str(chromium),
+        }, indent=2), encoding='utf-8')
+        os.replace(staged, ready)
+    return ready
+
+
 def _bundled_hypit_version() -> str:
     package = ROOT / '.runtime/hypit/node_modules/@hypit/hypit/package.json'
     return json.loads(package.read_text(encoding='utf-8'))['version']
@@ -174,11 +237,16 @@ def apply() -> bool:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['browser', 'prepare-hypit', 'enable-hosted-hypit', 'font'])
+    parser.add_argument('command', choices=['browser', 'prepare-hypit', 'enable-hosted-hypit', 'font', 'openfilm'])
     parser.add_argument('--workspace', '--project', type=Path, default=Path.cwd())
     parser.add_argument('--hypit-version')
     args = parser.parse_args()
-    if args.command == 'font':
+    if args.command == 'openfilm':
+        try:
+            print(ensure_openfilm())
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:  # Desktop retries later; one line, no traceback
+            raise SystemExit(f'APEX OpenFilm toolkit unavailable: {type(exc).__name__}: {exc}') from None
+    elif args.command == 'font':
         try:
             print(ensure_font())
         except (OSError, ValueError, KeyError) as exc:  # the Agent relays this line instead of a traceback

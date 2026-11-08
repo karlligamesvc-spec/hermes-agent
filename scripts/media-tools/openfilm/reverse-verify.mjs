@@ -4,13 +4,15 @@
 //   OPENFILM_PACKAGE=<patched openfilm package> node reverse-verify.mjs
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const guard = join(here, 'track-fields.test.mjs')
+const pin = JSON.parse(readFileSync(join(here, 'pin.json'), 'utf8'))
+const guards = pin.guards.map(g => join(here, g))
 const source = process.env.OPENFILM_PACKAGE
 if (!source) throw new Error('Set OPENFILM_PACKAGE to the patched openfilm package folder.')
 
@@ -110,12 +112,19 @@ export const INJECTIONS = [
     find: "case 'clip': return lane || `clip ${id}`;",
     replace: "case 'clip': return `clip ${id}`;",
     fails: ["stays whole when the agent's write drops it"]
+  },
+  {
+    part: 'headless launches start the Chromium OPENFILM_CHROMIUM names (patch 0002)',
+    file: 'src/host.mjs',
+    find: ': own ? { executablePath: own } : {}',
+    replace: ': {}',
+    fails: ['every headless launch starts the Chromium', 'nothing is downloaded in its place']
   }
 ]
 
 /** Run the guard on `pkg`: the names of the tests that failed, and whether all ran. */
 function runGuard(pkg) {
-  const run = spawnSync(process.execPath, ['--test', '--test-reporter=tap', guard], {
+  const run = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...guards], {
     env: { ...process.env, OPENFILM_PACKAGE: pkg },
     encoding: 'utf8',
     timeout: 300_000
@@ -126,16 +135,25 @@ function runGuard(pkg) {
 }
 
 /** A copy of the package's code (src/, studio/server/, package.json) to change. */
+/* (the package's dependencies, found as it finds them, are linked beside each copy) */
+const dependencies = Object.keys(pin.dependencies).map(name => [
+  name,
+  dirname(createRequire(join(resolve(source), 'package.json')).resolve(`${name}/package.json`))
+])
 function copy() {
-  const dir = mkdtempSync(join(tmpdir(), 'apex-openfilm-reverse-'))
-  for (const part of ['package.json', 'src', 'studio/server'])
-    cpSync(join(resolve(source), part), join(dir, part), { recursive: true })
+  const root = mkdtempSync(join(tmpdir(), 'apex-openfilm-reverse-'))
+  const dir = join(root, 'node_modules', 'openfilm')
+  for (const part of ['package.json', 'bin', 'src', 'studio/server', 'studio/client.mjs'])
+    if (existsSync(join(resolve(source), part)))
+      cpSync(join(resolve(source), part), join(dir, part), { recursive: true })
+  for (const [name, at] of dependencies) symlinkSync(at, join(root, 'node_modules', name), 'junction')
+  mkdirSync(join(dir, 'library'), { recursive: true })
   return dir
 }
 
 const clean = copy()
 const baseline = runGuard(clean)
-rmSync(clean, { recursive: true, force: true })
+rmSync(join(clean, '..', '..'), { recursive: true, force: true })
 assert.equal(baseline.failed.length, 0, `the patched package fails the guard: ${baseline.failed.join(' | ')}`)
 assert.ok(baseline.total > 0 && baseline.code === 0, 'the guard ran no tests')
 console.log(`patched: all ${baseline.total} guard tests pass`)
@@ -157,7 +175,7 @@ for (const { part, file, find, replace, fails } of INJECTIONS) {
       `${ok ? 'red as expected' : 'NOT RED'}: without ${part} -> ${failed.length} fail${failed.length ? `: ${failed.join(' | ')}` : ''}${missing.length ? ` (expected also: ${missing.join(' | ')})` : ''}`
     )
   } finally {
-    rmSync(dir, { recursive: true, force: true })
+    rmSync(join(dir, '..', '..'), { recursive: true, force: true })
   }
 }
 assert.equal(bad, 0, `${bad} part(s) of the fix are not guarded`)

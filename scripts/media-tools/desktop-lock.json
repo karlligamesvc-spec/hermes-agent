@@ -174,5 +174,19 @@
       "upstreamMember": "SmileySans-Oblique.otf",
       "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/fonts/smiley-sans/2.0.1/139b5dcbe70d6d52de85a62d148784c6af4bd161e38fdb62ba0c1e7e5065fca6/SmileySans-Oblique.otf"
     }
+  },
+  "openfilm": {
+    "version": "0.3.0",
+    "patches": [
+      "0001-keep-track-fields",
+      "0002-host-chromium"
+    ],
+    "dependencies": {
+      "playwright-core": "1.61.1"
+    },
+    "license": "MIT (openfilm, patched: not the OpenFilm product); Apache-2.0 (playwright-core)",
+    "bytes": 40715829,
+    "sha256": "8b00bae8a7dd422425d8503bf1bc85eea663e88dd512191a3d16a0b69101a1b0",
+    "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/openfilm/0.3.0/8b00bae8a7dd422425d8503bf1bc85eea663e88dd512191a3d16a0b69101a1b0/openfilm-toolkit.tgz"
   }
 }
