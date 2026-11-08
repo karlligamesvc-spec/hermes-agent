@@ -67,6 +67,39 @@ describe('the script a Studio page runs', () => {
     }
   })
 
+  // CI's Node 26 has a localStorage of its own on the global, which the shared setup replaces with a plain in-memory
+  // one (vitest.setup.ts). The script must work with whatever Storage the page has: an event naming a Storage that is
+  // not the browser's own is refused, and the script then changed nothing (it returned null on CI).
+  it('works with whatever Storage the page has, not only the browser’s own', () => {
+    const store = new Map<string, string>()
+
+    const plain = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v)
+    }
+
+    const heard: Array<null | string> = []
+    const onStorage = (event: StorageEvent) => heard.push(event.key)
+    const own = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: plain, writable: true })
+    window.addEventListener('storage', onStorage)
+
+    try {
+      expect(runInPage(openfilmStudioLanguageScript('zh-CN'))).toBe(true)
+      expect(store.get('openfilm.language')).toBe('zh-CN')
+      expect(heard).toEqual(['openfilm.language'])
+    } finally {
+      window.removeEventListener('storage', onStorage)
+
+      if (own) {
+        Object.defineProperty(globalThis, 'localStorage', own)
+      } else {
+        delete (globalThis as { localStorage?: unknown }).localStorage
+      }
+    }
+  })
+
   it('overrides a language picked inside Studio: APEX’s is the one it follows', () => {
     window.localStorage.setItem('openfilm.language', 'es')
 

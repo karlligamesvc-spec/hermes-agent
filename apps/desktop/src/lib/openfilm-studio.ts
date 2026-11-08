@@ -52,13 +52,15 @@ export function openfilmStudioLanguage(locale: Locale): string {
  * The script that sets the editor in a Studio page to `language`. The editor
  * keeps its language in localStorage and reads it again on a `storage` event,
  * which a page never gets for its own writes, so the script sends one: the
- * editor changes language in place, with no reload. → whether it changed it.
+ * editor changes language in place, with no reload. The event names only the
+ * key, all the editor reads: a `storageArea` must be the browser's own Storage
+ * (jsdom refuses any other, as CI's tests have). → whether it changed it.
  */
 export function openfilmStudioLanguageScript(language: string): string {
   const key = JSON.stringify(STUDIO_LANGUAGE_KEY)
   const value = JSON.stringify(language)
 
-  return `(() => { try { if (localStorage.getItem(${key}) === ${value}) return false; localStorage.setItem(${key}, ${value}); window.dispatchEvent(new StorageEvent('storage', { key: ${key}, newValue: ${value}, storageArea: localStorage })); return true } catch { return null } })()`
+  return `(() => { try { if (localStorage.getItem(${key}) === ${value}) return false; localStorage.setItem(${key}, ${value}); window.dispatchEvent(new StorageEvent('storage', { key: ${key}, newValue: ${value} })); return true } catch { return null } })()`
 }
 
 /**
