@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from apex_overlay import result_delivery_prompt
+from apex_overlay import cron_result_prompt, result_delivery_prompt
 from hermes_cli.plugins_dispatch import PLUGIN_SECTIONS_END, format_system_prompt_section
 
 HERE = Path(__file__).resolve().parent
@@ -94,15 +94,27 @@ def _golden() -> dict[str, dict[str, str]]:
     }
 
 
+def _added_sections(name: str, platform: str) -> list[str]:
+    """What later tickets add to the clean-main golden, in id order (both ids sort after every other one)."""
+    added = []
+    if (name, platform) == ("desktop-product-mode", "desktop"):
+        added.append(format_system_prompt_section(result_delivery_prompt.SECTION_ID,
+                                                  result_delivery_prompt.RESULT_DELIVERY_PROMPT))
+    # hc-1183: every Desktop chat; the probe signs no APEX account in, so the settings page is never named.
+    if platform == "desktop" and SURFACES[name].env.get("HERMES_DESKTOP") == "1":
+        added.append(format_system_prompt_section(cron_result_prompt.SECTION_ID, cron_result_prompt.prompt()))
+    return added
+
+
 def _expected(name: str, platform: str) -> str:
     golden = _golden()[SURFACES[name].golden][platform]
-    if (name, platform) != ("desktop-product-mode", "desktop"):
+    added = _added_sections(name, platform)
+    if not added:
         return golden
-    # The last section, since its id sorts after every other one.
+    # The last sections, since their ids sort after every other one.
     end = f"\n{PLUGIN_SECTIONS_END}"
     assert golden.count(end) == 1
-    section = format_system_prompt_section(result_delivery_prompt.SECTION_ID, result_delivery_prompt.RESULT_DELIVERY_PROMPT)
-    return golden.replace(end, f"\n\n{section}{end}")
+    return golden.replace(end, "".join(f"\n\n{section}" for section in added) + end)
 
 
 def test_write_goldens_when_asked(tmp_path_factory):
@@ -154,3 +166,14 @@ def test_only_product_modes_chat_carries_the_rule(tmp_path_factory):
         if result_delivery_prompt.RESULT_DELIVERY_PROMPT in prompt
     }
     assert carrying == {("desktop-product-mode", "desktop")}
+
+
+def test_only_desktop_chats_carry_the_scheduled_result_rule(tmp_path_factory):
+    """hc-1183: every Desktop surface's chat, whatever the mode; no subagent, cron run, IM chat or cloud prompt."""
+    carrying = {
+        (name, platform)
+        for name in SURFACES
+        for platform, prompt in _prompts(tmp_path_factory, name).items()
+        if cron_result_prompt.HEADER in prompt
+    }
+    assert carrying == {(name, "desktop") for name in SURFACES if name != "cloud"}

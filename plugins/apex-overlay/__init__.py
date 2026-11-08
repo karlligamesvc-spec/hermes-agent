@@ -101,6 +101,12 @@ _TOOL_SEAMS = (
         "error). The Feishu SDK's websocket address, credentials included "
         "(access_key, ticket), is written to the logs as is.",
     ),
+    (
+        "cron_update_notice",
+        "apex-overlay: hc-1183 cron update notice seam did not apply (see prior error). "
+        "Changing where a scheduled job delivers no longer says when its result will "
+        "reach no chat, so a Desktop chat may promise the result comes back.",
+    ),
 )
 
 
@@ -173,6 +179,12 @@ _CONTEXT_SEAMS = (
         "apex-overlay: hc-1131 result delivery prompt section did not register "
         "(see prior warning). In product mode, replies may write local paths "
         "under the result cards again.",
+    ),
+    (
+        "cron_result_prompt",
+        "apex-overlay: hc-1183 scheduled result prompt section did not register "
+        "(see prior warning). A Desktop chat may promise that a scheduled job's "
+        "result comes back into the conversation, where it never appears.",
     ),
     (
         "relay_stream_liveness",
