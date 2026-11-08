@@ -17,6 +17,7 @@ import { delimiter, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import {
+  type ApexAccount,
   createOpenfilmStudio,
   findOpenfilmToolkit,
   OPENFILM_FFMPEG_DIR_ENV,
@@ -179,8 +180,8 @@ describe('the account', () => {
     })
   })
 
-  test.each([
-    ['signed out (nothing is asked)', () => null, true as 'unreadable' | boolean, 0],
+  test.each<[string, () => ApexAccount | null, 'unreadable' | boolean, number]>([
+    ['signed out (nothing is asked)', () => null, true, 0],
     ['signed in with no key (nothing is asked)', () => ({ apiBase: ACCOUNT.apiBase, key: ' ' }), true, 0],
     ['not opened to this account', () => ACCOUNT, false, 1],
     ['an answer that cannot be read, with none before', () => ACCOUNT, 'unreadable', 1]
