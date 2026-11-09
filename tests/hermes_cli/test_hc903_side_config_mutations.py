@@ -62,8 +62,11 @@ def _fixture_services():
 
     memory_providers._load_memory_provider = lambda name: (
         FixtureMemoryProvider() if name == "fixture" else original_load(name))
+    # hc-1203: v0.23.0's apply first waits for the pairing bridge to flush (session_reserved / proc /
+    # starting_process); a settled, connected record has no bridge left.
     messaging._whatsapp_record_or_404 = lambda *_: SimpleNamespace(
-        status="connected", mode="bot", allowed_users="15555550123", account_phone="", account_id="", profile=None)
+        status="connected", mode="bot", allowed_users="15555550123", account_phone="", account_id="", profile=None,
+        session_reserved=False, starting_process=False, proc=None)
     messaging._telegram_record_or_404 = lambda *_: SimpleNamespace(
         bot_token="123456:hc903-fixture-bot", bot_username="hc903_fixture_bot")
     messaging._restart_gateway_after = lambda *_args, **_kw: {"restart_started": False}

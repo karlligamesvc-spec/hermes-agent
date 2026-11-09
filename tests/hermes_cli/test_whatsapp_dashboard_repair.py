@@ -55,6 +55,14 @@ def pairing(tmp_path, monkeypatch):
                 self.function(*self.args)
 
     class Thread:
+        def __new__(cls, *args, **kwargs):
+            # ApexNodes hc-903: the fork saves WhatsApp setup through asyncio.to_thread (its write fence must not
+            # block the event loop). The default executor's threads pass no daemon argument and stay real; only
+            # the onboarding bridge (daemon=True) is captured.
+            if "daemon" not in kwargs:
+                return real_thread(*args, **kwargs)
+            return super().__new__(cls)
+
         def __init__(self, *, target, args, daemon, kwargs=None, name=None):
             self.args = args
             self.target = target
