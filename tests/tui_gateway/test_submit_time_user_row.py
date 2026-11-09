@@ -65,7 +65,8 @@ def test_submit_ack_binds_the_written_row_even_if_worker_consumes_staging(monkey
     monkeypatch.setattr(server.threading, "Thread", InlineThread)
     monkeypatch.setattr(server, "_start_agent_build", lambda *args: None)
     monkeypatch.setattr(server, "_restart_completed_failed_agent_build", lambda *args: False)
-    monkeypatch.setattr(server, "_run_after_agent_ready", lambda *args: session.pop("_submit_user_row", None))
+    # ApexNodes hc-905: the fork passes turn_id / hosted_images by keyword (tracked prompt outcomes).
+    monkeypatch.setattr(server, "_run_after_agent_ready", lambda *args, **_kw: session.pop("_submit_user_row", None))
     try:
         replies = []
         for _ in range(2):
