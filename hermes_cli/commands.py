@@ -93,8 +93,11 @@ COMMAND_REGISTRY: list[CommandDef] = [
                cli_only=True, desktop="terminal"),
     CommandDef("redraw", "Force a full UI repaint (recovers from terminal drift)", "Session",
                cli_only=True, desktop="terminal"),
+    # ApexNodes hc-1203: the APEX Desktop baseline has no handler for these four (approvals are cards;
+    # /history and /config would reach slash.exec and be refused), so it keeps v0.22's desktop= markers
+    # that upstream dropped once its own Desktop gained handlers (live commands.catalog + offline dump).
     CommandDef("history", "Show conversation history", "Session",
-               cli_only=True),
+               cli_only=True, desktop="terminal"),
     CommandDef("save", "Export the current conversation (bare /save shows usage)", "Session",
                args_hint="<json|md|html> [filename] [redact]"),
     CommandDef("retry", "Retry the last message (resend to agent)", "Session"),
@@ -130,9 +133,11 @@ COMMAND_REGISTRY: list[CommandDef] = [
     CommandDef("pause", "Pause new work globally (emergency stop); '/pause off' resumes", "Session",
                gateway_only=True, args_hint="[reason | off]", busy_policy="dispatch"),
     CommandDef("approve", "Approve a pending dangerous command", "Session",
-               gateway_only=True, args_hint="[session|always]", busy_policy="dispatch"),
+               gateway_only=True, args_hint="[session|always]", busy_policy="dispatch",
+               desktop="messaging"),  # ApexNodes hc-1203: see /history above
     CommandDef("deny", "Deny a pending dangerous command (optionally with a reason)", "Session",
-               gateway_only=True, args_hint="[all] [reason]", busy_policy="dispatch"),
+               gateway_only=True, args_hint="[all] [reason]", busy_policy="dispatch",
+               desktop="messaging"),  # ApexNodes hc-1203: see /history above
     CommandDef("bg", "Run a prompt in a separate background session", "Session",
                args_hint="<prompt>", busy_policy="dispatch"),
     CommandDef("btw", "Ask a side question about the current conversation without interrupting it", "Session",
@@ -187,7 +192,7 @@ COMMAND_REGISTRY: list[CommandDef] = [
 
     # Configuration
     CommandDef("config", "Show current configuration", "Configuration",
-               cli_only=True),
+               cli_only=True, desktop="terminal"),  # ApexNodes hc-1203: see /history above
     CommandDef("model", "Switch model (session-scoped; --global to persist)", "Configuration",
                args_hint="[model|reset] [--provider name] [--reasoning level] [--global|--session] [--refresh]",
                busy_policy="reject", busy_handler="model", desktop="hidden"),
