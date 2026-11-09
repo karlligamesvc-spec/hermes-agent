@@ -1,164 +1,175 @@
-"""Seam-test + behavior test for apex_overlay.browser_window (hc-1179).
+"""Seam-test + behavior test for apex_overlay.browser_window (hc-1179, ported to v0.23.0 in hc-1203).
 
-Pins the two upstream symbols the Desktop browser window rides on, so an upstream
-rename turns a silently-disarmed seam into a loud CI failure:
-  * tools.browser_tool._build_browser_env           — where the persistent profile is pinned
-  * tools.browser_tool_session._apply_chromium_sandbox_args — where hide-automation merges
+Pins the two v0.23.0 accessors the Desktop browser window rides on, so an upstream rename turns a
+silently-disarmed seam into a loud CI failure:
+  * tools.browser_session_cloud.user_data_dir — where the persistent profile is answered
+  * tools.browser_session_cloud.chromium_args — where the hide-automation flag joins
 
-Behavior proven:
-  * headed + no caller profile → a persistent AGENT_BROWSER_PROFILE is pinned;
-  * a caller/Bot-Desktop/sandbox profile is never overridden; headless pins nothing;
+Behavior proven, through the real v0.23.0 session layer and launcher where it matters:
+  * a headed Mac/Windows Desktop with no pin gets <HERMES_HOME>/apex-browser-profile, and
+    tools.browser_session._launch_target runs every session on that one Chromium;
+  * a pinned profile (absolute or HERMES_HOME-relative) is never overridden; headless and Linux get none;
   * apex.browser_hide_automation off → launch args untouched (the default);
-  * on → the flag is appended, merged with existing sandbox args, deduped.
+  * on → the flag joins browser.chromium_args once and reaches build_chromium_argv.
 
 Run via scripts/run_tests_parallel.py (per-file fresh interpreter).
 """
 
 from __future__ import annotations
 
-import inspect
+import pytest
 
 from apex_overlay import browser_window
+
+
+def _upstream(fn):
+    return fn.__wrapped__ if getattr(fn, browser_window._MARK, False) else fn
+
+
+@pytest.fixture
+def cloud(monkeypatch, tmp_path):
+    """Upstream's accessors unwrapped, ``browser:`` read from a dict, the raw config's ``apex:`` from another;
+    monkeypatch restores every upstream function afterwards."""
+    import hermes_cli.config as cfg
+    from tools import browser_session_cloud as mod
+
+    monkeypatch.setattr(mod, "user_data_dir", _upstream(mod.user_data_dir))
+    monkeypatch.setattr(mod, "chromium_args", _upstream(mod.chromium_args))
+    monkeypatch.setattr(mod, "_memo_slots", {})
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    section: dict = {}
+    raw: dict = {}
+    monkeypatch.setattr(mod, "browser_section", lambda: section)
+    monkeypatch.setattr(cfg, "read_raw_config_readonly", lambda: raw)
+    monkeypatch.setattr(browser_window, "_APPLIED", False)
+    monkeypatch.setattr(browser_window, "_on_desktop_platform", lambda: True)
+    return mod, section, raw, home
 
 
 # ---------------------------------------------------------------------------
 # Seam assertions — pin the patched symbols
 # ---------------------------------------------------------------------------
 
-def test_seam_target_build_browser_env_exists():
-    import tools.browser_tool as bt
+def test_the_v023_accessors_exist():
+    """Fails when upstream moves them: the seam would bind nothing and the window would lose its sign-ins."""
+    from tools import browser_session_cloud as mod
 
-    fn = getattr(bt, browser_window._BUILD_ENV_FN, None)
-    assert callable(fn), (
-        "tools.browser_tool._build_browser_env is gone — the persistent browser "
-        "profile can no longer be pinned. Update browser_window._BUILD_ENV_FN."
-    )
-    # Upstream is zero-arg; the wrapper forwards (*args, **kwargs) for future-proofing.
-    assert len(inspect.signature(fn).parameters) == 0
+    assert callable(_upstream(mod.user_data_dir))
+    assert callable(_upstream(mod.chromium_args))
+    assert callable(mod.is_headed_mode)
 
 
-def test_seam_target_apply_chromium_sandbox_args_exists():
-    import tools.browser_tool_session as bts
-
-    fn = getattr(bts, browser_window._SANDBOX_ARGS_FN, None)
-    assert callable(fn), (
-        "tools.browser_tool_session._apply_chromium_sandbox_args is gone — the "
-        "hide-automation arg can no longer merge after the sandbox decision. Update "
-        "browser_window._SANDBOX_ARGS_FN."
-    )
-    params = list(inspect.signature(fn).parameters)
-    assert params and params[0] == "browser_env"
-
-
-def test_apply_wraps_both_and_is_idempotent():
-    import tools.browser_tool as bt
-    import tools.browser_tool_session as bts
-
-    browser_window._APPLIED = False
+def test_apply_wraps_both_and_is_idempotent(cloud, monkeypatch):
+    mod, *_ = cloud
     assert browser_window.apply() is True
-    assert getattr(getattr(bt, browser_window._BUILD_ENV_FN), browser_window._MARK, False)
-    assert getattr(getattr(bts, browser_window._SANDBOX_ARGS_FN), browser_window._MARK, False)
-
-    build_ref = getattr(bt, browser_window._BUILD_ENV_FN)
-    args_ref = getattr(bts, browser_window._SANDBOX_ARGS_FN)
-    assert browser_window.apply() is True  # second apply is a no-op (no double-wrap)
-    assert getattr(bt, browser_window._BUILD_ENV_FN) is build_ref
-    assert getattr(bts, browser_window._SANDBOX_ARGS_FN) is args_ref
+    wrapped = (mod.user_data_dir, mod.chromium_args)
+    assert all(getattr(fn, browser_window._MARK, False) for fn in wrapped)
+    monkeypatch.setattr(browser_window, "_APPLIED", False)
+    assert browser_window.apply() is True
+    assert (mod.user_data_dir, mod.chromium_args) == wrapped
 
 
-# ---------------------------------------------------------------------------
-# Persistent profile — only headed, only when the caller set none
-# ---------------------------------------------------------------------------
-
-def test_headed_pins_persistent_profile_when_absent(monkeypatch):
-    monkeypatch.setattr(browser_window, "_headed", lambda: True)
-    monkeypatch.setattr(browser_window, "persistent_profile_dir", lambda: "/home/me/.hermes/apex-browser-profile")
-
-    wrapped = browser_window._wrap_build_browser_env(lambda: {"PATH": "/usr/bin"})
-    env = wrapped()
-    assert env["AGENT_BROWSER_PROFILE"] == "/home/me/.hermes/apex-browser-profile"
-
-
-def test_existing_profile_is_never_overridden(monkeypatch):
-    monkeypatch.setattr(browser_window, "_headed", lambda: True)
-    monkeypatch.setattr(browser_window, "persistent_profile_dir", lambda: "/ours")
-
-    # Bot Desktop / sandbox / a user override already set one — leave it.
-    wrapped = browser_window._wrap_build_browser_env(lambda: {"AGENT_BROWSER_PROFILE": "/theirs"})
-    assert wrapped()["AGENT_BROWSER_PROFILE"] == "/theirs"
-
-
-def test_headless_pins_nothing(monkeypatch):
-    monkeypatch.setattr(browser_window, "_headed", lambda: False)
-    monkeypatch.setattr(browser_window, "persistent_profile_dir", lambda: "/ours")
-
-    wrapped = browser_window._wrap_build_browser_env(lambda: {"PATH": "/usr/bin"})
-    assert "AGENT_BROWSER_PROFILE" not in wrapped()
-
-
-def test_build_env_wrapper_never_raises(monkeypatch):
-    def _boom():
-        raise RuntimeError("hermes home unavailable")
-
-    monkeypatch.setattr(browser_window, "_headed", lambda: True)
-    monkeypatch.setattr(browser_window, "persistent_profile_dir", _boom)
-
-    wrapped = browser_window._wrap_build_browser_env(lambda: {"PATH": "/usr/bin"})
-    assert wrapped() == {"PATH": "/usr/bin"}  # upstream env passes through unchanged
+@pytest.mark.parametrize(("platform", "desktop"), [("darwin", True), ("win32", True), ("linux", False)])
+def test_only_mac_and_windows_count_as_the_desktop(monkeypatch, platform, desktop):
+    monkeypatch.setattr(browser_window.sys, "platform", platform)
+    assert browser_window._on_desktop_platform() is desktop
 
 
 # ---------------------------------------------------------------------------
-# Hide-automation — off by default; merges when the switch is on
+# Persistent profile (browser.user_data_dir)
 # ---------------------------------------------------------------------------
 
-def test_hide_automation_off_leaves_args_untouched(monkeypatch):
-    monkeypatch.setattr(browser_window, "_hide_automation_enabled", lambda: False)
-
-    def _orig(env):
-        env["AGENT_BROWSER_ARGS"] = "--no-sandbox,--disable-dev-shm-usage"
-
-    wrapped = browser_window._wrap_apply_chromium_sandbox_args(_orig)
-    env = {}
-    wrapped(env)
-    assert env["AGENT_BROWSER_ARGS"] == "--no-sandbox,--disable-dev-shm-usage"
-    assert browser_window.AUTOMATION_HIDE_ARG not in env["AGENT_BROWSER_ARGS"]
+def test_a_headed_desktop_without_a_pin_gets_the_persistent_profile(cloud):
+    mod, section, _raw, home = cloud
+    section["headed"] = True
+    assert browser_window.apply() is True
+    assert mod.user_data_dir() == str(home / "apex-browser-profile")
 
 
-def test_hide_automation_on_appends_and_merges(monkeypatch):
-    monkeypatch.setattr(browser_window, "_hide_automation_enabled", lambda: True)
+def test_every_session_runs_on_that_one_chromium(cloud, monkeypatch):
+    """The real v0.23.0 session layer keys a persistent profile by its directory: one window, not one per task."""
+    from tools import browser_session
 
-    # Upstream set the sandbox-bypass args first; the flag must merge, not replace them.
-    def _orig(env):
-        env["AGENT_BROWSER_ARGS"] = "--no-sandbox,--disable-dev-shm-usage"
-
-    wrapped = browser_window._wrap_apply_chromium_sandbox_args(_orig)
-    env = {}
-    wrapped(env)
-    parts = env["AGENT_BROWSER_ARGS"].split(",")
-    assert "--no-sandbox" in parts
-    assert "--disable-dev-shm-usage" in parts
-    assert browser_window.AUTOMATION_HIDE_ARG in parts
+    _mod, section, _raw, home = cloud
+    monkeypatch.setattr(browser_session, "_bot_desktop_target", lambda: None)
+    section["headed"] = True
+    browser_window.apply()
+    profile = str(home / "apex-browser-profile")
+    assert browser_session._launch_target("task-1") == (
+        f"profile:{profile}", {"user_data_dir": profile, "ephemeral": False}, True)
+    assert browser_session._launch_target("task-2")[0] == f"profile:{profile}"
 
 
-def test_hide_automation_on_with_no_existing_args(monkeypatch):
-    monkeypatch.setattr(browser_window, "_hide_automation_enabled", lambda: True)
+@pytest.mark.parametrize(("pin", "expected"), [("/opt/my-chrome-profile", "/opt/my-chrome-profile"),
+                                               ("pinned", "<home>/pinned")])
+def test_a_pinned_profile_is_never_overridden(cloud, pin, expected):
+    mod, section, _raw, home = cloud
+    section.update(headed=True, user_data_dir=pin)
+    browser_window.apply()
+    assert mod.user_data_dir() == expected.replace("<home>", str(home))
 
-    wrapped = browser_window._wrap_apply_chromium_sandbox_args(lambda env: None)
-    env = {}
-    wrapped(env)
-    assert env["AGENT_BROWSER_ARGS"] == browser_window.AUTOMATION_HIDE_ARG
+
+def test_headless_gets_no_profile(cloud):
+    mod, section, *_ = cloud
+    section["headed"] = False
+    browser_window.apply()
+    assert mod.user_data_dir() == ""
 
 
-def test_merge_launch_arg_dedupes_and_normalises():
-    assert browser_window._merge_launch_arg("", "--x") == "--x"
-    assert browser_window._merge_launch_arg("--a,--b", "--x") == "--a,--b,--x"
-    assert browser_window._merge_launch_arg("--a,--x", "--x") == "--a,--x"  # no duplicate
-    assert browser_window._merge_launch_arg("--a\n--b", "--x") == "--a,--b,--x"  # newlines normalise
+def test_linux_keeps_upstreams_answer(cloud, monkeypatch):
+    """The Bot Desktop pins its own profile through the same setting there."""
+    mod, section, *_ = cloud
+    monkeypatch.setattr(browser_window, "_on_desktop_platform", lambda: False)
+    section["headed"] = True
+    browser_window.apply()
+    assert mod.user_data_dir() == ""
+
+
+def test_a_failing_headed_probe_keeps_upstreams_answer(cloud, monkeypatch):
+    mod, *_ = cloud
+
+    def unreadable():
+        raise RuntimeError("config unreadable")
+
+    monkeypatch.setattr(mod, "is_headed_mode", unreadable)
+    browser_window.apply()
+    assert mod.user_data_dir() == ""
 
 
 # ---------------------------------------------------------------------------
-# Config switch defaults off
+# Hide-automation switch (browser.chromium_args)
 # ---------------------------------------------------------------------------
+
+def test_hide_automation_off_leaves_the_args_untouched(cloud):
+    mod, section, _raw, _home = cloud
+    section["chromium_args"] = ["--lang=zh-CN"]
+    browser_window.apply()
+    assert mod.chromium_args() == ["--lang=zh-CN"]
+
+
+def test_hide_automation_on_adds_the_flag_once_and_it_reaches_the_launch(cloud):
+    from tools import browser_launcher
+
+    mod, section, raw, _home = cloud
+    section["chromium_args"] = ["--lang=zh-CN"]
+    raw["apex"] = {"browser_hide_automation": True}
+    browser_window.apply()
+    assert mod.chromium_args() == ["--lang=zh-CN", browser_window.AUTOMATION_HIDE_ARG]
+    argv = browser_launcher.build_chromium_argv("/x/chrome", "/x/profile", packaged=False, headed=True,
+                                                sandbox_bypass=False)
+    assert argv.count(browser_window.AUTOMATION_HIDE_ARG) == 1
+    section["chromium_args"] = ["--lang=zh-CN", browser_window.AUTOMATION_HIDE_ARG]  # the user listed it too
+    assert mod.chromium_args().count(browser_window.AUTOMATION_HIDE_ARG) == 1
+
+
+def test_hide_automation_on_with_no_configured_args(cloud):
+    mod, _section, raw, _home = cloud
+    raw["apex"] = {"browser_hide_automation": "yes"}
+    browser_window.apply()
+    assert mod.chromium_args() == [browser_window.AUTOMATION_HIDE_ARG]
+
 
 def test_hide_automation_enabled_defaults_off(monkeypatch):
     import hermes_cli.config as cfg
