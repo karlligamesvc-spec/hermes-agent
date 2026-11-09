@@ -21,7 +21,7 @@ description: "用于小红书起号、账号定位、对标与爆款笔记拆解
 | License | MIT |
 | Platforms | linux, macos, windows |
 | Tags | `xiaohongshu`, `xhs`, `小红书`, `social-media`, `content-strategy`, `account-launch`, `cover-design`, `real-data` |
-| Related skills | [`hermes-agent-skill-authoring`](../../bundled/software-development/software-development-hermes-agent-skill-authoring.md) |
+| Related skills | [`hermes-agent-skill-authoring`](../../optional/software-development/software-development-hermes-agent-skill-authoring.md) |
 
 ## Reference: full SKILL.md
 

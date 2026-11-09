@@ -21,7 +21,7 @@ description: "用于微信公众号起号、账号定位、对标与标题拆解
 | License | MIT |
 | Platforms | linux, macos, windows |
 | Tags | `wechat`, `wechat-mp`, `公众号`, `social-media`, `content-strategy`, `account-launch`, `real-data` |
-| Related skills | [`hermes-agent-skill-authoring`](../../bundled/software-development/software-development-hermes-agent-skill-authoring.md) |
+| Related skills | [`hermes-agent-skill-authoring`](../../optional/software-development/software-development-hermes-agent-skill-authoring.md) |
 
 ## Reference: full SKILL.md
 

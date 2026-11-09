@@ -21,7 +21,7 @@ description: "用于抖音起号、账号定位、对标与爆款拆解、选题
 | License | MIT |
 | Platforms | linux, macos, windows |
 | Tags | `douyin`, `tiktok`, `抖音`, `short-video`, `social-media`, `content-strategy`, `account-launch`, `video-teardown`, `transcription`, `real-data` |
-| Related skills | [`hermes-agent-skill-authoring`](../../bundled/software-development/software-development-hermes-agent-skill-authoring.md) |
+| Related skills | [`hermes-agent-skill-authoring`](../../optional/software-development/software-development-hermes-agent-skill-authoring.md) |
 
 ## Reference: full SKILL.md
 
