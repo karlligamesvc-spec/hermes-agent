@@ -231,7 +231,7 @@ def test_legacy_leg_moves_master_segments_into_a_local_file(legacy_master, douyi
     assert result["transcript"] == TEXT
     assert result["transcript_path"] == master_transcript  # the master's own file is untouched
     assert result["segments_summary"] == SUMMARY
-    assert _assert_segments_file(result, hermes_home, SEGMENTS).name.startswith("做菜_转写_")
+    assert _assert_segments_file(result, hermes_home, SEGMENTS).name.startswith("做菜_逐字稿_")
     assert _detect_tool_failure("media_transcribe", raw) == (False, "")
 
 
@@ -298,7 +298,7 @@ def test_a_title_with_dots_keeps_both_file_names_whole(douyin_mod, gateway_http,
     responses.extend(asr_job_done(_asr_body()))
     result = json.loads(douyin_mod._handle_media_transcribe({"url": "https://v.douyin.com/v12/"}))
     segments_name = Path(result["segments_path"]).name
-    assert segments_name.startswith("v1.2 发布会_转写_") and segments_name.endswith(".segments.json")
+    assert segments_name.startswith("v1.2 发布会_逐字稿_") and segments_name.endswith(".segments.json")
     assert Path(result["transcript_path"]).name == segments_name.removesuffix(".segments.json") + ".txt"
 
 

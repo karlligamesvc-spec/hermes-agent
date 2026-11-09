@@ -289,6 +289,9 @@ export function handbackResult(reply: string): HandbackBlock & { text: string } 
 }
 
 const MEDIA_TAG_RE = /[`"']?MEDIA:\s*(`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|\S+)[`"']?/g
+// hc-1189: a standalone tag owns its whole line, as in the chat (chat-messages/parts.ts):
+// a document named after its title has spaces (「27高考报名早准备! 陕西…_逐字稿_….docx」).
+const MEDIA_LINE_RE = /^[\t ]*[`"']?MEDIA:[\t ]*(`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|(?:(?!MEDIA:).)+?)[`"']?[\t ]*$/
 const INLINE_LINK_RE = /\[[^\]\n]*\]\(([^)\s]+)\)/g
 const BARE_URL_RE = /\bhttps?:\/\/[^\s<>()\]`"']+/g
 
@@ -296,13 +299,19 @@ function isLocalFile(href: string): boolean {
   return href.startsWith('/') || href.startsWith('file:') || /^[A-Za-z]:[\\/]/.test(href)
 }
 
+function mediaTagValues(line: string): string[] {
+  const standalone = MEDIA_LINE_RE.exec(line)
+
+  return standalone ? [standalone[1]] : [...line.matchAll(MEDIA_TAG_RE)].map(match => match[1])
+}
+
 /** The files (`MEDIA:` tags, links to local paths) and web links a reply names, each once, in order. */
 export function replyAttachments(reply: string): { files: string[]; links: string[] } {
   const files = new Set<string>()
   const links = new Set<string>()
 
-  for (const match of reply.matchAll(MEDIA_TAG_RE)) {
-    files.add(unwrapItem(match[1]))
+  for (const value of reply.split('\n').flatMap(mediaTagValues)) {
+    files.add(unwrapItem(value))
   }
 
   for (const match of reply.matchAll(INLINE_LINK_RE)) {

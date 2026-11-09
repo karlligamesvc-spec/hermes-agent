@@ -35,6 +35,7 @@ import {
   type SingleThreadHandoffCopy,
   useSingleThreadHandoffCopy
 } from '@/i18n/single-thread-handoff'
+import { mediaMarkdownHref } from '@/lib/media'
 import { cn } from '@/lib/utils'
 import { $authState } from '@/store/auth'
 import { $botRoster, type ApexBot, openBot } from '@/store/single-thread-bots'
@@ -163,7 +164,7 @@ export function ReturnedItems({ files, links }: { files: readonly string[]; link
   }
 
   const markdown = [
-    ...files.map(path => `[${itemLabel(path).replace(/[[\]]/g, '')}](#media:${encodeURIComponent(path)})`),
+    ...files.map(path => `[${itemLabel(path).replace(/[[\]]/g, '')}](${mediaMarkdownHref(path)})`),
     ...links.map(link => `<${link}>`)
   ].join('\n\n')
 
