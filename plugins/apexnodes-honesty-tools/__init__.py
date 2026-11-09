@@ -33,6 +33,7 @@ Status: any 必须改 → FAIL (the original is never delivered as written; the 
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -589,7 +590,8 @@ def _handle_honesty_verify(args: dict, **_kwargs) -> str:
 # 2. 不自己换模型：这一轮里 generate_video / generate_image / text_to_speech 已经失败或超时过，
 #    又换了一个这一轮没用过的 model / provider，就拦下，让助手先问用户。同样的设置重试不拦，
 #    用户回了话(新的一轮)再换也不拦。
-# 开关：HONESTY_GUARDS_DISABLE=1 两道都关。
+# 3. hc-1195 终端、execute_code 这类直接写 skills/、memories/ 的：新增的行过第 1 道，不合格就撤回并照样说(exec_writes.py)。
+# 开关：HONESTY_GUARDS_DISABLE=1 三道都关。
 # --------------------------------------------------------------------------- #
 
 DURABLE_WRITE_TOOLS = frozenset({"skill_manage", "memory", "apex_memory", "memory_ledger"})
@@ -780,17 +782,17 @@ def _on_post_tool_call(
                 record["failed"].append(_choice(tool_name, args))
 
 
+_spec = importlib.util.spec_from_file_location(f"{__name__}_exec_writes", Path(__file__).with_name("exec_writes.py"))
+exec_writes = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(exec_writes)
+
+
 def register(ctx):
     ctx.register_tool(
-        name="honesty_verify",
-        toolset="skills",
-        schema=HONESTY_VERIFY_SCHEMA,
-        handler=_handle_honesty_verify,
-        check_fn=lambda: True,
-        requires_env=[],
-        description=HONESTY_VERIFY_SCHEMA["description"],
-        emoji="🛡️",
+        name="honesty_verify", toolset="skills", schema=HONESTY_VERIFY_SCHEMA, handler=_handle_honesty_verify,
+        check_fn=lambda: True, requires_env=[], description=HONESTY_VERIFY_SCHEMA["description"], emoji="🛡️",
     )
     ctx.register_hook("pre_llm_call", _on_pre_llm_call)
     ctx.register_hook("pre_tool_call", _on_pre_tool_call)
     ctx.register_hook("post_tool_call", _on_post_tool_call)
+    exec_writes.register(ctx, evidence_problems, evidence_block_message, _guard_sessions, _guard_lock, _guards_disabled)
