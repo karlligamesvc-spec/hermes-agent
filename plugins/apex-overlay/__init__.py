@@ -121,6 +121,13 @@ _TOOL_SEAMS = (
         "as the final title, and on the APEX relay the model title waits for the "
         "whole first turn.",
     ),
+    (
+        "folder_grants",
+        "apex-overlay: hc-1207 folder grants seam did not fully apply (see prior "
+        "error). A folder handed over in Desktop (添加文件夹, a Finder drop or paste) "
+        "that is outside the chat's working directory reaches the agent only as "
+        "\"path is outside the allowed workspace\".",
+    ),
 )
 
 

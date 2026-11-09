@@ -87,6 +87,8 @@ _SEAM_MODULES = (
     "cron_desktop_delivery",
     # hc-1192 session titles in the interface language; a remote custom route titles at turn start.
     "session_title",
+    # hc-1207 a folder handed over in Desktop is granted to that one session (folder.attach).
+    "folder_grants",
 )
 
 

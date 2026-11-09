@@ -125,7 +125,7 @@ describe('extractDroppedFiles', () => {
     })
   }
 
-  it('emits a dropped directory as a path-only entry with isDirectory (no File to upload)', () => {
+  it('emits a dropped directory as a path-only native entry with isDirectory (no File to upload)', () => {
     const transfer = stubTransfer([{ path: '/Users/jeff/projects/hermes', isDirectory: true }]) as DataTransfer & {
       _pathByFile: Map<File, string>
     }
@@ -139,8 +139,17 @@ describe('extractDroppedFiles', () => {
     expect(result[0]?.path).toBe('/Users/jeff/projects/hermes')
     // A directory carries no bytes — it must NOT ride the File/upload pipeline.
     expect(result[0]?.file).toBeUndefined()
-    // And it partitions as an in-app ref (→ @folder:), never an OS upload drop.
-    expect(partitionDroppedFiles(result).osDrops).toEqual([])
+    // hc-1207: it came from the OS, so it is handed over like a dropped file (a folder
+    // attachment granted at send), not inserted as an in-app @folder: ref.
+    expect(result[0]?.native).toBe(true)
+    expect(partitionDroppedFiles(result)).toEqual({ inAppRefs: [], osDrops: result })
+  })
+
+  it('keeps an in-app folder drag (project tree) an inline ref', () => {
+    const { inAppRefs, osDrops } = partitionDroppedFiles([{ isDirectory: true, path: '/work/src' }])
+
+    expect(inAppRefs.map(entry => entry.path)).toEqual(['/work/src'])
+    expect(osDrops).toEqual([])
   })
 
   it('still emits a dropped file with its native File handle for the upload pipeline', () => {
@@ -170,9 +179,12 @@ describe('extractDroppedFiles', () => {
     const result = extractDroppedFiles(transfer)
     const { inAppRefs, osDrops } = partitionDroppedFiles(result)
 
-    expect(inAppRefs.map(entry => entry.path)).toEqual(['/abs/src'])
-    expect(inAppRefs[0]?.isDirectory).toBe(true)
-    expect(osDrops.map(entry => entry.path)).toEqual(['/abs/notes.txt'])
+    // hc-1207: both came from the OS and are handed over; the folder keeps its kind.
+    expect(inAppRefs).toEqual([])
+    expect(osDrops.map(entry => [entry.path, entry.isDirectory === true])).toEqual([
+      ['/abs/src', true],
+      ['/abs/notes.txt', false]
+    ])
   })
 
   it('does not duplicate a folder that appears in both items and files', () => {

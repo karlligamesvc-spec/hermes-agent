@@ -163,6 +163,7 @@ import { guardProductBlocksInHomes, persistRelayKeyInHome } from './apex-profile
 import { registerProfileConfigIpc } from './apex-profile-config-ipc'
 import { isMultiBotActive, managedProfileHomes, withLocalSharedPrimary } from './apex-profile-homes'
 import { createQuitConfirm, ENGINE_IDLE_PATH, ENGINE_PROBE_DEADLINE_MS, localEnginesOf } from './apex-quit-confirm'
+import { referenceGrants, registerReferenceGrantIpc } from './apex-reference-grants'
 import { fetchRelayModels, RelayTierMemo } from './apex-relay-tiers'
 import {
   checkForRuntimeUpdate,
@@ -13011,6 +13012,8 @@ async function runPoolBackendStart(profile, entry, opts: { forceLocal?: boolean;
           // hc-604: the platform-tool credential + endpoints (图片/视频生成、
           // 图片 OCR、媒体转写、社媒数据). {} when signed out.
           ...desktopPlatformToolSpawnEnv(),
+          // The key that signs folder grants for this launch (apex-reference-grants.ts).
+          ...referenceGrants.spawnEnv(),
           // Pin the gateway's tool/terminal cwd to the same directory we chose for
           // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
           // can still point at the install dir even when spawn cwd is home.
@@ -13473,6 +13476,8 @@ async function runHermesStart() {
             ...desktopImEntrySpawnEnv(),
             // hc-604: platform-tool credential + endpoints (see the pool spawn).
             ...desktopPlatformToolSpawnEnv(),
+            // The key that signs folder grants for this launch (apex-reference-grants.ts).
+            ...referenceGrants.spawnEnv(),
             TERMINAL_CWD: hermesCwd,
             HERMES_DASHBOARD_SESSION_TOKEN: token,
             // Marks this dashboard backend as desktop-spawned so it runs the cron
@@ -17206,42 +17211,7 @@ ipcMain.handle('hermes:readPluginSource', async (_event: unknown, filePath: unkn
   }
 })
 
-ipcMain.handle('hermes:selectPaths', async (_event, options: any = {}) => {
-  const properties = options?.directories ? ['openDirectory'] : ['openFile']
-
-  if (options?.multiple !== false) {
-    properties.push('multiSelections')
-  }
-
-  let resolvedDefaultPath
-
-  if (options?.defaultPath) {
-    try {
-      // On a Windows host with a WSL backend the cwd may be a POSIX/WSL path;
-      // bridge it to a UNC/drive form the native dialog can actually open.
-      const bridged = IS_WINDOWS
-        ? resolvePickerDefaultPath(String(options.defaultPath), undefined, options?.profile)
-        : String(options.defaultPath)
-
-      resolvedDefaultPath = bridged ? path.resolve(bridged) : undefined
-    } catch {
-      resolvedDefaultPath = undefined
-    }
-  }
-
-  const result = await dialog.showOpenDialog(mainWindow, {
-    title: options?.title || 'Add context',
-    defaultPath: resolvedDefaultPath,
-    properties: properties as any,
-    filters: Array.isArray(options?.filters) ? options.filters : undefined
-  })
-
-  if (result.canceled) {
-    return []
-  }
-
-  return result.filePaths
-})
+registerReferenceGrantIpc(ipcMain, { dialog, isWindows: IS_WINDOWS, mainWindow: () => mainWindow, resolvePickerDefaultPath })
 
 ipcMain.handle('hermes:writeClipboard', (_event, text) => {
   clipboard.writeText(String(text || ''))

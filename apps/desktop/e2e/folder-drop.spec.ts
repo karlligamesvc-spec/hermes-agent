@@ -36,6 +36,14 @@ test('native home folder drop stages a card and sends the directory through the 
     await page.screenshot({ path: test.info().outputPath('folder-drop.png') })
     await editor.fill('请列出这个文件夹中的视频')
     await page.getByRole('button', { name: '开始执行', exact: true }).click()
-    await expect.poll(() => fixture.mock.receivedPrompts.some(prompt => prompt.includes(folder) && prompt.includes('请列出这个文件夹中的视频')), { timeout: 30_000 }).toBe(true)
+    await expect.poll(() => fixture.mock.receivedPrompts.some(prompt => prompt.includes('请列出这个文件夹中的视频')), { timeout: 30_000 }).toBe(true)
+    // hc-1207: the folder is outside the chat's working directory. The path alone also appears in the
+    // engine's refusal ("path is outside the allowed workspace"), so check what the engine expanded:
+    // its 📁 listing with the clips and the nested folder in it.
+    const prompt = fixture.mock.receivedPrompts.find(text => text.includes('请列出这个文件夹中的视频'))!
+    expect(prompt).not.toContain('outside the allowed workspace')
+    expect(prompt).toMatch(/📁 @folder:\S*客户 视频素材/)
+
+    for (const entry of ['- 片段1.mp4', '- 片段60.mp4', '- 第二批/', '- 镜头.mov']) {expect(prompt).toContain(entry)}
   } finally {await fixture.cleanup()}
 })

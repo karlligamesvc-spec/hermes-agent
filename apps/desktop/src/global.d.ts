@@ -603,6 +603,8 @@ declare global {
       savePastedText: (text: string) => Promise<string>
       saveClipboardImage: () => Promise<string>
       getPathForFile: (file: File) => string
+      /** Signatures for folders the user handed over this launch (dialog, drop, paste); other paths get none. */
+      folderGrants?: (paths: string[]) => Promise<Record<string, string>>
       normalizePreviewTarget: (target: string, baseDir?: string) => Promise<HermesPreviewTarget | null>
       watchPreviewFile: (url: string) => Promise<HermesPreviewWatch>
       /** Watch a directory for entry churn (disk-plugin door); same watcher

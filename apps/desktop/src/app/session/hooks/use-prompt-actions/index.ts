@@ -1,5 +1,5 @@
 import type { AppendMessage, ThreadMessage } from '@assistant-ui/react'
-import { JsonRpcGatewayError } from '@hermes/shared'
+import { JSON_RPC_METHOD_NOT_FOUND, JsonRpcGatewayError } from '@hermes/shared'
 import { SLASH_COMMAND_RE } from '@hermes/shared'
 import { stripAnsi } from '@hermes/shared/ansi'
 import { useStore } from '@nanostores/react'
@@ -7,6 +7,7 @@ import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 
 import { transcribeAudio } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { folderGrantRefusalNow } from '@/i18n/folder-grant'
 import { modelTierCopyNow } from '@/i18n/model-tier'
 import { type ChatMessage, textPart } from '@/lib/chat-messages'
 import { pathLabel } from '@/lib/chat-runtime'
@@ -50,6 +51,7 @@ import { setSessionDraftingTool } from '@/store/tool-drafting'
 import type {
   ClientSessionState,
   FileAttachResponse,
+  FolderAttachResponse,
   HandoffFailResponse,
   HandoffRequestResponse,
   HandoffStateResponse,
@@ -137,6 +139,10 @@ export async function uploadComposerAttachment(
     terminalBackend?: string
   }
 ): Promise<ComposerAttachment> {
+  if (attachment.kind === 'folder') {
+    return stageComposerFolder(attachment, opts)
+  }
+
   const { backendCwd, remote, requestGateway, storedSessionId, onSessionRecovered, terminalBackend } = opts
   const path = attachment.path ?? ''
   const label = attachment.label || pathLabel(path)
@@ -228,6 +234,65 @@ export async function uploadComposerAttachment(
   }
 
   return result
+}
+
+/**
+ * Grant a folder chip to the session at send (hc-1207). Outside the working directory the engine
+ * resolves `@folder:` refs only for folders this session was granted, and it grants one only
+ * against main's signature, which main gives only for a folder the user handed over this launch
+ * (the picker's answer, a dropped or pasted folder). A folder main will not sign (an in-app drag,
+ * a draft restored after a restart), a remote or container backend (it cannot see this machine's
+ * path) and an engine without `folder.attach` all keep the chip's own ref, as before.
+ */
+export async function stageComposerFolder(
+  attachment: ComposerAttachment,
+  opts: Parameters<typeof uploadComposerAttachment>[1]
+): Promise<ComposerAttachment> {
+  const path = attachment.path ?? ''
+
+  if (!path || opts.remote || attachmentPathNeedsUpload(path, opts.backendCwd, opts.terminalBackend)) {
+    return attachment
+  }
+
+  const grant = (await window.hermesDesktop?.folderGrants?.([path]).catch(() => undefined))?.[path]
+
+  if (!grant) {
+    return attachment
+  }
+
+  const label = attachment.label || pathLabel(path)
+
+  const grantForSession = async (liveSessionId: string): Promise<ComposerAttachment> => {
+    const result = await opts.requestGateway<FolderAttachResponse>('folder.attach', {
+      grant,
+      path,
+      session_id: liveSessionId
+    })
+
+    if (!result.attached || !result.ref_text) {
+      throw new Error(folderGrantRefusalNow(result.reason, label) || result.message || `Could not attach ${label}`)
+    }
+
+    return { ...attachment, attachedSessionId: liveSessionId, refText: result.ref_text, uploadState: undefined }
+  }
+
+  try {
+    const { result, sessionId } = await withSessionNotFoundResume(opts.sessionId, opts.storedSessionId, grantForSession, {
+      requestGateway: opts.requestGateway
+    })
+
+    if (sessionId !== opts.sessionId) {
+      opts.onSessionRecovered?.(sessionId)
+    }
+
+    return result
+  } catch (err) {
+    if (err instanceof JsonRpcGatewayError && err.code === JSON_RPC_METHOD_NOT_FOUND) {
+      return attachment
+    }
+
+    throw err
+  }
 }
 
 interface PromptActionsOptions {
@@ -382,7 +447,7 @@ export function usePromptActions({
           continue
         }
 
-        if (attachment.kind === 'image' || attachment.kind === 'file') {
+        if (attachment.kind === 'image' || attachment.kind === 'file' || attachment.kind === 'folder') {
           const nextAttachment = await uploadComposerAttachment(attachment, {
             backendCwd: $currentCwd.get(),
             remote,
