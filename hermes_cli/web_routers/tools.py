@@ -530,6 +530,11 @@ async def select_toolset_provider(
         with _config_profile_scope(body.profile or profile):
             _require_known_toolset(name)
             config = load_config()
+            if body.capability is None:
+                # hc-903 resolves the row before its write; keep apply_provider_selection's first refusal.
+                from hermes_cli.tools_config import TOOL_CATEGORIES
+                if TOOL_CATEGORIES.get(name) is None:
+                    raise _bad_request(f"Toolset has no configurable category: {name}")
             prov = _provider_row(config)
             if prov is None:
                 raise _bad_request(f"Unknown provider {body.provider!r} for toolset {name!r}")
