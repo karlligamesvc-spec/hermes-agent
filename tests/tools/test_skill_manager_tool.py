@@ -1396,6 +1396,14 @@ def _background_origin():
 
 class TestLockedGuard:
     _PATCH = dict(action="patch", old_string="Do the thing.", new_string="Do the new thing.")
+
+    @pytest.fixture(autouse=True)
+    def _background_writes_land(self, monkeypatch):
+        # ApexNodes hc-376: background-review skill writes are staged for approval by default. These tests need
+        # the lock to be the only guard that can refuse, so unlocked background writes land, as in
+        # test_skill_ledger.py (staging has its own contract tests in test_write_approval.py).
+        from tools import write_approval
+        monkeypatch.setattr(write_approval, "background_review_skill_autowrite_enabled", lambda: True)
     _MUTATIONS = (
         _PATCH,
         dict(action="patch", file_path="references/notes.md", old_string="Keep this.", new_string="Changed."),
