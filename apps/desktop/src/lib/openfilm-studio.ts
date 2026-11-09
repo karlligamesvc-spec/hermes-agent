@@ -198,6 +198,24 @@ export function waitForOpenfilmEditor(shown: () => boolean, onReady: () => void)
   waiting = timer
 }
 
+/**
+ * hc-1201: the titlebar's 剪辑 shows only while the answer is yes, so it is
+ * asked again when the signed-in account changes and when the window comes
+ * back to the front (main keeps an answer a minute), not only when an agent
+ * starts a tool.
+ */
+export function watchOpenfilmStudioOn(target: Window = window): void {
+  const refresh = () => {
+    if (target.hermesDesktop?.openfilmStudio) {
+      void refreshOpenfilmStudioOn()
+    }
+  }
+
+  target.hermesDesktop?.onManagedAccountChanged?.(refresh)
+  target.addEventListener('focus', refresh)
+}
+
 if (typeof window !== 'undefined') {
   void refreshOpenfilmStudioOn()
+  watchOpenfilmStudioOn()
 }
