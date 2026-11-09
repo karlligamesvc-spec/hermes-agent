@@ -97,20 +97,18 @@ describe('the titlebar’s 剪辑', () => {
   })
 
   it('a film whose project is gone is passed over for the next one, then for the project last opened', async () => {
-    const bridge = stub({
-      lastProject: vi.fn(async () => '/work/last'),
-      open: vi.fn(async (folder: string) =>
-        folder === '/work/last'
-          ? { ok: true as const, url: STUDIO_URL }
-          : { ok: false as const, code: 'not_a_film' as const, message: 'not a folder with film.html' }
-      )
-    })
+    const open = vi.fn(async (folder: string) =>
+      folder === '/work/last'
+        ? { ok: true as const, url: STUDIO_URL }
+        : { ok: false as const, code: 'not_a_film' as const, message: 'not a folder with film.html' }
+    )
 
+    stub({ lastProject: vi.fn(async () => '/work/last'), open })
     rows('/work/gone/film.html')
 
     await openOpenfilmEditor()
 
-    expect(bridge.open.mock.calls.map(call => call[0])).toEqual(['/work/gone', '/work/last'])
+    expect(open.mock.calls.map(call => call[0])).toEqual(['/work/gone', '/work/last'])
     expect(studioTab()?.target).toMatchObject({ label: 'last', source: '/work/last/film.html' })
   })
 

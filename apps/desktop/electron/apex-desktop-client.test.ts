@@ -85,6 +85,7 @@ describe('every sender says it the same way (rule 12: count the exits)', () => {
     assert.match(sync, /headers: desktopClientHeaders\(env\),/)
     assert.match(skills, /fetchJson\(url, \{ bearer: token, headers, timeoutMs \}\)/)
     assert.match(transport, /\{ bearer, headers = \{\}, timeoutMs = 12_000 \}/)
+
     // Every header the caller names is set, and before Authorization, so it can never replace the bearer.
     const setsThem = transport.indexOf(
       "for (const [name, value] of Object.entries({ Accept: 'application/json', ...headers })) {request.setHeader(name, String(value))}"
