@@ -2835,9 +2835,12 @@ _ENV_BASE_URL_RESOLVERS = {
 def prepare_env_credential_pool_entries(env_var: str, value: str, providers: list[str]) -> list[dict[str, Any]]:
     """Prepare only an explicitly replaced env source, without writing any store.
 
-    Desktop calls this before its disk transaction. Copilot's token exchange and
-    Z.AI's endpoint probe may block; neither may hold the owner-write fence. CLI
-    and ordinary ``load_pool`` retain their existing discovery behavior.
+    Desktop calls this before its disk transaction. Z.AI's endpoint probe may
+    block and may not hold the owner-write fence. CLI and ordinary ``load_pool``
+    retain their existing discovery behavior. (hc-1203: v0.23.0 moved Copilot and
+    its token exchange out of core into the github-copilot plugin; a ``copilot``
+    row that plugin registers is prepared like any api-key row, as upstream's
+    ``load_pool`` seeds it.)
     """
     value = value.strip()
     if not value:
@@ -2849,11 +2852,7 @@ def prepare_env_credential_pool_entries(env_var: str, value: str, providers: lis
             continue
         base_url = get_env_prefer_dotenv(pconfig.base_url_env_var).rstrip("/") if pconfig.base_url_env_var else ""
         token, endpoint_state = value, None
-        if provider == "copilot":
-            from hermes_cli.copilot_auth import get_copilot_api_token
-            token, enterprise_url = get_copilot_api_token(value, persist=False)
-            base_url = enterprise_url or base_url or pconfig.inference_base_url
-        elif provider == "zai" and not base_url:
+        if provider == "zai" and not base_url:
             from hermes_cli.auth import _auth_file_path, detect_zai_endpoint
             key_hash = hashlib.sha256(value.encode()).hexdigest()[:16]
             # The ordinary getter quarantines corrupt JSON on disk. Preparation

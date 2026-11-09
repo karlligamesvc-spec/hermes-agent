@@ -8,7 +8,6 @@ code. Only this fixture's bound loopback listener is allowed, and all keys are f
 import asyncio
 import functools
 import ipaddress
-import io
 import json
 import os
 from pathlib import Path
@@ -75,7 +74,7 @@ def main():
 
     models_validate.validate_requested_model = validate
     if mode in {"env-preparation", "env-persist", "env-write"}:
-        from hermes_cli import auth, copilot_auth
+        from hermes_cli import auth
         from agent import credential_pool
 
         def preparation(value):
@@ -89,14 +88,7 @@ def main():
             return {"id": "fixture", "base_url": "https://fixture.zai.invalid/v4",
                     "model": "fixture-model", "label": "Fixture"}
 
-        def exchange(req, timeout):
-            value = req.get_header("Authorization").removeprefix("token ")
-            preparation(value)
-            return io.BytesIO(json.dumps({"token": "exchanged-" + value, "expires_at": 4102444800,
-                                          "endpoints": {"api": "https://fixture.copilot.invalid"}}).encode())
-
         auth.detect_zai_endpoint = detect_zai
-        copilot_auth._urlopen_bounded = exchange
         original_auth_save = credential_pool._save_auth_store
         auth_failures = []
 
