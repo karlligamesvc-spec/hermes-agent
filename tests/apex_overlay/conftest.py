@@ -85,6 +85,8 @@ _SEAM_MODULES = (
     "cron_update_notice",
     # hc-1186 a job made in a Desktop chat posts its result back into that chat.
     "cron_desktop_delivery",
+    # hc-1192 session titles in the interface language; a remote custom route titles at turn start.
+    "session_title",
 )
 
 

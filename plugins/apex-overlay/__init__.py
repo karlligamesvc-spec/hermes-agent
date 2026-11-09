@@ -113,6 +113,14 @@ _TOOL_SEAMS = (
         "error). A scheduled job made in a Desktop chat does not post its result back into "
         "that chat; the chat then says so instead of promising it.",
     ),
+    (
+        "session_title",
+        "apex-overlay: hc-1192 session title seam did not fully apply (see prior "
+        "error). Session titles follow the language of the user's first message "
+        "instead of the interface language, a greeting titled in Chinese is kept "
+        "as the final title, and on the APEX relay the model title waits for the "
+        "whole first turn.",
+    ),
 )
 
 
