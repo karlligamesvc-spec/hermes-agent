@@ -14,6 +14,7 @@ from hermes_cli.config import (
     find_provider_entry,
     read_raw_config,
 )
+from hermes_cli.config_backend import refusing_locked_omissions
 from hermes_cli.web_server_memory import _normalize_memory_provider_name
 from tools.transcription_common import STT_MODEL_CATALOG
 from tools.wake_word import _PROVIDER_PREFERENCE
@@ -81,7 +82,7 @@ _SCHEMA_OVERRIDES: dict[str, dict[str, Any]] = {
     },
     "terminal.backend": _select(
         "Terminal execution backend",
-        "local", "docker", "ssh", "modal", "daytona", "vercel_sandbox", "singularity",
+        "local", "docker", "ssh", "modal", "daytona", "vercel_sandbox",
     ),
     # sync with _SUPPORTED_VERCEL_RUNTIMES in terminal_tool.py
     "terminal.vercel_image": {
@@ -475,8 +476,29 @@ def _normalize_main_model_assignment(provider: str, model: str) -> tuple[str, st
     return prov_in, model_in
 
 
+_BARE_CUSTOM_SELECTORS = frozenset({"custom", "local"})
+
+
+def _same_endpoint(a: Any, b: Any) -> bool:
+    """Trailing-slash and case insensitive URL equality (``_save_custom_provider`` dedups the same way)."""
+    return str(a or "").strip().rstrip("/").lower() == str(b or "").strip().rstrip("/").lower()
+
+
+def _entry_points_elsewhere(entry: Any, base_url: str) -> bool:
+    """A configured provider block that names a DIFFERENT host than the submitted endpoint. Its
+    credentials belong to that host; a block for the same host (e.g. its ``key_env``) still applies."""
+    return isinstance(entry, dict) and not _same_endpoint(entry.get("base_url"), base_url)
+
+
+def _is_explicit_custom_endpoint(provider: str, base_url: str) -> bool:
+    """A bare ``custom`` / ``local`` pick that carries its own endpoint URL defines a route; it is
+    never a reference to an already-configured provider."""
+    return provider.strip().lower() in _BARE_CUSTOM_SELECTORS and bool((base_url or "").strip())
+
+
 def _validated_main_model_selection(
-    cfg: dict, provider: str, model: str, base_url: str = "", api_key: str = "", *, explicit_endpoint: bool = False
+    cfg: dict, provider: str, model: str, base_url: str = "", api_key: str = "",
+    explicit_endpoint: Optional[bool] = None,
 ) -> "ModelSwitchResult":
     """Route a dashboard main-slot pick through ``switch_model`` (catalog/alias/credential
     validation) seeded with the configured route, exactly like a ``/model <model> --provider
@@ -487,12 +509,28 @@ def _validated_main_model_selection(
 
     model_cfg = cfg.get("model") if isinstance(cfg.get("model"), dict) else {}
     is_bare_custom = provider.strip().lower() in {"custom", "local"}
+    # An explicit endpoint must not resolve through the configured providers: the legacy
+    # bare-``custom`` recovery in ``resolve_custom_provider`` would bind the FIRST named entry, and
+    # a ``providers.custom`` / ``providers.local`` block (same key as the bare selector) would win
+    # the credential step and validate ITS host with ITS key. ``_prepare_main_assignment`` passes
+    # whether the URL was SUBMITTED; a URL it filled from that block is a selection, not a route.
+    if explicit_endpoint is None:
+        explicit_endpoint = _is_explicit_custom_endpoint(provider, base_url)
+    user_providers = cfg.get("providers") if isinstance(cfg.get("providers"), dict) else {}
+    if explicit_endpoint:
+        user_providers = {k: v for k, v in user_providers.items()
+                          if not (str(k).strip().lower() in _BARE_CUSTOM_SELECTORS
+                                  and _entry_points_elsewhere(v, base_url))}
+    # The submitted endpoint is seeded as a current bare-``custom`` route so the credential step
+    # keeps it: arriving from another provider it re-resolves ``custom`` from config and would
+    # validate the saved ``model.base_url`` (and its key) instead of the endpoint being saved.
     result = switch_model(
         raw_input=model, explicit_provider=provider, is_global=True,
-        current_provider=str(model_cfg.get("provider") or ""), current_model=str(model_cfg.get("default") or ""),
+        current_provider="custom" if explicit_endpoint else str(model_cfg.get("provider") or ""),
+        current_model=str(model_cfg.get("default") or ""),
         current_base_url=base_url if is_bare_custom else str(model_cfg.get("base_url") or ""),
         current_api_key=api_key if is_bare_custom else "",
-        user_providers={} if explicit_endpoint else (cfg.get("providers") if isinstance(cfg.get("providers"), dict) else {}),
+        user_providers=user_providers,
         custom_providers=[] if explicit_endpoint else get_compatible_custom_providers(cfg))
     if not result.success:
         raise HTTPException(status_code=400, detail=result.error_message or "model switch rejected")
@@ -517,13 +555,33 @@ def _apply_main_model_assignment(model_cfg: Any, result: "ModelSwitchResult", ap
     dropped so a stale secret cannot shadow it.
 
     Returns a new dict."""
-    from hermes_cli.model_switch import apply_model_selection
+    from hermes_cli.config_backend import supports_file_tooling
+    from hermes_cli.model_switch import apply_model_selection, remote_model_selection_guard
 
-    model_cfg = apply_model_selection(model_cfg, result)
+    before = model_cfg
+    # Remote Config: the caller saves the effective block as a whole document, so a cleared
+    # inherited key must be masked (null), and a locked route key refuses the whole assignment.
+    model_cfg = apply_model_selection(model_cfg, result, mask_cleared=not supports_file_tooling())
     if api_key.strip():
         model_cfg["api_key"] = api_key.strip()
-        model_cfg.pop("api", None)
+        drop_model_key(model_cfg, "api")
+    remote_model_selection_guard(before, model_cfg)
     return model_cfg
+
+
+def drop_model_key(model_cfg: dict, key: str) -> None:
+    """Remove *key* from a ``model`` block an assignment is building. Under Remote Config the block
+    is the EFFECTIVE one, so a key it holds may be inherited from an upper level that a profile
+    removal cannot reach (contract §5.4); store null ("no value") instead, the same mask
+    :func:`hermes_cli.model_switch.apply_model_selection` applies. A key the block lacks stays
+    absent. File backend: a plain removal."""
+    from hermes_cli.config_backend import supports_file_tooling
+    if key not in model_cfg:
+        return
+    if supports_file_tooling():
+        model_cfg.pop(key, None)
+    else:
+        model_cfg[key] = None
 
 
 def _normalize_config_for_web(config: dict[str, Any]) -> dict[str, Any]:
@@ -549,7 +607,7 @@ def _normalize_config_for_web(config: dict[str, Any]) -> dict[str, Any]:
 # Canonical auxiliary task slots. Keep in sync with DEFAULT_CONFIG["auxiliary"]
 # in hermes_cli/config.py — listed here for deterministic ordering in the UI.
 _AUX_TASK_SLOTS: tuple[str, ...] = (
-    "vision", "compression", "skills_hub", "approval", "mcp", "title_generation", "review", "voice_chat",
+    "vision", "compression", "approval", "mcp", "title_generation", "review", "voice_chat",
     "triage_specifier", "kanban_decomposer", "profile_describer", "curator",
 )
 
@@ -639,8 +697,9 @@ def _resolve_assignment_credentials(model_cfg: dict, provider: str, provider_ent
     key_env = str(raw_entry.get("key_env") or "").strip()
     if key_env:
         model_cfg["key_env"] = key_env
-        # #88990: carry the credential POINTER, never a resolved secret.
-        model_cfg.pop("api_key", None)
+        # #88990: carry the credential POINTER, never a resolved secret. Masked, not dropped, under
+        # Remote Config: an inherited inline key outranks key_env at runtime.
+        drop_model_key(model_cfg, "api_key")
     elif isinstance(provider_entry, dict) and provider_entry.get("api_key"):
         raw_key = str(raw_entry.get("api_key") or "").strip()
         model_cfg["api_key"] = raw_key if raw_key.startswith("${") and raw_key.endswith("}") else provider_entry["api_key"]
@@ -759,16 +818,22 @@ def _prepare_main_assignment(cfg: dict, provider: str, model: str, base_url: str
     ``_CONFIG_MUTATION_LOCK``; it writes nothing."""
     if not provider or not model:
         raise HTTPException(status_code=400, detail="provider and model required for main")
-    explicit_endpoint = _explicit_endpoint_assignment(provider, base_url, api_key)
+    # ApexNodes hc-903: a Desktop-tagged pick with its own endpoint + key is saved as a named custom
+    # provider (``_apply_main_assignment_sync``), so it validates with no configured provider in play.
+    desktop_endpoint = _explicit_endpoint_assignment(provider, base_url, api_key)
+    explicit_endpoint = desktop_endpoint or _is_explicit_custom_endpoint(provider, base_url)
     if explicit_endpoint:
-        provider = "custom"
+        # The Local / custom endpoint wizard: the submitted URL IS the route. Normalizing would
+        # recover a bare ``custom`` onto the first named custom provider and keep ITS URL (#145466).
+        provider, model = ("custom" if desktop_endpoint else provider.strip()), model.strip()
     else:
         provider, model = _normalize_main_model_assignment(provider, model)
     provider_entry = _provider_entry(cfg, provider)
     if not base_url and isinstance(provider_entry, dict) and provider_entry.get("base_url"):
         base_url = str(provider_entry.get("base_url") or "").strip()
     return base_url, _validated_main_model_selection(
-        cfg, provider, model, base_url, api_key, explicit_endpoint=explicit_endpoint)
+        {**cfg, "providers": {}} if desktop_endpoint else cfg, provider, model, base_url, api_key,
+        explicit_endpoint=explicit_endpoint)
 
 
 def _prepare_main_gateway_tools(cfg: dict, result: "ModelSwitchResult", api_key: str) -> list:
@@ -791,7 +856,9 @@ def _apply_main_assignment_sync(cfg: dict, provider: str, model: str, base_url: 
     from hermes_cli.config import load_config, save_config
     from hermes_cli.free_tier_bootstrap import reconcile_record
     from hermes_cli.web_model_mutations import model_mutation_commit
-    explicit_endpoint = _explicit_endpoint_assignment(provider, base_url, api_key)
+    # Recorded from the SUBMITTED args, before preparation fills a URL from a named entry.
+    desktop_endpoint = _explicit_endpoint_assignment(provider, base_url, api_key)
+    explicit_endpoint = desktop_endpoint or _is_explicit_custom_endpoint(provider, base_url)
     base_url, result = prepared or _prepare_main_assignment(cfg, provider, model, base_url, api_key)
     gateway_tools = (prepared_gateway_tools if prepared_gateway_tools is not None
                      else _prepare_main_gateway_tools(cfg, result, api_key))
@@ -804,7 +871,7 @@ def _apply_main_assignment_sync(cfg: dict, provider: str, model: str, base_url: 
         endpoint_already_known = (
             result.target_provider.strip().lower() in {"custom", "local"} and bool(base_url)
             and _endpoint_known_to_config(cfg, base_url))
-        if explicit_endpoint:
+        if desktop_endpoint:
             from dataclasses import replace
             from hermes_cli.main_provider_setup import _auto_provider_name, _upsert_custom_provider
             from hermes_cli.providers import custom_provider_slug
@@ -815,12 +882,15 @@ def _apply_main_assignment_sync(cfg: dict, provider: str, model: str, base_url: 
         provider, model = result.target_provider, result.new_model
         provider_entry = _provider_entry(cfg, provider)
         model_cfg = _apply_main_model_assignment(cfg.get("model", {}), result, api_key)
-        if explicit_endpoint:
+        if desktop_endpoint:
             # Explicit replacement owns both credential anchors. The raw disk
             # entry still has the previous pointer until this atomic save.
             for field in ("key_env", "api_key_env", "key_cmd"):
                 model_cfg.pop(field, None)
-        else:
+        elif not (explicit_endpoint and _entry_points_elsewhere(provider_entry, base_url)):
+            # A submitted endpoint carries its own key (or none); a ``providers.custom`` block for
+            # ANOTHER host shares the selector's name, and hydrating from it would pair the new URL with
+            # that host's key. A block for the same host (its ``key_env``) still supplies the credential.
             _resolve_assignment_credentials(model_cfg, provider, provider_entry)
         cfg["model"] = model_cfg
 
@@ -829,7 +899,10 @@ def _apply_main_assignment_sync(cfg: dict, provider: str, model: str, base_url: 
             from hermes_cli.nous_subscription import _select_nous
             for tool in gateway_tools:
                 _select_nous(cfg, tool)
-        save_config(cfg)
+        # One route: a model.* key locked by the time the save runs (even after the preflight guard
+        # above, or on its CAS retry) refuses the whole save instead of being omitted from it.
+        with refusing_locked_omissions("model"):
+            save_config(cfg)
         if new_provider in {"custom", "local"} and base_url and not endpoint_already_known:
             _register_custom_endpoint(base_url, api_key, model)
     # The serve process's boot record may still say "nothing configured"; the chat gates on it.
@@ -843,6 +916,8 @@ def _apply_main_assignment_sync(cfg: dict, provider: str, model: str, base_url: 
         "base_url": model_cfg.get("base_url", ""),
         "gateway_tools": gateway_tools,
         "stale_aux": _stale_aux_pins(cfg, new_provider),
+        # Window plans, Large model: the warning (never a confirm). Absent for everyone else.
+        **({"notice": result.usage_notice} if getattr(result, "usage_notice", "") else {}),
     }
 
 # "Field omitted" sentinel for optional assignment fields whose None means "clear".
