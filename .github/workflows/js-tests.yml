@@ -10,16 +10,17 @@ on:
         default: ''
 
 jobs:
-  workspaces:
-    name: List npm workspaces
+  check:
+    name: JS & TS checks
+    # ApexNodes: upstream's 32-core Blacksmith runner is not available to the
+    # fork (tests/ci/test_fork_runner_compatibility.py), so this stays on the
+    # standard GitHub-hosted pool.
     runs-on: ubuntu-latest
     # 11 checks share this 4-core runner. apps/desktop check:test:ui alone runs
     # about 10 to 18 minutes depending on the runner, and setup adds 1 to 5
     # more, so a limit of 20 minutes cancelled runs before they could finish
     # (hc-1076).
     timeout-minutes: 30
-    outputs:
-      checks: ${{ steps.set-matrix.outputs.checks }}
     steps:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
         with:

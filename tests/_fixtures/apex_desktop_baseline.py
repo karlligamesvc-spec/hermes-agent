@@ -57,7 +57,10 @@ SKIPS: dict[str, tuple[str, ...]] = {
     "tests/ci/test_classify_changes.py::test_every_slow_lane_path_matches_a_tracked_file": _E2E_HARNESS,
     "tests/ci/test_classify_changes.py::test_every_desktop_update_path_file_starts_the_desktop_update_suite[apps/desktop/electron/updater/checkout.ts]": ("apps/desktop/electron/updater/checkout.ts",),
     "tests/ci/test_classify_changes.py::test_every_desktop_update_path_file_starts_the_desktop_update_suite[apps/desktop/electron/backend-discovery.ts]": ("apps/desktop/electron/backend-discovery.ts",),
-    "tests/ci/test_classify_changes.py::test_every_desktop_update_path_file_starts_the_desktop_update_suite[apps/desktop/electron/host-backend-attach.ts]": ("apps/desktop/electron/host-backend-attach.ts",),
+    "tests/ci/test_classify_changes.py::test_every_desktop_update_path_file_starts_the_desktop_update_suite[apps/desktop/electron/local-gateway.ts]": ("apps/desktop/electron/local-gateway.ts",),
+    # hc-1203: v0.23.0's update path (hermes_cli/source_build.py) runs upstream's Webapp recipe; the APEX
+    # baseline has none, and the scan of the update's JS closure stops at the first absent file.
+    "tests/ci/test_update_ci_routing.py::test_build_scripts_the_update_runs_start_the_upgrade_suite": ("apps/desktop/scripts/build-webapp.mjs",),
     # hc-913: these expect the e2e-desktop-core / e2e-desktop-update jobs to run, gate the merge, or be
     # required consumers. Each one's APEX counterpart (the job deferred while its suite is absent, every other
     # lane still routed) is in tests/apex_overlay/test_desktop_e2e_lanes.py.

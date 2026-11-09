@@ -8,6 +8,8 @@ a ported path means the upstream test can run again, so the entry has to go.
 from __future__ import annotations
 
 import re
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -30,6 +32,22 @@ def test_every_entry_names_an_existing_upstream_test():
             name = re.sub(r"\[.*\]$", "", test)
             assert re.search(rf"^\s*(async )?def {re.escape(name)}\(", source.read_text(encoding="utf-8"), re.MULTILINE), (
                 f"{nodeid} no longer exists; drop the entry")
+
+
+def test_every_parametrized_entry_is_a_test_id_pytest_collects():
+    """hc-1203: the name check above passes a parametrized id that no longer exists. v0.23.0 swapped
+    ``[...host-backend-attach.ts]`` for ``[...local-gateway.ts]``: the old entry kept passing while the
+    new case ran unskipped and failed. Only collection knows the exact ids."""
+    entries = [nodeid for nodeid in [*baseline.SKIPS, *baseline.FORK_RUNNER_SKIPS] if "[" in nodeid]
+    modules = sorted({nodeid.partition("::")[0] for nodeid in entries})
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", *modules],
+        cwd=REPO, capture_output=True, text=True, timeout=600, check=False,
+    )
+    collected = set(result.stdout.splitlines())
+    assert any(nodeid in collected for nodeid in entries), result.stdout[-2000:] + result.stderr[-2000:]
+    stale = [nodeid for nodeid in entries if nodeid not in collected]
+    assert stale == [], f"no longer collected; drop or rename the entry: {stale}"
 
 
 def test_every_cited_upstream_desktop_path_is_still_absent():
