@@ -152,7 +152,7 @@
    - 一、fork overlay 让托管会话保留 `browser_exec`（它在每个助手自己的容器里跑 Python，与已开放的 `execute_code` 同类风险）；
    - 二、托管配置放开 `terminal`（安全姿态变更，同时放出 shell）；
    - 三、接受云端没有浏览器，技能改用 `web_extract`（先确认生产配了 `FIRECRAWL_API_URL`）。
-2. **与 #582（hc-1179，Desktop 浏览器像常用浏览器）的先后。** #582 的两个接缝包在 agent-browser 的 `tools.browser_tool._build_browser_env` 和 `tools.browser_tool_session._apply_chromium_sandbox_args` 上，这两处在 v0.23.0 已经没有（后者整个文件被删），合在本 PR 之后什么也绑不上。v0.23.0 原生有 `browser.headed`、`browser.user_data_dir`、`browser.chromium_args`，#582 想要的三件事（有窗口、按助手隔离的持久资料目录、默认关的隐藏标记参数）都能改成 Desktop 产品配置的默认值，登录交给用户的提示词段不受影响。建议本 PR 先合，#582 在 v0.23.0 上按原生配置重做；反过来的话，本 PR 要把它的接缝搬到新启动器上。
+2. **#582（hc-1179，Desktop 浏览器像常用浏览器）先合（已定）。** #582 的两个接缝包在 agent-browser 的 `tools.browser_tool._build_browser_env` 和 `tools.browser_tool_session._apply_chromium_sandbox_args` 上，这两处在 v0.23.0 已经没有（后者整个文件被删）。#582 合入 fork main 之后，本 PR 合入 main，同时带上移植：`apex_overlay/browser_window.py` 改为包 `tools.browser_session_cloud` 的 `user_data_dir()`（没有固定资料目录、有窗口、Mac / Windows 时给 `<HERMES_HOME>/apex-browser-profile`；会话层按这个目录让所有会话共用一个窗口）和 `chromium_args()`（`apex.browser_hide_automation` 打开时加 `--disable-blink-features=AutomationControlled`，默认关）。有窗口靠 #582 的 Desktop 产品配置 `browser.headed: true`，登录交给用户的提示词段不用改。移植已在本地准备好：17 条测试走真实的 v0.23.0 会话层和启动器，7 处反向注入（不包 `user_data_dir`、覆盖用户固定、忽略有窗口、忽略平台、忽略开关、不去重、包回旧目标）各自让对应用例变红。
 3. **上游行为变化（已吸收，默认未改）**：
    - 一个 gateway 承载所有会话之后，本地 CLI / TUI / Desktop 自己的轮次里 `execute_code` 不再整段弹批准，靠脚本内每条 terminal 命令的批准（上游 T2）。消息平台、kanban、注入的轮次照旧整段批准。
    - cron 投递改为进队列、由 gateway 排出（hc-1186 的接缝已跟上）。
