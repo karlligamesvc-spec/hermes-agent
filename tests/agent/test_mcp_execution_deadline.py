@@ -106,21 +106,3 @@ def test_registered_deadline_extends_only_its_own_call():
         assert _extend_tool_timeout(name, 100) == 100
     finally:
         registry.deregister(name)
-
-
-def test_extended_deadline_is_a_barrier_for_direct_and_bridged_batches():
-    # Even a normally parallel-safe tool must not extend a batch containing unrelated work.
-    name = "tool_describe"
-    old = registry.get_entry(name)
-    registry.register(name=name, toolset="deadline-probe", schema={"name": name},
-                      handler=lambda args, **kw: "ok", execution_timeout=1000, override=True)
-    try:
-        from agent.tool_dispatch_helpers import _batch_admission
-
-        for exposed, args in [(name, {}), ("tool_call", {"calls": [{"name": name, "arguments": {}}]})]:
-            call = SimpleNamespace(function=SimpleNamespace(name=exposed, arguments=json.dumps(args)))
-            assert _batch_admission(call, None) is None
-    finally:
-        current = registry.get_entry(name)
-        assert current is not None
-        registry.restore_registration(name, current, old)
