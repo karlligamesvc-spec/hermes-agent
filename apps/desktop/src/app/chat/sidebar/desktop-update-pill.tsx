@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import type { DesktopShellUpdateState } from '@/global'
 import { useI18n } from '@/i18n'
 import { useDesktopUpdateCopy } from '@/i18n/desktop-update'
-import { formatEngineDisplayVersion } from '@/lib/engine-display'
+import { displayAppVersion } from '@/lib/app-version-display'
 import { CheckCircle2, Download, Loader2 } from '@/lib/icons'
 import { $desktopUpdateProgress, applyDesktopUpdates } from '@/store/desktop-update'
 import { $runtimeUpdateCheck, checkRuntimeUpdate } from '@/store/runtime-update'
@@ -20,14 +20,6 @@ const RECHECK_INTERVAL_MS = 12 * 60 * 60 * 1000
 const REMOUNT_CHECK_FLOOR_MS = 30 * 60 * 1000
 
 let lastSilentCheckAt = 0
-
-function displayAppVersion(raw: string | null | undefined): string {
-  if (!raw) {
-    return ''
-  }
-
-  return raw.startsWith('v') ? raw : `v${raw}`
-}
 
 function clampPercent(value: number | null | undefined): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -107,11 +99,6 @@ export function DesktopUpdatePill() {
   const runtimeReady = Boolean(runtime?.updateAvailable)
   const runtimeWaitsForShell = Boolean(runtime?.desktopUpgradeRequired)
   const shellVersion = displayAppVersion(shell?.version)
-  const rawRuntimeVersion = runtime?.latest?.version ?? runtime?.latest?.key ?? ''
-
-  const runtimeVersion = rawRuntimeVersion
-    ? formatEngineDisplayVersion(rawRuntimeVersion, null, t.common.engineVersionPrefix)
-    : ''
 
   if (shellPreparing) {
     const percent = clampPercent(shell?.percent)
@@ -152,10 +139,10 @@ export function DesktopUpdatePill() {
   }
 
   const detail = shellReady && (runtimeReady || runtimeWaitsForShell)
-    ? copy.appAndEngine(shellVersion, runtimeVersion)
+    ? copy.appAndEngine(shellVersion)
     : shellReady
       ? copy.appOnly(shellVersion)
-      : copy.engineOnly(runtimeVersion)
+      : copy.engineOnly
 
   return (
     <>

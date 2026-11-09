@@ -4,10 +4,8 @@ import { useState } from 'react'
 import { EngineHoldersNote } from '@/app/chat/sidebar/engine-holders-note'
 import { Button } from '@/components/ui/button'
 import type { DesktopEngineHolder } from '@/global'
-import { useI18n } from '@/i18n'
 import { describeDesktopUpdateError, desktopUpdateCopyNow } from '@/i18n/desktop-update'
 import { useEngineKeptBackCopy } from '@/i18n/engine-kept-back'
-import { formatEngineDisplayVersion } from '@/lib/engine-display'
 import { AlertTriangle, Loader2 } from '@/lib/icons'
 import { $runtimeVersion, switchToBundledEngine } from '@/store/runtime-update'
 
@@ -16,7 +14,6 @@ import { $runtimeVersion, switchToBundledEngine } from '@/store/runtime-update'
  * line, so a machine could run a weeks-old engine under every new app version without anyone knowing.
  */
 export function EngineKeptBackNotice() {
-  const { t } = useI18n()
   const copy = useEngineKeptBackCopy()
   const keptBack = useStore($runtimeVersion)?.keptBack
   const [switching, setSwitching] = useState(false)
@@ -27,8 +24,6 @@ export function EngineKeptBackNotice() {
   if (!keptBack) {
     return null
   }
-
-  const bundled = formatEngineDisplayVersion(keptBack.bundledVersion, null, t.common.engineVersionPrefix)
 
   const onSwitch = async () => {
     setSwitching(true)
@@ -58,7 +53,7 @@ export function EngineKeptBackNotice() {
       <AlertTriangle className="mt-0.5 size-4 shrink-0" />
       <div className="min-w-0">
         <p className="font-medium">{copy.title}</p>
-        <p className="mt-1 text-xs">{copy.detail[keptBack.reason](bundled)}</p>
+        <p className="mt-1 text-xs">{copy.detail[keptBack.reason]}</p>
         <Button className="mt-2" disabled={switching} onClick={() => void onSwitch()} size="sm">
           {switching ? <Loader2 className="size-3 animate-spin" /> : null}
           {switching ? copy.switching : copy.switchAction}

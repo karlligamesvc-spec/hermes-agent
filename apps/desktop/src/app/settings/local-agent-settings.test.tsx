@@ -83,7 +83,7 @@ describe('LocalAgentSettings engine-outdated banner (hc-591 / hc-532)', () => {
     expect(screen.queryByTestId('daemon-engine-outdated')).toBeNull()
   })
 
-  it('humanizes the internal engine pin in the outdated banner, never the raw -fork.<sha>', async () => {
+  it('asks for a newer engine in the outdated banner without naming a version (hc-1200)', async () => {
     $runtimeVersion.set({
       ok: true,
       version: 'v2026.7.10-fork.aaaaaaaa',
@@ -98,8 +98,7 @@ describe('LocalAgentSettings engine-outdated banner (hc-591 / hc-532)', () => {
 
     const banner = await screen.findByTestId('daemon-engine-outdated')
 
-    expect(banner.textContent).toContain('Engine 2026.7.15')
-    expect(banner.textContent).not.toContain('-fork.')
-    expect(banner.textContent).not.toContain('b21a7e0d')
+    expect(banner.textContent).toContain('it needs a newer engine')
+    expect(banner.textContent).not.toMatch(/\d{4}\.\d{1,2}\.\d{1,2}|-fork\.|b21a7e0d/u)
   })
 })
