@@ -32,6 +32,9 @@ import { $desktopVersion } from '@/store/updates'
 
 import { EngineUpdateSection } from './about-settings'
 
+// hc-1200: no engine version reaches the screen: not its calver (it reads as a date), not its -fork.<key>.
+const ENGINE_VERSION = /\d{4}\.\d{1,2}\.\d{1,2}|-fork\.|a2e1a4b5|b21a7e0d|b0a720a5|deadbeef/u
+
 beforeEach(() => {
   applyRuntimeUpdateMock.mockReset()
   checkRuntimeUpdateMock.mockReset()
@@ -49,13 +52,15 @@ afterEach(() => {
   cleanup()
 })
 
-describe('EngineUpdateSection (hc-591 engine version display)', () => {
+describe('EngineUpdateSection (hc-591, hc-1200: no engine version on screen)', () => {
   it('hc-1033: says when the engine did not update with the app', () => {
     $runtimeVersion.set({ ok: true, version: null, commit: null, branch: null, key: null, keptBack: { reason: 'newer-or-unknown', bundledVersion: 'v2026.10.23-fork.a2e1a4b5' } })
 
     render(<EngineUpdateSection />)
 
-    expect(screen.getByTestId('engine-kept-back-banner').textContent).toContain('Engine 2026.10.23')
+    const banner = screen.getByTestId('engine-kept-back-banner')
+    expect(banner.textContent).toContain('The AI engine was not updated')
+    expect(banner.textContent).not.toMatch(ENGINE_VERSION)
   })
 
   it('keeps an unchecked update state honest instead of claiming latest', () => {
@@ -104,7 +109,7 @@ describe('EngineUpdateSection (hc-591 engine version display)', () => {
     expect(screen.queryByText('net::ERR_TIMED_OUT')).toBeNull()
   })
 
-  it('labels the Electron shell version as the app and the managed runtime as the engine', () => {
+  it('shows the APEX version and no engine version', () => {
     $desktopVersion.set({
       appVersion: '0.17.24',
       electronVersion: '40.10.2',
@@ -121,13 +126,13 @@ describe('EngineUpdateSection (hc-591 engine version display)', () => {
       version: '0.20.0'
     })
 
-    render(<EngineUpdateSection />)
+    const { container } = render(<EngineUpdateSection />)
 
     expect(screen.getByText('Version 0.17.24')).toBeTruthy()
-    expect(screen.getByText('Version: 0.20.0')).toBeTruthy()
+    expect(container.textContent).not.toContain('0.20.0')
   })
 
-  it('shows the humanized installed version, not the raw internal pin', () => {
+  it('never shows the installed engine version, not even its date', () => {
     $runtimeVersion.set({
       ok: true,
       version: 'v2026.7.15-fork.b21a7e0d',
@@ -138,12 +143,10 @@ describe('EngineUpdateSection (hc-591 engine version display)', () => {
 
     const { container } = render(<EngineUpdateSection />)
 
-    expect(screen.getByText('Version: Engine 2026.7.15')).toBeTruthy()
-    expect(container.textContent).not.toContain('-fork.')
-    expect(container.textContent).not.toContain('b21a7e0d')
+    expect(container.textContent).not.toMatch(ENGINE_VERSION)
   })
 
-  it('shows the humanized latest version in the "found" status line', () => {
+  it('offers an engine update without naming its version', () => {
     $runtimeVersion.set({
       ok: true,
       version: 'v2026.7.15-fork.b21a7e0d',
@@ -160,12 +163,11 @@ describe('EngineUpdateSection (hc-591 engine version display)', () => {
 
     const { container } = render(<EngineUpdateSection />)
 
-    expect(screen.getByText('Engine 2026.7.25')).toBeTruthy()
-    expect(container.textContent).not.toContain('-fork.')
-    expect(container.textContent).not.toContain('b0a720a5')
+    expect(screen.getByText('Engine update')).toBeTruthy()
+    expect(container.textContent).not.toMatch(ENGINE_VERSION)
   })
 
-  it('hc-532 banner: humanizes the shell-declared minimum engine version', () => {
+  it('hc-532 banner: asks for a newer engine without naming the minimum version', () => {
     $runtimeVersion.set({
       ok: true,
       version: 'v2026.7.10-fork.aaaaaaaa',
@@ -180,15 +182,13 @@ describe('EngineUpdateSection (hc-591 engine version display)', () => {
 
     const banner = screen.getByTestId('engine-outdated-banner')
 
-    expect(banner.textContent).toContain('Engine 2026.7.15')
-    expect(banner.textContent).not.toContain('-fork.')
-    expect(banner.textContent).not.toContain('b21a7e0d')
+    expect(banner.textContent).toContain('This app needs a newer engine.')
+    expect(banner.textContent).not.toMatch(ENGINE_VERSION)
   })
 
-  it('does not touch the desktop-shell-version copy (a different versioning scheme, no -fork segment)', () => {
-    // hc-475 (F4): desktopUpgradeRequired.minDesktopVersion is a DESKTOP shell
-    // semver ("0.17.0"), never the engine's calver+fork pin -- must render as
-    // the plain "v0.17.0" it always has, untouched by formatEngineDisplayVersion.
+  it('still names the APEX version an engine update waits for (hc-475), and no engine version', () => {
+    // desktopUpgradeRequired.minDesktopVersion is the APEX app's own semver ("0.17.0"),
+    // the one kind of version update copy may name.
     $runtimeUpdateCheck.set({
       ok: true,
       updateAvailable: false,
@@ -197,8 +197,9 @@ describe('EngineUpdateSection (hc-591 engine version display)', () => {
       desktopUpgradeRequired: { minDesktopVersion: '0.17.0', currentDesktopVersion: '0.16.17' }
     })
 
-    render(<EngineUpdateSection />)
+    const { container } = render(<EngineUpdateSection />)
 
     expect(screen.getByText('Update your desktop app to v0.17.0 or later to install this engine.')).toBeTruthy()
+    expect(container.textContent).not.toMatch(ENGINE_VERSION)
   })
 })

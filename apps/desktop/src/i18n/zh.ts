@@ -44,7 +44,6 @@ export const zh = defineLocale({
     tryHint: term => `试试“${term}”`,
     on: '开',
     off: '关',
-    engineVersionPrefix: '引擎'
   },
 
   fileMenu: {
@@ -989,8 +988,6 @@ export const zh = defineLocale({
       daysAgo: count => `${count} 天前`,
       engineSection: 'AI 引擎',
       // hc-591: value 已是显示格式化后的串("引擎 2026.7.25"),此处去掉重复的「引擎」二字。
-      engineVersion: value => `版本：${value}`,
-      engineVersionUnavailable: '引擎版本不可用',
       engineCheck: '检查引擎更新',
       engineChecking: '检查中…',
       engineUpToDate: '引擎已是最新。',
@@ -1007,7 +1004,7 @@ export const zh = defineLocale({
       engineConfirmBodyGeneric: '将更新 AI 引擎，并重启应用以生效。你的工作不会丢失。',
       engineConfirmApply: '更新引擎',
       engineUpdateNeeded: '引擎需更新',
-      engineUpdateNeededDetail: value => `本应用需要 ${value} 或更高版本。请点下方「检查更新」更新引擎。`,
+      engineUpdateNeededDetail: '本应用需要更新版本的引擎。请点下方「检查更新」更新引擎。',
       engineTreeMismatch: '引擎文件未同步',
       engineTreeMismatchDetail:
         '上次更新记录了新版本,但磁盘上的引擎文件并未替换,当前显示的版本号可能不准确。请点下方更新引擎以重新下载正确的文件。',
@@ -1628,8 +1625,8 @@ export const zh = defineLocale({
       signInFirst: '请先登录你的 APEX 账号。',
       saved: '设备名称已保存。',
       enableFailed: '保存失败——本系统的安全存储不可用。',
-      engineOutdated: value =>
-        `当前引擎版本过旧，本机 Agent 调度需要 ${value} 或更高版本。请到「设置 › 关于」更新引擎，否则工具调用可能静默失败。`
+      engineOutdated:
+        `当前引擎版本过旧，本机 Agent 调度需要更新版本的引擎。请到「设置 › 关于」更新引擎，否则工具调用可能静默失败。`
     },
     personalization: {
       personalityTitle: '人格',
@@ -2858,9 +2855,9 @@ export const zh = defineLocale({
       preparingTitle: version => (version ? `正在准备 APEX ${version}` : '正在准备 APEX 更新'),
       downloadedPercent: percent => `已下载 ${percent}%`,
       readyTitle: 'APEX 更新已准备好',
-      appAndEngine: (appVersion, engineVersion) => `应用 ${appVersion} + ${engineVersion}`,
+      appAndEngine: appVersion => `应用 ${appVersion} + 引擎更新`,
       appOnly: version => `应用 ${version}`,
-      engineOnly: version => version,
+      engineOnly: '引擎更新',
       installRestart: '安装并重启',
       installing: '正在准备更新…',
       confirmTitle: '安装 APEX 更新？',

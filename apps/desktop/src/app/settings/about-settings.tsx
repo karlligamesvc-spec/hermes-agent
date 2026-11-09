@@ -6,7 +6,6 @@ import { ShellUpdateHoldersNote } from '@/app/chat/sidebar/engine-holders-note'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
 import { describeDesktopUpdateError, desktopUpdateCopyNow } from '@/i18n/desktop-update'
-import { formatEngineDisplayVersion } from '@/lib/engine-display'
 import { AlertTriangle, Cpu, Loader2, RefreshCw, Sparkles } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { $desktopUpdateProgress, applyDesktopUpdates, checkDesktopUpdates } from '@/store/desktop-update'
@@ -50,19 +49,13 @@ export function EngineUpdateSection({ dialogLayer }: { dialogLayer?: number } = 
     initShellUpdateSubscription()
   }, [])
 
-  // Prefer the version from a fresh opt-in check when present; otherwise the
-  // locally-loaded marker version shown on open.
-  const currentVersion = check?.current?.version ?? installed?.version ?? null
+  // hc-1200: no engine version shows here (an internal pin whose calver reads as a date); only APEX's.
   const latest = check?.updateAvailable ? check.latest : null
   const compatNotes = latest?.compatibilityNotes?.trim() || ''
   const shellPreparing = shell?.phase === 'available' || shell?.phase === 'downloading'
   const shellReady = shell?.phase === 'downloaded'
   const shellFailed = shell?.phase === 'error'
   const shellVersion = shell?.version ? (shell.version.startsWith('v') ? shell.version : `v${shell.version}`) : null
-
-  const latestRuntimeVersion = latest?.version
-    ? formatEngineDisplayVersion(latest.version, null, t.common.engineVersionPrefix)
-    : null
 
   const checking = runtimeChecking || shell?.phase === 'checking'
   const applying = runtimeApplying || progress.active
@@ -106,10 +99,8 @@ export function EngineUpdateSection({ dialogLayer }: { dialogLayer?: number } = 
     statusLine = a.engineCantReach
     statusTone = 'error'
   } else if (upgradeRequired) {
-    // hc-591: upgradeRequired.minDesktopVersion is a DESKTOP shell semver
-    // (e.g. "0.17.0", from min_desktop_version) -- a different versioning
-    // scheme from the engine pin, with no `-fork.<sha>` segment to hide, so it
-    // intentionally does NOT go through formatEngineDisplayVersion.
+    // upgradeRequired.minDesktopVersion is the APEX app's own semver (e.g.
+    // "0.17.0"), the one kind of version update copy may name (hc-1200).
     statusLine = upgradeRequired.minDesktopVersion
       ? a.engineDesktopUpgradeRequired(upgradeRequired.minDesktopVersion)
       : a.engineFoundGeneric
@@ -133,15 +124,7 @@ export function EngineUpdateSection({ dialogLayer }: { dialogLayer?: number } = 
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <div className="min-w-0">
             <p className="font-medium">{a.engineUpdateNeeded}</p>
-            {minEngineVersion && (
-              // hc-591: minEngineVersion is the shell's declared floor (the
-              // same calver+fork engine pin format) -- humanize it here too.
-              <p className="mt-1 text-xs">
-                {a.engineUpdateNeededDetail(
-                  formatEngineDisplayVersion(minEngineVersion, null, t.common.engineVersionPrefix)
-                )}
-              </p>
-            )}
+            {minEngineVersion && <p className="mt-1 text-xs">{a.engineUpdateNeededDetail}</p>}
           </div>
         </div>
       )}
@@ -179,18 +162,13 @@ export function EngineUpdateSection({ dialogLayer }: { dialogLayer?: number } = 
             <p className="mt-1 text-xs text-muted-foreground">
               {desktopVersion?.appVersion ? a.version(desktopVersion.appVersion) : a.versionUnavailable}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {currentVersion
-                ? a.engineVersion(formatEngineDisplayVersion(currentVersion, null, t.common.engineVersionPrefix))
-                : a.engineVersionUnavailable}
-            </p>
-            {(shellReady || latestRuntimeVersion) && (
+            {(shellReady || latest) && (
               <p className="mt-2 text-xs font-medium text-foreground">
-                {shellReady && latestRuntimeVersion
-                  ? updateCopy.appAndEngine(shellVersion ?? '', latestRuntimeVersion)
+                {shellReady && latest
+                  ? updateCopy.appAndEngine(shellVersion ?? '')
                   : shellReady
                     ? updateCopy.appOnly(shellVersion ?? '')
-                    : updateCopy.engineOnly(latestRuntimeVersion ?? '')}
+                    : updateCopy.engineOnly}
               </p>
             )}
             <ShellUpdateHoldersNote layer={dialogLayer} shell={shell} />

@@ -14,6 +14,10 @@
  * hc-1117 adds states and pins them in their own goldens (`*-holders-*`,
  * `*-wait-*`, `*-engine-waiting-*`, `zh-kept-back-busy`), recorded on its branch.
  * It changes none of the goldens above.
+ *
+ * hc-1200 re-records the 12 goldens that showed an engine version (its calver
+ * reads as a date): only that text moves, e.g. "引擎 2026.10.28" → "引擎更新", and
+ * the About page's engine version line is gone.
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
