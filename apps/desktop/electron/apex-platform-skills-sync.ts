@@ -43,6 +43,7 @@ import {
   fetchPlatformSkills,
   isPlatformSkillsEnabled,
   normalizeStoredManifest,
+  PLATFORM_SKILLS_STAGING,
   platformSkillsCategoryDir,
   removePlatformSkills,
   shouldApplyManifest
@@ -53,8 +54,8 @@ export const PROFILE_SKILLS_STAMP = '.apex-manifest'
 
 /** Per home, OUTSIDE `skills/`: the runtime indexes every SKILL.md under skills/,
  * so a half-copied sibling there would list each platform skill twice (the
- * hc-1002 `.bak` class). */
-export const PROFILE_SKILLS_STAGING = '.apexnodes-skill-staging'
+ * hc-1002 `.bak` class). The root's install builds there too (hc-1205). */
+export const PROFILE_SKILLS_STAGING = PLATFORM_SKILLS_STAGING
 
 type Log = (msg: string) => void
 
@@ -184,6 +185,110 @@ export function registerProfileSkillsSync(ipcMain: IpcHandleRegistry, current: (
   )
 }
 
+/** A manifest the server sent because it differs from the installed one; its skills are already validated. */
+export interface FetchedPlatformSkills {
+  manifestHash: string
+  skills: { files: { content: string; path: string }[]; hash: string; name: string; version: string }[]
+}
+
+/** What main persists after an install (userData/apex-platform-skills.json). */
+export interface StoredPlatformSkills {
+  count: number
+  installedAt: number
+  manifestHash: string
+}
+
+/**
+ * The fetch half of a refresh (hc-1205 runs it on its own while the app is open): one
+ * request with the installed hash as `known_hash`. Null when there is nothing to install
+ * (no login JWT, offline, a 401, garbage, an unchanged or identical manifest), each logged
+ * as before. Writes nothing.
+ *
+ * @param opts.token a getter, read only here
+ */
+export async function fetchNewPlatformSkills({
+  apiBase,
+  fetchJson,
+  log = () => {},
+  reason,
+  stored,
+  timeoutMs = 12_000,
+  token
+}: any): Promise<FetchedPlatformSkills | null> {
+  const state = normalizeStoredManifest(stored)
+  const jwt = String(token() || '').trim()
+
+  if (!jwt) {
+    log(`[platform-skills] no login JWT on hand; skipping (${reason})`)
+
+    return null
+  }
+
+  const fetched = await fetchPlatformSkills({
+    apiBase,
+    fetchJson,
+    knownHash: state.manifestHash,
+    log,
+    timeoutMs,
+    token: jwt
+  })
+
+  if (!fetched) {
+    return null // offline / 401 (cloudLogin shows 「登录已失效」) / garbage, already logged
+  }
+
+  if (fetched.unchanged) {
+    log(`[platform-skills] manifest ${fetched.manifestHash.slice(0, 12)} unchanged (${reason})`)
+
+    return null
+  }
+
+  if (!shouldApplyManifest(fetched.manifestHash, state.manifestHash)) {
+    log(`[platform-skills] manifest matches installed; no re-apply (${reason})`)
+
+    return null
+  }
+
+  return { manifestHash: fetched.manifestHash, skills: fetched.skills }
+}
+
+/**
+ * The install half: the root from the manifest, then a stamped copy in every listed
+ * profile. Returns the state main persists. fs errors on the root propagate.
+ */
+export function installPlatformSkills({
+  env,
+  fetched,
+  homes,
+  log = () => {},
+  now = Date.now,
+  reason,
+  skillsRoot
+}: {
+  env: Record<string, string | undefined>
+  fetched: FetchedPlatformSkills
+  homes: unknown
+  log?: Log
+  now?: () => number
+  reason: string
+  skillsRoot: string
+}): StoredPlatformSkills {
+  const result = applyPlatformSkills({ log, skills: fetched.skills, skillsRoot })
+  log(
+    `[platform-skills] installed ${result.installed.length} skill(s) manifest=${fetched.manifestHash.slice(0, 12)} (${reason})`
+  )
+
+  if (result.skippedUnsafe.length) {
+    log(
+      `[platform-skills] skipped ${result.skippedUnsafe.length} unsafe entr(ies): ${result.skippedUnsafe.slice(0, 5).join(', ')}`
+    )
+  }
+
+  fillProfilePlatformSkills({ env, homes, log, manifestHash: fetched.manifestHash, skillsRoot })
+
+  return { count: result.installed.length, installedAt: now(), manifestHash: fetched.manifestHash }
+}
+
 /**
  * The whole refresh, dependency-injected like syncPlatformPlugins: main.ts
  * passes the real transport, paths and stored state, then persists `newStored`
@@ -204,9 +309,8 @@ export async function syncPlatformSkills({
   stored,
   timeoutMs = 12_000,
   token
-}: any): Promise<{ newStored: null | { count: number; installedAt: number; manifestHash: string } }> {
+}: any): Promise<{ newStored: null | StoredPlatformSkills }> {
   const state = normalizeStoredManifest(stored)
-  const fill = (manifestHash: string) => fillProfilePlatformSkills({ env, homes, log, manifestHash, skillsRoot })
 
   // Feature switch OFF → revert every listed home to the no-platform-SKILL
   // state (idempotent) and clear the cache so a later re-enable re-pulls.
@@ -222,56 +326,14 @@ export async function syncPlatformSkills({
     return { newStored: removed || state.manifestHash ? { count: 0, installedAt: now(), manifestHash: '' } : null }
   }
 
-  // The root keeps what it has; the profiles still catch up to it.
-  const keepInstalled = (line: string) => {
-    if (line) {
-      log(line)
-    }
+  const fetched = await fetchNewPlatformSkills({ apiBase, fetchJson, log, reason, stored: state, timeoutMs, token })
 
-    fill(state.manifestHash)
+  if (!fetched) {
+    // The root keeps what it has; the profiles still catch up to it.
+    fillProfilePlatformSkills({ env, homes, log, manifestHash: state.manifestHash, skillsRoot })
 
     return { newStored: null }
   }
 
-  const jwt = String(token() || '').trim()
-
-  if (!jwt) {
-    return keepInstalled(`[platform-skills] no login JWT on hand; skipping (${reason})`)
-  }
-
-  const fetched = await fetchPlatformSkills({
-    apiBase,
-    fetchJson,
-    knownHash: state.manifestHash,
-    log,
-    timeoutMs,
-    token: jwt
-  })
-
-  if (!fetched) {
-    return keepInstalled('') // offline / 401 (cloudLogin shows 「登录已失效」) / garbage, already logged
-  }
-
-  if (fetched.unchanged) {
-    return keepInstalled(`[platform-skills] manifest ${fetched.manifestHash.slice(0, 12)} unchanged (${reason})`)
-  }
-
-  if (!shouldApplyManifest(fetched.manifestHash, state.manifestHash)) {
-    return keepInstalled(`[platform-skills] manifest matches installed; no re-apply (${reason})`)
-  }
-
-  const result = applyPlatformSkills({ log, skills: fetched.skills, skillsRoot })
-  log(
-    `[platform-skills] installed ${result.installed.length} skill(s) manifest=${fetched.manifestHash.slice(0, 12)} (${reason})`
-  )
-
-  if (result.skippedUnsafe.length) {
-    log(
-      `[platform-skills] skipped ${result.skippedUnsafe.length} unsafe entr(ies): ${result.skippedUnsafe.slice(0, 5).join(', ')}`
-    )
-  }
-
-  fill(fetched.manifestHash)
-
-  return { newStored: { count: result.installed.length, installedAt: now(), manifestHash: fetched.manifestHash } }
+  return { newStored: installPlatformSkills({ env, fetched, homes, log, now, reason, skillsRoot }) }
 }

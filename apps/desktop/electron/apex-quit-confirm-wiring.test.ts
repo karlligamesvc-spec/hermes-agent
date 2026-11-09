@@ -42,6 +42,8 @@ describe('the quit confirmation in main.ts', () => {
 
   test('it reads the windows’ reports, the engines Desktop runs, and skips a hand-off quit', () => {
     const wiring = block('const quitConfirm = createQuitConfirm({', '\n})\n')
+    // hc-1205: the engine list and the probe are shared with the platform skills refresh.
+    const engines = block('const localEngines = () =>', '\nconst probeEngineIdle')
 
     assert.match(wiring, /isMac: IS_MAC,/)
     assert.match(wiring, /skip: \(\) => SKIP_QUIT_CONFIRM \|\| isQuittingForHandoff,/)
@@ -49,15 +51,16 @@ describe('the quit confirmation in main.ts', () => {
       wiring,
       /reporters: activeWorkByWebContents\.size, work: mergeActiveWork\(activeWorkByWebContents\.values\(\)\)/
     )
-    assert.match(wiring, /owned: backendConnectionState\.getProcess\(\) !== null \}, backendPool\.values\(\)\)/)
+    assert.match(wiring, /\n {2}engines: localEngines, probe: probeEngineIdle,\n/)
+    assert.match(engines, /owned: backendConnectionState\.getProcess\(\) !== null \}, backendPool\.values\(\)\)/)
     assert.match(
-      wiring,
+      engines,
       /connection: backendConnectionState\.getPendingPromise\(\) \? null : backendConnectionState\.getPromise\(\)/
     )
   })
 
   test('the engines are asked with a GET on the idle snapshot, never the retirement fence', () => {
-    const probe = block('  probe: engine =>', '\n  showMessageBox:')
+    const probe = block('const probeEngineIdle = engine =>', '\nconst quitConfirm')
 
     assert.match(
       probe,
