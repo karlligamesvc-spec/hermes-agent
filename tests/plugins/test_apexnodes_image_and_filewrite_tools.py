@@ -167,6 +167,14 @@ def _parse(result: str) -> dict:
 
 
 class TestImageGatewayLeg:
+    # The render is a job (hc-1190, as video's hc-1000): the submit answers running, the poll
+    # answers done with /image/generate's {data, cost_cents}.
+    _IMAGE_RUNNING = {"ok": True, "job_id": "job-i", "status": "running", "poll_after_seconds": 3}
+
+    @staticmethod
+    def _image_done(body: dict) -> dict:
+        return {"ok": True, "job_id": "job-i", "status": "done", **body}
+
     @pytest.mark.parametrize(
         ("prompt", "ratio"),
         [
@@ -176,7 +184,7 @@ class TestImageGatewayLeg:
         ],
     )
     def test_gateway_forwards_explicit_ratio_literal(self, desktop_env, fake_httpx, image_mod, prompt, ratio):
-        fake_httpx.responses.append(FakeResponse(200, {"data": {"ok": True}}))
+        fake_httpx.responses.append(FakeResponse(200, self._image_done({"data": {"ok": True}})))
 
         result = _parse(image_mod._handle_generate_image({"prompt": prompt, "aspect_ratio": ratio}))
 
@@ -187,10 +195,11 @@ class TestImageGatewayLeg:
         self, desktop_env, fake_httpx, image_mod, monkeypatch, tmp_path
     ):
         gateway_module = _gateway_module()
+        fake_httpx.responses.append(FakeResponse(202, self._IMAGE_RUNNING))
         fake_httpx.responses.append(
             FakeResponse(
                 200,
-                {
+                self._image_done({
                     "data": {
                         "image_url": "https://cdn.example/i1.png",
                         "image": "https://cdn.example/i1.png",
@@ -206,7 +215,7 @@ class TestImageGatewayLeg:
                         ],
                     },
                     "cost_cents": 0,
-                },
+                }),
             )
         )
         downloaded = tmp_path / "gen.png"
@@ -222,8 +231,10 @@ class TestImageGatewayLeg:
             {"prompt": "柴犬戴墨镜", "aspect_ratio": "portrait", "n": 1, "provider": "agnes", "purpose": "cover"}
         )
         result = _parse(raw)
-        request = fake_httpx.requests[0]
-        assert request.url == f"{GATEWAY_BASE}/tools/v1/image/generate"
+        request, poll = fake_httpx.requests
+        assert (request.method, request.url) == ("POST", f"{GATEWAY_BASE}/tools/v1/image/jobs")
+        assert len(request.headers["Idempotency-Key"]) == 32
+        assert (poll.method, poll.url) == ("GET", f"{GATEWAY_BASE}/tools/v1/image/jobs/job-i")
         assert request.json["prompt"] == "柴犬戴墨镜"
         assert request.json["aspect_ratio"] == "portrait"
         assert request.json["provider"] == "agnes" and request.json["purpose"] == "cover"
@@ -244,7 +255,7 @@ class TestImageGatewayLeg:
         fake_httpx.responses.append(
             FakeResponse(
                 200,
-                {
+                self._image_done({
                     "data": {
                         "image_url": "https://cdn.example/i1.png",
                         "image_path": _MASTER_IMAGE_PATH,
@@ -257,7 +268,7 @@ class TestImageGatewayLeg:
                         ],
                     },
                     "cost_cents": 0,
-                },
+                }),
             )
         )
 
@@ -283,7 +294,7 @@ class TestImageGatewayLeg:
         fake_httpx.responses.append(
             FakeResponse(
                 200,
-                {
+                self._image_done({
                     "data": {
                         "image_url": "https://cdn.example/i1.png",
                         "image_path": _MASTER_IMAGE_PATH,
@@ -294,7 +305,7 @@ class TestImageGatewayLeg:
                         ],
                     },
                     "cost_cents": 0,
-                },
+                }),
             )
         )
 

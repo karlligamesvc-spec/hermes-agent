@@ -56,6 +56,8 @@ EXPECTED_BUDGETS = {
     "media_transcribe": 2 * 60 * 60 + 10 * 60,
     "image_ocr": 600,
     "generate_video": 660,
+    # hc-1190: the image job is polled until a minute before this, the minute is for the download.
+    "generate_image": 420,
     # hc-1054: the local proxy and its upload come before the job's own wait.
     "video_highlights": 3600,
     "video_moment_search": 3600,

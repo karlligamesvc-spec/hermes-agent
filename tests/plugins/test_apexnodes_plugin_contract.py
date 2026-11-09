@@ -392,6 +392,11 @@ class GatewayHarness:
         # (done 带 /video/generate 的 {data, cost_cents})。
         if path.startswith("/tools/v1/video/jobs"):
             return _video_answer(path, {"data": {"video_url": "https://cdn.example/o.mp4"}, "cost_cents": 40})
+        if path.startswith("/tools/v1/image/jobs"):
+            # hc-1190: the image job, the same wire (its first poll comes a second later).
+            if path == "/tools/v1/image/jobs":
+                return {"ok": True, "job_id": "j1", "status": "running", "poll_after_seconds": 0}
+            return {"ok": True, "job_id": "j1", "status": "done", "data": {"image_url": "https://cdn.example/i.png"}, "cost_cents": 0}
         if path.startswith("/tools/v1/asr/"):
             return _asr_answer(path, {"ok": True, "text": "转写正文", "duration_seconds": 3.0, "cost_cents": 8})
         if path == "/tools/v1/social/batch/submit":

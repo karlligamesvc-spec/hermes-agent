@@ -30,7 +30,8 @@ from tests.plugins.test_apexnodes_input_images import (  # _env / image_mod / vi
     video_mod,
 )
 
-GENERATE = {"image": "/tools/v1/image/generate", "video": "/tools/v1/video/jobs"}
+# Both generations are jobs (hc-1000 video, hc-1190 image): the submit carries the body.
+GENERATE = {"image": "/tools/v1/image/jobs", "video": "/tools/v1/video/jobs"}
 
 
 def _handle(module, kind: str, args: dict) -> dict:

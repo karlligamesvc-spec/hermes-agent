@@ -57,6 +57,10 @@ ASR 族(hc-978:先提交任务再轮询,旧网关没有 /asr/jobs 时回退同�
     → 202 running | 200 done {"data": {...}, "cost_cents": int} | 200 failed {"error": …}
       | 404 video_job_not_found(平台重启过:不自动重交,视频重交要真花钱)
   POST {base}/tools/v1/video/generate → {"data": {...}, "cost_cents": int}
+图片生成族(hc-1190,同上一套:旧网关没有 /image/jobs 时回退同步的 /image/generate):
+  POST {base}/tools/v1/image/jobs(头 Idempotency-Key)      ← generate_image
+  GET  {base}/tools/v1/image/jobs/{job_id}(404 image_job_not_found:不自动重交)
+  POST {base}/tools/v1/image/generate → {"data": {...}, "cost_cents": int}
   GET  {base}/tools/v1/check → image/video 段带 hc-945 的逐链路健康(legs)
                                                            ← 生成前预检(hc-969)
 
@@ -134,6 +138,7 @@ __all__ = [
     "extract_audio_for_asr",
     "gateway_base",
     "gateway_disabled",
+    "generate_image",
     "generate_video",
     "guess_media_content_type",
     "media_cache_dir",
@@ -264,8 +269,21 @@ _VIDEO_JOB_DOWNLOAD_ROOM_SECONDS = 60.0
 # A call whose end this Desktop never heard keeps its Idempotency-Key this long (the
 # server keeps a finished video job for a day).
 _VIDEO_PENDING_TTL_SECONDS = 24 * 60 * 60
-_video_pending_lock = threading.Lock()
+_video_pending_lock = threading.Lock()  # guards both kinds' pending records
 _video_calls_in_flight: set[str] = set()
+
+# Image generation is the same kind of job (hc-1190): the platform may wait 180 s on the
+# vendor alone, silent all the way, and an image is billed before its answer can be lost.
+IMAGE_GENERATE_PATH = "/tools/v1/image/generate"
+IMAGE_JOBS_PATH = "/tools/v1/image/jobs"
+_IMAGE_JOB_SUBMIT_TIMEOUT_SECONDS = 60.0
+_IMAGE_JOB_POLL_TIMEOUT_SECONDS = 30.0
+_IMAGE_JOB_POLL_GAP_SECONDS = (1.0, 3.0, 30.0)
+_IMAGE_JOB_UNREACHABLE_SECONDS = 120.0
+_IMAGE_JOB_DOWNLOAD_ROOM_SECONDS = 60.0
+_IMAGE_SYNC_FALLBACK_TIMEOUT_SECONDS = 180.0  # an old gateway: the synchronous call as before
+_IMAGE_PENDING_TTL_SECONDS = 24 * 60 * 60  # the server keeps a finished image job a day
+_image_calls_in_flight: set[str] = set()
 
 # hc-978: TCP keepalive on every gateway connection. A call that waits minutes for an
 # answer (video and image generation, the old synchronous ASR) sends nothing while it
@@ -768,8 +786,9 @@ MEDIA_VIDEO = "video"
 _MEDIA_GENERATE_PATHS = {
     "/tools/v1/image/generate": MEDIA_IMAGE,
     "/tools/v1/video/generate": MEDIA_VIDEO,
-    # The job submit takes the same body and answers the same pre-render refusals.
+    # The job submits take the same body and answer the same pre-render refusals.
     "/tools/v1/video/jobs": MEDIA_VIDEO,
+    "/tools/v1/image/jobs": MEDIA_IMAGE,
 }
 
 # 429 codes that hold until tomorrow: request_json answers them on the first
@@ -1108,12 +1127,70 @@ def _job_failure(answer: dict[str, Any], path: str) -> GatewayError:
 
 
 # ---------------------------------------------------------------------------
-# 视频生成：提交任务再轮询(hc-1000,hc-978 的视频后续票)
+# 视频、图片生成：提交任务再轮询(hc-1000 视频,hc-1190 图片;都是 hc-978 的后续票)
 # ---------------------------------------------------------------------------
 
-# Outcomes after which the job may still be running or finished on the platform: the
-# call's Idempotency-Key is kept, so the same call again gets that job back.
-_VIDEO_OUTCOME_UNKNOWN = frozenset({"video_job_unreachable", "video_job_overdue"})
+
+@dataclass(frozen=True)
+class _Generation:
+    """One kind of paid generation run as a gateway job under an Idempotency-Key
+    (hc-1000 video, hc-1190 image). Built at call time from the kind's constants, so a
+    test that shortens them is honoured."""
+
+    kind: str  # message keys and codes are f"{kind}_job_…"; names the pending record
+    generate_path: str  # the synchronous endpoint, for an old gateway without jobs
+    submit_timeout: float
+    polling: _JobPolling
+    room_seconds: float  # kept from the tool's budget for fetching the result
+    pending_ttl_seconds: float
+    in_flight: set[str]  # fingerprints of the calls running in this process
+    sync_timeout: float | None  # caps the synchronous fallback; None = the tool's budget
+
+    @property
+    def outcome_unknown(self) -> frozenset[str]:
+        """Ends after which the job may still be running or finished on the platform:
+        the call's key is kept, so the same call again gets that job back."""
+        return frozenset({f"{self.kind}_job_unreachable", f"{self.kind}_job_overdue"})
+
+
+def _video_generation() -> _Generation:
+    return _Generation(
+        kind="video",
+        generate_path=VIDEO_GENERATE_PATH,
+        submit_timeout=_VIDEO_JOB_SUBMIT_TIMEOUT_SECONDS,
+        polling=_JobPolling(
+            kind="video",
+            jobs_path=VIDEO_JOBS_PATH,
+            poll_timeout=_VIDEO_JOB_POLL_TIMEOUT_SECONDS,
+            poll_gaps=_VIDEO_JOB_POLL_GAP_SECONDS,
+            unreachable_seconds=_VIDEO_JOB_UNREACHABLE_SECONDS,
+            failure_path=VIDEO_GENERATE_PATH,
+        ),
+        room_seconds=_VIDEO_JOB_DOWNLOAD_ROOM_SECONDS,
+        pending_ttl_seconds=_VIDEO_PENDING_TTL_SECONDS,
+        in_flight=_video_calls_in_flight,
+        sync_timeout=None,
+    )
+
+
+def _image_generation() -> _Generation:
+    return _Generation(
+        kind="image",
+        generate_path=IMAGE_GENERATE_PATH,
+        submit_timeout=_IMAGE_JOB_SUBMIT_TIMEOUT_SECONDS,
+        polling=_JobPolling(
+            kind="image",
+            jobs_path=IMAGE_JOBS_PATH,
+            poll_timeout=_IMAGE_JOB_POLL_TIMEOUT_SECONDS,
+            poll_gaps=_IMAGE_JOB_POLL_GAP_SECONDS,
+            unreachable_seconds=_IMAGE_JOB_UNREACHABLE_SECONDS,
+            failure_path=IMAGE_GENERATE_PATH,
+        ),
+        room_seconds=_IMAGE_JOB_DOWNLOAD_ROOM_SECONDS,
+        pending_ttl_seconds=_IMAGE_PENDING_TTL_SECONDS,
+        in_flight=_image_calls_in_flight,
+        sync_timeout=_IMAGE_SYNC_FALLBACK_TIMEOUT_SECONDS,
+    )
 
 
 def generate_video(payload: dict[str, Any], *, call_args: dict[str, Any], timeout: float) -> dict[str, Any]:
@@ -1124,70 +1201,73 @@ def generate_video(payload: dict[str, Any], *, call_args: dict[str, Any], timeou
     ``call_args`` are the tool arguments as the agent gave them (before input images are
     uploaded): an identical call while an earlier one's end is unknown reuses that
     call's Idempotency-Key. ``timeout`` is the tool's whole budget."""
+    return _generate(_video_generation(), payload, call_args=call_args, timeout=timeout)
+
+
+def generate_image(payload: dict[str, Any], *, call_args: dict[str, Any], timeout: float) -> dict[str, Any]:
+    """The same for one image generation (hc-1190): the answer is /image/generate's body,
+    with ``recovered: true`` when it is what an earlier identical call left behind."""
+    return _generate(_image_generation(), payload, call_args=call_args, timeout=timeout)
+
+
+def _generate(gen: _Generation, payload: dict[str, Any], *, call_args: dict[str, Any], timeout: float) -> dict[str, Any]:
     fingerprint = hashlib.sha256(
         json.dumps(call_args, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
     ).hexdigest()
-    key, earlier = _video_call_key(fingerprint)
+    key, earlier = _call_key(gen, fingerprint)
     if key is None:
         # An identical call is running in this process right now: this one is its own
         # generation, as two calls always were, and leaves no record behind.
-        return _run_video_job(payload, uuid.uuid4().hex, timeout=timeout)[1]
+        return _run_job(gen, payload, uuid.uuid4().hex, timeout=timeout)[1]
     try:
-        submitted, answer = _run_video_job(payload, key, timeout=timeout)
+        submitted, answer = _run_job(gen, payload, key, timeout=timeout)
     except GatewayError as exc:
-        _end_video_call(fingerprint, keep=exc.code in _VIDEO_OUTCOME_UNKNOWN)
+        _end_call(gen, fingerprint, keep=exc.code in gen.outcome_unknown)
         raise
     except BaseException:
-        _end_video_call(fingerprint, keep=True)
+        _end_call(gen, fingerprint, keep=True)
         raise
-    _end_video_call(fingerprint, keep=False)
+    _end_call(gen, fingerprint, keep=False)
     if earlier and submitted.get("reused"):
         answer = {**answer, "recovered": True}
     return answer
 
 
-def _run_video_job(payload: dict[str, Any], key: str, *, timeout: float) -> tuple[dict[str, Any], dict[str, Any]]:
-    """``(submit answer, final answer)``. An old gateway without /video/jobs answers
-    404/405 and gets today's synchronous call."""
+def _run_job(gen: _Generation, payload: dict[str, Any], key: str, *, timeout: float) -> tuple[dict[str, Any], dict[str, Any]]:
+    """``(submit answer, final answer)``. An old gateway without the kind's jobs answers
+    404/405 and gets the synchronous call it always got."""
     started = time.monotonic()
     try:
-        submitted = _submit_video_job(payload, key)
+        submitted = _submit_job(gen, payload, key)
     except GatewayError as exc:
         if exc.status not in (404, 405):
             raise
-        logger.info("video jobs endpoint missing (status=%s); using the synchronous call", exc.status)
-        answer = request_json("POST", VIDEO_GENERATE_PATH, payload, timeout=timeout)
+        logger.info("%s jobs endpoint missing (status=%s); using the synchronous call", gen.kind, exc.status)
+        answer = request_json("POST", gen.generate_path, payload, timeout=min(timeout, gen.sync_timeout or timeout))
         return answer, answer
 
     def lost(exc: GatewayError) -> dict[str, Any]:
         # Not submitted again on our own: a job that finished just before the restart
         # was billed, and a second render bills again. The agent decides.
-        raise GatewayError(say("video_job_lost"), status=exc.status, code=exc.code) from exc
+        raise GatewayError(say(f"{gen.kind}_job_lost"), status=exc.status, code=exc.code) from exc
 
-    polling = _JobPolling(
-        kind="video",
-        jobs_path=VIDEO_JOBS_PATH,
-        poll_timeout=_VIDEO_JOB_POLL_TIMEOUT_SECONDS,
-        poll_gaps=_VIDEO_JOB_POLL_GAP_SECONDS,
-        unreachable_seconds=_VIDEO_JOB_UNREACHABLE_SECONDS,
-        failure_path=VIDEO_GENERATE_PATH,
-    )
-    deadline = started + max(_VIDEO_JOB_POLL_TIMEOUT_SECONDS, timeout - _VIDEO_JOB_DOWNLOAD_ROOM_SECONDS)
-    return submitted, _await_job(submitted, polling, started=started, deadline=deadline, on_not_found=lost)
+    deadline = started + max(gen.polling.poll_timeout, timeout - gen.room_seconds)
+    return submitted, _await_job(submitted, gen.polling, started=started, deadline=deadline, on_not_found=lost)
 
 
-def _submit_video_job(payload: dict[str, Any], key: str) -> dict[str, Any]:
+def _submit_job(gen: _Generation, payload: dict[str, Any], key: str) -> dict[str, Any]:
     """POST the job. A submit whose answer did not arrive (network, or 502/503/504 from
     the way in) is sent again with the same key, which can only ever start one render;
-    only :data:`_VIDEO_JOB_UNREACHABLE_SECONDS` without an answer ends it."""
+    only the kind's ``unreachable_seconds`` without an answer ends it."""
     first_try = time.monotonic()
+    unreachable = gen.polling.unreachable_seconds
     while True:
         try:
             return request_json(
                 "POST",
-                VIDEO_JOBS_PATH,
+                gen.polling.jobs_path,
                 payload,
-                timeout=_VIDEO_JOB_SUBMIT_TIMEOUT_SECONDS,
+                timeout=gen.submit_timeout,
                 headers={"Idempotency-Key": key},
             )
         except GatewayError as exc:
@@ -1195,24 +1275,24 @@ def _submit_video_job(payload: dict[str, Any], key: str) -> dict[str, Any]:
             # problem (no credential): sending it again changes nothing.
             if exc.code != "network_unreachable" and exc.status not in (502, 503, 504):
                 raise
-            if time.monotonic() - first_try >= _VIDEO_JOB_UNREACHABLE_SECONDS:
-                minutes = max(1, round(_VIDEO_JOB_UNREACHABLE_SECONDS / 60))
-                raise GatewayError(say("video_job_unreachable", minutes=minutes), code="video_job_unreachable") from exc
-            logger.info("video job submit got no answer (status=%s); sending it again", exc.status)
-            time.sleep(_VIDEO_JOB_POLL_GAP_SECONDS[1])
+            if time.monotonic() - first_try >= unreachable:
+                code = f"{gen.kind}_job_unreachable"
+                raise GatewayError(say(code, minutes=max(1, round(unreachable / 60))), code=code) from exc
+            logger.info("%s job submit got no answer (status=%s); sending it again", gen.kind, exc.status)
+            time.sleep(gen.polling.poll_gaps[1])
 
 
-def _video_pending_file() -> Path:
-    return media_cache_dir().parent / "apexnodes-video-jobs-pending.json"
+def _pending_file(kind: str) -> Path:
+    return media_cache_dir().parent / f"apexnodes-{kind}-jobs-pending.json"
 
 
-def _read_video_pending(now: float) -> dict[str, dict[str, Any]]:
+def _read_pending(gen: _Generation, now: float) -> dict[str, dict[str, Any]]:
     try:
-        entries = json.loads(_video_pending_file().read_text(encoding="utf-8-sig"))
+        entries = json.loads(_pending_file(gen.kind).read_text(encoding="utf-8-sig"))
     except FileNotFoundError:
         return {}
     except (OSError, ValueError):
-        logger.warning("video pending-call record unreadable; starting a fresh one", exc_info=True)
+        logger.warning("%s pending-call record unreadable; starting a fresh one", gen.kind, exc_info=True)
         return {}
     if not isinstance(entries, dict):
         return {}
@@ -1221,49 +1301,66 @@ def _read_video_pending(now: float) -> dict[str, dict[str, Any]]:
         for fingerprint, entry in entries.items()
         if isinstance(entry, dict)
         and isinstance(entry.get("key"), str)
-        and now - _number(entry.get("at"), 0) < _VIDEO_PENDING_TTL_SECONDS
+        and now - _number(entry.get("at"), 0) < gen.pending_ttl_seconds
     }
 
 
-def _write_video_pending(entries: dict[str, dict[str, Any]]) -> None:
-    path = _video_pending_file()
+def _write_pending(kind: str, entries: dict[str, dict[str, Any]]) -> None:
+    path = _pending_file(kind)
     scratch = path.with_suffix(".tmp")
     try:
         scratch.write_text(json.dumps(entries), encoding="utf-8")
         os.replace(scratch, path)
     except OSError:
-        logger.warning("video pending-call record not saved", exc_info=True)
+        logger.warning("%s pending-call record not saved", kind, exc_info=True)
 
 
-def _video_call_key(fingerprint: str) -> tuple[str | None, bool]:
+def _call_key(gen: _Generation, fingerprint: str) -> tuple[str | None, bool]:
     """``(Idempotency-Key, whether an earlier identical call left it)``. Written down
     before the submit, so a call cut off anywhere (offline, the tool's deadline, the app
     quitting) leaves it for the next identical call. ``(None, False)`` while an identical
     call is running in this process: that one owns the record."""
     with _video_pending_lock:
-        if fingerprint in _video_calls_in_flight:
+        if fingerprint in gen.in_flight:
             return None, False
-        _video_calls_in_flight.add(fingerprint)
+        gen.in_flight.add(fingerprint)
         now = time.time()
-        entries = _read_video_pending(now)
+        entries = _read_pending(gen, now)
         entry = entries.get(fingerprint)
         if entry is not None:
             return entry["key"], True
         key = uuid.uuid4().hex
         entries[fingerprint] = {"key": key, "at": now}
-        _write_video_pending(entries)
+        _write_pending(gen.kind, entries)
         return key, False
 
 
-def _end_video_call(fingerprint: str, *, keep: bool) -> None:
+def _end_call(gen: _Generation, fingerprint: str, *, keep: bool) -> None:
     """The call is over; its key is forgotten unless the job's end is still unknown."""
     with _video_pending_lock:
-        _video_calls_in_flight.discard(fingerprint)
+        gen.in_flight.discard(fingerprint)
         if keep:
             return
-        entries = _read_video_pending(time.time())
+        entries = _read_pending(gen, time.time())
         if entries.pop(fingerprint, None) is not None:
-            _write_video_pending(entries)
+            _write_pending(gen.kind, entries)
+
+
+# hc-1000's names for the video record (its tests read the record through them).
+def _video_pending_file() -> Path:
+    return _pending_file("video")
+
+
+def _read_video_pending(now: float) -> dict[str, dict[str, Any]]:
+    return _read_pending(_video_generation(), now)
+
+
+def _video_call_key(fingerprint: str) -> tuple[str | None, bool]:
+    return _call_key(_video_generation(), fingerprint)
+
+
+def _end_video_call(fingerprint: str, *, keep: bool) -> None:
+    _end_call(_video_generation(), fingerprint, keep=keep)
 
 
 def _transcribe_via_direct_upload(

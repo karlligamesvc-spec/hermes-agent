@@ -5,7 +5,9 @@
 ——chinaapi / Nano Banana——永不出云);``TOOLS_GATEWAY_DISABLED=1`` 时回退 Scheduler
 内网端点 ``/media/image-generate``(云端 P1 回退通道,与 cloud 副本同源)。
 
-图片生成是同步快活(相较文生视频),但仍可能几十秒;代理等待服务端返回。
+网关腿提交任务再轮询(hc-1190,同 hc-1000 视频腿,``apexnodes_gateway.generate_image``):
+一张图在平台上可能要等上游几分钟,一个静默等着的请求的回包会被线路丢掉;旧网关没有
+``/tools/v1/image/jobs`` 时回退同步的 ``/tools/v1/image/generate``。
 网关腿收尾同 hc-562 视频腿:master 返回的 ``image_path``/``media_tag`` 是 master
 本机路径(云侧靠共享卷才成立),本端不存在——用 ``image_url`` 直链本地落地后再
 重建本机 ``MEDIA:`` 标签,绝不把 master 本机路径下发到本端结果面。
@@ -41,8 +43,17 @@ def _say(key: str, fallback: str, **fields: Any) -> str:
     return fallback.format(**fields)
 
 
-# 图片渲染是同步调用,但多图/付费档可能耗时数十秒——给足超时余量。
+# The legacy leg's synchronous request (and an old gateway's, apexnodes_gateway falls back
+# with the same cap).
 _IMAGE_REQUEST_TIMEOUT = 180
+# The tool's whole budget on the gateway leg (hc-1190): the job is polled until a minute
+# before it ends (the platform may wait 180 s on the vendor alone, plus input images and
+# landing), the minute left is for fetching the images. Registered as the executor's
+# deadline so the two never drift.
+_IMAGE_TOOL_BUDGET = 420
+# Each image's download (the shared downloader's default is 600 s, past this tool's
+# budget); a download that fails keeps the image_url and says so.
+_IMAGE_DOWNLOAD_TIMEOUT = 60
 
 
 # ── legacy Scheduler 路径(迁移前行为,原样保留) ─────────────────────────────
@@ -380,7 +391,9 @@ def _localize_gateway_image(result: dict[str, Any], prompt: str) -> str:
         if not url:
             continue
         try:
-            local_path = _gateway.download_media(url, filename_hint=f"{_gateway.media_title_hint(prompt) or 'image'}_{index}")
+            local_path = _gateway.download_media(
+                url, filename_hint=f"{_gateway.media_title_hint(prompt) or 'image'}_{index}", timeout=_IMAGE_DOWNLOAD_TIMEOUT
+            )
         except _gateway.GatewayError:
             continue
         image["image_path"] = str(local_path)
@@ -395,10 +408,12 @@ def _localize_gateway_image(result: dict[str, Any], prompt: str) -> str:
             break
 
     if not any_local and str(result.get("image_url") or "").strip():
-        result["note"] = (
+        unsaved = (
             "图片已生成，但保存到本机失败：请尽快通过 image_url 查看/下载"
             "（该链接有有效期，过期后需重新生成）。"
         )
+        # Added after a note already there (hc-1190: the "recovered, not billed again" one).
+        result["note"] = f"{result['note']} {unsaved}" if result.get("note") else unsaved
     return tool_result(**result)
 
 
@@ -462,13 +477,17 @@ def _handle_generate_image(args: dict, **_kwargs) -> str:
         payload["images"] = images
         payload["rights_confirmed"] = args.get("rights_confirmed") is True
     if _use_gateway():
+        # The call as the agent made it (before input images are uploaded): an identical
+        # call after one whose end never arrived gets that job's images back (hc-1190).
+        call_args = {**payload, "images": args.get("images"), "rights_confirmed": args.get("rights_confirmed") is True}
         try:
-            response = _gateway.request_json(
-                "POST", "/tools/v1/image/generate", payload, timeout=_IMAGE_REQUEST_TIMEOUT
-            )
+            response = _gateway.generate_image(payload, call_args=call_args, timeout=_IMAGE_TOOL_BUDGET)
         except _gateway.GatewayError as exc:
             return tool_error(_say("media_failed", "图片生成失败: {reason}", reason=exc))
-        return _localize_gateway_image(_gateway.unwrap(response), prompt)
+        result = _gateway.unwrap(response)
+        if response.get("recovered"):
+            result["note"] = _gateway.say("image_job_recovered")
+        return _localize_gateway_image(result, prompt)
     try:
         return tool_result(**_request("POST", "/media/image-generate", payload))
     except RuntimeError as exc:
@@ -485,4 +504,5 @@ def register(ctx):
         requires_env=[],
         description=GENERATE_IMAGE_SCHEMA["description"],
         emoji="🖼️",
+        execution_timeout=_IMAGE_TOOL_BUDGET,
     )
