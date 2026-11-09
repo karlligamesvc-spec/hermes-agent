@@ -25,6 +25,8 @@ import { $runtimeVersion } from '@/store/runtime-update'
 import { EngineKeptBackNotice } from './engine-kept-back-notice'
 
 const zh = ENGINE_KEPT_BACK_COPY.zh
+// hc-1200: an engine version (calver, e.g. 2026.10.23, or its -fork.<key>) never reaches the copy.
+const ENGINE_VERSION = /\d{4}\.\d{1,2}\.\d{1,2}|fork|a2e1a4b5/u
 const reload = vi.fn()
 
 function keptBack(reason: 'busy' | 'newer-or-unknown' | 'upgrade-failed') {
@@ -60,16 +62,15 @@ describe('EngineKeptBackNotice (hc-1033)', () => {
     expect(screen.queryByTestId('engine-kept-back-banner')).toBeNull()
   })
 
-  it.each(['busy', 'newer-or-unknown', 'upgrade-failed'] as const)('names the shipped engine and the fix when %s', reason => {
+  it.each(['busy', 'newer-or-unknown', 'upgrade-failed'] as const)('names the fix, and no engine version, when %s', reason => {
     keptBack(reason)
     renderZh()
 
     const banner = screen.getByTestId('engine-kept-back-banner')
     expect(banner.getAttribute('data-reason')).toBe(reason)
     expect(screen.getByText(zh.title)).toBeTruthy()
-    // The display form hides the internal fork key.
-    expect(screen.getByText(zh.detail[reason]('引擎 2026.10.23'))).toBeTruthy()
-    expect(banner.textContent).not.toContain('a2e1a4b5')
+    expect(screen.getByText(zh.detail[reason])).toBeTruthy()
+    expect(banner.textContent).not.toMatch(ENGINE_VERSION)
     expect(screen.getByRole('button', { name: zh.switchAction })).toBeTruthy()
   })
 
@@ -102,18 +103,18 @@ describe('EngineKeptBackNotice (hc-1033)', () => {
 })
 
 describe('engine kept-back copy (hc-1033)', () => {
-  it.each(Object.entries(ENGINE_KEPT_BACK_COPY))('%s: every sentence names its fix and the shipped engine', (_locale, copy) => {
-    for (const detail of Object.values(copy.detail)) {
-      const sentence = detail('ENGINE')
+  it.each(Object.entries(ENGINE_KEPT_BACK_COPY))('%s: every sentence names its fix and APEX, never an engine version', (_locale, copy) => {
+    for (const sentence of Object.values(copy.detail)) {
       expect(sentence).toContain(copy.switchAction)
-      expect(sentence).toContain('ENGINE')
+      expect(sentence).toContain('APEX')
+      expect(sentence).not.toMatch(ENGINE_VERSION)
     }
   })
 
   it('writes the Chinese sentences in Chinese, not the English fallback', () => {
     for (const locale of ['zh', 'zh-hant'] as const) {
       const copy = ENGINE_KEPT_BACK_COPY[locale]
-      const text = [copy.title, copy.switchAction, copy.switching, copy.deferred, ...Object.values(copy.detail).map(detail => detail('x'))].join(' ')
+      const text = [copy.title, copy.switchAction, copy.switching, copy.deferred, ...Object.values(copy.detail)].join(' ')
       // The product name is the only Latin word these sentences may carry.
       expect(text.replaceAll('APEX', '')).not.toMatch(/[A-Za-z]{3,}/u)
     }

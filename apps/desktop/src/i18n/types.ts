@@ -135,11 +135,6 @@ export interface Translations {
     tryHint: (term: string) => string
     on: string
     off: string
-    // hc-591: the localized noun used to prefix a humanized engine (runtime)
-    // version for display, e.g. "Engine 2026.7.25" / "引擎 2026.7.25" — see
-    // lib/engine-display.ts::formatEngineDisplayVersion. Kept as a bare word
-    // (no trailing space) so the call site controls the join.
-    engineVersionPrefix: string
   }
 
   fileMenu: {
@@ -763,18 +758,9 @@ export interface Translations {
       hoursAgo: (count: number) => string
       daysAgo: (count: number) => string
       // Engine (runtime) opt-in update — R5/R6 of runtime 3-end consistency.
-      // hc-591: `value` on engineVersion/engineFound/engineConfirmBody/
-      // engineUpdateNeededDetail (and localAgent.engineOutdated below) is now
-      // ALREADY display-formatted by formatEngineDisplayVersion before it
-      // reaches these functions — e.g. "Engine 2026.7.25", not the raw
-      // "v2026.7.25-fork.b0a720a5" pin. Because that formatted value already
-      // carries the localized "engine" noun, these four templates (across all
-      // locales) had their own immediately-adjacent "engine"/"引擎"/"エンジン"
-      // word removed to avoid a doubled-up "Engine version Engine 2026.7.25"
-      // read — see each locale file's value for the exact wording.
+      // hc-1200: no copy shows an engine version (an internal pin whose calver
+      // reads as a date); engineFound/engineConfirmBody have no caller.
       engineSection: string
-      engineVersion: (value: string) => string
-      engineVersionUnavailable: string
       engineCheck: string
       engineChecking: string
       engineUpToDate: string
@@ -794,7 +780,7 @@ export interface Translations {
       // shell's declared minimum (package.json apexnodes.minEngineVersion).
       // Non-blocking — points the user at the opt-in engine update below.
       engineUpdateNeeded: string
-      engineUpdateNeededDetail: (value: string) => string
+      engineUpdateNeededDetail: string
       // hc-543: shown when the bootstrap marker's version disagrees with the
       // source tree actually on disk (a botched .git-less update stamped a new
       // version over unchanged files). The version label is NOT trustworthy;
@@ -1546,7 +1532,7 @@ export interface Translations {
       // hc-532 (gate 1): shown in the daemon block when the installed engine is
       // older than the shell's declared minimum — the daemon's tool leg would
       // silently fail on a stale engine, so surface it explicitly here.
-      engineOutdated: (value: string) => string
+      engineOutdated: string
     }
     // 个性化 — the consumer landing section (人格 picker + SOUL.md + the former
     // About content).
@@ -2630,9 +2616,9 @@ export interface Translations {
       preparingTitle: (version: string) => string
       downloadedPercent: (percent: number) => string
       readyTitle: string
-      appAndEngine: (appVersion: string, engineVersion: string) => string
+      appAndEngine: (appVersion: string) => string
       appOnly: (version: string) => string
-      engineOnly: (version: string) => string
+      engineOnly: string
       installRestart: string
       installing: string
       confirmTitle: string

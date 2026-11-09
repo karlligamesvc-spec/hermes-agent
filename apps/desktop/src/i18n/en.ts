@@ -113,7 +113,6 @@ export const en: Translations = {
     tryHint: term => `Try “${term}”`,
     on: 'On',
     off: 'Off',
-    engineVersionPrefix: 'Engine'
   },
 
   fileMenu: {
@@ -914,8 +913,6 @@ export const en: Translations = {
       engineSection: 'AI engine',
       // hc-591: `value` is already display-formatted ("Engine 2026.7.25") --
       // "Engine" dropped from this label so it doesn't double up.
-      engineVersion: value => `Version: ${value}`,
-      engineVersionUnavailable: 'Engine version unavailable',
       engineCheck: 'Check for engine update',
       engineChecking: 'Checking…',
       engineUpToDate: 'The engine is up to date.',
@@ -933,8 +930,7 @@ export const en: Translations = {
       engineConfirmBodyGeneric: 'This will update the AI engine and restart the app to apply it. Your work is safe.',
       engineConfirmApply: 'Update engine',
       engineUpdateNeeded: 'Engine update needed',
-      engineUpdateNeededDetail: value =>
-        `This app needs ${value} or later. Use "Check for update" below to update the engine.`,
+      engineUpdateNeededDetail: 'This app needs a newer engine. Use "Check for update" below to update it.',
       engineTreeMismatch: 'Engine files out of sync',
       engineTreeMismatchDetail:
         'A previous update recorded a new version but the engine files on disk were not replaced, so the version shown may be wrong. Run the engine update below to re-download the correct files.',
@@ -1755,8 +1751,8 @@ export const en: Translations = {
       signInFirst: 'Sign in to your APEX account first.',
       saved: 'Device name saved.',
       enableFailed: 'Could not save — secure storage is unavailable on this system.',
-      engineOutdated: value =>
-        `The installed engine is too old for local agent dispatch (needs ${value} or later). Update it in Settings › About, otherwise tool calls may silently fail.`
+      engineOutdated:
+        `The installed engine is too old for local agent dispatch (it needs a newer engine). Update it in Settings › About, otherwise tool calls may silently fail.`
     },
     personalization: {
       personalityTitle: 'Personality',
@@ -3206,9 +3202,9 @@ export const en: Translations = {
       preparingTitle: version => (version ? `Preparing APEX ${version}` : 'Preparing an APEX update'),
       downloadedPercent: percent => `${percent}% downloaded`,
       readyTitle: 'APEX update is ready',
-      appAndEngine: (appVersion, engineVersion) => `App ${appVersion} + ${engineVersion}`,
+      appAndEngine: appVersion => `App ${appVersion} + engine update`,
       appOnly: version => `App ${version}`,
-      engineOnly: version => version,
+      engineOnly: 'Engine update',
       installRestart: 'Install and restart',
       installing: 'Preparing update…',
       confirmTitle: 'Install the APEX update?',

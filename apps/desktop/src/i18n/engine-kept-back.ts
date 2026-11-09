@@ -14,8 +14,8 @@ import type { Locale } from './types'
 
 export interface EngineKeptBackCopy {
   title: string
-  /** By why the engine was kept; the argument is the shipped engine's display version. */
-  detail: Record<DesktopEngineKeptBack['reason'], (bundled: string) => string>
+  /** By why the engine was kept. hc-1200: names no engine version (an internal pin whose calver reads as a date). */
+  detail: Record<DesktopEngineKeptBack['reason'], string>
   switchAction: string
   switching: string
   /** The engine is busy, so the switch did not start. */
@@ -25,12 +25,12 @@ export interface EngineKeptBackCopy {
 const en: EngineKeptBackCopy = {
   title: 'The AI engine was not updated',
   detail: {
-    busy: bundled =>
-      `The engine that ships with APEX (${bundled}) isn't in place yet because the current one is still in use. APEX switches by itself once it is free. To see what is using it, click "Use the built-in engine". Your chats and settings stay.`,
-    'newer-or-unknown': bundled =>
-      `APEX ships with ${bundled}, but it can't confirm the engine on this computer is older, so it kept that one in case you installed it yourself. If you didn't change the engine yourself, click "Use the built-in engine" to switch to ${bundled}. Your chats and settings stay.`,
-    'upgrade-failed': bundled =>
-      `The engine that ships with APEX (${bundled}) didn't install, so APEX is still on the previous one. Quit APEX completely and open it again; if that doesn't help, click "Use the built-in engine" to retry. Your chats and settings stay.`
+    busy:
+      `The engine that ships with APEX isn't in place yet because the current one is still in use. APEX switches by itself once it is free. To see what is using it, click "Use the built-in engine". Your chats and settings stay.`,
+    'newer-or-unknown':
+      `APEX can't confirm the engine on this computer is older than the one it ships with, so it kept that one in case you installed it yourself. If you didn't change the engine yourself, click "Use the built-in engine" to switch to the one APEX ships with. Your chats and settings stay.`,
+    'upgrade-failed':
+      `The engine that ships with APEX didn't install, so APEX is still on the previous one. Quit APEX completely and open it again; if that doesn't help, click "Use the built-in engine" to retry. Your chats and settings stay.`
   },
   switchAction: 'Use the built-in engine',
   switching: 'Preparing…',
@@ -40,12 +40,12 @@ const en: EngineKeptBackCopy = {
 const zh: EngineKeptBackCopy = {
   title: 'AI 引擎没有跟着更新',
   detail: {
-    busy: bundled =>
-      `APEX 自带的${bundled}还没换上，因为现在的引擎还被占用着，占用结束后会自动换。想知道是什么在占用，点「换成自带引擎」，对话和设置都会保留。`,
-    'newer-or-unknown': bundled =>
-      `APEX 自带的是${bundled}，但没法确认这台电脑上现在的引擎比它旧，为了不换掉你自己装的引擎，先保留了原来的。如果你没有自己换过引擎，点「换成自带引擎」就能用上${bundled}，对话和设置都会保留。`,
-    'upgrade-failed': bundled =>
-      `APEX 自带的${bundled}没有装上，现在还在用原来的引擎。请完全退出 APEX 后重新打开；还不行就点「换成自带引擎」再试一次，对话和设置都会保留。`
+    busy:
+      'APEX 自带的引擎还没换上，因为现在的引擎还被占用着，占用结束后会自动换。想知道是什么在占用，点「换成自带引擎」，对话和设置都会保留。',
+    'newer-or-unknown':
+      '没法确认这台电脑上现在的引擎比 APEX 自带的旧，为了不换掉你自己装的引擎，先保留了原来的。如果你没有自己换过引擎，点「换成自带引擎」就能用上 APEX 自带的，对话和设置都会保留。',
+    'upgrade-failed':
+      'APEX 自带的引擎没有装上，现在还在用原来的引擎。请完全退出 APEX 后重新打开；还不行就点「换成自带引擎」再试一次，对话和设置都会保留。'
   },
   switchAction: '换成自带引擎',
   switching: '正在准备…',
@@ -55,12 +55,12 @@ const zh: EngineKeptBackCopy = {
 const zhHant: EngineKeptBackCopy = {
   title: 'AI 引擎沒有跟著更新',
   detail: {
-    busy: bundled =>
-      `APEX 自帶的${bundled}還沒換上，因為現在的引擎還被佔用著，佔用結束後會自動換。想知道是什麼在佔用，點「換成自帶引擎」，對話和設定都會保留。`,
-    'newer-or-unknown': bundled =>
-      `APEX 自帶的是${bundled}，但沒法確認這台電腦上現在的引擎比它舊，為了不換掉你自己裝的引擎，先保留了原來的。如果你沒有自己換過引擎，點「換成自帶引擎」就能用上${bundled}，對話和設定都會保留。`,
-    'upgrade-failed': bundled =>
-      `APEX 自帶的${bundled}沒有裝上，現在還在用原來的引擎。請完全退出 APEX 後重新打開；還不行就點「換成自帶引擎」再試一次，對話和設定都會保留。`
+    busy:
+      'APEX 自帶的引擎還沒換上，因為現在的引擎還被佔用著，佔用結束後會自動換。想知道是什麼在佔用，點「換成自帶引擎」，對話和設定都會保留。',
+    'newer-or-unknown':
+      '沒法確認這台電腦上現在的引擎比 APEX 自帶的舊，為了不換掉你自己裝的引擎，先保留了原來的。如果你沒有自己換過引擎，點「換成自帶引擎」就能用上 APEX 自帶的，對話和設定都會保留。',
+    'upgrade-failed':
+      'APEX 自帶的引擎沒有裝上，現在還在用原來的引擎。請完全退出 APEX 後重新打開；還不行就點「換成自帶引擎」再試一次，對話和設定都會保留。'
   },
   switchAction: '換成自帶引擎',
   switching: '正在準備…',
