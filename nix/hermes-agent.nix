@@ -230,6 +230,12 @@ let
       frontends = {
         tui = "${hermesTui}/lib/hermes-tui";
         web = toString hermesWeb;
+      }
+      # ApexNodes hc-1203: upstream's Webapp compiles upstream's Desktop renderer for a browser; the APEX
+      # Desktop baseline has no Webapp recipe (apps/desktop/scripts/build-webapp.mjs) and its renderer does
+      # not build that way, so the agent carries no Webapp until one is ported (the image ships none either,
+      # see Dockerfile). tests/apex_overlay/test_desktop_baseline_ci_gates.py pins the gate.
+      // lib.optionalAttrs (builtins.pathExists ../apps/desktop/scripts/build-webapp.mjs) {
         webapp = toString hermesWebapp;
       };
       ref = if dirty then null else rev;
