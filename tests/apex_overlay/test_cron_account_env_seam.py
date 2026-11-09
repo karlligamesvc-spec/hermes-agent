@@ -7,7 +7,9 @@ searches were fine. Desktop injects the account's credentials into each process'
 a fire's scope is built from the firing profile's files, and under multiplex semantics a miss never
 reaches the process environment. These tests run the real upstream fire path:
 
-  1. Upstream shape: without the seam a multiplexed fire, launch or routed, loses every account name.
+  1. Upstream shape: without the seam a multiplexed fire routed to another assistant loses every
+     account name. (Since v0.23.0 the launch profile's fire reads ``launch_secret_scope``, its own
+     process environment, so it keeps them upstream; hc-1203.)
   2. Every multiplexed fire gets them (the backend or gateway after activation, and a routed fire in
      a process that never activated); a fire in a single-profile process is left byte-identical.
   3. Precedence: the profile's own value wins; a name any ``.env`` loaded, a gate, an empty value
@@ -112,14 +114,24 @@ def fire(home: Path, *names: str):
 # 1. Upstream shape
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("profile", ["launch", "routed"])
-def test_upstream_a_multiplexed_fire_loses_every_account_name(upstream_only, monkeypatch, profile):
-    launch, routed = upstream_only
+def test_upstream_a_multiplexed_fire_for_another_assistant_loses_every_account_name(upstream_only, monkeypatch):
+    _launch, routed = upstream_only
     _multiplexed(monkeypatch)
 
-    values, _scope = fire(launch if profile == "launch" else routed, *ACCOUNT)
+    values, _scope = fire(routed, *ACCOUNT)
 
     assert values == dict.fromkeys(ACCOUNT)
+
+
+def test_upstream_the_launch_profiles_fire_reads_its_own_process_environment(upstream_only, monkeypatch):
+    """v0.23.0 (``owner_secret_scope``): the process's own profile fires under ``launch_secret_scope``, so
+    the account's names and its own IM gates (Desktop injects both for it) are there without the seam."""
+    launch, _routed = upstream_only
+    _multiplexed(monkeypatch)
+
+    values, _scope = fire(launch, *ACCOUNT, *GATES)
+
+    assert values == {**ACCOUNT, **GATES}
 
 
 # ---------------------------------------------------------------------------
@@ -141,18 +153,29 @@ def test_every_multiplexed_fire_gets_the_account_names(installed, monkeypatch, c
     assert {name: values[name] for name in ACCOUNT} == ACCOUNT
     # In the mapping itself: delivery's platform config and the fire's children read that, not get_secret.
     assert {name: scope.get(name) for name in ACCOUNT} == ACCOUNT
-    assert {name: values[name] for name in GATES} == dict.fromkeys(GATES)
+    # Gates: the launch profile's fire carries its own (its process environment, upstream since v0.23.0);
+    # another assistant never gets the account's.
+    assert {name: values[name] for name in GATES} == (GATES if profile == "launch" else dict.fromkeys(GATES))
     logged = "\n".join(record.getMessage() for record in caplog.records)
-    assert "SEARXNG_URL" in logged and not any(value in logged for value in ACCOUNT.values())
+    if profile != "launch":  # upstream's launch scope already holds them: nothing for the seam to add or log
+        assert "SEARXNG_URL" in logged
+    assert not any(value in logged for value in ACCOUNT.values())
 
 
-def test_a_single_profile_fire_is_left_alone(installed):
+def test_a_single_profile_fire_is_left_alone(installed, monkeypatch):
     launch, _routed = installed
 
     values, scope = fire(launch, *ACCOUNT)
 
-    assert values == ACCOUNT  # the process environment answers a miss, as it always did
-    assert not set(scope) & set(ACCOUNT)
+    assert values == ACCOUNT  # the process environment answers, as it always did
+    # The seam adds nothing: the mapping is upstream's own launch scope, byte for byte.
+    from agent import secret_scope
+    from cron import scheduler
+
+    monkeypatch.setattr(secret_scope, "build_profile_secret_scope", _unwrapped(secret_scope.build_profile_secret_scope))
+    monkeypatch.setattr(scheduler, "_install_fire_secret_scope", _unwrapped(scheduler._install_fire_secret_scope))
+    _upstream_values, upstream_scope = fire(launch, *ACCOUNT)
+    assert scope == upstream_scope
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +308,9 @@ def test_run_now_fires_each_profiles_job_with_the_account_names(installed, monke
     assert web_server_cron._fire_cron_job_for_profile(profile, job_id) is True
 
     assert {name: seen[name] for name in ACCOUNT} == ACCOUNT
-    assert {name: seen[name] for name in GATES} == dict.fromkeys(GATES)
+    # The default (launch) profile fires under its own process environment, its own gates included
+    # (upstream since v0.23.0); the account's gates never reach another assistant.
+    assert {name: seen[name] for name in GATES} == (GATES if profile == "default" else dict.fromkeys(GATES))
     assert seen["child"] == ACCOUNT
 
 

@@ -108,13 +108,21 @@ def _im_names(scope) -> set:
 # 1. Upstream shape
 # ---------------------------------------------------------------------------
 
-def test_upstream_two_profiles_configure_neither_app(homes, upstream_only):
+def test_upstream_two_profiles_the_launch_profile_configures_both_apps(homes, upstream_only):
+    """hc-1203: since v0.23.0 upstream builds the launch profile's scope from its own process environment
+    (``tui_gateway.launch_profile_policy.owner_secret_scope`` → ``launch_secret_scope``), so the root
+    profile configures both apps without this seam. (Before, with two profiles neither app was configured,
+    which is what hc-1171 fixed.) The seam stays: the profile's own value still wins, and no other profile
+    gains the apps."""
+    from agent.secret_scope import build_profile_secret_scope
     from gateway.run import load_gateway_config_for_runner
 
+    _root, ops = homes
     cfg = load_gateway_config_for_runner()
 
     assert cfg.multiplex_profiles is True
-    assert _platforms(cfg) == {"feishu": None, "weixin": None}
+    assert _platforms(cfg) == {"feishu": True, "weixin": True}
+    assert _im_names(build_profile_secret_scope(ops)) == set()
 
 
 # ---------------------------------------------------------------------------

@@ -15,10 +15,15 @@ from pathlib import Path
 import pytest
 
 from apex_overlay import cron_update_notice
-from cron.scheduler_delivery import _HOME_TARGET_ENV_VARS, _LEGACY_HOME_TARGET_ENV_VARS
+from cron.scheduler_delivery import _HOME_TARGET_PRIORITY, _LEGACY_HOME_TARGET_ENV_VARS, _resolve_home_env_var
 from tools import cronjob_tools
 
 NOTICE = "This is a local-only cron job"
+
+
+def _home_target_env_vars() -> list[str]:
+    """Every home-channel env var cron reads (v0.23.0: each platform plugin declares its own)."""
+    return [name for name in map(_resolve_home_env_var, _HOME_TARGET_PRIORITY) if name]
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -29,7 +34,7 @@ def desktop_chat(tmp_path, monkeypatch):
     monkeypatch.setattr("cron.jobs.JOBS_FILE", tmp_path / "cron" / "jobs.json")
     monkeypatch.setattr("cron.jobs.OUTPUT_DIR", tmp_path / "cron" / "output")
     for name in ("HERMES_SESSION_PLATFORM", "HERMES_SESSION_CHAT_ID", "HERMES_SESSION_THREAD_ID",
-                 "HERMES_SESSION_CHAT_NAME", *_HOME_TARGET_ENV_VARS.values(), *_LEGACY_HOME_TARGET_ENV_VARS.values()):
+                 "HERMES_SESSION_CHAT_NAME", *_home_target_env_vars(), *_LEGACY_HOME_TARGET_ENV_VARS.values()):
         monkeypatch.delenv(name, raising=False)
     # Undone after the test: the original action goes back into the table and the module.
     monkeypatch.setitem(cronjob_tools._JOB_ACTIONS, "update", cronjob_tools._JOB_ACTIONS["update"])
@@ -92,7 +97,7 @@ def test_an_update_that_leaves_delivery_alone_is_unchanged():
 def test_a_bound_im_home_channel_is_a_real_target(monkeypatch, platform, chat_id):
     """APEX bound to Feishu or WeChat: deliver=origin falls back to that home channel, so nothing to warn about."""
     job_id = _local_job()
-    monkeypatch.setenv(_HOME_TARGET_ENV_VARS[platform], chat_id)
+    monkeypatch.setenv(_resolve_home_env_var(platform), chat_id)
     updated = _call(action="update", job_id=job_id, deliver="origin")
     assert updated["success"] is True
     assert "message" not in updated
