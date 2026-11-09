@@ -1,0 +1,96 @@
+{
+  "nothing saved": {
+    "fields": [
+      "tts.provider",
+      "tts.edge.voice"
+    ],
+    "options": [
+      "Edge",
+      "Elevenlabs",
+      "Openai",
+      "Xai",
+      "Minimax",
+      "Mistral",
+      "Gemini",
+      "Neutts",
+      "Kittentts",
+      "Piper"
+    ],
+    "shown": "Edge"
+  },
+  "saved edge": {
+    "fields": [
+      "tts.provider",
+      "tts.edge.voice"
+    ],
+    "options": [
+      "Edge",
+      "Elevenlabs",
+      "Openai",
+      "Xai",
+      "Minimax",
+      "Mistral",
+      "Gemini",
+      "Neutts",
+      "Kittentts",
+      "Piper"
+    ],
+    "shown": "Edge"
+  },
+  "saved openai": {
+    "fields": [
+      "tts.provider",
+      "tts.openai.voice"
+    ],
+    "options": [
+      "Edge",
+      "Elevenlabs",
+      "Openai",
+      "Xai",
+      "Minimax",
+      "Mistral",
+      "Gemini",
+      "Neutts",
+      "Kittentts",
+      "Piper"
+    ],
+    "shown": "Openai"
+  },
+  "saved empty": {
+    "fields": [
+      "tts.provider"
+    ],
+    "options": [
+      "Edge",
+      "Elevenlabs",
+      "Openai",
+      "Xai",
+      "Minimax",
+      "Mistral",
+      "Gemini",
+      "Neutts",
+      "Kittentts",
+      "Piper"
+    ],
+    "shown": ""
+  },
+  "saved doubao": {
+    "fields": [
+      "tts.provider"
+    ],
+    "options": [
+      "Edge",
+      "Elevenlabs",
+      "Openai",
+      "Xai",
+      "Minimax",
+      "Mistral",
+      "Gemini",
+      "Neutts",
+      "Kittentts",
+      "Piper",
+      "Doubao"
+    ],
+    "shown": "Doubao"
+  }
+}
