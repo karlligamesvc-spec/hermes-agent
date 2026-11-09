@@ -38,6 +38,7 @@ import {
 import { canOpenBrowserWindow } from '@/store/windows'
 
 import { paneMirror } from './pane-mirror'
+import { PREVIEW_TILE_PREFIX, previewPaneId } from './preview-tile-ids'
 import { PreviewTilePane } from './right-rail/preview'
 import { forgetPreviewConsole } from './right-rail/preview-console-store'
 
@@ -197,10 +198,6 @@ function PreviewTabLead({ tabId }: { tabId: string }) {
 
   return <FileTypeIcon className="opacity-70" path={target.path || target.url} size="0.6875rem" />
 }
-
-const PREVIEW_TILE_PREFIX = 'preview-tile'
-
-const previewPaneId = (tabId: string) => `${PREVIEW_TILE_PREFIX}:${tabId}`
 
 /** The pane a NEW preview tile should stack into: another preview tile already
  *  in the tree, else another open tab adopted earlier in the same pass (a

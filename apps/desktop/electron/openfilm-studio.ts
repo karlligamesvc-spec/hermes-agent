@@ -50,6 +50,8 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { delimiter, isAbsolute, join } from 'node:path'
 
+import { desktopClient, desktopClientEnv, desktopClientHeaders } from './apex-desktop-client'
+
 /** Where the account's answer is: the Scheduler's tools check (apex-nodes `openfilm_access.open_to`). */
 export const OPENFILM_CHECK_PATH = '/tools/v1/check'
 /** An answer is kept this long; a different account (or key) asks afresh. */
@@ -205,15 +207,19 @@ export interface ApexAccount {
 
 /**
  * `openfilm.enabled` on the Scheduler's tools check, asked with the account's
- * APEX key: true or false as it says, null when it could not be read.
+ * APEX key and this Desktop's version and platform (hc-1201,
+ * apex-desktop-client.ts: the editor opened to a whole plan reaches only a
+ * build that says it is new enough): true or false as it says, null when it
+ * could not be read.
  */
 export async function readOpenfilmAccess(
   account: { apiBase: string; key: string },
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  client: Record<string, string> = {}
 ): Promise<boolean | null> {
   try {
     const response = await fetchImpl(`${account.apiBase.replace(/\/+$/, '')}${OPENFILM_CHECK_PATH}`, {
-      headers: { authorization: `Bearer ${account.key}` },
+      headers: { ...client, authorization: `Bearer ${account.key}` },
       signal: AbortSignal.timeout(ACCESS_TIMEOUT_MS)
     })
 
@@ -493,6 +499,131 @@ export function redactStudioKey(text: string): string {
   return text.replace(/([?&]key=)[^&\s"]+/g, '$1…')
 }
 
+/** How the engine's install says how far it is, one line each on stdout (hc-1201, apex_overlay/media_tools.py). */
+export const INSTALL_PROGRESS_MARK = '@@apex-progress '
+/** The install's environment asks for those lines; an older engine ignores it and installs as before. */
+export const INSTALL_PROGRESS_ENV = 'APEX_MEDIA_TOOLS_PROGRESS'
+/** The engine's look at what the editor still needs (hc-1201): one line of JSON, reading only. */
+const CHECK_ARGS = ['-m', 'apex_overlay.media_tools', 'openfilm-check']
+const CHECK_TIMEOUT_MS = 30_000
+/** In Studio's data folder: the project last opened in the editor, for the titlebar's 剪辑 (hc-1201). */
+export const LAST_PROJECT_FILE = 'apex-last-project.json'
+
+/** The download an install is on: the browser Studio draws in, or the toolkit; bytes so far and in all. */
+export interface OpenfilmInstallProgress {
+  done: number
+  step: 'browser' | 'toolkit'
+  total: number
+}
+
+/** One progress line read, or null for any other line. Pure. */
+export function parseInstallProgress(line: string): null | OpenfilmInstallProgress {
+  if (!line.startsWith(INSTALL_PROGRESS_MARK)) {
+    return null
+  }
+
+  let said: { done?: unknown; step?: unknown; total?: unknown } | null = null
+
+  try {
+    said = JSON.parse(line.slice(INSTALL_PROGRESS_MARK.length))
+  } catch {
+    return null
+  }
+
+  const step = said?.step
+  const done = Number(said?.done)
+  const total = Number(said?.total)
+
+  if ((step !== 'browser' && step !== 'toolkit') || !Number.isFinite(done) || !(total > 0) || done < 0) {
+    return null
+  }
+
+  return { step, done: Math.min(done, total), total }
+}
+
+/**
+ * What an install prints, read line by line from its stdout and stderr: the
+ * latest progress, and the last other line, which says why when it fails.
+ * Progress lines are kept apart, so they never push that reason out.
+ */
+export function installOutput(): {
+  /** A reader for one stream; each keeps its own unfinished line. */
+  reader: () => (chunk: string) => void
+  /** Reads what each stream left without a newline: the process has ended. */
+  flush: () => void
+  lastLine: () => string
+  progress: () => null | OpenfilmInstallProgress
+} {
+  const partials: string[] = []
+  let last = ''
+  let progress: null | OpenfilmInstallProgress = null
+
+  const read = (line: string) => {
+    const step = parseInstallProgress(line)
+
+    if (step) {
+      progress = step
+    } else if (line.trim()) {
+      last = line.trim()
+    }
+  }
+
+  return {
+    reader: () => {
+      const slot = partials.push('') - 1
+
+      return chunk => {
+        const lines = (partials[slot] + chunk).split(/\r?\n/)
+        partials[slot] = lines.pop() ?? ''
+        lines.forEach(read)
+      }
+    },
+    flush: () => {
+      partials.forEach(read)
+      partials.fill('')
+    },
+    lastLine: () => last,
+    progress: () => progress
+  }
+}
+
+/** The engine's own look at what the editor still needs on this computer (hc-1201, `media_tools openfilm-check`). */
+export interface OpenfilmStudioCheck {
+  /** The browser Studio draws in: there already, and its download's size. */
+  browser: { bytes: number; ready: boolean }
+  /** Free space where APEX keeps its data, and what installing the missing parts takes. */
+  disk: { free: number; needed: number }
+  /** The toolkit this engine pins: installed and named by ready.json, and its download's size. */
+  toolkit: { bytes: number; ready: boolean }
+}
+
+/** The check's one-line JSON answer, or null for anything else (an older engine has no such command). Pure. */
+export function parseOpenfilmCheck(text: string): null | OpenfilmStudioCheck {
+  let said: any = null
+
+  try {
+    said = JSON.parse(text.trim().split(/\r?\n/).pop() ?? '')
+  } catch {
+    return null
+  }
+
+  const part = (value: any) =>
+    value && typeof value.ready === 'boolean' && Number.isFinite(value.bytes) && value.bytes >= 0
+      ? { ready: value.ready, bytes: value.bytes }
+      : null
+
+  const browser = part(said?.browser)
+  const toolkit = part(said?.toolkit)
+  const free = Number(said?.disk?.free)
+  const needed = Number(said?.disk?.needed)
+
+  if (!browser || !toolkit || !Number.isFinite(free) || !Number.isFinite(needed)) {
+    return null
+  }
+
+  return { browser, toolkit, disk: { free, needed } }
+}
+
 interface RunningStudio {
   key: string
   origin: string
@@ -538,12 +669,30 @@ export interface OpenfilmStudioStatus {
   ready: boolean
 }
 
+/** The background install as the editor's first-run check shows it (hc-1201). */
+export interface OpenfilmInstallState {
+  /** The last install failed, and the next waits RETRY_AFTER_MS unless the person asks again. */
+  failed: boolean
+  /** How far the running install is, as the engine last said; null before it says, or when none runs. */
+  progress: null | OpenfilmInstallProgress
+}
+
 export interface OpenfilmStudio {
+  /** The engine's look at what the editor still needs here; null when it could not say (hc-1201). */
+  check: () => Promise<null | OpenfilmStudioCheck>
+  /** The project last opened in the editor, while it still holds film.html; null otherwise (hc-1201). */
+  lastProject: () => null | string
   /** The Studio address that opens `folder` (a project: it holds film.html), Studio started first if needed. */
   open: (folder: unknown) => Promise<OpenfilmStudioOpen>
   plan: OpenfilmStudioPlan
-  /** Have the engine install the toolkit in the background, unless it is there, on its way, or just failed. */
-  prefetch: () => Promise<'off' | 'preparing' | 'ready' | 'started' | 'waiting'>
+  /**
+   * Have the engine install the toolkit in the background, unless it is there or
+   * on its way, or just failed; asked for by the person (`manual`), a failure
+   * does not make it wait (hc-1201).
+   */
+  prefetch: (manual?: boolean) => Promise<'off' | 'preparing' | 'ready' | 'started' | 'waiting'>
+  /** The background install: how far it is, and whether the last one failed (hc-1201). */
+  progress: () => OpenfilmInstallState
   status: () => Promise<OpenfilmStudioStatus>
   /** App quit: Studio stops (it also does when main's pipe closes), and so does any other in APEX's folders. */
   stop: () => void
@@ -591,7 +740,7 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
     }
 
     if (asking?.slot !== slot) {
-      const answer = readOpenfilmAccess({ apiBase, key }, fetchImpl).then(said => {
+      const answer = readOpenfilmAccess({ apiBase, key }, fetchImpl, desktopClientHeaders(deps.env)).then(said => {
         const open = said ?? (access?.slot === slot ? access.open : false)
 
         if (access?.slot !== slot || access.open !== open) {
@@ -614,7 +763,7 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
     return asking.answer
   }
 
-  async function prefetch(): ReturnType<OpenfilmStudio['prefetch']> {
+  async function prefetch(manual = false): ReturnType<OpenfilmStudio['prefetch']> {
     if (!(await allowed())) {
       return 'off'
     }
@@ -627,7 +776,7 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
       return 'preparing'
     }
 
-    if (failedAt !== null && now() - failedAt < RETRY_AFTER_MS) {
+    if (!manual && failedAt !== null && now() - failedAt < RETRY_AFTER_MS) {
       return 'waiting'
     }
 
@@ -640,6 +789,9 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
 
     return 'started'
   }
+
+  /** What the latest install printed (hc-1201): its progress, read while `installing` is set. */
+  let installSaid: null | ReturnType<typeof installOutput> = null
 
   /** The engine installs the toolkit and the browser it draws in, then writes ready.json; true once it has. */
   async function install(): Promise<boolean> {
@@ -658,9 +810,11 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
     log('[openfilm-studio] installing the toolkit in the background')
 
     return new Promise<boolean>(resolve => {
-      let said = ''
+      const said = installOutput()
       let timer: ReturnType<typeof setTimeout> | undefined
       let proc: ChildProcess
+
+      installSaid = said
 
       const done = (ok: boolean, why: string) => {
         clearTimeout(timer)
@@ -671,8 +825,9 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
       try {
         proc = spawn(engine.command, INSTALL_ARGS, {
           cwd: engine.cwd,
-          // As the engine runs: main's environment, APEX's data folder, the engine's own variables.
-          env: { ...deps.env, HERMES_HOME: deps.hermesHome, ...engine.env },
+          // As the engine runs: main's environment, APEX's data folder, the engine's own variables; and its
+          // progress lines asked for (hc-1201), which the editor's first-run check shows.
+          env: { ...deps.env, HERMES_HOME: deps.hermesHome, ...engine.env, [INSTALL_PROGRESS_ENV]: '1' },
           stdio: ['ignore', 'pipe', 'pipe'],
           windowsHide: true
         })
@@ -684,16 +839,14 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
 
       for (const stream of [proc.stdout, proc.stderr]) {
         stream?.setEncoding('utf8')
-        stream?.on('data', (chunk: string) => {
-          said = (said + chunk).slice(-2000)
-        })
+        stream?.on('data', said.reader())
       }
 
       timer = setTimeout(() => proc.kill(), INSTALL_TIMEOUT_MS)
       proc.once('error', error => done(false, error.message))
       proc.once('exit', (code, signal) => {
-        const last = said.trim().split(/\r?\n/).pop() ?? ''
-        done(code === 0 && toolkitNow() !== null, last || `exit ${signal ?? code}`)
+        said.flush()
+        done(code === 0 && toolkitNow() !== null, said.lastLine() || `exit ${signal ?? code}`)
       })
     })
   }
@@ -918,6 +1071,8 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
         return { ok: false, code: 'open_failed', message: String(said?.error ?? `Studio answered ${response.status}`) }
       }
 
+      rememberProject(folder)
+
       return { ok: true, url: said.url }
     } catch (error) {
       return { ok: false, code: 'open_failed', message: error instanceof Error ? error.message : String(error) }
@@ -966,24 +1121,116 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
     return { on, ready: on && toolkitNow() !== null, preparing: on && installing !== null }
   }
 
-  return { open, plan, prefetch, status, stop }
+  const progress = (): OpenfilmInstallState => ({
+    failed: installing === null && failedAt !== null,
+    progress: installing !== null ? (installSaid?.progress() ?? null) : null
+  })
+
+  /** Where the project last opened in the editor is noted (hc-1201): APEX's own folder for the editor. */
+  const lastProjectFile = join(plan.dataRoot, LAST_PROJECT_FILE)
+
+  function rememberProject(folder: string): void {
+    try {
+      mkdirSync(plan.dataRoot, { recursive: true })
+      writeFileSync(lastProjectFile, `${JSON.stringify({ folder })}\n`)
+    } catch (error) {
+      log(`[openfilm-studio] could not note the project opened: ${error instanceof Error ? error.message : error}`)
+    }
+  }
+
+  function lastProject(): null | string {
+    let folder: unknown = null
+
+    try {
+      folder = JSON.parse(readFileSync(lastProjectFile, 'utf8'))?.folder
+    } catch {
+      return null
+    }
+
+    return typeof folder === 'string' && isAbsolute(folder) && exists(join(folder, FILM_FILE)) ? folder : null
+  }
+
+  /** The engine's `openfilm-check`, run as an install is: what the editor still needs on this computer. */
+  async function check(): Promise<null | OpenfilmStudioCheck> {
+    if (!(await allowed())) {
+      return null
+    }
+
+    let engine: EnginePython | null = null
+
+    try {
+      engine = (await deps.enginePython?.()) ?? null
+    } catch {
+      engine = null
+    }
+
+    const python = engine
+
+    if (!python) {
+      return null
+    }
+
+    return new Promise(resolve => {
+      let out = ''
+      let proc: ChildProcess
+
+      try {
+        proc = spawn(python.command, CHECK_ARGS, {
+          cwd: python.cwd,
+          env: { ...deps.env, HERMES_HOME: deps.hermesHome, ...python.env },
+          stdio: ['ignore', 'pipe', 'ignore'],
+          windowsHide: true
+        })
+      } catch {
+        resolve(null)
+
+        return
+      }
+
+      const timer = setTimeout(() => proc.kill(), CHECK_TIMEOUT_MS)
+
+      proc.stdout?.setEncoding('utf8')
+      proc.stdout?.on('data', (chunk: string) => {
+        out = (out + chunk).slice(-4000)
+      })
+      proc.once('error', () => {
+        clearTimeout(timer)
+        resolve(null)
+      })
+      proc.once('exit', code => {
+        clearTimeout(timer)
+        resolve(code === 0 ? parseOpenfilmCheck(out) : null)
+      })
+    })
+  }
+
+  return { check, lastProject, open, plan, prefetch, progress, status, stop }
 }
 
 /**
  * Main's side: the window asks for the status, a Studio address, a background
- * install; quitting stops Studio. Main's environment (`env`, which every engine
- * started after this inherits) gets `openfilmAgentEnv`.
+ * install (and, for the titlebar's 剪辑, hc-1201: the engine's check, the
+ * install's progress and the last project); quitting stops Studio. Main's
+ * environment (`env`, which every engine started after this inherits) gets
+ * `openfilmAgentEnv`, and which Desktop this is (apex-desktop-client.ts), so
+ * the engine's editor check says what main's own does.
  */
 export function registerOpenfilmStudio(
   studio: OpenfilmStudio,
   ipcMain: { handle(channel: string, listener: (event: any, ...args: any[]) => unknown): void },
-  app: { on(event: 'will-quit', listener: () => void): unknown },
+  app: { getVersion?: () => string; on(event: 'will-quit', listener: () => void): unknown },
   env: Record<string, string | undefined> = process.env
 ): void {
-  Object.assign(env, openfilmAgentEnv(studio.plan))
+  const client =
+    typeof app.getVersion === 'function' ? desktopClientEnv(desktopClient(app as { getVersion: () => string })) : {}
+
+  Object.assign(env, openfilmAgentEnv(studio.plan), client)
 
   ipcMain.handle('hermes:openfilmStudio:status', () => studio.status())
   ipcMain.handle('hermes:openfilmStudio:open', (_event, folder) => studio.open(folder))
-  ipcMain.handle('hermes:openfilmStudio:prefetch', () => studio.prefetch())
+  ipcMain.handle('hermes:openfilmStudio:prefetch', (_event, manual) => studio.prefetch(manual === true))
+  ipcMain.handle('hermes:openfilmStudio:progress', () => studio.progress())
+  ipcMain.handle('hermes:openfilmStudio:check', () => studio.check())
+  ipcMain.handle('hermes:openfilmStudio:lastProject', () => studio.lastProject())
   app.on('will-quit', () => studio.stop())
 }
