@@ -229,7 +229,7 @@ def openfilm_check() -> dict:
     lock = json.loads(LOCK.read_text(encoding='utf-8-sig'))
     target = native_target()
     browser = lock['browser'][f'render-{target}' if os.name == 'nt' else target]
-    toolkit = lock['openfilm']
+    toolkit = openfilm_pin()
     home = Path(get_hermes_home())
     browser_ready = (home / 'tool-cache' / 'chrome' / browser['sha256'] / browser['executable']).is_file()
     try:

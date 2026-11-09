@@ -16,18 +16,25 @@ import { delimiter, join, resolve } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import { desktopPlatform } from './apex-desktop-client'
 import {
   APEX_EDITOR_DIR,
   type ApexAccount,
   createOpenfilmStudio,
   ENGINE_TOOLKIT_LOCK,
   findOpenfilmToolkit,
+  INSTALL_PROGRESS_ENV,
+  INSTALL_PROGRESS_MARK,
   installedOpenfilmToolkit,
+  installOutput,
+  LAST_PROJECT_FILE,
   OPENFILM_FFMPEG_DIR_ENV,
   OPENFILM_OFFLINE_URL,
   OPENFILM_TOOLKIT_ENV,
   openfilmAgentEnv,
   openfilmEngineRoot,
+  parseInstallProgress,
+  parseOpenfilmCheck,
   pinnedOpenfilmToolkit,
   planOpenfilmStudio,
   readAdvertisedStudio,
@@ -1305,8 +1312,11 @@ describe('main’s wiring', () => {
     )
 
     assert.deepEqual([...handlers.keys()].sort(), [
+      'hermes:openfilmStudio:check',
+      'hermes:openfilmStudio:lastProject',
       'hermes:openfilmStudio:open',
       'hermes:openfilmStudio:prefetch',
+      'hermes:openfilmStudio:progress',
       'hermes:openfilmStudio:status'
     ])
     handlers.get('hermes:openfilmStudio:open')?.({}, '/work/cook')
@@ -1399,5 +1409,266 @@ describe('main’s wiring', () => {
       OPENFILM_NO_BROWSER: '1',
       OPENFILM_NO_UPDATE_CHECK: '1'
     })
+  })
+})
+
+describe('the titlebar’s 剪辑 (hc-1201)', () => {
+  /** The engine's two runs main makes for the switch: the install (it prints what the test feeds it) and the check. */
+  function fakeEngine() {
+    const runs: Array<{ args: string[]; env: Record<string, string | undefined>; proc: any }> = []
+
+    const spawn = vi.fn((command: string, args: string[], options: any) => {
+      if (command !== 'engine-python') {
+        return nodeSpawn(command, args, options)
+      }
+
+      const proc: any = new EventEmitter()
+      proc.stdout = new EventEmitter()
+      proc.stderr = new EventEmitter()
+      proc.stdout.setEncoding = () => proc.stdout
+      proc.stderr.setEncoding = () => proc.stderr
+      proc.kill = vi.fn()
+      runs.push({ args, env: options.env, proc })
+
+      return proc
+    })
+
+    return { runs, spawn }
+  }
+
+  /** The Scheduler's tools check that notes which Desktop asked (the x-apex-desktop-* headers it got). */
+  function noting(open = true) {
+    const asked: Array<Record<string, string>> = []
+
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!String(input).startsWith('https://scheduler.test')) {
+        return fetch(input, init)
+      }
+
+      asked.push(Object.fromEntries([...new Headers(init?.headers).entries()]))
+
+      return new Response(JSON.stringify({ ok: true, openfilm: { enabled: open } }), { status: 200 })
+    }) as typeof fetch
+
+    return { asked, fetchImpl }
+  }
+
+  function studioWith(
+    engine: ReturnType<typeof fakeEngine>,
+    { env = {}, fetchImpl = scheduler(true), clock = { now: 1_000 } }: Partial<{
+      clock: { now: number }
+      env: Record<string, string>
+      fetchImpl: typeof fetch
+    }> = {}
+  ) {
+    const cwd = engineRoot()
+    const lines: string[] = []
+
+    const studio = createOpenfilmStudio({
+      env: { HOME: process.env.HOME, TMPDIR: process.env.TMPDIR, ...env },
+      account: () => ACCOUNT,
+      fetchImpl,
+      hermesHome: root,
+      execPath: process.execPath,
+      basePath: () => process.env.PATH ?? '',
+      enginePython: vi.fn(async () => ({ command: 'engine-python', cwd, env: {} })),
+      engineRoot: () => cwd,
+      spawn: engine.spawn as never,
+      now: () => clock.now,
+      log: line => lines.push(line),
+      readyTimeoutMs: 20_000
+    })
+
+    return { clock, lines, studio }
+  }
+
+  const progressLine = (step: string, done: number, total: number) =>
+    `${INSTALL_PROGRESS_MARK}${JSON.stringify({ step, done, total })}\n`
+
+  test('main says which Desktop asks, from its own environment; an older environment says nothing', async () => {
+    const said = noting()
+    const env = { APEX_DESKTOP_VERSION: '0.17.77', APEX_DESKTOP_PLATFORM: 'mac-arm64' }
+
+    await studioWith(fakeEngine(), { env, fetchImpl: said.fetchImpl }).studio.status()
+    const silent = noting()
+    await studioWith(fakeEngine(), { fetchImpl: silent.fetchImpl }).studio.status()
+
+    assert.equal(said.asked[0]['x-apex-desktop-version'], '0.17.77')
+    assert.equal(said.asked[0]['x-apex-desktop-platform'], 'mac-arm64')
+    assert.equal(said.asked[0].authorization, 'Bearer apex-key-for-test')
+    assert.deepEqual(
+      Object.keys(silent.asked[0]).filter(name => name.startsWith('x-apex-desktop-')),
+      []
+    )
+  })
+
+  test('a caller’s header never replaces the account’s key', async () => {
+    const said = noting()
+
+    await readOpenfilmAccess({ apiBase: 'https://scheduler.test', key: 'k' }, said.fetchImpl, {
+      authorization: 'Bearer someone-else',
+      'X-Apex-Desktop-Version': '0.17.77'
+    })
+
+    assert.equal(said.asked[0].authorization, 'Bearer k')
+    assert.equal(said.asked[0]['x-apex-desktop-version'], '0.17.77')
+  })
+
+  test('the install is asked for its progress, which main keeps apart from the reason it gives', async () => {
+    const engine = fakeEngine()
+    const { lines, studio } = studioWith(engine)
+
+    assert.deepEqual(studio.progress(), { failed: false, progress: null })
+    assert.equal(await studio.prefetch(), 'started')
+    await vi.waitFor(() => assert.equal(engine.runs.length, 1))
+    const [{ args, env, proc }] = engine.runs
+
+    assert.deepEqual(args, ['-m', 'apex_overlay.media_tools', 'openfilm'])
+    assert.equal(env[INSTALL_PROGRESS_ENV], '1')
+    // A line split across chunks is read whole.
+    const line = progressLine('browser', 50, 200)
+    proc.stdout.emit('data', line.slice(0, 20))
+    assert.deepEqual(studio.progress(), { failed: false, progress: null })
+    proc.stdout.emit('data', line.slice(20))
+    assert.deepEqual(studio.progress(), { failed: false, progress: { step: 'browser', done: 50, total: 200 } })
+    proc.stdout.emit('data', progressLine('toolkit', 41, 42))
+    assert.deepEqual(studio.progress().progress, { step: 'toolkit', done: 41, total: 42 })
+
+    proc.stderr.emit('data', 'APEX OpenFilm toolkit unavailable: URLError: offline\n')
+    proc.stdout.emit('data', progressLine('toolkit', 42, 42))
+    proc.emit('exit', 1, null)
+    await vi.waitFor(async () => assert.equal((await studio.status()).preparing, false))
+
+    assert.deepEqual(studio.progress(), { failed: true, progress: null })
+    expect(lines).toContain(
+      '[openfilm-studio] toolkit not installed: APEX OpenFilm toolkit unavailable: URLError: offline'
+    )
+    // A trigger waits after a failure; the person asking does not.
+    assert.equal(await studio.prefetch(), 'waiting')
+    assert.equal(await studio.prefetch(true), 'started')
+    await vi.waitFor(() => assert.equal(engine.runs.length, 2))
+    assert.deepEqual(studio.progress(), { failed: false, progress: null })
+
+    installToolkit()
+    engine.runs[1].proc.emit('exit', 0, null)
+    await vi.waitFor(async () => assert.equal((await studio.status()).ready, true))
+    assert.deepEqual(studio.progress(), { failed: false, progress: null })
+  })
+
+  test('the first-run check is the engine’s, read only from what it says', async () => {
+    const engine = fakeEngine()
+    const { studio } = studioWith(engine)
+    const answer = { browser: { ready: true, bytes: 190 }, toolkit: { ready: false, bytes: 42 }, disk: { free: 9e9, needed: 126 } }
+
+    const asked = studio.check()
+    await vi.waitFor(() => assert.equal(engine.runs.length, 1))
+    assert.deepEqual(engine.runs[0].args, ['-m', 'apex_overlay.media_tools', 'openfilm-check'])
+    engine.runs[0].proc.stdout.emit('data', `${JSON.stringify(answer)}\n`)
+    engine.runs[0].proc.emit('exit', 0, null)
+    assert.deepEqual(await asked, answer)
+
+    const failing = studio.check()
+    await vi.waitFor(() => assert.equal(engine.runs.length, 2))
+    engine.runs[1].proc.stdout.emit('data', `${JSON.stringify(answer)}\n`)
+    engine.runs[1].proc.emit('exit', 2, null)
+    assert.equal(await failing, null, 'an engine without the command exits 2')
+  })
+
+  test('no check for an account the editor is not open to: the engine is not even run', async () => {
+    const engine = fakeEngine()
+    const { studio } = studioWith(engine, { fetchImpl: scheduler(false) })
+
+    assert.equal(await studio.check(), null)
+    expect(engine.spawn).not.toHaveBeenCalled()
+  })
+
+  test('the project last opened is kept, and forgotten once it holds no film.html', async () => {
+    installToolkit()
+    const { studio } = studioWith(fakeEngine())
+    const cook = filmProject('cook')
+
+    assert.equal(studio.lastProject(), null)
+    assert.equal((await studio.open(cook)).ok, true)
+    assert.equal(studio.lastProject(), cook)
+    assert.deepEqual(JSON.parse(readFileSync(join(root, 'openfilm', LAST_PROJECT_FILE), 'utf8')), { folder: cook })
+
+    rmSync(join(cook, 'film.html'))
+    assert.equal(studio.lastProject(), null)
+    writeFileSync(join(root, 'openfilm', LAST_PROJECT_FILE), 'not json')
+    assert.equal(studio.lastProject(), null)
+    studio.stop()
+    await vi.waitFor(() => expect(marks().some(mark => mark.closed)).toBe(true), { timeout: 10_000 })
+  })
+
+  test.each<[string, string, null | { done: number; step: string; total: number }]>([
+    ['a download line', `${INSTALL_PROGRESS_MARK}{"step":"toolkit","done":1,"total":2}`, { step: 'toolkit', done: 1, total: 2 }],
+    ['more than all is all', `${INSTALL_PROGRESS_MARK}{"step":"browser","done":9,"total":2}`, { step: 'browser', done: 2, total: 2 }],
+    ['an unknown step', `${INSTALL_PROGRESS_MARK}{"step":"music","done":1,"total":2}`, null],
+    ['no total', `${INSTALL_PROGRESS_MARK}{"step":"toolkit","done":1,"total":0}`, null],
+    ['not JSON', `${INSTALL_PROGRESS_MARK}{`, null],
+    ['any other line', 'APEX OpenFilm toolkit unavailable', null]
+  ])('reading a progress line: %s', (_label, line, expected) => {
+    assert.deepEqual(parseInstallProgress(line), expected)
+  })
+
+  test.each<[string, string, boolean]>([
+    ['the engine’s answer', '{"browser":{"ready":true,"bytes":1},"toolkit":{"ready":false,"bytes":2},"disk":{"free":3,"needed":4}}', true],
+    ['its last line, after anything else', 'warning\n{"browser":{"ready":true,"bytes":1},"toolkit":{"ready":true,"bytes":2},"disk":{"free":3,"needed":0}}', true],
+    ['a part without its size', '{"browser":{"ready":true},"toolkit":{"ready":false,"bytes":2},"disk":{"free":3,"needed":4}}', false],
+    ['no disk', '{"browser":{"ready":true,"bytes":1},"toolkit":{"ready":false,"bytes":2}}', false],
+    ['usage text of an engine without the command', 'usage: media_tools.py [-h]', false]
+  ])('reading the check: %s', (_label, text, readable) => {
+    assert.equal(parseOpenfilmCheck(text) !== null, readable)
+  })
+
+  test('what an install prints: the last other line is the reason, even one with no newline yet', () => {
+    const said = installOutput()
+    const stdout = said.reader()
+    const stderr = said.reader()
+
+    stdout(progressLine('browser', 1, 2))
+    stderr('first problem\nAPEX OpenFilm toolkit unavailable: Time')
+    stdout(progressLine('browser', 2, 2))
+    stderr('outError: slow')
+    said.flush()
+
+    assert.equal(said.lastLine(), 'APEX OpenFilm toolkit unavailable: TimeoutError: slow')
+    assert.deepEqual(said.progress(), { step: 'browser', done: 2, total: 2 })
+  })
+
+  test('registering puts which Desktop this is in main’s environment, and wires the switch’s three asks', async () => {
+    const handlers = new Map<string, (event: unknown, ...args: any[]) => unknown>()
+    const env: Record<string, string | undefined> = {}
+
+    const studio = {
+      check: vi.fn(() => 'checked'),
+      lastProject: vi.fn(() => '/work/cook'),
+      open: vi.fn(),
+      prefetch: vi.fn((manual?: boolean) => (manual ? 'started' : 'waiting')),
+      progress: vi.fn(() => ({ failed: false, progress: null })),
+      status: vi.fn(),
+      stop: vi.fn(),
+      plan: onPlan({})
+    }
+
+    registerOpenfilmStudio(
+      studio as never,
+      { handle: (channel, listener) => handlers.set(channel, listener) },
+      { getVersion: () => '0.17.77', on: () => undefined },
+      env
+    )
+
+    assert.equal(env.APEX_DESKTOP_VERSION, '0.17.77')
+    assert.equal(env.APEX_DESKTOP_PLATFORM, desktopPlatform(process.platform, process.arch))
+    assert.equal(handlers.get('hermes:openfilmStudio:prefetch')?.({}, true), 'started')
+    // Only a real `true` from the window counts as the person asking.
+    assert.equal(handlers.get('hermes:openfilmStudio:prefetch')?.({}, 'true'), 'waiting')
+    assert.equal(handlers.get('hermes:openfilmStudio:check')?.({}), 'checked')
+    assert.equal(handlers.get('hermes:openfilmStudio:lastProject')?.({}), '/work/cook')
+    assert.deepEqual(handlers.get('hermes:openfilmStudio:progress')?.({}), { failed: false, progress: null })
+
+    const older: Record<string, string | undefined> = {}
+    registerOpenfilmStudio(studio as never, { handle: () => undefined }, { on: () => undefined }, older)
+    assert.equal(older.APEX_DESKTOP_VERSION, undefined, 'an app that cannot say its version says nothing')
   })
 })
