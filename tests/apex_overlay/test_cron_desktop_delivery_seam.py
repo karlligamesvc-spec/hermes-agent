@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -526,15 +527,82 @@ def test_a_second_attempt_at_the_same_delivery_is_not_logged_as_another(home, de
     assert any("not posted twice" in line for line in _seam_lines(caplog, logging.DEBUG))
 
 
+def _age(path: Path, seconds: float) -> None:
+    then = path.stat().st_mtime - seconds
+    os.utime(path, (then, then))
+
+
 def test_an_unreadable_pending_file_warns_once_and_is_moved_aside(home, caplog_at_debug):
     pending = home.joinpath(*seam.PENDING_DIR)
     pending.mkdir(parents=True)
     (pending / "exec-x.ok.json").write_text("{not json", encoding="utf-8")
+    _age(pending / "exec-x.ok.json", seam._UNREADABLE_GRACE_SECONDS + 60)  # long past any write still in flight
     with caplog_at_debug() as caplog:
         assert [seam.drain_home(home) for _ in range(3)] == [0, 0, 0]
     [warning] = _seam_lines(caplog, logging.WARNING)
     assert "exec-x.ok.json is unreadable; moved aside to exec-x.ok.unreadable" in warning
     assert not (pending / "exec-x.ok.json").exists() and (pending / "exec-x.ok.unreadable").exists()
+
+
+def test_a_drainer_pass_during_a_write_never_sees_a_half_written_result(home, desktop_turn, broadcasts, monkeypatch,
+                                                                          caplog_at_debug):
+    """A result queued while another one waits: the drainer's pass may land mid-write. The file appears whole or
+    not at all, so nothing is moved aside and the result is delivered once."""
+    import utils
+
+    seen = []
+    real_replace = utils.atomic_replace
+
+    def a_drainer_pass_before_the_rename(tmp, target):
+        queued = sorted(p.name for p in Path(target).parent.glob("*.json"))
+        seen.append((queued, seam.drain_home(home)))
+        return real_replace(tmp, target)
+
+    monkeypatch.setattr(utils, "atomic_replace", a_drainer_pass_before_the_rename)
+    job = _desktop_job(home)
+    with caplog_at_debug() as caplog:
+        scheduler._deliver_result(job, RESULT)
+
+    assert len(seen) == 1, "the result was not staged and renamed into the queue"
+    assert seen == [([], 0)], "the drainer saw the result before it was whole"
+    assert not list(home.joinpath(*seam.PENDING_DIR).glob("*.unreadable")) and _pending(home) == []
+    assert len(_rows(home)) == 1
+    [line] = _seam_lines(caplog, logging.INFO)
+    assert f"cron job {job['id']}: result delivered to Desktop chat {CHAT} " in line
+
+
+def test_a_result_still_being_written_is_read_again_not_moved_aside(home, desktop_turn, broadcasts, caplog_at_debug):
+    """Whatever wrote a pending file non-atomically (Windows' contended-replace fallback rewrites in place),
+    a fresh file that does not parse yet is retried, never taken for corrupt."""
+    job = _desktop_job(home)
+    path = seam._write_pending(job, RESULT, False)
+    whole = path.read_text(encoding="utf-8")
+    path.write_text(whole[: len(whole) // 2], encoding="utf-8")  # half of it, just written
+    with caplog_at_debug() as caplog:
+        assert seam.drain_home(home) == 1
+        assert path.exists() and not list(path.parent.glob("*.unreadable")) and _rows(home) == []
+        assert _seam_lines(caplog, logging.WARNING) == []
+
+        path.write_text(whole, encoding="utf-8")
+        assert seam.drain_home(home) == 0
+    assert len(_rows(home)) == 1
+    [line] = _seam_lines(caplog, logging.INFO)
+    assert "result delivered to Desktop chat" in line
+
+
+def test_temp_files_a_killed_writer_left_are_cleared_once_old(home, caplog_at_debug):
+    pending = home.joinpath(*seam.PENDING_DIR)
+    pending.mkdir(parents=True)
+    old, fresh = pending / ".exec-old.ok_ab12.tmp", pending / ".exec-new.ok_cd34.tmp"
+    for temp in (old, fresh):
+        temp.write_text("{", encoding="utf-8")
+    _age(old, seam._STALE_TEMP_SECONDS + 60)
+    with caplog_at_debug() as caplog:
+        assert seam.drain_home(home) == 0
+        assert seam.drain_home(home) == 0
+    assert not old.exists() and fresh.exists()
+    [warning] = _seam_lines(caplog, logging.WARNING)
+    assert ".exec-old.ok_ab12.tmp" in warning
 
 
 def test_no_chat_left_warns_with_job_and_profile(home, desktop_turn, broadcasts, caplog_at_debug):

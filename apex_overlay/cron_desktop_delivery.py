@@ -61,6 +61,11 @@ _ARGS_MODULE = "tools.cronjob_job_args"
 _SCHEDULER_MODULE = "cron.scheduler"
 _MARK = "_apex_cron_desktop_delivery"
 _DRAIN_INTERVAL_SECONDS = 2.0
+# A pending file that does not parse is only taken for corrupt once it is this old: younger, it may still be
+# mid-write (Windows' contended-replace fallback in utils.atomic_replace rewrites in place).
+_UNREADABLE_GRACE_SECONDS = 60.0
+# A temp file a killed writer left behind (never renamed into the queue) is removed after this long.
+_STALE_TEMP_SECONDS = 3600.0
 
 DESKTOP_NOTICE = (
     "Delivery: when this job runs, its result is posted back into this Desktop conversation as a scheduled-result "
@@ -238,10 +243,14 @@ def _write_pending(job: dict[str, Any], content: str, failed: bool) -> Path:
         "job_name": str(job.get("name") or job.get("id") or ""), "status": "failed" if failed else "ok",
         "content": content, "created_at": time.time(),
     }
+    from utils import atomic_json_write
+
     pending = home.joinpath(*PENDING_DIR)
     pending.mkdir(parents=True, exist_ok=True, mode=0o700)
     path = pending / f"{record['delivery_id']}.{'failed' if failed else 'ok'}.json"
-    path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+    # Staged as ".<name>_*.tmp" (outside the drainer's *.json glob), fsynced, then renamed into place: a drainer
+    # pass never reads a half-written result. The only writer into this directory besides the move-aside rename.
+    atomic_json_write(path, record, mode=0o600)
     return path
 
 
@@ -372,6 +381,13 @@ def _post(path: Path) -> bool:
     except FileNotFoundError:
         return True
     except (OSError, ValueError):
+        try:
+            age = time.time() - path.stat().st_mtime
+        except FileNotFoundError:
+            return True
+        if age < _UNREADABLE_GRACE_SECONDS:  # maybe still being written: read it again next pass
+            logger.debug("apex-overlay: pending cron result %s does not parse yet (%.1fs old); retrying", path, age)
+            return False
         aside = path.with_suffix(".unreadable")
         logger.warning("apex-overlay: pending cron result %s is unreadable; moved aside to %s and not retried",
                        path, aside.name, exc_info=True)
@@ -417,9 +433,25 @@ def _post(path: Path) -> bool:
     return True
 
 
+def _remove_stale_temps(pending: Path) -> None:
+    """Temp files of a writer killed between write and rename: never queued, so nothing would ever post them."""
+    now = time.time()
+    for temp in pending.glob("*.tmp"):
+        try:
+            if now - temp.stat().st_mtime < _STALE_TEMP_SECONDS:
+                continue
+            temp.unlink()
+        except FileNotFoundError:
+            continue
+        logger.warning("apex-overlay: removed %s, a pending cron result a stopped process never finished writing; "
+                       "that run's output stays under cron/output", temp.name)
+
+
 def drain_home(home: Path) -> int:
     """Try every pending result under ``home``; returns how many are still waiting."""
     pending = home.joinpath(*PENDING_DIR)
+    if pending.is_dir():
+        _remove_stale_temps(pending)
     waiting = 0
     for path in sorted(pending.glob("*.json")) if pending.is_dir() else []:
         try:
