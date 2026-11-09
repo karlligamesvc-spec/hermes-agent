@@ -15,6 +15,7 @@ import { isDesktopFsRemoteMode } from '@/lib/desktop-fs'
 import { guardGuestPointers } from '@/lib/guest-pointer-guard'
 import { openPreviewTargetInBrowser, remoteHtmlPreviewDocument } from '@/lib/local-preview'
 import { isRemoteGateway } from '@/lib/media'
+import { applyOpenfilmStudioLanguage, isOpenfilmStudioTab } from '@/lib/openfilm-studio'
 import {
   addAnnotatePin,
   beginAnnotateMode,
@@ -191,6 +192,13 @@ function isModuleMimeError(message: string): boolean {
   return lower.includes('failed to load module script') && lower.includes('mime type')
 }
 
+/** Whether the pane wears a browser's chrome (address bar, history, console,
+ *  DevTools): for a web page, but not for an inline HTML document, nor for the
+ *  editor's tab, which is APEX's editor rather than a page (hc-1188). */
+function showsBrowserChrome(isWebPreview: boolean, isRemoteHtml: boolean, tabId?: string): boolean {
+  return isWebPreview && !isRemoteHtml && !isOpenfilmStudioTab(tabId)
+}
+
 function PreviewLoadError({
   consoleHeight = 0,
   error,
@@ -245,7 +253,7 @@ function PreviewLoadError({
 }
 
 export function PreviewPane({ embedded = false, onRestartServer, reloadRequest = 0, tabId, target }: PreviewPaneProps) {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const copy = t.preview.web
   // The console store belongs to the TAB, not this render: the toggles live on
   // the tab and must read the same logs this pane appends to.
@@ -898,7 +906,9 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
 
     lastReloadRequestRef.current = reloadRequest
 
-    if (target.kind !== 'url') {
+    // Not the editor (hc-1188): Studio takes in the agent's edits itself, merged
+    // with the person's, and a reload would throw away where they are.
+    if (target.kind !== 'url' || isOpenfilmStudioTab(tabId)) {
       return
     }
 
@@ -907,7 +917,7 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
       message: copy.workspaceReloading
     })
     reloadPreview()
-  }, [appendConsoleEntry, copy.workspaceReloading, reloadPreview, reloadRequest, target.kind])
+  }, [appendConsoleEntry, copy.workspaceReloading, reloadPreview, reloadRequest, tabId, target.kind])
 
   useEffect(() => {
     if (
@@ -996,6 +1006,9 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
       }
     }
   }, [appendConsoleEntry, copy, reloadPreview, target.kind, target.url])
+
+  // The editor follows APEX's language when it changes (hc-1188); each page load sets it too, below.
+  useEffect(() => applyOpenfilmStudioLanguage(webviewRef.current, tabId, locale), [locale, tabId])
 
   // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
   useEffect(() => {
@@ -1116,6 +1129,10 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
 
     const onStart = () => setLoading(true)
 
+    // The editor's language, as soon as each Studio page commits and again once
+    // it has loaded (hc-1188): the first usually lands before the editor reads it.
+    const onStudioPage = () => applyOpenfilmStudioLanguage(webview, tabId)
+
     const onStop = () => {
       setLoading(false)
       // A load that ends without a `did-navigate` (an in-place reload, a
@@ -1211,7 +1228,9 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
     webview.addEventListener('devtools-opened', onDevToolsOpened)
     webview.addEventListener('did-fail-load', onFail)
     webview.addEventListener('did-navigate', onNavigate)
+    webview.addEventListener('did-navigate', onStudioPage)
     webview.addEventListener('did-navigate-in-page', onNavigate)
+    webview.addEventListener('dom-ready', onStudioPage)
     webview.addEventListener('did-start-loading', onStart)
     webview.addEventListener('did-stop-loading', onStop)
     // SPAs title themselves long after the load settles, and a route change
@@ -1228,7 +1247,9 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
       webview.removeEventListener('devtools-opened', onDevToolsOpened)
       webview.removeEventListener('did-fail-load', onFail)
       webview.removeEventListener('did-navigate', onNavigate)
+      webview.removeEventListener('did-navigate', onStudioPage)
       webview.removeEventListener('did-navigate-in-page', onNavigate)
+      webview.removeEventListener('dom-ready', onStudioPage)
       webview.removeEventListener('did-start-loading', onStart)
       webview.removeEventListener('did-stop-loading', onStop)
       webview.removeEventListener('page-title-updated', notePage)
@@ -1283,7 +1304,7 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
           </div>
         )}
 
-        {isWebPreview && !isRemoteHtml && (
+        {showsBrowserChrome(isWebPreview, isRemoteHtml, tabId) && (
           <PreviewBrowserBar
             annotateMode={annotate.mode}
             canGoBack={history.back}

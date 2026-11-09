@@ -17,10 +17,12 @@ import { delimiter, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import {
+  APEX_EDITOR_DIR,
   type ApexAccount,
   createOpenfilmStudio,
   findOpenfilmToolkit,
   OPENFILM_FFMPEG_DIR_ENV,
+  OPENFILM_OFFLINE_URL,
   OPENFILM_TOOLKIT_ENV,
   openfilmAgentEnv,
   planOpenfilmStudio,
@@ -48,10 +50,14 @@ const marks = join(data, 'marks.jsonl')
 const note = mark => appendFileSync(marks, JSON.stringify(mark) + '\\n')
 export async function startStudio(options) {
   const first = !existsSync(marks)
+  const readIndex = file => { try { return JSON.parse(readFileSync(file, 'utf8')) } catch { return 'unreadable' } }
   note({ started: { ...options, openBrowser: typeof options.openBrowser }, execArgv: process.execArgv, env: {
     home: process.env.OPENFILM_HOME, noBrowser: process.env.OPENFILM_NO_BROWSER, noUpdate: process.env.OPENFILM_NO_UPDATE_CHECK,
     chromium: process.env.OPENFILM_CHROMIUM ?? null, playwrightBrowsers: process.env.PLAYWRIGHT_BROWSERS_PATH ?? null,
-    secret: process.env.APEX_SECRET_FOR_TEST ?? null } })
+    secret: process.env.APEX_SECRET_FOR_TEST ?? null, libraryUrl: process.env.OPENFILM_LIBRARY_URL ?? null,
+    apiUrl: process.env.OPENFILM_API_URL ?? null }, indexes: {
+    examples: process.env.OPENFILM_EXAMPLES_INDEX ? readIndex(process.env.OPENFILM_EXAMPLES_INDEX) : null,
+    skills: process.env.OPENFILM_SKILLS_INDEX ? readIndex(process.env.OPENFILM_SKILLS_INDEX) : null } })
   const key = 'k3y-for-test'
   let origin = ''
   const server = createServer((req, res) => {
@@ -91,6 +97,18 @@ function fakeToolkit(): string {
   writeFileSync(join(server, 'server.mjs'), FAKE_SERVER)
 
   return toolkit
+}
+
+/** APEX's build of the editor in `toolkit` (hc-1188): `index` false leaves the folder without its index.html. */
+function addApexEditor(toolkit: string, index = true): string {
+  const editor = join(toolkit, APEX_EDITOR_DIR)
+  mkdirSync(join(editor, 'assets'), { recursive: true })
+
+  if (index) {
+    writeFileSync(join(editor, 'index.html'), '<!doctype html><title>APEX</title>')
+  }
+
+  return editor
 }
 
 function filmProject(name: string): string {
@@ -299,8 +317,22 @@ describe('finding the toolkit', () => {
       toolkit,
       serverModule: join(toolkit, 'node_modules', 'openfilm', 'studio', 'server', 'server.mjs'),
       browsers: null,
-      chromium
+      chromium,
+      editor: null
     })
+  })
+
+  // hc-1188: a toolkit built with APEX's editor has Studio serve it; an older one, or a folder without its index.html, Studio's own.
+  test.each([
+    ['carries it', true, true],
+    ['has the folder without its index.html', false, false]
+  ])('APEX’s editor when the toolkit %s', (_label, index, found) => {
+    const { toolkit } = installToolkit()
+    const editor = addApexEditor(toolkit, index)
+    const dev = fakeToolkit()
+
+    expect(findOpenfilmToolkit(onPlan({}))?.editor).toBe(found ? editor : null)
+    expect(findOpenfilmToolkit(onPlan({ [OPENFILM_TOOLKIT_ENV]: dev }))?.editor).toBe(found ? editor : null)
   })
 
   test.each([
@@ -341,7 +373,8 @@ describe('finding the toolkit', () => {
       toolkit,
       serverModule: join(toolkit, 'node_modules', 'openfilm', 'studio', 'server', 'server.mjs'),
       browsers: join(toolkit, 'browsers'),
-      chromium: null
+      chromium: null,
+      editor: null
     })
   })
 })
@@ -381,6 +414,7 @@ describe("the child's environment", () => {
       ELECTRON_RUN_AS_NODE: '1'
     })
     assert.equal('PLAYWRIGHT_BROWSERS_PATH' in env, false)
+    assert.equal('APEX_OPENFILM_EDITOR_DIR' in env, false)
     assert.deepEqual(env.PATH.split(delimiter), [
       '/engine/.runtime/bin',
       join(toolkit, 'node_modules', '.bin'),
@@ -391,6 +425,41 @@ describe("the child's environment", () => {
     for (const name of ['APEX_RELAY_KEY', 'OPENAI_API_KEY', 'HERMES_HOME', 'TOOLS_GATEWAY_KEY', OPENFILM_TOOLKIT_ENV]) {
       assert.equal(name in env, false, name)
     }
+  })
+
+  // hc-1188: GitHub's examples and skills indexes become APEX's empty ones; the library and openfilm.dev a closed port.
+  test('none of OpenFilm’s own online sources, for Studio and for every engine alike', () => {
+    const plan = onPlan({})
+    installToolkit()
+    const found = findOpenfilmToolkit(plan)
+
+    if (!found) {
+      throw new Error('no toolkit')
+    }
+
+    const offline = {
+      OPENFILM_EXAMPLES_INDEX: join(root, 'openfilm', 'offline', 'examples.json'),
+      OPENFILM_SKILLS_INDEX: join(root, 'openfilm', 'offline', 'skills.json'),
+      OPENFILM_LIBRARY_URL: 'http://127.0.0.1:9',
+      OPENFILM_API_URL: 'http://127.0.0.1:9'
+    }
+
+    assert.equal(OPENFILM_OFFLINE_URL, 'http://127.0.0.1:9')
+    expect(studioChildEnv(plan, found, MAIN_ENV, '/usr/bin')).toMatchObject(offline)
+    expect(openfilmAgentEnv(plan)).toMatchObject(offline)
+  })
+
+  test('APEX’s editor reaches the host only when the toolkit has it', () => {
+    const plan = onPlan({})
+    const { toolkit } = installToolkit()
+    const editor = addApexEditor(toolkit)
+    const found = findOpenfilmToolkit(plan)
+
+    if (!found) {
+      throw new Error('no toolkit')
+    }
+
+    assert.equal(studioChildEnv(plan, found, MAIN_ENV, '/usr/bin').APEX_OPENFILM_EDITOR_DIR, editor)
   })
 
   test('a development toolkit draws in its own Playwright browsers', () => {
@@ -461,8 +530,12 @@ describe('Studio in a child process', () => {
       home: join(root, 'openfilm', 'home'),
       noBrowser: '1',
       noUpdate: '1',
-      secret: null
+      secret: null,
+      libraryUrl: OPENFILM_OFFLINE_URL,
+      apiUrl: OPENFILM_OFFLINE_URL
     })
+    // hc-1188: written before Studio starts, so what it reads in GitHub's place is an index, and an empty one.
+    expect(started[0].indexes).toEqual({ examples: { examples: [] }, skills: { version: 1, skills: [] } })
 
     // Studio's own browser opening is reported, not done, and its key is not logged.
     await vi.waitFor(() => expect(lines.some(line => line.includes('asked to open'))).toBe(true))
@@ -485,6 +558,23 @@ describe('Studio in a child process', () => {
     assert.deepEqual(await studio.status(), { on: true, ready: true, preparing: false })
     assert.equal((await studio.open(filmProject('cook'))).ok, true)
     expect(marks().find(mark => mark.started)?.env).toMatchObject({ chromium, playwrightBrowsers: null })
+    studio.stop()
+    await vi.waitFor(() => expect(marks().some(mark => mark.closed)).toBe(true), { timeout: 10_000 })
+  })
+
+  test('a toolkit with APEX’s editor has Studio serve it', async () => {
+    const env = onEnv()
+    const editor = addApexEditor(String(env[OPENFILM_TOOLKIT_ENV]))
+    const { studio } = runStudio({ env })
+
+    assert.equal((await studio.open(filmProject('cook'))).ok, true)
+    expect(marks().find(mark => mark.started)?.started).toEqual({
+      port: 0,
+      stays: true,
+      advertise: true,
+      editorDir: editor,
+      openBrowser: 'function'
+    })
     studio.stop()
     await vi.waitFor(() => expect(marks().some(mark => mark.closed)).toBe(true), { timeout: 10_000 })
   })
@@ -1017,6 +1107,10 @@ describe('main’s wiring', () => {
       OPENFILM_SAVED: join(root, 'openfilm', 'saved'),
       OPENFILM_SKILLS: join(root, 'openfilm', 'skills'),
       OPENFILM_EXPORTS: join(root, 'openfilm', 'exports'),
+      OPENFILM_EXAMPLES_INDEX: join(root, 'openfilm', 'offline', 'examples.json'),
+      OPENFILM_SKILLS_INDEX: join(root, 'openfilm', 'offline', 'skills.json'),
+      OPENFILM_LIBRARY_URL: OPENFILM_OFFLINE_URL,
+      OPENFILM_API_URL: OPENFILM_OFFLINE_URL,
       OPENFILM_HOSTED: '1',
       OPENFILM_NO_BROWSER: '1',
       OPENFILM_NO_UPDATE_CHECK: '1'
