@@ -257,9 +257,14 @@ def _wrap_deliver(deliver):
             logger.warning("apex-overlay: could not queue cron job %s for its Desktop chat", job.get("id"), exc_info=True)
             return error or f"Desktop chat delivery could not be queued: {exc}"
         try:
-            drain_file(path)
+            posted = drain_file(path)
         except Exception:  # the run is not a failed delivery: the result is queued and the drainer retries it
             logger.warning("apex-overlay: cron job %s will reach its Desktop chat on a retry", job.get("id"), exc_info=True)
+        else:
+            if not posted:  # once here, not on every drainer pass
+                logger.info("apex-overlay: cron job %s: Desktop chat %s (profile %s) is in a turn; the result waits "
+                            "in %s and is posted when the turn ends", job.get("id"), job[ORIGIN_KEY]["session_id"],
+                            _profile_of(path.parent.parent.parent), path.name)
         _ensure_drainer(path.parent.parent.parent)
         return error
 
@@ -334,12 +339,9 @@ def _broadcast(record: dict[str, Any], session_id: str) -> None:
     server = sys.modules.get("tui_gateway.server")
     if server is None:
         return
-    from hermes_constants import profile_name_for_home
-
     payload = {BROADCAST_KEY: {
         "session_id": session_id, "job_id": record["job_id"], "job_name": record["job_name"],
-        "status": record["status"], "delivery_id": record["delivery_id"],
-        "profile": profile_name_for_home(record["home"]) or "default",
+        "status": record["status"], "delivery_id": record["delivery_id"], "profile": _profile_of(record["home"]),
     }}
     try:
         server._broadcast_global_event(BROADCAST_EVENT, payload)
@@ -353,37 +355,64 @@ def drain_file(path: Path) -> bool:
         return _post(path)
 
 
+def _profile_of(home: Path | str) -> str:
+    from hermes_constants import profile_name_for_home
+
+    return profile_name_for_home(str(home)) or "default"
+
+
+# What a delivery looked like from the chat's side, for the success line.
+_POSTED_LIVE = "posted into the open chat"
+_POSTED_STORED = "saved into the chat's history, shown when the chat is opened"
+
+
 def _post(path: Path) -> bool:
     try:
         record = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return True
     except (OSError, ValueError):
-        logger.warning("apex-overlay: unreadable pending cron result %s left in place", path, exc_info=True)
-        return False
+        aside = path.with_suffix(".unreadable")
+        logger.warning("apex-overlay: pending cron result %s is unreadable; moved aside to %s and not retried",
+                       path, aside.name, exc_info=True)
+        path.replace(aside)  # out of the *.json glob: one warning, not one per drainer pass
+        return True
     home = Path(record["home"])
     db = _open_db(home)
     try:
         target = _target_session(db, record["session_id"])
         if not target:
-            logger.warning("apex-overlay: cron job %s has no Desktop chat left to post into", record["job_id"])
+            logger.warning("apex-overlay: cron job %s has no Desktop chat left to post into (profile %s); its "
+                           "output stays under cron/output", record["job_id"], _profile_of(home))
             path.unlink(missing_ok=True)
             return True
         meta = {"job_id": record["job_id"], "job_name": record["job_name"], "status": record["status"],
                 "delivery_id": record["delivery_id"], "run_session_id": _run_session_id(db, record["job_id"]),
                 "display_text": record["content"]}
         text = model_text(record["job_name"], record["content"], record["status"] == "failed")
-        if not _already_posted(db, target, record["delivery_id"], record["status"]):
-            live = _live_session(target)
-            if live is not None:
-                if not _append_to_live(sys.modules["tui_gateway.server"], live[1], text, meta):
-                    return False
-            else:
-                db.append_message(session_id=target, role="user", content=text, display_kind=DISPLAY_KIND,
-                                  display_metadata=meta)
+        how = None
+        if _already_posted(db, target, record["delivery_id"], record["status"]):
+            logger.debug("apex-overlay: cron job %s delivery %s is already in Desktop chat %s; not posted twice",
+                         record["job_id"], record["delivery_id"], target)
+        elif (live := _live_session(target)) is not None:
+            if not _append_to_live(sys.modules["tui_gateway.server"], live[1], text, meta):
+                return False
+            how = _POSTED_LIVE
+        else:
+            db.append_message(session_id=target, role="user", content=text, display_kind=DISPLAY_KIND,
+                              display_metadata=meta)
+            how = _POSTED_STORED
     finally:
         db.close()
     path.unlink(missing_ok=True)
+    if how is not None:
+        # The upstream sender logs "deliver=origin but no origin or home channels — skipping delivery" just
+        # before this when no IM home channel is bound; this line says where the result went instead. Ids only:
+        # no result text, no job name (the user wrote both).
+        logger.info("apex-overlay: cron job %s: %s delivered to Desktop chat %s (profile %s, delivery %s), %s. "
+                    "An earlier 'skipping delivery' line for this job only means no Feishu/WeChat home channel got it",
+                    record["job_id"], "failure notice" if record["status"] == "failed" else "result", target,
+                    _profile_of(home), record["delivery_id"], how)
     _broadcast(record, target)
     return True
 
