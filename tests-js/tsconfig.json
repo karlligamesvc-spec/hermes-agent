@@ -14,5 +14,9 @@
   // ApexNodes hc-911: apps/desktop stays on the APEX baseline, which does not carry the
   // upstream Desktop modules (electron/backend-discovery.ts, data-paths.mjs) that the
   // packaged-Desktop smoke harness drives.
-  "exclude": ["node_modules", "scripts/desktop-smoke-process.ts", "scripts/desktop-smoke.test.ts"]
+  // hc-1203: v0.23.0 added desktop-reused-build-commit.test.ts, which imports the same harness.
+  "exclude": [
+    "node_modules", "scripts/desktop-smoke-process.ts", "scripts/desktop-smoke.test.ts",
+    "scripts/desktop-reused-build-commit.test.ts"
+  ]
 }

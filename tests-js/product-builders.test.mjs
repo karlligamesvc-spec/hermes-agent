@@ -9,6 +9,10 @@ import { buildTui } from '../scripts/build/tui.mjs'
 import { buildWeb } from '../scripts/build/web.mjs'
 import { productOutput, publishDirectory, withProduct } from '../scripts/build/frontend-common.mjs'
 
+// ApexNodes hc-1203: apps/desktop stays on the APEX baseline, which has no upstream Webapp builder
+// (apps/desktop/scripts/build-webapp.mjs). Its three tests run again as soon as that file is ported.
+const APEX_HAS_WEBAPP_BUILDER = existsSync(fileURLToPath(new URL('../apps/desktop/scripts/build-webapp.mjs', import.meta.url)))
+
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(import.meta.url)
 const temporary = []
@@ -401,7 +405,7 @@ function webappSource(source) {
   put(source, 'web/package.json', '{"name":"web"}')
 }
 
-test('the Webapp receipt certifies its checkout inputs, not the workspace it compiled in', async () => {
+test.skipIf(!APEX_HAS_WEBAPP_BUILDER)('the Webapp receipt certifies its checkout inputs, not the workspace it compiled in', async () => {
   const { productCurrent } = await import('../scripts/build/freshness.mjs')
   const { buildWebapp } = await import('../scripts/build/webapp.mjs')
   const { mirrorWebappInputs } = await import('../apps/desktop/scripts/build-webapp.mjs')
@@ -446,7 +450,7 @@ test('the Webapp receipt certifies its checkout inputs, not the workspace it com
   expect(current()).toBe(false)
 }, 60_000)
 
-test('a Webapp rebuild keeps the previous generation for tabs that booted it, never an older one', async () => {
+test.skipIf(!APEX_HAS_WEBAPP_BUILDER)('a Webapp rebuild keeps the previous generation for tabs that booted it, never an older one', async () => {
   const { productCurrent } = await import('../scripts/build/freshness.mjs')
   const { buildWebapp, keepPreviousGeneration } = await import('../scripts/build/webapp.mjs')
   const { mirrorWebappInputs } = await import('../apps/desktop/scripts/build-webapp.mjs')
@@ -500,7 +504,7 @@ test('a Webapp rebuild keeps the previous generation for tabs that booted it, ne
   expect(keep()).toEqual([])
 }, 120_000)
 
-test('Webapp builds install privately and never disturb the native Desktop installation', async () => {
+test.skipIf(!APEX_HAS_WEBAPP_BUILDER)('Webapp builds install privately and never disturb the native Desktop installation', async () => {
   const { buildSourceWebapp } = await import('../apps/desktop/scripts/build-webapp.mjs')
   const base = fixture()
   const source = path.join(base, 'source')
