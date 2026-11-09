@@ -241,7 +241,7 @@ def test_zai_prepare_never_quarantines_bad_auth_cache_before_owner_commit(runtim
     assert (home / "auth.json").read_bytes() == corrupt
 
 
-def test_a_plugin_registered_copilot_row_is_prepared_like_any_api_key_row(runtimes, monkeypatch):
+def test_a_plugin_registered_copilot_row_is_prepared_like_any_api_key_row(request, monkeypatch):
     """hc-1203: v0.23.0 deleted hermes_cli.copilot_auth, and the github-copilot plugin's provider joins
     PROVIDER_REGISTRY (hermes_cli/auth_plugin_providers.py). The hc-903 preparer kept a core-exchange branch
     that imported the deleted module: with the plugin installed, a Desktop write of COPILOT_GITHUB_TOKEN
@@ -249,7 +249,7 @@ def test_a_plugin_registered_copilot_row_is_prepared_like_any_api_key_row(runtim
     and nothing is written before the owner's commit."""
     from agent import credential_pool
     from hermes_cli.auth import ProviderConfig
-    home, _ = runtimes
+    home, _ = request.getfixturevalue("runtimes")  # by name: a `runtimes` parameter shadows the import (F811)
     row = ProviderConfig("copilot", "GitHub Copilot", "api_key", inference_base_url="https://fixture.copilot.invalid",
                          api_key_env_vars=("COPILOT_GITHUB_TOKEN",))
     monkeypatch.setitem(credential_pool.PROVIDER_REGISTRY, "copilot", row)
