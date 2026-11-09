@@ -147,7 +147,10 @@ def test_desktop_reads_the_same_marks():
 def check_lock(tmp_path, monkeypatch):
     home = tmp_path / 'home'
     monkeypatch.setenv('HERMES_HOME', str(home))
-    target = media_tools.native_target()
+    # What the check answers depends only on the lock entry it reads, not on the host: so one fixed entry, and these
+    # run on CI's Linux lane too, where native_target() has no answer (the lock names Mac and Windows only).
+    target = 'mac-arm64'
+    monkeypatch.setattr(media_tools, 'native_target', lambda: target)
     browser = {'url': 'https://x/b.zip', 'bytes': 190_000_000, 'sha256': 'b' * 64, 'executable': 'Chrome/chrome'}
     toolkit = {'url': 'https://x/t.tgz', 'bytes': 40_000_000, 'sha256': 't' * 64, 'version': '0.3.0', 'patches': []}
     lock = tmp_path / 'desktop-lock.json'
@@ -197,8 +200,12 @@ def test_a_toolkit_ready_json_names_that_is_not_this_engines_pin_is_not_installe
     assert said['disk']['needed'] == 40_000_000 * 3 + 256 * 1024 * 1024
 
 
+@pytest.mark.platforms("macos", "windows")
 def test_the_check_from_the_command_line_is_one_line_of_json(tmp_path):
-    """As Desktop runs it (``CHECK_ARGS``): the real lock, a fresh home, nothing installed, nothing downloaded."""
+    """As Desktop runs it (``CHECK_ARGS``): the real lock, a fresh home, nothing installed, nothing downloaded.
+
+    Only where Desktop runs: the real lock names no Linux browser, so on Linux the check rightly says it is unavailable.
+    """
     env = {**os.environ, 'HERMES_HOME': str(tmp_path / 'home')}
     done = subprocess.run([sys.executable, '-m', 'apex_overlay.media_tools', 'openfilm-check'], cwd=ROOT, env=env,
                           capture_output=True, text=True, timeout=60, check=False)
