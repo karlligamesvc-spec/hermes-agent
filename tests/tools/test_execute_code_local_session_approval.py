@@ -16,7 +16,7 @@ import pytest
 from gateway.session_context import clear_session_vars, set_session_vars
 from gateway.session_policy import _ACTIVE_POLICY, SURFACES, LocalSessionPolicy
 from tools import approval as A
-from tools import approval_context, approval_smart
+from tools import approval_context, approval_hold, approval_smart
 from tools.approval_detection import detect_dangerous_command
 from tests.tools import _child_env_fixtures
 from tests.tools._child_env_fixtures import run_code
@@ -24,6 +24,9 @@ from tests.tools._child_env_fixtures import run_code
 # Pytest registers an imported fixture under this module's attribute name, so bind it as ``child_env``.
 child_env = _child_env_fixtures.child_env
 
+# ApexNodes hc-1034: a script of imports and prints is a read-only probe and skips every prompt
+# (tools.approval_probe), so these tests run one that calls something: each then reaches the rule it names.
+SCRIPT = "import os; os.listdir('.')"
 SESSION_KEY = "t2-local-session"
 SIDE_KEY = "bg_0a1b2c"
 
@@ -88,6 +91,10 @@ def turn(monkeypatch, tmp_path):
     with A._lock:
         A._session_approved.pop(SESSION_KEY, None)
         A._permanent_approved.discard("execute_code")
+    # ApexNodes hc-1034: a delegated child's denial leaves a hold with no turn that the parent adopts on its
+    # next check (tools.approval_hold); each test here is a fresh session, so none may inherit one.
+    for key in (SESSION_KEY, SIDE_KEY):
+        approval_hold.clear(key)
     try:
         yield start
     finally:
@@ -97,6 +104,7 @@ def turn(monkeypatch, tmp_path):
             for key in (SESSION_KEY, SIDE_KEY):
                 A._session_approved.pop(key, None)
                 A._pending.pop(key, None)
+                approval_hold.clear(key)
             A._gateway_queues.pop(SESSION_KEY, None)
 
 
@@ -267,7 +275,7 @@ def test_other_sessions_keep_whole_script_prompt(turn, platform, source):
     """Messaging chats, the kanban worker source and a local route without a frozen policy
     still approve the script as a whole."""
     prompts = turn(platform=platform, source=source)
-    res = A.check_execute_code_guard("import os", "local")
+    res = A.check_execute_code_guard(SCRIPT, "local")
     assert res["approved"] is False
     assert [p["pattern_key"] for p in prompts] == ["execute_code"]
 
@@ -278,7 +286,7 @@ def test_local_session_unattended_contexts_still_resolve_first(turn, monkeypatch
         monkeypatch.setattr(module, "_is_single_query_approval_context", lambda: True)
         monkeypatch.setattr(module, "_get_single_query_approval_mode", lambda: "deny", raising=False)
     prompts = turn(source="cli")
-    res = A.check_execute_code_guard("import os", "local")
+    res = A.check_execute_code_guard(SCRIPT, "local")
     assert res["approved"] is False and res["outcome"] == "blocked"
     assert prompts == []
 
@@ -288,5 +296,5 @@ def test_local_session_smart_mode_skips_script_assessment(turn, monkeypatch):
     assessed = []
     monkeypatch.setattr(approval_smart, "_smart_approve", lambda c, d: assessed.append(c) or "deny")
     prompts = turn(source="tui")
-    assert A.check_execute_code_guard("import os", "local")["approved"] is True
+    assert A.check_execute_code_guard(SCRIPT, "local")["approved"] is True
     assert assessed == [] and prompts == []
