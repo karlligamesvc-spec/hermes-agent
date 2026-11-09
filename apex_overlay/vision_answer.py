@@ -67,14 +67,9 @@ class VisionAnswerCutOff(RuntimeError):
 
 def _response_language(cfg: Optional[dict[str, Any]]) -> str:
     """The language name ``agent.response_language`` resolves to, or ``""`` when it follows the user."""
-    from hermes_cli import personality
+    from hermes_cli.personality import response_language_name
 
-    configured = str(personality._get(cfg, "agent", "response_language", default="auto") or "auto").strip().lower()
-    if configured in {"display", "ui", "interface"}:
-        configured = str(personality._get(cfg, "display", "language", default="") or "").strip().lower()
-    configured = configured.replace("_", "-")
-    return personality._RESPONSE_LANGUAGE_NAMES.get(
-        personality._RESPONSE_LANGUAGE_ALIASES.get(configured, configured), "")
+    return response_language_name(cfg)
 
 
 def direct_question_prompt(question: Any, cfg: Optional[dict[str, Any]] = None) -> str:

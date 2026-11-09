@@ -340,15 +340,18 @@ def test_register_imports_no_gateway_module_and_seams_land_before_the_startup_lo
         "tools.cronjob_tools",
         # hc-1186 cron_desktop_delivery: the tool's argument helpers, likewise.
         "tools.cronjob_job_args",
+        # hc-1192 session_title: armed for the turn-start entry's import of the title generator.
+        "agent.title_generator",
     }, post_import.pending_modules()
 
     from gateway.run import GatewayRunner          # what run_gateway() does
     missing = [name for name, ok in seam_marks().items() if not ok]
     assert missing == [], f"not installed when import gateway.run returned: {missing}"
-    # gateway.run loads none of tools.vision_tools, cron.scheduler and the cronjob tool modules; those
-    # patches wait for the tool registry's and the cron ticker's imports.
+    # gateway.run loads none of tools.vision_tools, cron.scheduler, the cronjob tool modules and the title
+    # generator; those patches wait for the tool registry's, the cron ticker's and the first turn's imports.
     assert set(post_import.pending_modules()) <= {
-        "tools.vision_tools", "cron.scheduler", "tools.cronjob_tools", "tools.cronjob_job_args"}
+        "tools.vision_tools", "cron.scheduler", "tools.cronjob_tools", "tools.cronjob_job_args",
+        "agent.title_generator"}
 
     # The real start-up loop (GatewayRunner._start_prefilter_platforms) on a bare runner: Feishu must
     # be scheduled in the background instead of being created on the start-up stack.
