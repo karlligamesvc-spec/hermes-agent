@@ -1,3 +1,5 @@
+import { markdownHrefComponent } from '@/lib/media'
+
 const PREVIEW_MARKDOWN_RE = /\[Preview:[^\]]+\]\((?<href>#preview[:/][^)]+)\)/gi
 
 export function stripPreviewTargets(text: string): string {
@@ -21,7 +23,7 @@ export function extractPreviewTargets(text: string): string[] {
 }
 
 export function previewMarkdownHref(target: string): string {
-  return `#preview/${encodeURIComponent(target)}`
+  return `#preview/${markdownHrefComponent(target)}`
 }
 
 export function previewTargetFromMarkdownHref(href?: string): string | null {

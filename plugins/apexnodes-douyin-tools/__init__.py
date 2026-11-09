@@ -140,8 +140,61 @@ def _no_timing_fields(result: dict[str, Any], transcript: str, cache_hit: Any) -
 
 
 def _transcript_file_stem(title: str) -> str:
-    """转写旁路文件(全文 .txt、时间轴 .segments.json)共用的文件名前缀。"""
-    return f"{_safe_filename(title or '视频转写')}_转写_{uuid.uuid4().hex[:8]}"
+    """一次转写的旁路文件(逐字稿 .docx、读回 .txt、时间轴 .segments.json)共用的文件名前缀,
+    与云端插件同一命名。hc-1189:三个文件只差扩展名,用户打不开的那份 docx 换成 .txt
+    就是同一次转写的原文。"""
+    return f"{_safe_filename(title)}_逐字稿_{uuid.uuid4().hex[:8]}"
+
+
+# hc-1189:按本地视频转写时(网关腿 video_path)平台不给标题,文件名就只剩「视频逐字稿」,同一
+# 对话的几份逐字稿分不出谁是谁。没有标题时用视频文件名(去掉下载时加的 8 位唯一尾巴)当文件标题。
+_UNIQUE_TAIL_RE = re.compile(r"[_-][0-9a-f]{8}$", re.IGNORECASE)
+
+
+def _transcript_file_title(title: Any, video_path: Any) -> str:
+    """逐字稿文件名和 docx 标题用的标题:平台标题优先,其次是视频文件名;只用于命名,不写回结果的 title。"""
+    if str(title or "").strip():
+        return str(title).strip()
+    if not str(video_path or "").strip():
+        return ""
+    return _UNIQUE_TAIL_RE.sub("", Path(str(video_path)).stem).strip(" _-")
+
+
+# hc-1189:读回文件一行不超过这么多字。运行时 read_file 把超过 2000 字的行截断(tools/
+# tool_output_limits.py),一整段没有句号的长转写会被截掉;只在停顿(逗号、顿号、分号、冒号、
+# 空白)后换行,一个字也不改。
+_READBACK_MAX_LINE_CHARS = 1000
+_READBACK_PAUSE_CHARS = "，,、；;：: "
+
+
+def _readback_lines(paragraph: str) -> list[str]:
+    lines: list[str] = []
+    rest = paragraph
+    while len(rest) > _READBACK_MAX_LINE_CHARS:
+        window = rest[:_READBACK_MAX_LINE_CHARS]
+        cut = max(window.rfind(mark) for mark in _READBACK_PAUSE_CHARS) + 1 or _READBACK_MAX_LINE_CHARS
+        lines.append(rest[:cut])
+        rest = rest[cut:]
+    lines.append(rest)
+    return lines
+
+
+def write_transcript_readback(transcript: str, stem: str) -> str | None:
+    """hc-1189:把这次转写的原文写成 ``<stem>.txt`` 并返回路径。
+
+    与同名 .docx 的正文同样分段(段间空一行),用户说文档打不开、要原文时,助手读这份再贴,
+    不凭聊天记忆拼。没有人声或写盘失败时返回 None,转写本身照常成功。
+    """
+    paragraphs = _verbatim_paragraphs(transcript)
+    if not paragraphs:
+        return None
+    body = "\n\n".join("\n".join(_readback_lines(paragraph)) for paragraph in paragraphs)
+    try:
+        dest = _document_cache_dir() / f"{stem}.txt"
+        dest.write_text(body, encoding="utf-8")
+    except OSError:  # 缓存目录不可建/不可写
+        return None
+    return str(dest)
 
 
 def _segments_result_fields(segments: Any, stem: str) -> dict[str, Any]:
@@ -299,6 +352,8 @@ MEDIA_TRANSCRIBE_SCHEMA = {
         "返回完整转写、transcript_path，以及分句/字词级时间轴文件 segments_path"
         "（JSON 分句数组，start_time/end_time 为毫秒，含字/词级 words；结果里只附 segments_summary 摘要，"
         "做字幕时用脚本读这个文件）。"
+        "有人声时另给 transcript_text_path：这次转写原文的纯文本，和逐字稿 .docx 同名；"
+        "用户说文档打不开、要原文时读它再贴，不凭聊天记忆拼。"
         "素材没有人声（纯环境声/音乐/静音）时返回 ok=true、speech=false 和空 transcript，"
         "这是正常结果，不要对同一文件重试。"
         "有人声但没有时间轴时，结果里的 segments_note 会说明再调用能不能拿到时间轴，照它做，不要盲目重转。"
@@ -543,33 +598,24 @@ def _gateway_media_transcribe(
         result["cost_cents"] = response.get("cost_cents")
     if response.get("cache_hit") is not None:
         result["cache_hit"] = bool(response.get("cache_hit"))
-    stem = _transcript_file_stem(title)
-    transcript_path = _write_transcript_file(transcript, stem)
+    file_title = _transcript_file_title(title, local_path)
+    stem = _transcript_file_stem(file_title)
+    # hc-1189:本机全文 txt 就是这次调用的原文读回文件,和下面的 docx 同名。
+    transcript_path = write_transcript_readback(transcript, stem) if transcript else None
     if transcript_path:
         result["transcript_path"] = transcript_path
+        result["transcript_text_path"] = transcript_path
     result.update(_segments_result_fields(response.get("segments"), stem))
     result.update(_no_timing_fields(result, transcript, response.get("cache_hit")))
     # hc-341: pre-render the verbatim transcript so "完整文案/逐字稿/下载文案" is delivered
     # as the original speech, copied verbatim — the agent only emits the MEDIA line.
     if transcript and _doc_file_delivery_available():
-        doc_path = render_verbatim_transcript_docx(transcript, title)
+        doc_path = render_verbatim_transcript_docx(transcript, file_title, stem=stem)
         if doc_path:
             result["transcript_doc_path"] = doc_path
             result["transcript_doc_media_tag"] = f"MEDIA:{doc_path}"
             result["transcript_doc_instruction"] = _TRANSCRIPT_DOC_INSTRUCTION
     return tool_result(**result)
-
-
-def _write_transcript_file(transcript: str, stem: str) -> str | None:
-    """把转写全文落成本地 txt(保持迁移前 transcript_path 的结果面)。"""
-    if not transcript:
-        return None
-    try:
-        dest = _document_cache_dir() / f"{stem}.txt"
-        dest.write_text(transcript, encoding="utf-8")
-        return str(dest)
-    except Exception:
-        return None
 
 
 def _gateway_image_ocr(payload: dict[str, Any]) -> str:
@@ -630,6 +676,8 @@ _TRANSCRIPT_DOC_INSTRUCTION = (
     "用户要完整文案/逐字稿/转写全文/下载文案/原话时：直接在回复里单独一行输出 "
     "transcript_doc_media_tag 的值，把这份逐字稿文件发给用户——正文已是转写原文逐字照搬。"
     "不要再调用 doc_file_write，不要把逐字稿重排成结构化文档（加标题/小节、表格、要点都不行）。"
+    "用户说文件打不开、要原文时：用 read_file 读 transcript_text_path（与这份 .docx 同名的 .txt），"
+    "把读到的原文贴出来，不凭聊天记忆拼。"
 )
 
 
@@ -705,10 +753,11 @@ def _verbatim_paragraphs(transcript: str) -> list[str]:
     return paragraphs or [text]
 
 
-def render_verbatim_transcript_docx(transcript: str, title: str) -> str | None:
+def render_verbatim_transcript_docx(transcript: str, title: str, stem: str | None = None) -> str | None:
     """Render the verbatim transcript to a .docx (heading + raw paragraphs) and return
     its path, or None on any failure. No markdown parsing and no headings/tables/bullets
-    inside the body — the document is the speaker's original words, copied verbatim."""
+    inside the body — the document is the speaker's original words, copied verbatim.
+    ``stem`` names the file ``<stem>.docx`` next to the call's readback .txt (hc-1189)."""
     try:
         from docx import Document
     except ImportError:
@@ -723,7 +772,7 @@ def render_verbatim_transcript_docx(transcript: str, title: str) -> str | None:
         doc.add_heading(heading, level=0)
         for para in paragraphs:
             doc.add_paragraph(para)
-        dest = _document_cache_dir() / f"{_safe_filename(heading)}_逐字稿_{uuid.uuid4().hex[:8]}.docx"
+        dest = _document_cache_dir() / f"{stem or _transcript_file_stem(heading)}.docx"
         doc.save(str(dest))
         return str(dest)
     except Exception:
@@ -758,11 +807,16 @@ def _handle_media_transcribe(args: dict, **_kwargs) -> str:
     transcript = str(result.get("transcript") or "").strip()
     result.update(_speech_fields(transcript))
     # master 把时间轴整段内联在响应里,与网关腿同样改交本机文件(transcript_path 仍是 master 的)。
-    stem = _transcript_file_stem(str(result.get("title") or ""))
+    file_title = _transcript_file_title(result.get("title"), video_path or result.get("video_path"))
+    stem = _transcript_file_stem(file_title)
     result.update(_segments_result_fields(result.pop("segments", None), stem))
     result.update(_no_timing_fields(result, transcript, result.get("cache_hit")))
+    # hc-1189:同一次调用的原文读回文件,和下面的 docx 同名。
+    text_path = write_transcript_readback(transcript, stem) if transcript else None
+    if text_path:
+        result["transcript_text_path"] = text_path
     if transcript and _doc_file_delivery_available():
-        doc_path = render_verbatim_transcript_docx(transcript, str(result.get("title") or ""))
+        doc_path = render_verbatim_transcript_docx(transcript, file_title, stem=stem)
         if doc_path:
             result["transcript_doc_path"] = doc_path
             result["transcript_doc_media_tag"] = f"MEDIA:{doc_path}"

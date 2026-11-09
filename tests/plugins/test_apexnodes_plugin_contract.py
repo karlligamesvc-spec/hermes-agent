@@ -60,8 +60,10 @@ CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 # (/media/shot-labels、/tools/v1/video/shot-labels)。
 # v16(hc-1046):generate_video 的 model 不再列 id,按服务端下发的媒体模型目录查;两条新行为
 # model_checked_against_served_catalog、hidden_picker_lets_the_assistant_pick(两条腿)。
-EXPECTED_CONTRACT_SHA256 = "3f2b5a5182b4882d8e992d7488d7b40c1201d3b771686f1c340c3ef5198460f4"
-EXPECTED_CONTRACT_VERSION = 16
+# v17(hc-1189):media_transcribe 有人声时另写一份原文读回文件 transcript_text_path(<stem>.txt),
+# 与同一次调用的 .docx、.segments.json 同名只差扩展名(transcript_readback_file,两条腿)。
+EXPECTED_CONTRACT_SHA256 = "19eae88235acc0d11f139b351b618ebdd763632d1df5ed48e3ab64d8f70cc660"
+EXPECTED_CONTRACT_VERSION = 17
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -740,6 +742,41 @@ def _check_segments_file_handoff(h, tool_name, _spec):
         assert "segments_path" not in result and "segments" not in result
 
 
+def _check_transcript_readback_file(h, tool_name, _spec):
+    """hc-1189: two calls in a row (A, then B); each call's .txt holds its own text and shares
+    its stem with that call's .segments.json and .docx, so the file the user could not open
+    leads back to the same call. The .docx half needs python-docx (CI installs it)."""
+    h.monkeypatch.setenv("WEIXIN_TOKEN", "wx-entry")  # a non-Feishu IM entry renders the .docx
+    renders_docx = importlib.util.find_spec("docx") is not None
+
+    def answer_with(text):
+        def canned(path: str):
+            if not (path.endswith("/transcribe") or path.startswith("/tools/v1/asr/jobs")):
+                return type(h)._canned(path)
+            if h.leg == "legacy":  # master /media/transcribe body
+                return {"ok": True, "transcript": text, "title": "", "segments": _TIMED_SEGMENTS}
+            return _asr_answer(path, {"ok": True, "text": text, "duration_seconds": 2.6, "segments": _TIMED_SEGMENTS})
+        return canned
+
+    answers = {"A": "第一条视频的原话。说完了。", "B": "第二条视频的原话，换了个话题。也说完了。"}
+    results = {}
+    for name, text in answers.items():
+        h._canned = answer_with(text)  # type: ignore[method-assign]
+        results[name] = h.invoke(tool_name, h.probe_args(tool_name))[0]
+    for name, text in answers.items():
+        result = results[name]
+        text_path = Path(result["transcript_text_path"])
+        assert text_path.parent == Path(os.environ["HERMES_HOME"]) / "cache" / "documents"
+        assert Path(result["segments_path"]).name == text_path.stem + ".segments.json"
+        assert "".join(text_path.read_text(encoding="utf-8").split()) == "".join(text.split())
+        if renders_docx:
+            assert text_path == Path(result["transcript_doc_path"]).with_suffix(".txt")
+    assert results["A"]["transcript_text_path"] != results["B"]["transcript_text_path"]
+
+    h._canned = answer_with("")  # type: ignore[method-assign]
+    assert "transcript_text_path" not in h.invoke(tool_name, h.probe_args(tool_name))[0]
+
+
 _REF_A = "media:" + "a" * 32 + "/image_1.png"
 _REF_UPLOADED = "media:" + "f" * 32 + "/ref_1.png"
 _UPLOAD_PATHS = {"legacy": "/media/reference-upload", "gateway": "/tools/v1/media/reference-upload"}
@@ -1048,6 +1085,7 @@ BEHAVIOR_CHECKS = {
     "aspect_ratio_defaults_landscape": _check_aspect_ratio_defaults_landscape,
     "no_speech_is_success": _check_no_speech_is_success,
     "segments_file_handoff": _check_segments_file_handoff,
+    "transcript_readback_file": _check_transcript_readback_file,
     "asr_upload_modes": _check_asr_upload_modes,
     "gateway_platform_fallback_douyin": _check_gateway_platform_fallback_douyin,
     "no_foreign_paths_in_result": _check_no_foreign_paths_in_result,
