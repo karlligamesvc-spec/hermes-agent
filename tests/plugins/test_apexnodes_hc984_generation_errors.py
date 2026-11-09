@@ -108,6 +108,7 @@ def media(request):
         module=module,
         handler=f"_handle_generate_{request.param}",
         generate=f"/tools/v1/{request.param}/generate",
+        jobs=f"/tools/v1/{request.param}/jobs",
         legacy_generate=f"/media/{request.param}-generate",
         legacy_check=f"/media/{request.param}/check",
     )
@@ -210,21 +211,18 @@ def _healthy_check() -> Answer:
 
 
 def _answer_generation(server, media, answer: Answer, *, at: str) -> None:
-    """Queue the generation's answer. Video is a job (hc-1000, hc-978's video follow-up): a
-    refusal at the gate (sign-in, quota, size, an unreadable answer) answers the submit;
-    a failure while rendering is a failed job carrying what /video/generate would have
-    answered, which the Desktop reads through the same mapping."""
-    if media.kind != "video":
-        server.answer(media.generate, answer)
-        return
+    """Queue the generation's answer. Both generations are jobs (hc-1000 video, hc-1190
+    image): a refusal at the gate (sign-in, quota, size, an unreadable answer) answers the
+    submit; a failure while rendering is a failed job carrying what the synchronous
+    endpoint would have answered, which the Desktop reads through the same mapping."""
     if at == "submit":
-        server.answer("/tools/v1/video/jobs", answer)
+        server.answer(media.jobs, answer)
         return
     running = {"ok": True, "job_id": "j1", "status": "running", "poll_after_seconds": 5}
     failed = {"ok": False, "job_id": "j1", "status": "failed",
               "error": {"status_code": answer.status_code, "detail": answer.json().get("detail")}}
-    server.answer("/tools/v1/video/jobs", Answer(202, running))
-    server.answer("/tools/v1/video/jobs/j1", Answer(200, failed))
+    server.answer(media.jobs, Answer(202, running))
+    server.answer(f"{media.jobs}/j1", Answer(200, failed))
 
 
 def _run(media, args=None) -> dict:
@@ -310,10 +308,10 @@ def test_every_sentence_has_a_chinese_and_an_english_version():
 def test_a_generation_failure_reads_as_the_servers_sentence(desktop_env, server, media, answer, expected):
     response = answer(media)
     server.answer("/tools/v1/check", _healthy_check())
-    if media.kind == "video" and response._raw is not None:
+    if response._raw is not None:
         if response.status_code in (502, 503, 504):
-            pytest.skip("a video submit answered 502-504 is sent again under the same Idempotency-Key "
-                        "(tests/plugins/test_apexnodes_video_jobs.py)")
+            pytest.skip("a job submit answered 502-504 is sent again under the same Idempotency-Key "
+                        "(tests/plugins/test_apexnodes_video_jobs.py, test_apexnodes_image_jobs.py)")
         # A body that is not our JSON comes from the way in, so it answers the submit.
         _answer_generation(server, media, response, at="submit")
     else:
@@ -418,12 +416,13 @@ def test_a_model_less_image_is_stopped_when_its_leg_is_down(desktop_env, server,
 
 def test_another_purpose_on_the_same_check_still_renders(desktop_env, server, image):
     server.answer("/tools/v1/check", Answer(200, {"ok": True, "image": _image_check(DEFAULT_LEG)}))
-    server.answer("/tools/v1/image/generate", Answer(200, {"data": {"ok": True}}))
+    # The image job submit (hc-1190), answered as already done.
+    server.answer("/tools/v1/image/jobs", Answer(200, {"ok": True, "job_id": "j1", "status": "done", "data": {"ok": True}}))
 
     result = json.loads(image._handle_generate_image({"prompt": "封面", "purpose": "cover", "title": "夏日上新"}))
 
     assert result.get("ok") is True
-    assert server.requests == [("GET", "/tools/v1/check"), ("POST", "/tools/v1/image/generate")]
+    assert server.requests == [("GET", "/tools/v1/check"), ("POST", "/tools/v1/image/jobs")]
 
 
 def test_a_switched_off_default_leg_says_retrying_will_not_help(desktop_env, server, image):
@@ -450,7 +449,7 @@ def test_an_english_user_hears_the_pause_and_the_crash_in_english(home, desktop_
     )
 
     server.answer("/tools/v1/check", _healthy_check())
-    server.answer("/tools/v1/image/generate", Answer(500, raw=b""))
+    server.answer("/tools/v1/image/jobs", Answer(500, raw=b""))
     assert json.loads(image._handle_generate_image({"prompt": "poster", "model": "gpt-image-2.5-flare"}))["error"] == (
         "Image generation failed: The image generation service failed (HTTP 500) without saying why."
     )

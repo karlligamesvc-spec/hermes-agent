@@ -161,6 +161,32 @@ COPY: dict[str, tuple[str, str]] = {
         "This is the video an earlier call with exactly the same arguments already generated (its answer never "
         "arrived); nothing was rendered or billed again.",
     ),
+    # hc-1190: the same four for an image job.
+    "image_job_unreachable": (
+        "图片任务已经交给平台，但本机连续 {minutes} 分钟连不上平台，没拿到结果；平台那边可能还在出图。"
+        "先检查网络或代理，恢复后用完全相同的参数再调一次 generate_image：平台还留着这个任务的话会直接取回，不会重新出图。",
+        "The image job reached the platform, but this computer could not reach the platform for {minutes} "
+        "minutes in a row, so there is no result; the platform may still be drawing it. Check the network or "
+        "proxy; once it is back, call generate_image again with exactly the same arguments, and a job the "
+        "platform still keeps comes straight back instead of drawing again.",
+    ),
+    "image_job_overdue": (
+        "图片在平台上已经生成了 {minutes} 分钟还没完成(可能在排队),这次先停止等待。"
+        "过几分钟用完全相同的参数再调一次 generate_image:平台还留着这个任务的话会接着等它、直接取回，不会重新出图。",
+        "The image has been drawing on the platform for {minutes} minutes without finishing (it may be "
+        "queued), so this wait stops here. In a few minutes call generate_image again with exactly the same "
+        "arguments: a job the platform still keeps is picked up and returned, not drawn again.",
+    ),
+    "image_job_lost": (
+        "平台重启过，找不到这个图片任务，这次没有结果。可以用同样的参数再调一次 generate_image。",
+        "The platform restarted and lost this image job; there is no result this time. Call generate_image "
+        "again with the same arguments.",
+    ),
+    "image_job_recovered": (
+        "这是之前一次完全相同的调用已经生成好的图片(当时没取回),这次没有重新出图，也没有再计费。",
+        "This is the image an earlier call with exactly the same arguments already generated (its answer never "
+        "arrived); nothing was drawn or billed again.",
+    ),
     "media_daily_limit": ("今天的{label}生成额度用完了，明天恢复。", "Today's {label} generation quota is used up; it comes back tomorrow."),
     "media_switched_off": (
         "平台现在暂时关闭了{label}生成，重新开放之前重试也不会成功。",

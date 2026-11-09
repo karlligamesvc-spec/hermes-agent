@@ -72,6 +72,11 @@ def _env(tmp_path, monkeypatch):
     return home
 
 
+# Image generation is a job (hc-1190): the submit is where the call's body goes.
+IMAGE_JOBS = "/tools/v1/image/jobs"
+IMAGE_RENDERS = {IMAGE_JOBS, "/tools/v1/image/generate"}
+
+
 class Gateway:
     """Fake gateway leg: records request_json calls, answers like the platform."""
 
@@ -93,7 +98,11 @@ class Gateway:
             if path == "/tools/v1/video/jobs":
                 # The video job submit, answered as already done (hc-1000, hc-978's video follow-up).
                 return {"job_id": "j1", "status": "done", **(generate or {"ok": True, "data": {}})}
-            return generate or {"ok": True, "data": {"image_url": "https://cdn.example/i.png", "image_ref": "media:" + "e" * 32 + "/image_1.png"}}
+            if path == IMAGE_JOBS:
+                # The image job submit, answered as already done (hc-1190).
+                image = {"ok": True, "data": {"image_url": "https://cdn.example/i.png", "image_ref": "media:" + "e" * 32 + "/image_1.png"}}
+                return {"job_id": "j1", "status": "done", **(generate or image)}
+            return generate or {"ok": True, "data": {}}
 
         monkeypatch.setattr(gateway, "request_json", request_json)
         monkeypatch.setattr(gateway, "download_media", lambda url, **_kw: Path(_kw.get("filename_hint") or "x"))
@@ -132,7 +141,7 @@ def test_desktop_image_sources_become_what_the_platform_takes(monkeypatch, tmp_p
         image_mod._handle_generate_image({"prompt": "x", "images": [{"source": s, "kind": "product", "role": "first_frame"} for s in sources]})
     )
     assert "error" not in result, result
-    sent = fake.generate("/tools/v1/image/generate")["images"]
+    sent = fake.generate(IMAGE_JOBS)["images"]
     assert sent == [
         {"ref": REF_A, "kind": "product"},
         {"url": SIGNED, "kind": "product"},
@@ -148,7 +157,7 @@ def test_a_path_that_is_not_here_fails_on_the_desktop(monkeypatch, image_mod):
     fake = Gateway(monkeypatch)
     result = json.loads(image_mod._handle_generate_image({"prompt": "x", "images": ["/data/hermes/u/a/workspace/media/j/image_1.png"]}))
     assert "error" in result and "找不到第 1 张图" in result["error"]
-    assert "/tools/v1/image/generate" not in fake.paths()
+    assert not IMAGE_RENDERS & set(fake.paths())
 
 
 def test_nothing_goes_out_before_the_platform_says_it_takes_images(monkeypatch, image_mod, video_mod):
@@ -166,18 +175,18 @@ def test_an_upload_failure_fails_the_image_call(monkeypatch, tmp_path, image_mod
     photo.write_bytes(b"\xff\xd8")
     result = json.loads(image_mod._handle_generate_image({"prompt": "x", "images": [str(photo)]}))
     assert "error" in result and "媒体空间满了" in result["error"] and "不会改成不带图" in result["error"]
-    assert "/tools/v1/image/generate" not in fake.paths()
+    assert not IMAGE_RENDERS & set(fake.paths())
 
 
 def test_a_text_only_image_call_sends_no_image_fields_and_rights_need_an_explicit_true(monkeypatch, image_mod):
     fake = Gateway(monkeypatch)
     image_mod._handle_generate_image({"prompt": "x"})
-    body = fake.generate("/tools/v1/image/generate")
+    body = fake.generate(IMAGE_JOBS)
     assert "images" not in body and "rights_confirmed" not in body
     for given, sent in (("true", False), (True, True)):
         fake.calls.clear()
         image_mod._handle_generate_image({"prompt": "x", "images": [REF_A], "rights_confirmed": given})
-        assert fake.generate("/tools/v1/image/generate")["rights_confirmed"] is sent
+        assert fake.generate(IMAGE_JOBS)["rights_confirmed"] is sent
 
 
 def test_the_last_frame_handle_survives_the_desktop_video_localizing(monkeypatch, video_mod):
@@ -293,4 +302,4 @@ def test_an_upload_answer_without_a_handle_fails_the_call(monkeypatch, tmp_path,
     photo.write_bytes(b"\xff\xd8")
     result = json.loads(image_mod._handle_generate_image({"prompt": "x", "images": [str(photo)]}))
     assert "error" in result and "no image_ref" in result["error"]
-    assert "/tools/v1/image/generate" not in fake.paths()
+    assert not IMAGE_RENDERS & set(fake.paths())

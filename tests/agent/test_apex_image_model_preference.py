@@ -27,11 +27,13 @@ def _fake_transports(captured, answer):
         captured.append(payload)
         return answer(payload)
 
-    def gateway(_method, path, payload=None, *, timeout=None):
+    def gateway(_method, path, payload=None, *, timeout=None, headers=None):
         if path == "/tools/v1/check":
             return {}
         captured.append(payload)
-        return {"data": answer(payload)}
+        # The image job submit (hc-1190), answered as already done: these tests read the
+        # payload, the polling has its own tests.
+        return {"job_id": "j1", "status": "done", "data": answer(payload)}
 
     return legacy, gateway
 

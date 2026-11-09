@@ -43,6 +43,7 @@ MEDIA = {
         "model": FLARE,
         "picker_key": "generation_image_model",
         "generate": "/tools/v1/image/generate",
+        "jobs": "/tools/v1/image/jobs",
         "legacy_generate": "/media/image-generate",
         "legacy_check": "/media/image/check",
     },
@@ -53,6 +54,7 @@ MEDIA = {
         "model": MINI,
         "picker_key": "generation_video_model",
         "generate": "/tools/v1/video/generate",
+        "jobs": "/tools/v1/video/jobs",
         "legacy_generate": "/media/video-generate",
         "legacy_check": "/media/video/check",
     },
@@ -226,30 +228,23 @@ def master(monkeypatch):
     return state
 
 
-VIDEO_JOBS = "/tools/v1/video/jobs"
-
-
 def _answer_render(server, media, status: int = 200, body: dict | None = None) -> None:
-    """The render's answer on the gateway. Video is a job (hc-1000, hc-978's follow-up): the
-    submit answers running, the poll the done body or the failure /video/generate would
-    have answered, which the Desktop reads through the same mapping."""
+    """The render's answer on the gateway. Both renders are jobs (hc-1000 video, hc-1190
+    image; hc-978's follow-ups): the submit answers running, the poll the done body or the
+    failure the synchronous endpoint would have answered, which the Desktop reads through
+    the same mapping."""
     body = {"data": {"ok": True}} if body is None else body
-    if media.kind != "video":
-        server.answer(media.generate, FakeResponse(status, body))
-        return
-    server.answer(VIDEO_JOBS, FakeResponse(202, {"ok": True, "job_id": "j1", "status": "running", "poll_after_seconds": 5}))
+    server.answer(media.jobs, FakeResponse(202, {"ok": True, "job_id": "j1", "status": "running", "poll_after_seconds": 5}))
     if status < 400:
         done = {"ok": True, "job_id": "j1", "status": "done", **body}
-        server.answer(f"{VIDEO_JOBS}/j1", FakeResponse(200, done))
+        server.answer(f"{media.jobs}/j1", FakeResponse(200, done))
     else:
         error = {"status_code": status, "detail": body.get("detail")}
-        server.answer(f"{VIDEO_JOBS}/j1", FakeResponse(200, {"ok": False, "job_id": "j1", "status": "failed", "error": error}))
+        server.answer(f"{media.jobs}/j1", FakeResponse(200, {"ok": False, "job_id": "j1", "status": "failed", "error": error}))
 
 
 def _render_requests(media) -> list[tuple[str, str]]:
-    if media.kind != "video":
-        return [("POST", media.generate)]
-    return [("POST", VIDEO_JOBS), ("GET", f"{VIDEO_JOBS}/j1")]
+    return [("POST", media.jobs), ("GET", f"{media.jobs}/j1")]
 
 
 def _vendor_unavailable(vendor_code: str, message: str) -> dict:
@@ -329,11 +324,8 @@ def test_daily_limit_says_tomorrow_and_is_not_retried(transport, request, media,
         request.getfixturevalue("desktop_env")
         server = request.getfixturevalue("server")
         server.answer("/tools/v1/check", FakeResponse(200, {"ok": True}))
-        if media.kind == "video":
-            # The daily cap is read inside the render job: its failure, read once.
-            _answer_render(server, media, 429, body)
-        else:
-            server.answer(media.generate, FakeResponse(429, body), FakeResponse(429, body), FakeResponse(429, body))
+        # The daily cap is read inside the render job: its failure, read once.
+        _answer_render(server, media, 429, body)
         error = _generate(media, {"prompt": "x", "model": media.model})["error"]
         # One render request: backing off cannot bring back a quota that resets tomorrow.
         assert server.requests == [("GET", "/tools/v1/check"), *_render_requests(media)]
@@ -368,17 +360,17 @@ def test_an_unexplained_503_promises_nothing(desktop_env, server, media):
     assert error == f"{media.label}生成失败: {media.label}生成服务出了问题，没有说明原因。"
 
 
-def test_a_rate_limit_is_still_backed_off_and_retried(desktop_env, server, video):
+def test_a_rate_limit_is_still_backed_off_and_retried(desktop_env, server, media):
     """Only the daily limits skip the backoff; a per-minute limit can clear in seconds.
     The gateway's token bucket answers the job submit (with the same Idempotency-Key
     each time, so a retry can never start a second render)."""
     limited = {"detail": {"code": "rate_limited", "message": "平台工具请求过于频繁，请稍后再试。"}}
     server.answer("/tools/v1/check", FakeResponse(200, {"ok": True}))
-    server.answer(VIDEO_JOBS, *[FakeResponse(429, limited) for _ in range(3)])
+    server.answer(media.jobs, *[FakeResponse(429, limited) for _ in range(3)])
 
-    error = _generate(video)["error"]
+    error = _generate(media)["error"]
 
-    assert server.requests.count(("POST", VIDEO_JOBS)) == 3
+    assert server.requests.count(("POST", media.jobs)) == 3
     assert "频繁" in error
 
 
@@ -476,10 +468,10 @@ def test_an_image_without_a_model_reads_the_check_and_goes_ahead_without_a_verdi
     leg that purpose routes to from ``purpose_legs``; a check without that list (this one,
     as from a server before hc-984) gives no verdict, so the call goes ahead."""
     server.answer("/tools/v1/check", FakeResponse(200, _check_body("image")))
-    server.answer(image.generate, FakeResponse(200, {"data": {"ok": True}}))
+    _answer_render(server, image)
 
     assert _generate(image)["ok"] is True
-    assert server.requests == [("GET", "/tools/v1/check"), ("POST", image.generate)]
+    assert server.requests == [("GET", "/tools/v1/check"), *_render_requests(image)]
 
 
 def test_legacy_leg_reads_the_master_check_too(_hermes_home, legacy_env, master, media):
