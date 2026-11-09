@@ -31,6 +31,44 @@ goes away once upstream ships the same fix.
     `render` on a project Desktop has not opened starts a detached Studio of its own, which nothing stops.
   - APEX sets `OPENFILM_HOSTED=1` for every `openfilm` the agent runs.
 
+## APEX's editor (hc-1188)
+
+In APEX Desktop, Studio's editor is APEX's: `apex-editor/` in the toolkit, which Desktop has Studio serve
+(`startStudio({ editorDir })`, `apps/desktop/electron/openfilm-studio.ts`). It is Studio's own editor (`studio/ui`)
+built from the pinned source with `editor/0001-apex-editor.patch`:
+
+- **No OpenFilm name or mark.** OpenFilm's trademark terms (its `TRADEMARK.md`) let a modified version carry neither.
+  The page is called 剪辑; where OpenFilm's mark opened Settings there is a settings gear; every phrase in every
+  language that named OpenFilm says "the editor" (`studio/ui/apex/brand.mjs`, a Vite plugin rewrites each language's
+  table as it is built), and the phrases APEX says its own way are in `src/i18n/apex.ts` (zh-CN, en, ja). OpenFilm's
+  MIT license and third-party notices are under Settings › General › About (`assets/apex-notices.txt`).
+- **None of OpenFilm's online places.** APEX is the editor's host (`window.openfilmHost`, Studio's own embedding
+  interface), so Studio leaves out the desktop app's button and its update prompts. Settings has no Services (OpenFilm's
+  account, others' keys, local models) and no Developer section, and no links to GitHub or openfilm.dev. The projects
+  window has no examples and no "from GitHub". The library shows what is on this computer, not the skills, voices,
+  sounds and music OpenFilm's service hands out. (Desktop also points those services nowhere: `openfilmOfflineEnv`.)
+- **APEX's look.** Light first, as APEX is: white, gray hairlines, APEX violet (#7E6CEF), the system's type (no Inter).
+- **Simplified Chinese first.** Desktop sets APEX's language in each Studio page (`openfilm.language`); until it has,
+  the editor speaks Simplified Chinese, whatever the browser does. The editor has no language choice of its own.
+
+`editor/verify-editor.mjs` (run by `verify.mjs`) builds it:
+
+1. Installs the editor's build tools as upstream pins them: pnpm (pinned in `pin.json` with its integrity) installs
+   from the source's `pnpm-lock.yaml`, frozen, into a store under the work folder.
+2. Builds the editor unpatched and checks it is byte for byte the one the npm package ships (`studio/ui/dist`), so
+   the build is upstream's own and all that differs in APEX's is what the patch changes.
+3. Applies the patch, typechecks the editor (`tsc -p studio/ui`) and runs upstream's own editor tests on it.
+4. Builds APEX's editor, with `assets/apex-notices.txt`.
+5. Runs the guards: `apex-editor.test.mjs` (what the built editor holds: no OpenFilm name, no OpenFilm places, the page,
+   the licenses; and its words) and `apex-editor-browser.test.mjs` (what it shows: Studio serves it offline, as Desktop
+   does, and a real Chrome opens a project in it in English: the page, the top bar, Settings, About, the projects
+   window, the library, no screen naming OpenFilm, no request leaving the computer). It needs a Chrome or Chromium:
+   `APEX_CHROME` (CI uses the runner's Chrome).
+6. Runs `reverse-verify-editor.mjs`, which takes each of the 22 parts of the patch back out of the source, one at a
+   time, builds the editor again and expects the named guards to go red.
+
+Upgrading OpenFilm means rebasing the patch on the new `studio/ui`; the guards say what a rebase lost.
+
 ## Checking and building
 
 ```

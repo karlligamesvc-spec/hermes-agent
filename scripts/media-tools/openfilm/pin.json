@@ -27,5 +27,15 @@
     "studio/server/ops.test.mjs",
     "studio/server/caption-tracks.test.mjs",
     "studio/server/captions.test.mjs"
-  ]
+  ],
+  "editor": {
+    "pnpm": {
+      "version": "9.15.9",
+      "tarball": "https://registry.npmjs.org/pnpm/-/pnpm-9.15.9.tgz",
+      "integrity": "sha512-aARhQYk8ZvrQHAeSMRKOmvuJ74fiaR1p5NQO7iKJiClf1GghgbrlW1hBjDolO95lpQXsfF+UA+zlzDzTfc8lMQ=="
+    },
+    "patches": ["editor/0001-apex-editor.patch"],
+    "guards": ["editor/apex-editor.test.mjs", "editor/apex-editor-browser.test.mjs"],
+    "upstreamTests": ["studio/ui/src/editor/*.test.ts", "studio/ui/src/lib/*.test.ts", "studio/ui/src/components/*.test.ts"]
+  }
 }
