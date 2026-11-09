@@ -72,10 +72,17 @@ def _hermes_home() -> Path:
 
 
 def ready_toolkit(home: Path) -> dict | None:
-    """The toolkit the engine installed, as its ready.json names it, while its files are there."""
+    """The toolkit the engine installed, as its ready.json names it, while its files are there and it is the toolkit
+    this engine pins (hc-1199: after an APEX update that moves the pin, ready.json still names the old one until
+    ``ensure_openfilm`` installs the new one)."""
+    from apex_overlay import media_tools
+
     try:
         said = json.loads((home / 'tool-cache' / 'openfilm' / 'ready.json').read_text(encoding='utf-8-sig'))
-    except (OSError, ValueError):
+        pinned = media_tools.openfilm_pin()['sha256']
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(said, dict) or not pinned or said.get('sha256') != pinned:
         return None
     toolkit, chromium = Path(str(said.get('toolkit', ''))), Path(str(said.get('chromium', '')))
     cli = toolkit / 'node_modules' / 'openfilm' / 'bin' / 'openfilm.mjs'
