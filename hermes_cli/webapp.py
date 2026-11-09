@@ -101,7 +101,9 @@ def prepare_webapp_renderer(
     ``explicit`` (a requested build) may install dependencies even when lazy
     installs are disabled, like ``hermes desktop --build-only``.
     """
-    from hermes_cli.source_build import build_source_webapp, source_build_env, source_product_current
+    from hermes_cli.source_build import (
+        build_source_webapp, packaged_engine_refusal, source_build_env, source_product_current,
+    )
 
     project_root = project_root.resolve()
     dist = webapp_dist_dir(project_root)
@@ -127,6 +129,11 @@ def prepare_webapp_renderer(
     if not force and not webapp_bundle_stale(dist) and source_product_current(project_root, "webapp", dist):
         print(f"✓ Hermes Webapp renderer is up to date: {dist}")
         return dist
+    # ApexNodes hc-954: an engine installed by APEX Desktop never builds here, and refuses before the
+    # build lock too, so its verified tree stays untouched (the guard every other build entry has).
+    refusal = packaged_engine_refusal(project_root)
+    if refusal:
+        raise WebappBuildError(refusal)
     with _exclusive_build_lock(project_root / _LOCK_NAME):
         if not force and source_product_current(project_root, "webapp", dist):
             _clear_stale_mark(dist)

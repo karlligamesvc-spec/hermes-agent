@@ -164,8 +164,11 @@ def clarify_tool(questions, callback: Optional[Callable] = None) -> str:
     shown = []
     for q in normalized:
         offered = prose(q["choices_offered"])
+        # ApexNodes hc-965: label the display copy only where normalization did, so a question with
+        # ``recommended: false`` stays unlabeled on every surface (hc-1203: v0.23.0 relabeled it here).
+        marked = q["choices"] != q["choices_offered"]
         shown.append({**q, "question": prose([q["question"]])[0], "choices_offered": offered,
-                      "choices": mark_recommended(list(offered)) if offered else None})
+                      "choices": (mark_recommended(list(offered)) if marked else list(offered)) if offered else None})
     # Observers see the questions only; the answers stay in the tool result.
     with human_input_request("clarify", prompt="\n".join(q["question"] for q in shown)) as human:
         try:

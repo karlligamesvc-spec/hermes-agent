@@ -15,9 +15,9 @@ Desktop's main process owns that truth and mirrors it into ``<root>/apex/desktop
 * a ``pre_llm_call`` note, once, when the state a session was last given has changed (a download
   finished, an install was put off, or the app was updated under a restored session). What each session
   was last given sits next to the state file, so a restart alone does not repeat it;
-* the engine's own every-session line "You run on Hermes Agent (by Nous Research) ... the documentation
-  ... always holds the latest" (agent/prompt_builder.py ``HERMES_AGENT_HELP_GUIDANCE`` and its no-skills
-  twin), the source of "跑在 Hermes Agent 上" and of looking up the public releases, becomes an APEX line.
+* the engine's own every-session line "For help with Hermes Agent itself ... the documentation ... always
+  holds the latest" (before v0.23.0: "You run on Hermes Agent (by Nous Research) ..."; agent/prompt_builder.py
+  ``HERMES_AGENT_HELP_GUIDANCE`` and its no-skills twin), the source of "跑在 Hermes Agent 上" and of looking up the public releases, becomes an APEX line.
   It sits in the stable tier, so a session restored from before keeps its stored prompt (the engine
   sends stored bytes untouched when the rebuilt prefix differs); the note still reaches it once.
 
@@ -87,7 +87,7 @@ SECTION_RULES = (
 
 NOTE = "（APEX 版本信息有变化，以这条为准：{version_line}；更新：{update}被问版本、是不是最新、怎么更新时照这条说，不去查别的。）"
 
-# Replaces the engine's "You run on Hermes Agent (by Nous Research) ..." line in every session's stable tier.
+# Replaces the engine's "For help with Hermes Agent itself ..." line in every session's stable tier.
 APEX_HELP_GUIDANCE = (
     "You are part of APEX, a product of ApexNodes HK. When the user asks how to use or set up APEX, which "
     "version it is, whether it is up to date or how to update it, answer from the APEX platform information "

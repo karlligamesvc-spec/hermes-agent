@@ -222,6 +222,18 @@ def test_dashboard_web_build_is_refused(engine_running, pm_tripwire, monkeypatch
     assert pm_tripwire == [] and _snapshot(engine_running) == before
 
 
+def test_webapp_renderer_build_is_refused(engine_running, pm_tripwire, monkeypatch):
+    """hc-1203: v0.23.0's Webapp renderer build stops at the same guard, before PM or npm."""
+    from hermes_cli import webapp
+
+    monkeypatch.delenv(webapp.DIST_ENV, raising=False)
+    before = _snapshot(engine_running)
+    with pytest.raises(Exception) as raised:
+        webapp.prepare_webapp_renderer(engine_running)
+    assert REFUSED in str(raised.value)
+    assert pm_tripwire == [] and _snapshot(engine_running) == before
+
+
 def test_update_product_builds_are_refused(engine_running, pm_tripwire, monkeypatch):
     from hermes_cli import main_install_repair, source_build, update_stage
     import hermes_cli.left_core_migration as left_core
@@ -275,6 +287,10 @@ def test_frontend_build_chains_are_the_counted_ones():
         "hermes_cli/main_web_build.py:_do_build_web_ui": ["build_source_web", "prepare_launch_dependencies", "source_build_env"],
         "hermes_cli/source_build.py:build_source_tui": ["run_source_script"],
         "hermes_cli/source_build.py:build_source_web": ["run_source_script"],
+        # hc-1203 (v0.23.0's Webapp, off by default): both go through the guarded run_source_script /
+        # source_build_env, and APEX's apps/desktop has no build-webapp.mjs to run.
+        "hermes_cli/source_build.py:build_source_webapp": ["run_source_script"],
+        "hermes_cli/webapp.py:prepare_webapp_renderer": ["source_build_env"],
         "hermes_cli/source_build.py:build_update_products": ["build_source_tui", "build_source_web"],
         "hermes_cli/source_build.py:node_dependencies": ["prepare_source_dependencies", "source_build_env"],
         "hermes_cli/source_build.py:prepare_launch_dependencies": ["prepare_source_dependencies"],
