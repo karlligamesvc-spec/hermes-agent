@@ -14,6 +14,7 @@ import {
 import { saveHermesConfigRecord } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { Check, Globe } from '@/lib/icons'
+import { isOpenfilmStudioTab } from '@/lib/openfilm-studio'
 import { notify, notifyError } from '@/store/notifications'
 import {
   $realProfilePromptClaim,
@@ -36,9 +37,10 @@ interface RealProfileConsentDialogProps {
  * hc-1132: product mode does not offer this at all. The panel it opens over never uses the setting, only the
  * assistant's background browser does, and product mode has no plain way back to the switch. Developer mode and
  * the switch off keep the offer; app/single-thread/real-profile-reset.ts settles anyone who said yes before.
+ * hc-1188: nor does the editor's tab, which is no Browser anyone browses with.
  */
 export function RealProfileConsentDialog(props: RealProfileConsentDialogProps) {
-  return useSingleThreadMode() ? null : <RealProfileConsentOffer {...props} />
+  return useSingleThreadMode() || isOpenfilmStudioTab(props.tabId) ? null : <RealProfileConsentOffer {...props} />
 }
 
 /**

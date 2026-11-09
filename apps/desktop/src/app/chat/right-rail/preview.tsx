@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react'
 
 import { $restartPreviewServer } from '@/app/contrib/panes'
+import { isOpenfilmStudioTab } from '@/lib/openfilm-studio'
 import { $previewReloadRequest, $previewTabs } from '@/store/preview'
 
 import { PreviewPane } from './preview-pane'
@@ -35,7 +36,10 @@ export function PreviewTilePane({ tabId }: PreviewTilePaneProps) {
   return (
     <PreviewPane
       embedded
-      onRestartServer={target.kind === 'url' ? (restartPreviewServer ?? undefined) : undefined}
+      // Studio is APEX's editor, not a dev server of the agent's to restart (hc-1188).
+      onRestartServer={
+        target.kind === 'url' && !isOpenfilmStudioTab(tabId) ? (restartPreviewServer ?? undefined) : undefined
+      }
       reloadRequest={previewReloadRequest}
       tabId={tabId}
       target={target}

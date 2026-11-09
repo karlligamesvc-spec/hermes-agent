@@ -2,6 +2,11 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { onComposerAttachImagesRequest } from '@/app/chat/composer/focus'
+import { I18nProvider, useI18n } from '@/i18n'
+import { setRuntimeI18nLocale } from '@/i18n/runtime'
+import type { Locale } from '@/i18n/types'
+import { OPENFILM_STUDIO_TAB_ID, openfilmStudioLanguageScript } from '@/lib/openfilm-studio'
+import { type PreviewTarget } from '@/store/preview'
 import { $connection, $selectedStoredSessionId } from '@/store/session'
 
 import { forgetPreviewConsole, previewConsoleState } from './preview-console-store'
@@ -639,5 +644,129 @@ describe('PreviewPane console state', () => {
       path: `/api/fs/read-data-url?path=${encodeURIComponent(filePath)}`,
       profile: 'macmini'
     })
+  })
+})
+
+// hc-1188: Studio's tab is APEX's editor, shown without a browser's chrome, in
+// APEX's language, and left alone when the agent edits files (Studio takes those
+// in itself). An ordinary page beside it keeps all of a Browser's.
+describe('the editor’s tab', () => {
+  const STUDIO_URL = 'http://127.0.0.1:53327/open?key=k&to=%2Fprojects%2Fcook'
+
+  const studio: PreviewTarget = {
+    kind: 'url',
+    label: 'cook',
+    source: '/work/cook/film.html',
+    transient: true,
+    url: STUDIO_URL
+  }
+
+  const page: PreviewTarget = {
+    kind: 'url',
+    label: 'Preview',
+    source: 'http://localhost:5174',
+    url: 'http://localhost:5174'
+  }
+
+  let switchLanguage: ((next: Locale) => Promise<void>) | null = null
+
+  function LanguageSwitch() {
+    switchLanguage = useI18n().setLocale
+
+    return null
+  }
+
+  const tree = (tabId: string, target: PreviewTarget, reloadRequest = 0) => (
+    <I18nProvider configClient={null} initialLocale="zh">
+      <LanguageSwitch />
+      <PreviewPane reloadRequest={reloadRequest} tabId={tabId} target={target} />
+    </I18nProvider>
+  )
+
+  async function mount(tabId: string, target: PreviewTarget) {
+    setRuntimeI18nLocale('zh')
+    let rendered!: ReturnType<typeof render>
+    await act(async () => {
+      rendered = render(tree(tabId, target))
+    })
+
+    const webview = rendered.container.querySelector('webview') as HTMLElement & Record<string, unknown>
+
+    const guest = {
+      executeJavaScript: vi.fn(async (_code: string) => true),
+      reload: vi.fn(),
+      reloadIgnoringCache: vi.fn()
+    }
+
+    Object.assign(webview, guest)
+
+    return { guest, rendered, webview }
+  }
+
+  /** The language scripts the guest was given, by the language each sets. */
+  const languagesSet = (guest: { executeJavaScript: ReturnType<typeof vi.fn> }) =>
+    guest.executeJavaScript.mock.calls
+      .map(([code]) => String(code))
+      .filter(code => code.includes('openfilm.language'))
+      .map(code => ['zh-CN', 'en', 'ja'].find(language => code === openfilmStudioLanguageScript(language)) ?? code)
+
+  const loadPage = (webview: HTMLElement, url: string) =>
+    act(() => {
+      webview.dispatchEvent(Object.assign(new Event('did-navigate'), { url }))
+      webview.dispatchEvent(new Event('dom-ready'))
+    })
+
+  afterEach(() => {
+    cleanup()
+    setRuntimeI18nLocale('en')
+    switchLanguage = null
+  })
+
+  it('wears no browser chrome: no address bar, history, console or DevTools', async () => {
+    const editor = await mount(OPENFILM_STUDIO_TAB_ID, studio)
+
+    expect(editor.webview).toBeInstanceOf(HTMLElement)
+    expect(editor.rendered.queryByRole('textbox')).toBeNull()
+    expect(editor.rendered.queryAllByRole('button')).toEqual([])
+    cleanup()
+
+    const browser = await mount('url:5b0c', page)
+
+    expect(browser.rendered.getByRole('textbox')).toBeTruthy()
+    expect(browser.rendered.queryAllByRole('button').length).toBeGreaterThan(3)
+  })
+
+  it('tells the editor APEX’s language as each Studio page commits and loads, and follows it when it changes', async () => {
+    const { guest, webview } = await mount(OPENFILM_STUDIO_TAB_ID, studio)
+
+    loadPage(webview, 'http://127.0.0.1:53327/projects/cook')
+    expect(languagesSet(guest)).toEqual(['zh-CN', 'zh-CN'])
+
+    await act(async () => {
+      await switchLanguage?.('en')
+    })
+    expect(languagesSet(guest)).toEqual(['zh-CN', 'zh-CN', 'en'])
+  })
+
+  it('never touches an ordinary page’s language', async () => {
+    const { guest, webview } = await mount('url:5b0c', page)
+
+    loadPage(webview, 'http://localhost:5174/')
+    await act(async () => {
+      await switchLanguage?.('en')
+    })
+    expect(languagesSet(guest)).toEqual([])
+  })
+
+  it.each([
+    ['the editor', 0, OPENFILM_STUDIO_TAB_ID, studio],
+    ['an ordinary page', 1, 'url:5b0c', page]
+  ])('an agent’s file edit reloads %s %i time(s)', async (_label, reloads, tabId, target) => {
+    const { guest, rendered } = await mount(tabId, target)
+
+    await act(async () => {
+      rendered.rerender(tree(tabId, target, 1))
+    })
+    expect(guest.reloadIgnoringCache).toHaveBeenCalledTimes(reloads)
   })
 })
