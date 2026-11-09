@@ -12,7 +12,7 @@ import { spawn as nodeSpawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { delimiter, join } from 'node:path'
+import { delimiter, join, resolve } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -20,11 +20,15 @@ import {
   APEX_EDITOR_DIR,
   type ApexAccount,
   createOpenfilmStudio,
+  ENGINE_TOOLKIT_LOCK,
   findOpenfilmToolkit,
+  installedOpenfilmToolkit,
   OPENFILM_FFMPEG_DIR_ENV,
   OPENFILM_OFFLINE_URL,
   OPENFILM_TOOLKIT_ENV,
   openfilmAgentEnv,
+  openfilmEngineRoot,
+  pinnedOpenfilmToolkit,
   planOpenfilmStudio,
   readAdvertisedStudio,
   readOpenfilmAccess,
@@ -39,6 +43,8 @@ import {
  * A stand-in for `openfilm/studio`: what the host imports and calls. It notes
  * what it was given in `<data>/marks.jsonl` (the child gets no variable of the
  * test's own), and the first one started ends itself when `<data>/crash` exists.
+ * With `<data>/slow-close`, closing takes a moment (run.json goes last), as a
+ * real Studio's does.
  */
 const FAKE_SERVER = `
 import { createServer } from 'node:http'
@@ -51,7 +57,7 @@ const note = mark => appendFileSync(marks, JSON.stringify(mark) + '\\n')
 export async function startStudio(options) {
   const first = !existsSync(marks)
   const readIndex = file => { try { return JSON.parse(readFileSync(file, 'utf8')) } catch { return 'unreadable' } }
-  note({ started: { ...options, openBrowser: typeof options.openBrowser }, execArgv: process.execArgv, env: {
+  note({ started: { ...options, openBrowser: typeof options.openBrowser }, pid: process.pid, serverModule: process.env.APEX_OPENFILM_SERVER_MODULE, execArgv: process.execArgv, env: {
     home: process.env.OPENFILM_HOME, noBrowser: process.env.OPENFILM_NO_BROWSER, noUpdate: process.env.OPENFILM_NO_UPDATE_CHECK,
     chromium: process.env.OPENFILM_CHROMIUM ?? null, playwrightBrowsers: process.env.PLAYWRIGHT_BROWSERS_PATH ?? null,
     secret: process.env.APEX_SECRET_FOR_TEST ?? null, libraryUrl: process.env.OPENFILM_LIBRARY_URL ?? null,
@@ -66,6 +72,7 @@ export async function startStudio(options) {
     req.on('end', () => {
       if (req.url !== '/api/open' || req.headers['x-studio-key'] !== key) { res.writeHead(401).end('{}'); return }
       const { path, fallback } = JSON.parse(body)
+      note({ opened: path.split(/[\\\\/]/).pop(), pid: process.pid })
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ url: origin + '/open?key=' + key + '&to=' + encodeURIComponent('/projects/' + path.split(/[\\\\/]/).pop()) + '&fallback=' + fallback }))
     })
@@ -80,8 +87,9 @@ export async function startStudio(options) {
   options.openBrowser(origin + '/open?key=' + key + '&to=%2F')
   if (first && existsSync(join(data, 'crash'))) setTimeout(() => process.exit(3), 100)
   return { origin, filmOrigin: 'http://localhost:1', port: server.address().port, key, close: async () => {
+    if (existsSync(join(data, 'slow-close'))) await new Promise(done => setTimeout(done, 600))
     rmSync(runFile, { force: true })
-    note({ closed: true })
+    note({ closed: true, pid: process.pid })
     await new Promise(done => server.close(done))
   } }
 }
@@ -89,8 +97,8 @@ export async function startStudio(options) {
 
 let root = ''
 
-function fakeToolkit(): string {
-  const toolkit = join(root, 'toolkit')
+function fakeToolkit(folder = 'toolkit'): string {
+  const toolkit = join(root, folder)
   const server = join(toolkit, 'node_modules', 'openfilm', 'studio', 'server')
   mkdirSync(server, { recursive: true })
   mkdirSync(join(toolkit, 'browsers'), { recursive: true })
@@ -167,14 +175,36 @@ function scheduler(open: 'unreadable' | boolean, asked: Array<{ auth: string; ur
 /** What every test that runs Studio adds to createOpenfilmStudio: an account the Scheduler opens the editor to. */
 const opened = () => ({ account: () => ACCOUNT, fetchImpl: scheduler(true) })
 
-/** The toolkit as the engine installs it: its folder under tool-cache, the agent browser, and ready.json naming both. */
-function installToolkit(): { chromium: string; toolkit: string } {
-  const toolkit = fakeToolkit()
+/** The toolkit the engine pins (desktop-lock.json `openfilm.sha256`), and the one an earlier APEX pinned (hc-1199). */
+const PIN = '5254c8a04a735240ab10ec0a23aedc524cc0b49c37ca0990052f14d8c8a95571'
+const OLD_PIN = '9890ddff00000000000000000000000000000000000000000000000000000000'
+
+/** An engine's root whose desktop-lock.json pins `sha256`, laid out as apex_overlay/media_tools.py reads it. */
+function engineRoot(sha256: string = PIN, folder = 'engine'): string {
+  const engine = join(root, folder)
+  mkdirSync(join(engine, ...ENGINE_TOOLKIT_LOCK, '..'), { recursive: true })
+  writeFileSync(
+    join(engine, ...ENGINE_TOOLKIT_LOCK),
+    JSON.stringify({ browser: {}, openfilm: { version: '0.3.0', patches: [], sha256 } })
+  )
+
+  return engine
+}
+
+/**
+ * The toolkit as the engine installs it: its folder under tool-cache (named by
+ * its sha256, as the engine names it), the agent browser, and ready.json naming
+ * both, with the sha256 it was installed for.
+ */
+function installToolkit(sha256: string = PIN): { chromium: string; toolkit: string } {
+  const toolkit = fakeToolkit(join('tool-cache', 'openfilm', sha256))
   const chromium = join(root, 'tool-cache', 'chrome', 'abc', 'chrome')
   mkdirSync(join(chromium, '..'), { recursive: true })
   writeFileSync(chromium, '')
-  mkdirSync(join(root, 'tool-cache', 'openfilm'), { recursive: true })
-  writeFileSync(join(root, 'tool-cache', 'openfilm', 'ready.json'), JSON.stringify({ schema: 1, toolkit, chromium }))
+  writeFileSync(
+    join(root, 'tool-cache', 'openfilm', 'ready.json'),
+    JSON.stringify({ schema: 1, version: '0.3.0', sha256, toolkit, chromium })
+  )
 
   return { chromium, toolkit }
 }
@@ -313,7 +343,7 @@ describe('finding the toolkit', () => {
   test('the one the engine installed, as ready.json names it, with the agent browser', () => {
     const { chromium, toolkit } = installToolkit()
 
-    assert.deepEqual(findOpenfilmToolkit(onPlan({})), {
+    assert.deepEqual(findOpenfilmToolkit(onPlan({}), PIN), {
       toolkit,
       serverModule: join(toolkit, 'node_modules', 'openfilm', 'studio', 'server', 'server.mjs'),
       browsers: null,
@@ -330,22 +360,23 @@ describe('finding the toolkit', () => {
     const { toolkit } = installToolkit()
     const editor = addApexEditor(toolkit, index)
     const dev = fakeToolkit()
+    const devEditor = addApexEditor(dev, index)
 
-    expect(findOpenfilmToolkit(onPlan({}))?.editor).toBe(found ? editor : null)
-    expect(findOpenfilmToolkit(onPlan({ [OPENFILM_TOOLKIT_ENV]: dev }))?.editor).toBe(found ? editor : null)
+    expect(findOpenfilmToolkit(onPlan({}), PIN)?.editor).toBe(found ? editor : null)
+    expect(findOpenfilmToolkit(onPlan({ [OPENFILM_TOOLKIT_ENV]: dev }), null)?.editor).toBe(found ? devEditor : null)
   })
 
   test.each([
     ['no ready.json', () => undefined],
     ['ready.json that does not read', () => writeFileSync(join(root, 'tool-cache', 'openfilm', 'ready.json'), '{')],
-    ['a toolkit folder that is gone', () => rmSync(join(root, 'toolkit'), { recursive: true })],
+    ['a toolkit folder that is gone', () => rmSync(join(root, 'tool-cache', 'openfilm', PIN), { recursive: true })],
     ['a browser that is gone', () => rmSync(join(root, 'tool-cache', 'chrome'), { recursive: true })],
     [
       'relative paths',
       () =>
         writeFileSync(
           join(root, 'tool-cache', 'openfilm', 'ready.json'),
-          JSON.stringify({ toolkit: 'toolkit', chromium: 'chrome' })
+          JSON.stringify({ sha256: PIN, toolkit: 'toolkit', chromium: 'chrome' })
         )
     ]
   ])('none with %s', (label, spoil) => {
@@ -356,26 +387,107 @@ describe('finding the toolkit', () => {
       spoil()
     }
 
-    assert.equal(findOpenfilmToolkit(onPlan({})), null)
+    assert.equal(findOpenfilmToolkit(onPlan({}), PIN), null)
   })
 
   test.each([
     ['a relative folder', 'toolkit'],
     ['a folder without openfilm', '/nowhere/toolkit']
   ])('a development toolkit: none with %s', (_label, toolkit) => {
-    assert.equal(findOpenfilmToolkit(onPlan({ [OPENFILM_TOOLKIT_ENV]: toolkit })), null)
+    assert.equal(findOpenfilmToolkit(onPlan({ [OPENFILM_TOOLKIT_ENV]: toolkit }), null), null)
+  })
+
+  // hc-1199: only the toolkit the engine pins counts; an update that moves the pin leaves the old ready.json behind.
+  test.each<[string, null | string, null | string, boolean]>([
+    ['the toolkit the engine pins', PIN, PIN, true],
+    ['the toolkit an earlier APEX pinned (an update moved the pin)', PIN, OLD_PIN, false],
+    ['no sha256', PIN, null, false],
+    ['any toolkit, while the engine’s pin cannot be read', null, PIN, false]
+  ])('ready.json naming %s', (_label, pinned, installed, found) => {
+    installToolkit(installed ?? PIN)
+
+    if (installed === null) {
+      const ready = join(root, 'tool-cache', 'openfilm', 'ready.json')
+      const { sha256: _gone, ...rest } = JSON.parse(readFileSync(ready, 'utf8'))
+      writeFileSync(ready, JSON.stringify(rest))
+    }
+
+    assert.equal(findOpenfilmToolkit(onPlan({}), pinned) !== null, found)
+    assert.equal(installedOpenfilmToolkit(onPlan({})), installed)
+  })
+
+  test('a development toolkit is the developer’s own: no pin applies to it', () => {
+    const toolkit = fakeToolkit()
+
+    assert.equal(findOpenfilmToolkit(onPlan({ [OPENFILM_TOOLKIT_ENV]: toolkit }), OLD_PIN)?.toolkit, toolkit)
   })
 
   test('a development toolkit, with its own Playwright browsers', () => {
     const toolkit = fakeToolkit()
 
-    expect(findOpenfilmToolkit(onPlan({ [OPENFILM_TOOLKIT_ENV]: toolkit }))).toEqual({
+    expect(findOpenfilmToolkit(onPlan({ [OPENFILM_TOOLKIT_ENV]: toolkit }), null)).toEqual({
       toolkit,
       serverModule: join(toolkit, 'node_modules', 'openfilm', 'studio', 'server', 'server.mjs'),
       browsers: join(toolkit, 'browsers'),
       chromium: null,
       editor: null
     })
+  })
+})
+
+describe('the toolkit the engine pins (hc-1199)', () => {
+  test('desktop-lock.json’s openfilm.sha256, under the engine’s root, with or without a BOM', () => {
+    const engine = engineRoot(PIN)
+
+    assert.equal(pinnedOpenfilmToolkit(engine), PIN)
+    writeFileSync(
+      join(engine, ...ENGINE_TOOLKIT_LOCK),
+      `\uFEFF${readFileSync(join(engine, ...ENGINE_TOOLKIT_LOCK), 'utf8')}`
+    )
+    assert.equal(pinnedOpenfilmToolkit(engine), PIN)
+  })
+
+  test.each<[string, () => null | string]>([
+    ['no engine', () => null],
+    ['a relative root', () => 'engine'],
+    ['no lock', () => root],
+    [
+      'a lock that does not read',
+      () => {
+        const engine = engineRoot()
+        writeFileSync(join(engine, ...ENGINE_TOOLKIT_LOCK), '{')
+
+        return engine
+      }
+    ],
+    [
+      'a lock without the toolkit',
+      () => {
+        const engine = engineRoot()
+        writeFileSync(join(engine, ...ENGINE_TOOLKIT_LOCK), JSON.stringify({ browser: {} }))
+
+        return engine
+      }
+    ],
+    ['a pin that is not a sha256', () => engineRoot('5254c8a0')]
+  ])('none with %s', (_label, engine) => {
+    assert.equal(pinnedOpenfilmToolkit(engine()), null)
+  })
+
+  test('the lock Desktop reads is the one the engine installs from, and names this repository’s pin', () => {
+    const repo = join(__dirname, '..', '..', '..')
+    const lock = JSON.parse(readFileSync(join(repo, ...ENGINE_TOOLKIT_LOCK), 'utf8'))
+    const engine = readFileSync(join(repo, 'apex_overlay', 'media_tools.py'), 'utf8')
+
+    assert.equal(pinnedOpenfilmToolkit(repo), lock.openfilm.sha256)
+    expect(engine).toContain(`LOCK = ROOT / '${ENGINE_TOOLKIT_LOCK.join('/')}'`)
+    // ensure_openfilm installs the toolkit openfilm_pin names, and writes that sha256 into ready.json.
+    expect(engine).toMatch(
+      /def openfilm_pin\(\) -> dict:[\s\S]*?return json\.loads\(LOCK\.read_text\([^)]*\)\)\['openfilm'\]/
+    )
+    expect(engine).toMatch(
+      /def ensure_openfilm\(\) -> Path:[\s\S]*?spec = openfilm_pin\(\)[\s\S]*?'sha256': spec\['sha256'\]/
+    )
   })
 })
 
@@ -392,7 +504,7 @@ describe("the child's environment", () => {
   test('Studio folders under APEX data, the agent browser, no update check, the engine’s ffmpeg first, nothing else of main’s', () => {
     const plan = onPlan({})
     const { chromium, toolkit } = installToolkit()
-    const found = findOpenfilmToolkit(plan)
+    const found = findOpenfilmToolkit(plan, PIN)
 
     if (!found) {
       throw new Error('no toolkit')
@@ -431,7 +543,7 @@ describe("the child's environment", () => {
   test('none of OpenFilm’s own online sources, for Studio and for every engine alike', () => {
     const plan = onPlan({})
     installToolkit()
-    const found = findOpenfilmToolkit(plan)
+    const found = findOpenfilmToolkit(plan, PIN)
 
     if (!found) {
       throw new Error('no toolkit')
@@ -453,7 +565,7 @@ describe("the child's environment", () => {
     const plan = onPlan({})
     const { toolkit } = installToolkit()
     const editor = addApexEditor(toolkit)
-    const found = findOpenfilmToolkit(plan)
+    const found = findOpenfilmToolkit(plan, PIN)
 
     if (!found) {
       throw new Error('no toolkit')
@@ -465,7 +577,7 @@ describe("the child's environment", () => {
   test('a development toolkit draws in its own Playwright browsers', () => {
     const toolkit = fakeToolkit()
     const plan = onPlan({ [OPENFILM_TOOLKIT_ENV]: toolkit })
-    const found = findOpenfilmToolkit(plan)
+    const found = findOpenfilmToolkit(plan, null)
 
     if (!found) {
       throw new Error('no toolkit')
@@ -486,7 +598,7 @@ describe("the child's environment", () => {
 })
 
 describe('Studio in a child process', () => {
-  function runStudio({ crash = false, env = onEnv() } = {}) {
+  function runStudio({ crash = false, env = onEnv(), engine = engineRoot() } = {}) {
     if (crash) {
       mkdirSync(join(root, 'openfilm'), { recursive: true })
       writeFileSync(join(root, 'openfilm', 'crash'), '')
@@ -501,6 +613,7 @@ describe('Studio in a child process', () => {
       basePath: () => process.env.PATH ?? '',
       log: line => lines.push(line),
       readyTimeoutMs: 20_000,
+      engineRoot: () => engine,
       ...opened()
     })
 
@@ -609,7 +722,7 @@ describe('Studio in a child process', () => {
 
 describe('installing the toolkit in the background', () => {
   /** A stand-in for the engine's `python -m apex_overlay.media_tools openfilm`: it ends when the test says. */
-  function fakeEngine() {
+  function fakeEngine(pins: string = PIN) {
     const runs: Array<{ args: string[]; finish: (code: number, install?: boolean) => void }> = []
 
     const spawn = vi.fn((command: string, args: string[], options: any) => {
@@ -627,7 +740,7 @@ describe('installing the toolkit in the background', () => {
         args,
         finish: (code, install = code === 0) => {
           if (install) {
-            installToolkit()
+            installToolkit(pins)
           } else {
             proc.stderr.emit('data', 'APEX OpenFilm toolkit unavailable: URLError: offline\n')
           }
@@ -642,8 +755,15 @@ describe('installing the toolkit in the background', () => {
     return { runs, spawn }
   }
 
-  function studioWith(engine: ReturnType<typeof fakeEngine>, clock = { now: 1_000 }) {
-    const enginePython = vi.fn(async () => ({ command: 'engine-python', cwd: '/engine', env: { ENGINE_ONLY: '1' } }))
+  function studioWith(
+    engine: ReturnType<typeof fakeEngine>,
+    clock = { now: 1_000 },
+    { defaultRoot = engineRoot() as null | string } = {}
+  ) {
+    const cwd = engineRoot()
+    const lines: string[] = []
+
+    const enginePython = vi.fn(async () => ({ command: 'engine-python', cwd, env: { ENGINE_ONLY: '1' } }))
 
     const studio = createOpenfilmStudio({
       env: { HOME: process.env.HOME, TMPDIR: process.env.TMPDIR },
@@ -652,12 +772,14 @@ describe('installing the toolkit in the background', () => {
       execPath: process.execPath,
       basePath: () => process.env.PATH ?? '',
       enginePython,
+      engineRoot: () => defaultRoot,
       spawn: engine.spawn as never,
       now: () => clock.now,
+      log: line => lines.push(line),
       readyTimeoutMs: 20_000
     })
 
-    return { clock, enginePython, studio }
+    return { clock, cwd, enginePython, lines, studio }
   }
 
   test('a film opened before the toolkit is there: not ready, and the engine installs it, once', async () => {
@@ -671,7 +793,7 @@ describe('installing the toolkit in the background', () => {
     await vi.waitFor(() => assert.equal(engine.runs.length, 1))
     assert.deepEqual(engine.runs[0].args, ['-m', 'apex_overlay.media_tools', 'openfilm'])
     expect(engine.spawn.mock.calls[0][2]).toMatchObject({
-      cwd: '/engine',
+      cwd: join(root, 'engine'),
       env: { HOME: process.env.HOME, HERMES_HOME: root, ENGINE_ONLY: '1' }
     })
     assert.deepEqual(await studio.status(), { on: true, ready: false, preparing: true })
@@ -718,6 +840,122 @@ describe('installing the toolkit in the background', () => {
     await vi.waitFor(async () => assert.equal((await studio.status()).preparing, false))
     assert.equal((await studio.status()).ready, false)
     assert.equal(await studio.prefetch(), 'waiting')
+  })
+
+  // hc-1199: what the 0.17.75 candidate got wrong. A machine that had 9890ddff kept it after an update pinned 5254c8a0.
+  test('after an update that moved the pin, a film waits for the pinned toolkit, which the engine installs, and Studio runs from it', async () => {
+    const { toolkit: old } = installToolkit(OLD_PIN)
+    const engine = fakeEngine()
+    const { cwd, studio } = studioWith(engine)
+
+    assert.deepEqual(await studio.status(), { on: true, ready: false, preparing: false })
+
+    const first = await studio.open(filmProject('cook'))
+
+    expect(first).toEqual({ ok: false, code: 'not_ready', message: 'the editor is getting ready (started)' })
+    assert.equal(marks().length, 0, 'no Studio from the old toolkit')
+    await vi.waitFor(() => assert.equal(engine.runs.length, 1))
+    assert.deepEqual(engine.runs[0].args, ['-m', 'apex_overlay.media_tools', 'openfilm'])
+    expect(engine.spawn.mock.calls[0][2]).toMatchObject({ cwd })
+    assert.equal(await studio.prefetch(), 'preparing')
+
+    engine.runs[0].finish(0)
+    await vi.waitFor(async () => assert.deepEqual(await studio.status(), { on: true, ready: true, preparing: false }))
+    assert.equal((await studio.open(filmProject('cook'))).ok, true)
+
+    const started = marks().filter(mark => mark.started)
+
+    assert.equal(started.length, 1)
+    assert.equal(
+      started[0].serverModule,
+      join(root, 'tool-cache', 'openfilm', PIN, 'node_modules', 'openfilm', 'studio', 'server', 'server.mjs')
+    )
+    assert.equal(String(started[0].serverModule).startsWith(old), false)
+    studio.stop()
+    await vi.waitFor(() => expect(marks().some(mark => mark.closed)).toBe(true), { timeout: 10_000 })
+  })
+
+  test('after an update that moved the pin, the first video tool installs the pinned toolkit', async () => {
+    installToolkit(OLD_PIN)
+    const engine = fakeEngine()
+    const { studio } = studioWith(engine)
+
+    assert.equal(await studio.prefetch(), 'started')
+    await vi.waitFor(() => assert.equal(engine.runs.length, 1))
+    engine.runs[0].finish(0)
+    await vi.waitFor(async () => assert.equal(await studio.prefetch(), 'ready'))
+  })
+
+  test('once an install has run, the pin of the engine that installed is the one that counts', async () => {
+    installToolkit(PIN)
+    const engine = fakeEngine()
+    // Desktop's own idea of the engine names none: no toolkit counts until the engine says where it runs.
+    const { lines, studio } = studioWith(engine, undefined, { defaultRoot: null })
+
+    assert.equal((await studio.status()).ready, false)
+    assert.equal(await studio.prefetch(), 'started')
+    await vi.waitFor(() => assert.equal(engine.runs.length, 1))
+    engine.runs[0].finish(0)
+    await vi.waitFor(async () => assert.deepEqual(await studio.status(), { on: true, ready: true, preparing: false }))
+    expect(lines).toContain(
+      `[openfilm-studio] installing the toolkit in the background (the engine pins ${PIN.slice(0, 8)}, ready.json names ${PIN.slice(0, 8)})`
+    )
+  })
+
+  test('a Studio running from the toolkit an earlier pin named gets no new film; the next open restarts it from the pinned one', async () => {
+    const engine = fakeEngine()
+    const { cwd, lines, studio } = studioWith(engine)
+    engineRoot(OLD_PIN)
+    installToolkit(OLD_PIN)
+    mkdirSync(join(root, 'openfilm'), { recursive: true })
+    writeFileSync(join(root, 'openfilm', 'slow-close'), '')
+
+    assert.equal((await studio.open(filmProject('cook'))).ok, true)
+    const first = marks().find(mark => mark.started)
+
+    // An engine upgrade activates while APEX runs: the engine's folder now pins the new toolkit.
+    assert.equal(engineRoot(PIN), cwd)
+    const waiting = await studio.open(filmProject('trip'))
+
+    expect(waiting).toEqual({ ok: false, code: 'not_ready', message: 'the editor is getting ready (started)' })
+    await vi.waitFor(() => assert.equal(engine.runs.length, 1))
+    expect(marks().filter(mark => mark.opened)).toEqual([{ opened: 'cook', pid: first?.pid }])
+    assert.equal(
+      marks().some(mark => mark.closed),
+      false,
+      'the old Studio keeps what it shows until then'
+    )
+
+    engine.runs[0].finish(0)
+    await vi.waitFor(async () => assert.equal((await studio.status()).ready, true))
+    assert.equal((await studio.open(filmProject('trip'))).ok, true)
+
+    const order = marks()
+    const closed = order.findIndex(mark => mark.closed && mark.pid === first?.pid)
+    const again = order.findIndex(mark => mark.started && mark.pid !== first?.pid)
+
+    // Desktop ends its own old Studio and waits for it to go: it is not taken for another app's Studio.
+    assert.ok(closed >= 0 && again > closed, JSON.stringify(order))
+    assert.equal(lines.filter(line => line.includes('restarting Studio')).length, 1)
+    assert.equal(
+      lines.some(line => line.includes('another Studio')),
+      false,
+      lines.join('\n')
+    )
+    assert.equal(
+      order[again].serverModule,
+      join(root, 'tool-cache', 'openfilm', PIN, 'node_modules', 'openfilm', 'studio', 'server', 'server.mjs')
+    )
+    expect(order.filter(mark => mark.opened)).toEqual([
+      { opened: 'cook', pid: first?.pid },
+      { opened: 'trip', pid: order[again].pid }
+    ])
+
+    // One Studio of Desktop's own from then on: another open reuses it.
+    assert.equal((await studio.open(filmProject('cook'))).ok, true)
+    assert.equal(marks().filter(mark => mark.started).length, 2)
+    studio.stop()
+    await vi.waitFor(() => expect(marks().filter(mark => mark.closed).length).toBe(2), { timeout: 10_000 })
   })
 
   test('no engine yet: nothing runs, and it counts as a failed try', async () => {
@@ -1087,6 +1325,52 @@ describe('main’s wiring', () => {
     )
     // The same key the engine's tools get (desktopPlatformToolSpawnEnv), so Desktop and the engine read one answer.
     expect(main).toContain('buildPlatformToolSpawnEnv({ apiBase, currentEnv: process.env, key: managed.key })')
+  })
+
+  test('main gives the module the root of the engine it runs (hc-1199), and the install runs at the backend’s root', () => {
+    const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
+    const call = main.slice(main.indexOf('const openfilmStudio = createOpenfilmStudio({'))
+
+    expect(call.slice(0, call.indexOf('\n})'))).toContain(
+      'engineRoot: () => openfilmEngineRoot(process.env, { active: ACTIVE_HERMES_ROOT, checkout: SOURCE_REPO_ROOT, diagnostic: IS_DIAGNOSTIC_TRIAL, packaged: IS_PACKAGED, isSource: isHermesSourceRoot }),'
+    )
+    expect(main).toContain(
+      'return backend.command ? { command: backend.command, cwd: backend.root, env: backend.env ?? {} } : null'
+    )
+    // The roots it names are resolveHermesBackend's own.
+    expect(main).toContain("const ACTIVE_HERMES_ROOT = path.join(HERMES_HOME, 'hermes-agent')")
+    expect(main).toContain(
+      'const overrideRoot = process.env.HERMES_DESKTOP_HERMES_ROOT && path.resolve(process.env.HERMES_DESKTOP_HERMES_ROOT)'
+    )
+    expect(main).toContain('if (!IS_PACKAGED && isHermesSourceRoot(SOURCE_REPO_ROOT)) {')
+  })
+
+  test.each<[string, Record<string, string | undefined>, { diagnostic?: boolean; packaged?: boolean }, string]>([
+    ['an installed APEX', {}, { packaged: true }, '/home/hermes-agent'],
+    ['a development build in a checkout', {}, { packaged: false }, '/src'],
+    ['an explicit source root', { HERMES_DESKTOP_HERMES_ROOT: '/wt' }, { packaged: true }, resolve('/wt')],
+    [
+      'a Diagnostic Trial’s runtime',
+      { HERMES_DESKTOP_HERMES_ROOT: '/trial' },
+      { packaged: true, diagnostic: true },
+      resolve('/trial')
+    ],
+    [
+      'an explicit root that is not a source root',
+      { HERMES_DESKTOP_HERMES_ROOT: '/nothing' },
+      { packaged: true },
+      '/home/hermes-agent'
+    ]
+  ])('the engine whose pin counts first: %s', (_label, env, { diagnostic = false, packaged = true }, expected) => {
+    const roots = {
+      active: '/home/hermes-agent',
+      checkout: '/src',
+      diagnostic,
+      packaged,
+      isSource: (folder: string) => ['/src', resolve('/wt')].includes(folder)
+    }
+
+    assert.equal(openfilmEngineRoot(env, roots), expected)
   })
 
   test('every engine started after it runs OpenFilm hosted, in Studio’s folders, opened to the account or not', () => {

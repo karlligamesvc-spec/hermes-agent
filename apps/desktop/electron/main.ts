@@ -484,7 +484,7 @@ import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
 import { LEGACY_OAUTH_PARTITION, resolveOauthPartition } from './oauth-partition'
 import { mintGatewayWsTicket as mintOauthGatewayWsTicket, requestWithOauthFallback } from './oauth-rest-request'
 import { wireOauthSessionResponse } from './oauth-session-response'
-import { createOpenfilmStudio, registerOpenfilmStudio } from './openfilm-studio'
+import { createOpenfilmStudio, openfilmEngineRoot, registerOpenfilmStudio } from './openfilm-studio'
 import { armPackagedRuntimeUpdate, bundledEnginePin, createPackagedRuntimeGate, installPackagedRuntime, offlineBundledOutcome, packagedEngineKeptBack, packagedRuntimeMatchesPin, packagedRuntimeShipped, readPackagedRuntime, shouldInstallPackagedRuntime } from './packaged-runtime'
 import { repairEngineMarker } from './packaged-runtime-marker'
 import { createParentStartMarkerResolver, parentWatchdogEnv } from './parent-process-identity'
@@ -22691,8 +22691,7 @@ ipcMain.handle('hermes:workflowDomain:localVideoReadiness', async () => {
   }
 })
 
-// PROTOTYPE, only for an account the Scheduler opens it to (hc-1178): OpenFilm Studio as the preview pane's editor
-// for an agent's film.html, in a child with the engine's PATH (its bundled ffmpeg first); see openfilm-studio.ts.
+// PROTOTYPE, only for an account the Scheduler opens it to (hc-1178): OpenFilm Studio as the editor; see openfilm-studio.ts.
 const openfilmStudio = createOpenfilmStudio({
   env: process.env,
   hermesHome: HERMES_HOME,
@@ -22705,6 +22704,7 @@ const openfilmStudio = createOpenfilmStudio({
       currentPath: pathWithHermesManagedNode()
     }),
   enginePython: openfilmEnginePython,
+  engineRoot: () => openfilmEngineRoot(process.env, { active: ACTIVE_HERMES_ROOT, checkout: SOURCE_REPO_ROOT, diagnostic: IS_DIAGNOSTIC_TRIAL, packaged: IS_PACKAGED, isSource: isHermesSourceRoot }),
   account: () => ({ apiBase: resolveApexEndpoints(process.env).apiBase, key: resolveManagedConfig().key }),
   log: rememberLog
 })

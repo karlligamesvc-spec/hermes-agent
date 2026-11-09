@@ -114,9 +114,15 @@ an agent works on a video.
 1. It downloads the locked archive from APEX COS, checks it, and unpacks it into
    `HERMES_HOME/tool-cache/openfilm/<sha256>/`.
 2. It makes sure the agent browser's Chromium is there.
-3. It writes `tool-cache/openfilm/ready.json`, which names both.
+3. It writes `tool-cache/openfilm/ready.json`, which names both and the `sha256` it installed.
 
-Desktop reads only `ready.json`.
+Desktop reads only `ready.json`, and takes the toolkit it names only while that `sha256` is the one the engine pins
+(`desktop-lock.json` `openfilm.sha256`, read from the engine's root; `media_tools.openfilm_pin`). So does the agent
+side (`film_project.ready_toolkit`). This matters when an APEX update moves the pin (hc-1199): the old toolkit and its
+`ready.json` stay behind, and are not used. The next editor open (or video tool, or agent `openfilm`) has the engine
+install the pinned toolkit; meanwhile a film opens as a page with 「编辑器还在准备」 and switches to the editor when it
+is there. A Studio still running from the old toolkit gets no new film, and the next open restarts it from the pinned
+one. Old toolkit folders are not deleted.
 
 ## The agent side (hc-1177)
 

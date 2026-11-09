@@ -20,6 +20,15 @@
  * always did. A development build may instead point APEXNODES_OPENFILM_TOOLKIT
  * at a folder holding `node_modules/openfilm` (and Playwright's `browsers/`).
  *
+ * Only the toolkit the engine pins counts (hc-1199): its `desktop-lock.json`
+ * (`openfilm.sha256`, under the engine's root) must name what ready.json does.
+ * An APEX update that moves the pin leaves the old toolkit and its ready.json
+ * behind; the next open (or video tool) then finds no toolkit, so the film opens
+ * as it always did, with 「编辑器还在准备」, while the engine installs the pinned
+ * one, and switches to the editor when it is there. A Studio still running from
+ * the old toolkit (an engine upgrade that activated while APEX ran) is given no
+ * new film: the next open that has the pinned one restarts Studio from it.
+ *
  * Studio runs in a child process: this app's own binary run as Node
  * (ELECTRON_RUN_AS_NODE), running a small host that calls `startStudio()` from
  * `openfilm/studio`, with `stays` (the openfilm CLI cannot stop it) and
@@ -48,7 +57,7 @@
 import { type ChildProcess, spawn as nodeSpawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { delimiter, isAbsolute, join } from 'node:path'
+import { delimiter, isAbsolute, join, resolve } from 'node:path'
 
 /** Where the account's answer is: the Scheduler's tools check (apex-nodes `openfilm_access.open_to`). */
 export const OPENFILM_CHECK_PATH = '/tools/v1/check'
@@ -85,6 +94,8 @@ const INSTALL_TIMEOUT_MS = 45 * 60_000
 const RETRY_AFTER_MS = 10 * 60_000
 /** The engine module that installs the toolkit and writes ready.json. */
 const INSTALL_ARGS = ['-m', 'apex_overlay.media_tools', 'openfilm']
+/** Where the engine pins the toolkit, under its root (apex_overlay/media_tools.py `LOCK`, read by `openfilm_pin`). */
+export const ENGINE_TOOLKIT_LOCK = ['scripts', 'media-tools', 'desktop-lock.json'] as const
 
 /** The variables of main's environment the child keeps; everything else stays in main. */
 const KEPT_ENV = [
@@ -153,13 +164,84 @@ function apexEditorIn(toolkit: string, exists: (path: string) => boolean): null 
 }
 
 /**
+ * The toolkit the engine at `engineRoot` pins (hc-1199): its desktop-lock.json's
+ * `openfilm.sha256`, the one `ensure_openfilm` installs. Null when there is no
+ * root or the lock does not say: then no installed toolkit counts.
+ */
+export function pinnedOpenfilmToolkit(
+  engineRoot: null | string | undefined,
+  read: (path: string) => string = path => readFileSync(path, 'utf8')
+): null | string {
+  if (!engineRoot || !isAbsolute(engineRoot)) {
+    return null
+  }
+
+  try {
+    const lock = JSON.parse(read(join(engineRoot, ...ENGINE_TOOLKIT_LOCK)).replace(/^\uFEFF/, '')) as {
+      openfilm?: { sha256?: unknown }
+    } | null
+
+    const sha256 = lock?.openfilm?.sha256
+
+    return typeof sha256 === 'string' && /^[0-9a-f]{64}$/.test(sha256) ? sha256 : null
+  } catch {
+    return null
+  }
+}
+
+/** The roots main runs an engine from (main.ts `resolveHermesBackend`), as main knows them. */
+export interface OpenfilmEngineRoots {
+  /** The installed engine (ACTIVE_HERMES_ROOT): an upgrade that activates while APEX runs swaps it in place. */
+  active: string
+  /** This checkout (SOURCE_REPO_ROOT), which a development build runs. */
+  checkout: string
+  diagnostic: boolean
+  isSource: (root: string) => boolean
+  packaged: boolean
+}
+
+/**
+ * The engine whose desktop-lock.json pins the toolkit, until an install names
+ * its own (hc-1199): `resolveHermesBackend`'s roots in its order, without its
+ * probes. An explicit HERMES_DESKTOP_HERMES_ROOT (a Diagnostic Trial's, or a
+ * source checkout), this checkout in a development build, else the installed engine.
+ */
+export function openfilmEngineRoot(env: Record<string, string | undefined>, roots: OpenfilmEngineRoots): string {
+  const overrideRoot = env.HERMES_DESKTOP_HERMES_ROOT ? resolve(env.HERMES_DESKTOP_HERMES_ROOT) : ''
+
+  if (overrideRoot && (roots.diagnostic || roots.isSource(overrideRoot))) {
+    return overrideRoot
+  }
+
+  return !roots.packaged && roots.isSource(roots.checkout) ? roots.checkout : roots.active
+}
+
+/** What ready.json says the engine installed: the toolkit's sha256, null when it names none. */
+export function installedOpenfilmToolkit(
+  plan: OpenfilmStudioPlan,
+  read: (path: string) => string = path => readFileSync(path, 'utf8')
+): null | string {
+  try {
+    const sha256 = (JSON.parse(read(plan.ready)) as { sha256?: unknown } | null)?.sha256
+
+    return typeof sha256 === 'string' && sha256 ? sha256 : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * The toolkit Studio can run from now, or null while there is none: a
  * development build's own, else the one the engine installed, as its
- * ready.json names it (written last, so never a half-done install) and only
- * while its files are there. Read each time: the engine may finish at any moment.
+ * ready.json names it (written last, so never a half-done install), only while
+ * its files are there and only while it is the toolkit the engine pins
+ * (`pinned`, from `pinnedOpenfilmToolkit`): after an update that moves the pin,
+ * ready.json still names the old one. Read each time: the engine may finish at
+ * any moment.
  */
 export function findOpenfilmToolkit(
   plan: OpenfilmStudioPlan,
+  pinned: null | string,
   exists: (path: string) => boolean = existsSync,
   read: (path: string) => string = path => readFileSync(path, 'utf8')
 ): null | OpenfilmToolkit {
@@ -178,11 +260,15 @@ export function findOpenfilmToolkit(
       : null
   }
 
-  let said: { chromium?: unknown; toolkit?: unknown } | null = null
+  let said: { chromium?: unknown; sha256?: unknown; toolkit?: unknown } | null = null
 
   try {
     said = JSON.parse(read(plan.ready))
   } catch {
+    return null
+  }
+
+  if (!pinned || said?.sha256 !== pinned) {
     return null
   }
 
@@ -516,6 +602,12 @@ export interface OpenfilmStudioDeps {
   basePath: () => string
   /** The engine's Python, to install the toolkit with; null when there is no engine yet. */
   enginePython?: () => Promise<EnginePython | null>
+  /**
+   * The root of the engine Desktop runs, whose desktop-lock.json pins the
+   * toolkit, until an install has run: the engine that installed (its
+   * `enginePython` cwd) is the one asked from then on. Read on each check.
+   */
+  engineRoot?: () => null | string
   env: Record<string, string | undefined>
   /** This app's binary: run as Node for the host. */
   execPath: string
@@ -561,13 +653,20 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
   const others = new Map<number, AdvertisedStudio>()
   let child: ChildProcess | null = null
   let starting: null | Promise<RunningStudio> = null
+  /** The toolkit folder the Studio `starting` runs from, and which start that is (a crash forgets only its own). */
+  let startedFrom: null | string = null
+  let generation = 0
   let installing: null | Promise<boolean> = null
   let failedAt: null | number = null
+  /** The engine that last installed the toolkit (its cwd): from then on, the one whose pin counts. */
+  let installedBy: null | string = null
   /** The last answer, for which account (a digest of its base and key), and when. */
   let access: null | { at: number; open: boolean; slot: string } = null
   let asking: null | { answer: Promise<boolean>; slot: string } = null
 
-  const toolkitNow = () => findOpenfilmToolkit(plan, exists)
+  const pinnedNow = () => pinnedOpenfilmToolkit(installedBy ?? deps.engineRoot?.() ?? null)
+  // A development toolkit is the developer's own: no pin applies to it.
+  const toolkitNow = () => findOpenfilmToolkit(plan, plan.devToolkit === null ? pinnedNow() : null, exists)
 
   /**
    * May this account use the editor: the Scheduler's answer, kept a minute. A
@@ -655,7 +754,12 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
       return false
     }
 
-    log('[openfilm-studio] installing the toolkit in the background')
+    installedBy = engine.cwd
+    const short = (sha256: null | string) => (sha256 ? sha256.slice(0, 8) : 'none')
+    log(
+      `[openfilm-studio] installing the toolkit in the background (the engine pins ${short(pinnedNow())}, ` +
+        `ready.json names ${short(installedOpenfilmToolkit(plan))})`
+    )
 
     return new Promise<boolean>(resolve => {
       let said = ''
@@ -699,20 +803,45 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
   }
 
   function start(on: OpenfilmStudioPlan, toolkit: OpenfilmToolkit): Promise<RunningStudio> {
-    if (starting) {
+    if (starting && startedFrom === toolkit.toolkit) {
       return starting
     }
 
-    const attempt = stopOthers(on).then(() => launch(on, toolkit))
+    // A Studio from another toolkit (the engine's pin moved while it ran) ends first: never two of Desktop's own.
+    const previous = starting
+    const mine = ++generation
+
+    const attempt = (previous ? retire(previous) : Promise.resolve())
+      .then(() => stopOthers(on))
+      .then(() => launch(on, toolkit, mine))
+
     starting = attempt
+    startedFrom = toolkit.toolkit
     // A failed start is not kept: the next open tries again.
     attempt.catch(() => {
       if (starting === attempt) {
         starting = null
+        startedFrom = null
       }
     })
 
     return attempt
+  }
+
+  /** Ends Desktop's Studio that `previous` started (once it has), the clean way, and waits until it is gone. */
+  async function retire(previous: Promise<RunningStudio>): Promise<void> {
+    await previous.catch(() => undefined)
+    const proc = child
+
+    if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
+      return
+    }
+
+    log(`[openfilm-studio] restarting Studio (pid ${proc.pid}) from the toolkit the engine pins now`)
+    await new Promise<void>(resolve => {
+      proc.once('exit', () => resolve())
+      stopOwn()
+    })
   }
 
   /**
@@ -779,7 +908,7 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
     return ended
   }
 
-  function launch(on: OpenfilmStudioPlan, toolkit: OpenfilmToolkit): Promise<RunningStudio> {
+  function launch(on: OpenfilmStudioPlan, toolkit: OpenfilmToolkit, mine: number): Promise<RunningStudio> {
     return new Promise<RunningStudio>((resolve, reject) => {
       mkdirSync(on.dataRoot, { recursive: true })
       writeOpenfilmOfflineIndexes(on.dataRoot)
@@ -859,11 +988,16 @@ export function createOpenfilmStudio(deps: OpenfilmStudioDeps): OpenfilmStudio {
         })
       }
 
-      // Gone (a crash, a kill, a spawn error): the next open starts a new one.
+      // Gone (a crash, a kill, a spawn error): the next open starts a new one. A Studio ended for a newer
+      // toolkit leaves that one's start alone.
       const forget = () => {
         if (child === proc) {
           child = null
+        }
+
+        if (generation === mine) {
           starting = null
+          startedFrom = null
         }
       }
 
