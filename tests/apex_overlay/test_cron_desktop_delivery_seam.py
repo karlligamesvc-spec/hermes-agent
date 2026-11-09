@@ -9,6 +9,8 @@ functions; every test checks first that it landed.
 from __future__ import annotations
 
 import json
+import logging
+import os
 import subprocess
 import sys
 import threading
@@ -327,7 +329,7 @@ def test_a_recurring_job_comes_back_every_run(home, desktop_turn, broadcasts):
     assert len(broadcasts) == 2
 
 
-def test_another_assistants_job_comes_back_into_its_own_chat(home, monkeypatch, broadcasts):
+def test_another_assistants_job_comes_back_into_its_own_chat(home, monkeypatch, broadcasts, caplog_at_debug):
     """A secondary assistant: its jobs, its state.db and its chats live under profiles/<name>."""
     bot = home / "profiles" / "apex-bot-2"
     (bot / "cron" / "output").mkdir(parents=True)
@@ -347,10 +349,13 @@ def test_another_assistants_job_comes_back_into_its_own_chat(home, monkeypatch, 
         clear_session_vars(tokens)
     assert job[seam.ORIGIN_KEY] == {"session_id": "bot-chat-1", "profile": "apex-bot-2"}
 
-    scheduler._deliver_result(job, "小剪的结果")
+    with caplog_at_debug() as caplog:
+        scheduler._deliver_result(job, "小剪的结果")
 
     assert len(_rows(bot, "bot-chat-1")) == 1 and _rows(home) == []
     assert broadcasts[-1][1][seam.BROADCAST_KEY]["profile"] == "apex-bot-2"
+    [line] = _seam_lines(caplog, logging.INFO)
+    assert "Desktop chat bot-chat-1 (profile apex-bot-2," in line
 
 
 def test_upstreams_own_desktop_origin_is_left_to_upstream(home, desktop_turn, broadcasts, monkeypatch):
@@ -423,6 +428,201 @@ def test_with_an_im_bound_the_result_goes_to_both(home, desktop_turn, broadcasts
     assert [call["chat_id"] for call in sent] == ["C0HOME"] and "今天的新闻标题" in sent[0]["message"]
     [row] = _rows(home)
     assert "今天的新闻标题" in _meta(row)["display_text"]
+
+
+# ── 5. what the engine log says ─────────────────────────────────────────────────────────────────────────────
+# The upstream sender logs "deliver=origin but no origin or home channels — skipping delivery" when no IM home
+# channel is bound, then this seam posts the result: the log must say where it went, once, with ids only.
+
+RESULT = "国家统计局公布 10 月 CPI——这是结果正文，不该进日志"
+USER_TEXT = (RESULT, "今日财经", "搜一条今天的财经新闻")
+
+
+@pytest.fixture
+def caplog_at_debug(caplog):
+    from contextlib import contextmanager
+
+    @contextmanager
+    def capture():
+        with caplog.at_level(logging.DEBUG):
+            yield caplog
+
+    return capture
+
+
+def _seam_lines(caplog, level: int) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.name == seam.logger.name and r.levelno == level]
+
+
+def _no_user_text_logged(caplog) -> None:
+    """Nothing this seam logs carries the result or the job's name (upstream's own line names the job)."""
+    for record in caplog.records:
+        if record.name != seam.logger.name:
+            continue
+        message = record.getMessage()
+        assert not any(text in message for text in USER_TEXT), message
+
+
+def test_a_delivery_into_a_chat_not_open_says_where_it_went(home, desktop_turn, broadcasts, caplog_at_debug):
+    job = _desktop_job(home)
+    with caplog_at_debug() as caplog:
+        scheduler._deliver_result(job, RESULT)
+
+    [line] = _seam_lines(caplog, logging.INFO)
+    assert line.startswith(f"apex-overlay: cron job {job['id']}: result delivered to Desktop chat {CHAT} ")
+    assert f"(profile default, delivery {job['execution_id']})" in line and seam._POSTED_STORED in line
+    assert "only means no Feishu/WeChat home channel got it" in line
+    upstream = [i for i, r in enumerate(caplog.records) if "skipping delivery" in r.getMessage()
+                and r.name != seam.logger.name]
+    ours = [i for i, r in enumerate(caplog.records) if r.getMessage() == line]
+    assert upstream and upstream[0] < ours[0], "the upstream line comes first, this one says what happened next"
+    _no_user_text_logged(caplog)
+
+
+def test_a_delivery_into_the_open_chat_says_so(home, desktop_turn, broadcasts, monkeypatch, caplog_at_debug):
+    _open_chat(monkeypatch, home, running=False)
+    job = _desktop_job(home)
+    with caplog_at_debug() as caplog:
+        scheduler._deliver_result(job, RESULT)
+    [line] = _seam_lines(caplog, logging.INFO)
+    assert seam._POSTED_LIVE in line and f"Desktop chat {CHAT} " in line
+    _no_user_text_logged(caplog)
+
+
+def test_a_failure_notice_is_logged_as_one(home, desktop_turn, broadcasts, caplog_at_debug):
+    job = _desktop_job(home)
+    with caplog_at_debug() as caplog:
+        scheduler._deliver_result(job, RESULT, for_failure=True)
+    [line] = _seam_lines(caplog, logging.INFO)
+    assert f"cron job {job['id']}: failure notice delivered to Desktop chat {CHAT} " in line
+    _no_user_text_logged(caplog)
+
+
+def test_a_busy_chat_logs_the_wait_once_then_the_delivery(home, desktop_turn, broadcasts, monkeypatch, caplog_at_debug):
+    session = _open_chat(monkeypatch, home, running=True)
+    monkeypatch.setattr(seam, "_ensure_drainer", lambda _home: None)  # drive the drainer by hand
+    job = _desktop_job(home)
+    with caplog_at_debug() as caplog:
+        scheduler._deliver_result(job, RESULT)
+        for _ in range(3):  # drainer passes while the turn runs
+            assert seam.drain_home(home) == 1
+        [waiting] = _seam_lines(caplog, logging.INFO)
+        assert f"cron job {job['id']}: Desktop chat {CHAT} (profile default) is in a turn" in waiting
+        assert _pending(home)[0].name in waiting
+
+        session["running"] = False
+        assert seam.drain_home(home) == 0
+    waiting_again, delivered = _seam_lines(caplog, logging.INFO)
+    assert waiting_again == waiting and seam._POSTED_LIVE in delivered
+    _no_user_text_logged(caplog)
+
+
+def test_a_second_attempt_at_the_same_delivery_is_not_logged_as_another(home, desktop_turn, broadcasts, caplog_at_debug):
+    job = _desktop_job(home)
+    scheduler._deliver_result(job, RESULT)
+    path = seam._write_pending(job, RESULT, False)  # what a crash between the row and the file removal leaves
+    with caplog_at_debug() as caplog:
+        assert seam.drain_file(path) is True
+    assert _seam_lines(caplog, logging.INFO) == []
+    assert any("not posted twice" in line for line in _seam_lines(caplog, logging.DEBUG))
+
+
+def _age(path: Path, seconds: float) -> None:
+    then = path.stat().st_mtime - seconds
+    os.utime(path, (then, then))
+
+
+def test_an_unreadable_pending_file_warns_once_and_is_moved_aside(home, caplog_at_debug):
+    pending = home.joinpath(*seam.PENDING_DIR)
+    pending.mkdir(parents=True)
+    (pending / "exec-x.ok.json").write_text("{not json", encoding="utf-8")
+    _age(pending / "exec-x.ok.json", seam._UNREADABLE_GRACE_SECONDS + 60)  # long past any write still in flight
+    with caplog_at_debug() as caplog:
+        assert [seam.drain_home(home) for _ in range(3)] == [0, 0, 0]
+    [warning] = _seam_lines(caplog, logging.WARNING)
+    assert "exec-x.ok.json is unreadable; moved aside to exec-x.ok.unreadable" in warning
+    assert not (pending / "exec-x.ok.json").exists() and (pending / "exec-x.ok.unreadable").exists()
+
+
+def test_a_drainer_pass_during_a_write_never_sees_a_half_written_result(home, desktop_turn, broadcasts, monkeypatch,
+                                                                          caplog_at_debug):
+    """A result queued while another one waits: the drainer's pass may land mid-write. The file appears whole or
+    not at all, so nothing is moved aside and the result is delivered once."""
+    import utils
+
+    seen = []
+    real_replace = utils.atomic_replace
+
+    def a_drainer_pass_before_the_rename(tmp, target):
+        queued = sorted(p.name for p in Path(target).parent.glob("*.json"))
+        seen.append((queued, seam.drain_home(home)))
+        return real_replace(tmp, target)
+
+    monkeypatch.setattr(utils, "atomic_replace", a_drainer_pass_before_the_rename)
+    job = _desktop_job(home)
+    with caplog_at_debug() as caplog:
+        scheduler._deliver_result(job, RESULT)
+
+    assert len(seen) == 1, "the result was not staged and renamed into the queue"
+    assert seen == [([], 0)], "the drainer saw the result before it was whole"
+    assert not list(home.joinpath(*seam.PENDING_DIR).glob("*.unreadable")) and _pending(home) == []
+    assert len(_rows(home)) == 1
+    [line] = _seam_lines(caplog, logging.INFO)
+    assert f"cron job {job['id']}: result delivered to Desktop chat {CHAT} " in line
+
+
+def test_a_result_still_being_written_is_read_again_not_moved_aside(home, desktop_turn, broadcasts, caplog_at_debug):
+    """Whatever wrote a pending file non-atomically (Windows' contended-replace fallback rewrites in place),
+    a fresh file that does not parse yet is retried, never taken for corrupt."""
+    job = _desktop_job(home)
+    path = seam._write_pending(job, RESULT, False)
+    whole = path.read_text(encoding="utf-8")
+    path.write_text(whole[: len(whole) // 2], encoding="utf-8")  # half of it, just written
+    with caplog_at_debug() as caplog:
+        assert seam.drain_home(home) == 1
+        assert path.exists() and not list(path.parent.glob("*.unreadable")) and _rows(home) == []
+        assert _seam_lines(caplog, logging.WARNING) == []
+
+        path.write_text(whole, encoding="utf-8")
+        assert seam.drain_home(home) == 0
+    assert len(_rows(home)) == 1
+    [line] = _seam_lines(caplog, logging.INFO)
+    assert "result delivered to Desktop chat" in line
+
+
+def test_temp_files_a_killed_writer_left_are_cleared_once_old(home, caplog_at_debug):
+    pending = home.joinpath(*seam.PENDING_DIR)
+    pending.mkdir(parents=True)
+    old, fresh = pending / ".exec-old.ok_ab12.tmp", pending / ".exec-new.ok_cd34.tmp"
+    for temp in (old, fresh):
+        temp.write_text("{", encoding="utf-8")
+    _age(old, seam._STALE_TEMP_SECONDS + 60)
+    with caplog_at_debug() as caplog:
+        assert seam.drain_home(home) == 0
+        assert seam.drain_home(home) == 0
+    assert not old.exists() and fresh.exists()
+    [warning] = _seam_lines(caplog, logging.WARNING)
+    assert ".exec-old.ok_ab12.tmp" in warning
+
+
+def test_no_chat_left_warns_with_job_and_profile(home, desktop_turn, broadcasts, caplog_at_debug):
+    job = _desktop_job(home)
+    db = SessionDB(db_path=home / "state.db")
+    assert db.delete_session(CHAT)
+    db.close()
+    with caplog_at_debug() as caplog:
+        scheduler._deliver_result(job, RESULT)
+    [warning] = _seam_lines(caplog, logging.WARNING)
+    assert f"cron job {job['id']} has no Desktop chat left to post into (profile default)" in warning
+    assert _seam_lines(caplog, logging.INFO) == []
+    _no_user_text_logged(caplog)
+
+
+def test_a_job_this_seam_does_not_deliver_logs_nothing_from_it(home, desktop_turn, broadcasts, caplog_at_debug):
+    job = _desktop_job(home, deliver="local")
+    with caplog_at_debug() as caplog:
+        scheduler._deliver_result(job, RESULT)
+    assert [r for r in caplog.records if r.name == seam.logger.name and r.levelno >= logging.INFO] == []
 
 
 # ── wiring ───────────────────────────────────────────────────────────────────────────────────────────────────
