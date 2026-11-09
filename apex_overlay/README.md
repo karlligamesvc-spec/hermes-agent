@@ -180,6 +180,14 @@ provider」 (2026-11-04/05). The new sentence names the chosen provider as
 Settings shows it, says nothing was spoken and no other voice was used, and
 tells the model not to install anything or substitute a voice. The choice is
 not changed and nothing is routed to Doubao.
+
+hc-1193: Desktop Settings › 语音 offers 「APEX 配音（默认）」 again (product mode
+on an APEX account) and saves `tts.provider: ''` for it; 恢复默认 sends upstream's
+defaults with that value instead of `edge` (`apps/desktop/src/app/settings/apex-voice.ts`).
+An empty provider is what `load_tts_config` already reads as no choice, so this
+seam is unchanged; the no-engine sentence now names that entry as the way back
+and leaves switching to the user. `tests/apex_overlay/test_doubao_tts_settings.py`
+runs the real `PUT /api/config` against this seam.
 `test_the_wrapped_engine_choice_is_still_where_upstream_calls_it` pins the
 upstream symbol and its call site.
 

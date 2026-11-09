@@ -61,6 +61,7 @@
       "tts.provider"
     ],
     "options": [
+      "APEX 配音（默认）",
       "Edge",
       "Elevenlabs",
       "Openai",
@@ -72,7 +73,7 @@
       "Kittentts",
       "Piper"
     ],
-    "shown": ""
+    "shown": "APEX 配音（默认）"
   },
   "saved doubao": {
     "fields": [

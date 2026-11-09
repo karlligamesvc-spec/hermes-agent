@@ -38,6 +38,7 @@ import { OverlayMain, OverlayNav, type OverlayNavGroup, OverlaySplitLayout } fro
 import { OverlayView } from '../overlays/overlay-view'
 
 import { AboutSettings } from './about-settings'
+import { withApexVoiceDefault } from './apex-voice'
 import { AppearanceSettings } from './appearance-settings'
 import { ConfigSettings } from './config-settings'
 import { SECTIONS } from './constants'
@@ -171,7 +172,8 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     }
 
     try {
-      await saveHermesConfig(await getHermesConfigDefaults())
+      // hc-1193: upstream's defaults name Edge; APEX's default voice is no provider at all.
+      await saveHermesConfig(withApexVoiceDefault(await getHermesConfigDefaults()))
       triggerHaptic('success')
       onConfigSaved?.()
     } catch (err) {

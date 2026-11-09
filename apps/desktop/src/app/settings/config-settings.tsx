@@ -6,8 +6,9 @@ import { useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { getElevenLabsVoices, getHermesConfigSchema, saveHermesConfig } from '@/hermes'
+import { getElevenLabsVoices, getHermesConfigSchema } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { useSettingsProductCopy } from '@/i18n/settings-product'
 import { triggerHaptic } from '@/lib/haptics'
 import { isSubmitEnter } from '@/lib/ime'
 import { confirm } from '@/store/confirm'
@@ -29,10 +30,10 @@ import { repoDiscoveryPolicyFromConfig, repoDiscoveryPolicySignature, scanAndRec
 import { $settingsRequestProfile } from '@/store/settings-scope'
 import type { ConfigFieldSchema, HermesConfigRecord } from '@/types/hermes'
 
-import { hermesConfigCacheWriter, useHermesConfigRecord } from '../hooks/use-config-record'
 import { useOnProfileSwitch } from '../hooks/use-on-profile-switch'
 import { PanelEmpty } from '../overlays/panel'
 
+import { $apexVoiceOffered, useSettingsConfigRecord, voiceProviderLabels, voiceProviderOptions } from './apex-voice'
 import { ConfigField } from './config-field'
 import { MODEL_TIER_HIDDEN_CONFIG_KEYS } from './constants'
 import {
@@ -98,14 +99,18 @@ function ConfigSettingsInner({
   const tierMode = useModelTierMode()
   const keepAwake = useStore($keepAwake)
   const disableF12 = useStore($disableF12)
+  // hc-1193: product mode on an APEX account lists 「APEX 配音（默认）」 for 文字转语音提供方.
+  const apexVoiceOffered = useStore($apexVoiceOffered)
+  const apexVoiceLabel = useSettingsProductCopy().apexVoice
   // The editable draft is local (debounced autosave watches it), but it's seeded
   // from — and saved back through — the shared config cache, so edits are visible
   // in the MCP/model surfaces and reopening the page doesn't reload-flash.
   const [config, setConfig] = useState<HermesConfigRecord | null>(null)
-  const { data: loadedConfig, isError: configLoadFailed, refetch: refetchConfig } = useHermesConfigRecord(scopeProfile)
-  // Writes land on the same cache key the query above reads (base key when
-  // following the active profile, suffixed when a scope override is set).
-  const writeConfigCache = useMemo(() => hermesConfigCacheWriter(scopeProfile), [scopeProfile])
+  // Writes land on the same cache key the query reads (base key when following
+  // the active profile, suffixed when a scope override is set); where APEX's
+  // voice is offered the record carries the saved tts.provider (hc-1193).
+  const { record: configRecord, save: saveConfig, writeCache: writeConfigCache } = useSettingsConfigRecord(scopeProfile)
+  const { data: loadedConfig, isError: configLoadFailed, refetch: refetchConfig } = configRecord
 
   const {
     data: schemaResponse,
@@ -204,7 +209,7 @@ function ConfigSettingsInner({
       saveQueueRef.current = saveQueueRef.current.then(async () => {
         try {
           const patch = diffConfig(configBaselineRef.current ?? {}, snapshot)
-          const result = await saveHermesConfig(patch, scopeProfile)
+          const result = await saveConfig(patch, scopeProfile)
 
           if (!result.ok) {
             throw new Error(c.autosaveFailed)
@@ -435,13 +440,18 @@ function ConfigSettingsInner({
                     <MemoryConnect profile={scopeProfile} provider={String(getNested(config, key))} />
                   ) : undefined
                 }
-                enumOptions={
+                enumOptions={voiceProviderOptions(
+                  key,
+                  getNested(config, key),
+                  apexVoiceOffered,
                   key === 'tts.elevenlabs.voice_id'
                     ? enumOptionsFor(key, getNested(config, key), config, elevenLabsVoiceOptions ?? undefined)
                     : enumOptionsFor(key, getNested(config, key), config)
-                }
+                )}
                 onChange={value => updateConfig(setNested(config, key, value))}
-                optionLabels={key === 'tts.elevenlabs.voice_id' ? elevenLabsVoiceLabels : undefined}
+                optionLabels={
+                  key === 'tts.elevenlabs.voice_id' ? elevenLabsVoiceLabels : voiceProviderLabels(key, apexVoiceLabel)
+                }
                 schema={field}
                 schemaKey={key}
                 value={getNested(config, key)}

@@ -169,6 +169,12 @@ for upstream_hint in ('pip install','hermes setup','hermes pm','No TTS provider'
  assert upstream_hint not in result['error'],result
 assert calls==['你好。']  # the explicit choice stands: nothing went to Doubao instead
 assert not (home/'旁白2.mp3').exists() and not (home/'旁白2.mp3').with_suffix('.mp3').exists()
+# hc-1193: Settings' 「APEX 配音（默认）」 and 恢复默认 save an empty provider: APEX's voice speaks.
+(home/'config.yaml').write_text("plugins:\n  enabled:\n    - apex-overlay\ntts:\n  provider: ''\n",encoding='utf-8')
+assert tts_tool._load_tts_config()['provider']=='doubao'
+result=json.loads(tts_tool.text_to_speech_tool('再说一次。',output_path=str(home/'旁白3.mp3')))
+assert result['success'] and result['provider']=='doubao',result
+assert calls==['你好。','再说一次。'] and Path(result['file_path']).read_bytes()==audio
 server.shutdown()
 '''
     env = {**os.environ, 'HERMES_HOME': str(tmp_path / 'profile'), 'TOOLS_GATEWAY_KEY': 'only-this-profile',
@@ -280,6 +286,7 @@ def test_an_engine_apex_does_not_ship_is_said_plainly(monkeypatch, tts_entry, pr
     assert message['success'] is False
     assert message['error'] == adapter.missing_engine_message(provider)
     assert f'选的是「{shown}」' in message['error'] and '没有换成别的声音' in message['error']
+    assert '改选「APEX 配音（默认）」' in message['error'] and '不要替用户改设置' in message['error']  # hc-1193
     for upstream_hint in ('pip', 'hermes', 'No TTS provider', 'install'):
         assert upstream_hint not in message['error']
     monkeypatch.setattr(tts_tool, '_importable', lambda importer: True)

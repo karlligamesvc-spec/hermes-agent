@@ -1,10 +1,10 @@
 {
   "nothing saved": {
     "fields": [
-      "tts.provider",
-      "tts.edge.voice"
+      "tts.provider"
     ],
     "options": [
+      "APEX 配音（默认）",
       "Edge",
       "Elevenlabs",
       "Openai",
@@ -16,7 +16,7 @@
       "Kittentts",
       "Piper"
     ],
-    "shown": "Edge"
+    "shown": "APEX 配音（默认）"
   },
   "saved edge": {
     "fields": [
@@ -24,6 +24,7 @@
       "tts.edge.voice"
     ],
     "options": [
+      "APEX 配音（默认）",
       "Edge",
       "Elevenlabs",
       "Openai",
@@ -43,6 +44,7 @@
       "tts.openai.voice"
     ],
     "options": [
+      "APEX 配音（默认）",
       "Edge",
       "Elevenlabs",
       "Openai",
@@ -61,6 +63,7 @@
       "tts.provider"
     ],
     "options": [
+      "APEX 配音（默认）",
       "Edge",
       "Elevenlabs",
       "Openai",
@@ -72,13 +75,14 @@
       "Kittentts",
       "Piper"
     ],
-    "shown": ""
+    "shown": "APEX 配音（默认）"
   },
   "saved doubao": {
     "fields": [
       "tts.provider"
     ],
     "options": [
+      "APEX 配音（默认）",
       "Edge",
       "Elevenlabs",
       "Openai",
@@ -88,9 +92,8 @@
       "Gemini",
       "Neutts",
       "Kittentts",
-      "Piper",
-      "Doubao"
+      "Piper"
     ],
-    "shown": "Doubao"
+    "shown": "APEX 配音（默认）"
   }
 }
