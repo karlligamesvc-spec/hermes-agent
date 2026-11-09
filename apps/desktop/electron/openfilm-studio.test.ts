@@ -981,12 +981,14 @@ describe('installing the toolkit in the background', () => {
  * A stand-in for a Studio the openfilm CLI started: a supervisor and a worker,
  * each running a file named as OpenFilm's (`openfilm/studio/server/main.mjs`),
  * the worker advertising in APEX's OPENFILM_HOME as Studio does. The worker
- * answers `/api/quit` (and goes) unless `deaf`; `stubborn` ignores SIGTERM.
+ * answers `/api/quit` (and goes) unless `deaf`; `stubborn` ignores SIGTERM;
+ * `slowRunJson` writes run.json in two parts, 400 ms apart (hc-1201: a reader
+ * that only waits for the file to exist then reads half of it).
  */
 const CLI_STUDIO = `
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { closeSync, mkdirSync, openSync, rmSync, writeFileSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -1005,7 +1007,11 @@ if (process.env.WORKER !== '1') {
   })
   server.listen(0, '127.0.0.1', () => {
     mkdirSync(home, { recursive: true })
-    writeFileSync(join(home, 'run.json'), JSON.stringify({ pid: process.pid, supervisor: Number(process.env.SUPERVISOR), origin: 'http://127.0.0.1:' + server.address().port, key: 'their-key' }))
+    const said = JSON.stringify({ pid: process.pid, supervisor: Number(process.env.SUPERVISOR), origin: 'http://127.0.0.1:' + server.address().port, key: 'their-key' })
+    if (process.env.SLOW_RUN_JSON !== '1') { writeFileSync(join(home, 'run.json'), said); return }
+    const fd = openSync(join(home, 'run.json'), 'w')
+    writeSync(fd, said.slice(0, 10))
+    setTimeout(() => { writeSync(fd, said.slice(10)); closeSync(fd) }, 400)
   })
 }
 `
@@ -1030,26 +1036,56 @@ afterEach(() => {
   }
 })
 
-/** Starts the stand-in in APEX's OPENFILM_HOME and waits for its run.json: its worker and supervisor pids. */
-async function cliStudio({ deaf = false, stubborn = false } = {}) {
+/**
+ * Starts the stand-in in APEX's OPENFILM_HOME and waits for its run.json: its
+ * worker and supervisor pids. Read inside the wait: a run.json that exists may
+ * still be half written (hc-1201; fork main CI on 6f44d627 failed here with
+ * "Unexpected end of JSON input" when it was read as soon as it existed).
+ */
+async function cliStudio({ deaf = false, stubborn = false, slowRunJson = false } = {}) {
   const file = join(root, 'cli', 'node_modules', 'openfilm', 'studio', 'server', 'main.mjs')
   mkdirSync(join(file, '..'), { recursive: true })
   writeFileSync(file, CLI_STUDIO)
   const home = join(root, 'openfilm', 'home')
 
   const supervisor = nodeSpawn(process.execPath, [file], {
-    env: { PATH: process.env.PATH, OPENFILM_HOME: home, DEAF: deaf ? '1' : '', STUBBORN: stubborn ? '1' : '' },
+    env: {
+      PATH: process.env.PATH,
+      OPENFILM_HOME: home,
+      DEAF: deaf ? '1' : '',
+      STUBBORN: stubborn ? '1' : '',
+      SLOW_RUN_JSON: slowRunJson ? '1' : ''
+    },
     detached: true,
     stdio: 'ignore'
   })
 
   supervisor.unref()
-  await vi.waitFor(() => expect(existsSync(join(home, 'run.json'))).toBe(true), { timeout: 10_000 })
-  const run = JSON.parse(readFileSync(join(home, 'run.json'), 'utf8'))
+
+  const run = await vi.waitFor(
+    () => {
+      const said = JSON.parse(readFileSync(join(home, 'run.json'), 'utf8'))
+
+      expect(said.supervisor).toBeGreaterThan(0)
+
+      return said as { pid: number; supervisor: number }
+    },
+    { timeout: 10_000 }
+  )
+
   started.push(run.pid, run.supervisor)
 
   return { pid: run.pid as number, supervisor: run.supervisor as number }
 }
+
+test.skipIf(process.platform === 'win32')(
+  'hc-1201: the stand-in’s run.json is read once it is whole, never half written',
+  async () => {
+    const { pid, supervisor } = await cliStudio({ slowRunJson: true })
+
+    assert.ok(pid > 0 && supervisor > 0 && pid !== supervisor)
+  }
+)
 
 describe('a Studio Desktop did not start, in APEX’s folders', () => {
   function desktop(processes?: StudioProcesses) {
