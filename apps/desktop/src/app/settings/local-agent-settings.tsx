@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import type { DesktopDaemonStatus } from '@/global'
 import { useI18n } from '@/i18n'
-import { formatEngineDisplayVersion } from '@/lib/engine-display'
 import { AlertTriangle, Cpu, Loader2, Trash2 } from '@/lib/icons'
 import { notify } from '@/store/notifications'
 import { $runtimeVersion, loadRuntimeVersion } from '@/store/runtime-update'
@@ -214,10 +213,8 @@ export function LocalAgentSettings() {
             data-testid="daemon-engine-outdated"
           >
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-            {/* hc-591: minEngineVersion is the raw calver+fork engine pin -- humanize it. */}
-            <p className="text-[length:var(--conversation-caption-font-size)]">
-              {copy.engineOutdated(formatEngineDisplayVersion(minEngineVersion))}
-            </p>
+            {/* hc-1200: no engine version in the copy (an internal pin whose calver reads as a date). */}
+            <p className="text-[length:var(--conversation-caption-font-size)]">{copy.engineOutdated}</p>
           </div>
         )}
 

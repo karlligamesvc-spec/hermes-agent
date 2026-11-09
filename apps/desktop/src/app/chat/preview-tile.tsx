@@ -17,8 +17,10 @@ import { $activeTreeGroup, $layoutTree, revealTreePane, treePanesWithPrefix } fr
 import { type MenuKit, renderActionItem } from '@/components/ui/actions-menu'
 import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { ToolIcon } from '@/components/ui/tool-icon'
-import { translateNow } from '@/i18n'
+import { translateNow, useI18n } from '@/i18n'
+import { OPENFILM_STUDIO_COPY, openfilmStudioCopyNow } from '@/i18n/openfilm-studio'
 import { openExternalLink } from '@/lib/external-link'
+import { isOpenfilmStudioTab } from '@/lib/openfilm-studio'
 import { $rightRailActiveTabId, type RightRailTabId, selectRightRailTab } from '@/store/layout'
 import {
   $browserPages,
@@ -36,6 +38,7 @@ import {
 import { canOpenBrowserWindow } from '@/store/windows'
 
 import { paneMirror } from './pane-mirror'
+import { PREVIEW_TILE_PREFIX, previewPaneId } from './preview-tile-ids'
 import { PreviewTilePane } from './right-rail/preview'
 import { forgetPreviewConsole } from './right-rail/preview-console-store'
 
@@ -64,7 +67,8 @@ export function browserTabExternalUrl(tabId: string): null | string {
 }
 
 function browserTabMenuPrefix(tabId: string) {
-  if (targetFor(tabId)?.kind !== 'url') {
+  // Studio's tab is the editor, not a page to pop out or hand the OS browser (hc-1188).
+  if (targetFor(tabId)?.kind !== 'url' || isOpenfilmStudioTab(tabId)) {
     return undefined
   }
 
@@ -99,6 +103,10 @@ function previewTitle(tabId: string): string {
 
   if (!target) {
     return 'Preview'
+  }
+
+  if (isOpenfilmStudioTab(tabId)) {
+    return openfilmStudioCopyNow().tab
   }
 
   if (target.kind === 'url') {
@@ -149,6 +157,24 @@ function BrowserTabLabel({ tabId }: { tabId: string }) {
   return target ? browserTabLabel(target, pages[tabId]) : null
 }
 
+/** The editor's tab: 「剪辑」 in APEX's language as it changes, never the title
+ *  of the page Studio serves (hc-1188). */
+function OpenfilmStudioTabLabel() {
+  const { locale } = useI18n()
+
+  return OPENFILM_STUDIO_COPY[locale].tab
+}
+
+/** The strip's live label: the editor's own name, a Browser's page, or none
+ *  (a file peek keeps the contribution's title). */
+function previewTabTitle(tabId: string) {
+  if (isOpenfilmStudioTab(tabId)) {
+    return <OpenfilmStudioTabLabel />
+  }
+
+  return targetFor(tabId)?.kind === 'url' ? <BrowserTabLabel tabId={tabId} /> : undefined
+}
+
 /** The tab's lead glyph — the same file/tool icon family the file tree and code
  *  fences resolve through, so a `.tsx` peek and its sidebar row agree. */
 function PreviewTabLead({ tabId }: { tabId: string }) {
@@ -162,16 +188,16 @@ function PreviewTabLead({ tabId }: { tabId: string }) {
     return <ToolIcon className="opacity-70" name="sparkle" size="0.6875rem" />
   }
 
+  if (isOpenfilmStudioTab(tabId)) {
+    return <ToolIcon className="opacity-70" name="file-media" size="0.6875rem" />
+  }
+
   if (target.kind === 'url') {
     return <ToolIcon className="opacity-70" name="globe" size="0.6875rem" />
   }
 
   return <FileTypeIcon className="opacity-70" path={target.path || target.url} size="0.6875rem" />
 }
-
-const PREVIEW_TILE_PREFIX = 'preview-tile'
-
-const previewPaneId = (tabId: string) => `${PREVIEW_TILE_PREFIX}:${tabId}`
 
 /** The pane a NEW preview tile should stack into: another preview tile already
  *  in the tree, else another open tab adopted earlier in the same pass (a
@@ -261,10 +287,11 @@ const watchPreviewTileMirror = paneMirror<{ id: string }>({
   minWidth: '22rem',
   title: previewTitle,
   tabLead: tabId => <PreviewTabLead tabId={tabId} />,
-  tabTitle: tabId => (targetFor(tabId)?.kind === 'url' ? <BrowserTabLabel tabId={tabId} /> : undefined),
+  tabTitle: previewTabTitle,
   // A Browser is a vessel, so there can be more of it — a file peek is one of
-  // a kind and leaves the strip's "+" to whatever else the zone holds.
-  newTab: tabId => (targetFor(tabId)?.kind === 'url' ? newBrowserTab : undefined),
+  // a kind and leaves the strip's "+" to whatever else the zone holds, and so
+  // does the editor (hc-1188).
+  newTab: tabId => (targetFor(tabId)?.kind === 'url' && !isOpenfilmStudioTab(tabId) ? newBrowserTab : undefined),
   tabMenuPrefix: browserTabMenuPrefix,
   render: tabId => <PreviewTilePane tabId={tabId} />,
   close: tabId => {

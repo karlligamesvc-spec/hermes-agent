@@ -4,6 +4,7 @@ import { extractImageRefs } from '@/lib/embedded-images'
 import { dedupeGeneratedImageEchoesInParts } from '@/lib/generated-images'
 import type { MessageReaction, SessionMessage } from '@/types/hermes'
 
+import { CRON_RESULT_DISPLAY_KIND, cronResultLabel, cronResultOf } from './cron-result'
 import { FAILED_TURN_DISPLAY_KIND, failedTurnDisplayText } from './failed-turn'
 import { assistantTextPart, chatMessageText, dedupeRepeatedTextInParts, reasoningPart, textPart } from './parts'
 import { productTimelineLabel } from './timeline-labels'
@@ -201,7 +202,38 @@ function asyncResultBody(content: string): string | undefined {
   )
 }
 
+// Engine-written rows that render as a system line, never as a user bubble (hc-1186 adds cron_result).
+const SYSTEM_TIMELINE_KINDS: ReadonlySet<string> = new Set([
+  'model_switch',
+  'async_delegation_complete',
+  'process_complete',
+  'auto_continue',
+  'personality_switch',
+  CRON_RESULT_DISPLAY_KIND
+])
+
+function timelineDisplayRole(message: SessionMessage): SessionMessage['role'] {
+  return message.display_kind && SYSTEM_TIMELINE_KINDS.has(message.display_kind) ? 'system' : message.role
+}
+
+/** What a timeline row carries besides its label: a background report, or a scheduled job's result card. */
+function timelineExtras(message: SessionMessage, content: unknown): Pick<ChatMessage, 'asyncResult' | 'cronResult'> {
+  if (message.display_kind === 'async_delegation_complete' || message.display_kind === 'process_complete') {
+    return { asyncResult: asyncResultBody(displayContentForMessage(message.role, message.content || content)) }
+  }
+
+  const cronResult = cronResultOf(message)
+
+  return cronResult ? { cronResult } : {}
+}
+
 function timelineDisplayContent(message: SessionMessage, content: string): string {
+  const cronResult = cronResultOf(message)
+
+  if (cronResult) {
+    return cronResultLabel(cronResult)
+  }
+
   const productLabel = productTimelineLabel(message.display_kind, () => timelineTaskCount(message.display_metadata))
 
   if (productLabel !== undefined) {
@@ -326,14 +358,7 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
       timelineDisplayContent(message, displayContentForMessage(message.role, content))
     )
 
-    const displayRole =
-      message.display_kind === 'model_switch' ||
-      message.display_kind === 'async_delegation_complete' ||
-      message.display_kind === 'process_complete' ||
-      message.display_kind === 'auto_continue' ||
-      message.display_kind === 'personality_switch'
-        ? 'system'
-        : message.role
+    const displayRole = timelineDisplayRole(message)
 
     // Persisted user turns carry `@image:<path>` directive lines inline in
     // the text (see tui_gateway/server.py's persist-time rewrite). The
@@ -441,9 +466,7 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
       id: `${message.timestamp || Date.now()}-${index}-${displayRole}`,
       role: displayRole,
       parts,
-      ...(message.display_kind === 'async_delegation_complete' || message.display_kind === 'process_complete'
-        ? { asyncResult: asyncResultBody(displayContentForMessage(message.role, message.content || content)) }
-        : {}),
+      ...timelineExtras(message, content),
       timestamp: earliestTimestamp(message.timestamp, ...parts.map(part => part.timestamp)),
       ...(rowId !== undefined ? { rowId } : {}),
       ...(reactions.length ? { reactions } : {}),

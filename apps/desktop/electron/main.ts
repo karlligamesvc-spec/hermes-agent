@@ -341,6 +341,7 @@ import {
   findDesktopDeepLink,
   registerApexDesktopProtocol
 } from './desktop-deep-link'
+import { applyMacDockIcon, DEV_PROTOCOL_SKIPPED_LOG, planApexDesktopProtocol } from './desktop-dev-launch'
 import {
   provisionDeviceBody,
   provisionKeyRevokeUrl,
@@ -483,6 +484,7 @@ import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
 import { LEGACY_OAUTH_PARTITION, resolveOauthPartition } from './oauth-partition'
 import { mintGatewayWsTicket as mintOauthGatewayWsTicket, requestWithOauthFallback } from './oauth-rest-request'
 import { wireOauthSessionResponse } from './oauth-session-response'
+import { createOpenfilmStudio, openfilmEngineRoot, registerOpenfilmStudio } from './openfilm-studio'
 import { armPackagedRuntimeUpdate, bundledEnginePin, createPackagedRuntimeGate, installPackagedRuntime, offlineBundledOutcome, packagedEngineKeptBack, packagedRuntimeMatchesPin, packagedRuntimeShipped, readPackagedRuntime, shouldInstallPackagedRuntime } from './packaged-runtime'
 import { repairEngineMarker } from './packaged-runtime-marker'
 import { createParentStartMarkerResolver, parentWatchdogEnv } from './parent-process-identity'
@@ -512,6 +514,7 @@ import { poolTouchKeys } from './pool-touch-scope'
 import { createKeepAwake } from './power-save'
 import { capturePreviewContents } from './preview-capture'
 import { PreviewReachRegistry } from './preview-reach'
+import { previewUrlTarget } from './preview-url-target'
 import {
   createPrimaryRemoteConnection,
   FirstRunSetupResetError,
@@ -1608,7 +1611,6 @@ const MEDIA_MIME_TYPES = {
 const PREVIEW_HTML_EXTENSIONS = new Set(['.html', '.htm'])
 const PREVIEW_PDF_EXTENSIONS = new Set(['.pdf'])
 const PREVIEW_WATCH_DEBOUNCE_MS = 120
-const LOCAL_PREVIEW_HOSTS = new Set(['0.0.0.0', '127.0.0.1', '::1', '[::1]', 'localhost'])
 const TEXT_PREVIEW_MAX_BYTES = 512 * 1024
 
 const PREVIEW_LANGUAGE_BY_EXT = {
@@ -6819,10 +6821,6 @@ async function writeComposerImage(buffer, ext = '.png', name = '') {
   return filePath
 }
 
-function previewLabelForUrl(url) {
-  return `${url.host}${url.pathname === '/' ? '' : url.pathname}`
-}
-
 function expandUserPath(filePath) {
   const value = String(filePath || '').trim()
 
@@ -6877,30 +6875,6 @@ async function previewFileTarget(rawTarget, baseDir) {
     previewKind,
     source: raw,
     url: pathToFileURL(resolved).toString()
-  }
-}
-
-function previewUrlTarget(rawTarget) {
-  const raw = String(rawTarget || '').trim()
-  const url = new URL(raw)
-
-  if (!['http:', 'https:'].includes(url.protocol)) {
-    return null
-  }
-
-  if (!LOCAL_PREVIEW_HOSTS.has(url.hostname.toLowerCase())) {
-    return null
-  }
-
-  if (url.hostname === '0.0.0.0') {
-    url.hostname = '127.0.0.1'
-  }
-
-  return {
-    kind: 'url',
-    label: previewLabelForUrl(url),
-    source: raw,
-    url: url.toString()
   }
 }
 
@@ -15059,10 +15033,7 @@ function createWindow() {
 
   if (IS_MAC) {
     mainWindow.setWindowButtonPosition?.(WINDOW_BUTTON_POSITION)
-
-    if (icon) {
-      app.dock?.setIcon(icon)
-    }
+    applyMacDockIcon(app.dock, icon, process)
   }
 
   if (!IS_MAC) {
@@ -18273,21 +18244,16 @@ ipcMain.handle('hermes:deep-link-ready', () => {
 
 function registerDeepLinkProtocol() {
   try {
-    const developmentLaunch =
-      process.defaultApp && process.argv.length >= 2
-        ? {
-            // Dev: include the Electron entry script so the OS relaunches the
-            // same application rather than the bare Electron executable.
-            entryScript: path.resolve(process.argv[1]),
-            executable: process.execPath
-          }
-        : undefined
+    // A development launch leaves apexnodes:// to the installed APEX unless opted in.
+    const { developmentLaunch, register } = planApexDesktopProtocol(process)
 
     const decision = registerOsLoginProtocolForPolicy(DESKTOP_LAUNCH_POLICY, () =>
-      registerApexDesktopProtocol(app, developmentLaunch)
+      register ? registerApexDesktopProtocol(app, developmentLaunch) : false
     )
 
-    if (!decision.attempted) {
+    if (!register) {
+      rememberLog(DEV_PROTOCOL_SKIPPED_LOG)
+    } else if (!decision.attempted) {
       rememberLog('[deeplink] OS protocol registration disabled by embedded diagnostic policy')
     } else if (!decision.registered) {
       rememberLog('[deeplink] OS rejected apexnodes protocol registration')
@@ -20985,12 +20951,11 @@ function apexAuthPostJson(url, { body, bearer, method = 'POST', timeoutMs = 12_0
   })
 }
 
-// Bearer-authed body-less JSON request (GET / DELETE) — the read/revoke
-// counterpart to apexAuthPostJson (same electronNet transport + explicit
-// timeout). A >=400 rejects with an Error carrying `.statusCode` (reported to
-// cloudLogin on the way, hc-1073), so the caller can tell 401 (expired JWT →
-// re-login) from a transient failure.
-function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any = {}): Promise<any> {
+// Bearer-authed body-less JSON request (GET / DELETE) — the read/revoke counterpart to apexAuthPostJson (same
+// electronNet transport + explicit timeout), with any extra `headers` the caller names (hc-1201: which Desktop asks).
+// A >=400 rejects with an Error carrying `.statusCode` (reported to cloudLogin on the way, hc-1073), so the caller
+// can tell 401 (expired JWT → re-login) from a transient failure.
+function apexAuthBodylessJson(method, url, { bearer, headers = {}, timeoutMs = 12_000 }: any = {}): Promise<any> {
   return new Promise((resolve, reject) => {
     let parsed
 
@@ -21009,7 +20974,8 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
     }
 
     const request = electronNet.request({ method, url, redirect: 'follow' })
-    request.setHeader('Accept', 'application/json')
+
+    for (const [name, value] of Object.entries({ Accept: 'application/json', ...headers })) {request.setHeader(name, String(value))}
 
     if (bearer) {
       request.setHeader('Authorization', `Bearer ${bearer}`)
@@ -22724,6 +22690,32 @@ ipcMain.handle('hermes:workflowDomain:localVideoReadiness', async () => {
     return { ok: false, basicToolsReady: false, missing: [], renderVerified: false }
   }
 })
+
+// PROTOTYPE, only for an account the Scheduler opens it to (hc-1178): OpenFilm Studio as the editor; see openfilm-studio.ts.
+const openfilmStudio = createOpenfilmStudio({
+  env: process.env,
+  hermesHome: HERMES_HOME,
+  execPath: process.execPath,
+  basePath: () =>
+    buildDesktopBackendPath({
+      hermesHome: HERMES_HOME,
+      runtimeRoot: ACTIVE_HERMES_ROOT,
+      venvRoot: VENV_ROOT,
+      currentPath: pathWithHermesManagedNode()
+    }),
+  enginePython: openfilmEnginePython,
+  engineRoot: () => openfilmEngineRoot(process.env, { active: ACTIVE_HERMES_ROOT, checkout: SOURCE_REPO_ROOT, diagnostic: IS_DIAGNOSTIC_TRIAL, packaged: IS_PACKAGED, isSource: isHermesSourceRoot }),
+  account: () => ({ apiBase: resolveApexEndpoints(process.env).apiBase, key: resolveManagedConfig().key }),
+  log: rememberLog
+})
+
+registerOpenfilmStudio(openfilmStudio, ipcMain, app)
+
+async function openfilmEnginePython() {
+  const backend = await ensureRuntime(resolveHermesBackend([]))
+
+  return backend.command ? { command: backend.command, cwd: backend.root, env: backend.env ?? {} } : null
+}
 
 ipcMain.handle('hermes:workflowDomain:startGoal', async (_event, payload) => {
   const context = workflowDomainIpcContext()

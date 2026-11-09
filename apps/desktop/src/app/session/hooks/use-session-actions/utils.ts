@@ -204,7 +204,8 @@ const COMPARED_FIELDS = [
   'durationS'
 ] as const
 
-const IGNORED_FIELDS = ['attachmentRefs', 'parts', 'rowId'] as const
+// cronResult: a cron_result row is written once and never edited; its label already rides `parts`.
+const IGNORED_FIELDS = ['attachmentRefs', 'cronResult', 'parts', 'rowId'] as const
 
 // Compile-time check: every ChatMessagePart discriminant must be handled by
 // chatPartsEquivalent. If @assistant-ui adds a new part type, this fails tsc.

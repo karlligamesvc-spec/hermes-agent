@@ -55,7 +55,8 @@ describe('DesktopUpdatePill', () => {
 
     expect(screen.getByTestId('desktop-update-pill')).toBeTruthy()
     expect(screen.getByText('APEX update is ready')).toBeTruthy()
-    expect(screen.getByText('App v0.18.0 + Engine 2026.8.8')).toBeTruthy()
+    // hc-1200: the app's version only; the engine pin's calver would read as a date.
+    expect(screen.getByText('App v0.18.0 + engine update')).toBeTruthy()
     expect(screen.getAllByRole('button')).toHaveLength(1)
     expect(screen.getByRole('button').textContent).toContain('Install and restart')
   })

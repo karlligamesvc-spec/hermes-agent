@@ -145,13 +145,7 @@ export function ConfigField({
         <SelectContent>
           {selectOptions.map(option => (
             <SelectItem key={option || EMPTY_SELECT_VALUE} value={option || EMPTY_SELECT_VALUE}>
-              {option
-                ? (optionLabels?.[option] ?? prettyName(option))
-                : schemaKey === 'display.personality'
-                  ? c.none
-                  : schemaKey === 'memory.provider'
-                    ? c.builtinOnly
-                    : c.noneParen}
+              {option ? (optionLabels?.[option] ?? prettyName(option)) : emptyChoiceLabel(schemaKey, c, optionLabels)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -234,5 +228,24 @@ export function ConfigField({
       />
     ),
     isLong
+  )
+}
+
+/**
+ * A select's empty choice: the caller's name for it (hc-1193: 「APEX 配音（默认）」
+ * for 文字转语音提供方), else what clearing that field means.
+ */
+function emptyChoiceLabel(
+  schemaKey: string,
+  copy: { builtinOnly: string; none: string; noneParen: string },
+  optionLabels?: Record<string, string>
+): string {
+  return (
+    optionLabels?.[''] ??
+    (schemaKey === 'display.personality'
+      ? copy.none
+      : schemaKey === 'memory.provider'
+        ? copy.builtinOnly
+        : copy.noneParen)
   )
 }

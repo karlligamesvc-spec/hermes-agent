@@ -147,16 +147,25 @@ def active_personality_name(cfg: Optional[dict[str, Any]]) -> str:
     return name if name and name in available_personalities(cfg) else ""
 
 
-def _resolve_response_language_prompt(cfg: Optional[dict[str, Any]]) -> str:
-    """Return the bounded language contract for model-authored UI text."""
+def response_language_name(cfg: Optional[dict[str, Any]]) -> str:
+    """The language ``agent.response_language`` resolves to (``display`` follows ``display.language``).
+
+    Returns its English name ("Simplified Chinese"), or ``""`` when replies follow the user's language
+    (``auto``, unset, or a value no language matches). The one resolver for model-authored text: the
+    system prompt below, the vision answer (hc-1065) and session titles (hc-1192) all read it here.
+    """
     configured = str(_get(cfg, "agent", "response_language", default="auto") or "auto").strip().lower()
     if configured in {"", "auto", "user", "match-user", "match_user"}:
         return ""
     if configured in {"display", "ui", "interface"}:
         configured = str(_get(cfg, "display", "language", default="") or "").strip().lower()
+    configured = configured.replace("_", "-")
+    return _RESPONSE_LANGUAGE_NAMES.get(_RESPONSE_LANGUAGE_ALIASES.get(configured, configured), "")
 
-    configured = _RESPONSE_LANGUAGE_ALIASES.get(configured.replace("_", "-"), configured.replace("_", "-"))
-    language_name = _RESPONSE_LANGUAGE_NAMES.get(configured)
+
+def _resolve_response_language_prompt(cfg: Optional[dict[str, Any]]) -> str:
+    """Return the bounded language contract for model-authored UI text."""
+    language_name = response_language_name(cfg)
     if not language_name:
         return ""
 

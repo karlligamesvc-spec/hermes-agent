@@ -102,6 +102,26 @@ _TOOL_SEAMS = (
         "(access_key, ticket), is written to the logs as is.",
     ),
     (
+        "cron_update_notice",
+        "apex-overlay: hc-1183 cron update notice seam did not apply (see prior error). "
+        "Changing where a scheduled job delivers no longer says when its result will "
+        "reach no chat, so a Desktop chat may promise the result comes back.",
+    ),
+    (
+        "cron_desktop_delivery",
+        "apex-overlay: hc-1186 Desktop cron delivery seam did not fully apply (see prior "
+        "error). A scheduled job made in a Desktop chat does not post its result back into "
+        "that chat; the chat then says so instead of promising it.",
+    ),
+    (
+        "session_title",
+        "apex-overlay: hc-1192 session title seam did not fully apply (see prior "
+        "error). Session titles follow the language of the user's first message "
+        "instead of the interface language, a greeting titled in Chinese is kept "
+        "as the final title, and on the APEX relay the model title waits for the "
+        "whole first turn.",
+    ),
+    (
         "browser_window",
         "apex-overlay: hc-1179 Desktop browser window seam did not fully apply (see "
         "prior error). With browser.headed on, the agent-browser window gets no "
@@ -180,6 +200,12 @@ _CONTEXT_SEAMS = (
         "apex-overlay: hc-1131 result delivery prompt section did not register "
         "(see prior warning). In product mode, replies may write local paths "
         "under the result cards again.",
+    ),
+    (
+        "cron_result_prompt",
+        "apex-overlay: hc-1183 scheduled result prompt section did not register "
+        "(see prior warning). A Desktop chat may promise that a scheduled job's "
+        "result comes back into the conversation, where it never appears.",
     ),
     (
         "relay_stream_liveness",

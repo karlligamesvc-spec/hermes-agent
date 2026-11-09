@@ -115,8 +115,16 @@ export function mediaSaveName(path: string, fallbackTitle: string): string {
   return `${mediaShortTitle(path) || fallbackTitle}${extension}`
 }
 
+// hc-1189: a Markdown link destination ends at an unbalanced `(` or `)`, and
+// encodeURIComponent leaves both as they are. A file named after a title cut in
+// the middle of a parenthesis (「实测三款咖啡机(上_逐字稿_….docx」) rendered as plain
+// text with no card. Hash hrefs carry the parentheses percent-encoded instead.
+export function markdownHrefComponent(value: string): string {
+  return encodeURIComponent(value).replace(/[()]/g, char => (char === '(' ? '%28' : '%29'))
+}
+
 export function mediaMarkdownHref(path: string): string {
-  return `#media:${encodeURIComponent(path)}`
+  return `#media:${markdownHrefComponent(path)}`
 }
 
 export function isInlineMediaSrc(path: string): boolean {

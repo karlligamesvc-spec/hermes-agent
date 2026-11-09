@@ -54,6 +54,7 @@ import { notarizeMacRuntimePayload, signMacRuntimePayload, verifyNotarizedMacExe
 import { writeRuntimeArchive } from './runtime-bundle-archive.mjs'
 import { DESKTOP_BUNDLE_SYNC, desktopBundleSyncArgs } from './runtime-bundle-extras.mjs'
 import { probeBundledBackend, probeBundledTui, removeOwnedRuntimeTree, runtimeSmokeEnvironment } from './runtime-bundle-offline-smoke.mjs'
+import { runtimeNodeShims } from './runtime-node-shims.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -526,11 +527,12 @@ async function cmdBuild(args) {
   const mediaLock = JSON.parse(fs.readFileSync(path.join(stage, 'scripts/media-tools/desktop-lock.json'), 'utf8'))
   npm(['install', '--prefix', path.join(stage, '.runtime/hypit'), '--ignore-scripts',
     '--registry', mediaLock.npm.registry, `@hypit/hypit@${mediaLock.hypit.version}`])
-  const hypitBin = target.os === 'win' ? nodeStage : path.join(nodeStage, 'bin')
-  const hypitEntry = target.os === 'win' ? '../../apex_overlay/hypit_cli.mjs' : '../../../apex_overlay/hypit_cli.mjs'
-  fs.writeFileSync(path.join(hypitBin, 'hypit'), `#!/usr/bin/env node\nimport '${hypitEntry}'\n`, { mode: 0o755 })
-  if (target.os === 'win') fs.writeFileSync(path.join(hypitBin, 'hypit.cmd'),
-    '@echo off\r\n"%~dp0node.exe" "%~dp0..\\..\\apex_overlay\\hypit_cli.mjs" %*\r\n')
+  // `hypit`, and (hc-1177) `openfilm`: off unless Desktop's editor is on, its toolkit installed on first use, never
+  // in the bundle. Both are entries into apex_overlay (runtime-node-shims.mjs).
+  const nodeBin = target.os === 'win' ? nodeStage : path.join(nodeStage, 'bin')
+  for (const shim of runtimeNodeShims(target.os)) {
+    fs.writeFileSync(path.join(nodeBin, shim.file), shim.content, shim.mode ? { mode: shim.mode } : undefined)
+  }
 
   // ── 8. no repo npm trees (hc-951). The root and ui-tui installs held only
   //       build tooling. The TUI ships compiled (step 9b, hc-954) and runs on

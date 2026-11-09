@@ -77,7 +77,6 @@ export const zhHant = defineLocale({
     tryHint: term => `試試「${term}」`,
     on: '開啟',
     off: '關閉',
-    engineVersionPrefix: '引擎'
   },
 
   fileMenu: {
@@ -854,8 +853,6 @@ export const zhHant = defineLocale({
       daysAgo: count => `${count} 天前`,
       engineSection: 'AI 引擎',
       // hc-591: value 已是顯示格式化後的字串("引擎 2026.7.25"),此處去掉重複的「引擎」二字。
-      engineVersion: value => `版本：${value}`,
-      engineVersionUnavailable: '引擎版本不可用',
       engineCheck: '檢查引擎更新',
       engineChecking: '檢查中…',
       engineUpToDate: '引擎已是最新。',
@@ -872,7 +869,7 @@ export const zhHant = defineLocale({
       engineConfirmBodyGeneric: '將更新 AI 引擎，並重新啟動應用以生效。你的工作不會遺失。',
       engineConfirmApply: '更新引擎',
       engineUpdateNeeded: '引擎需更新',
-      engineUpdateNeededDetail: value => `本應用需要 ${value} 或更新版本。請點下方「檢查更新」更新引擎。`,
+      engineUpdateNeededDetail: '本應用需要更新版本的引擎。請點下方「檢查更新」更新引擎。',
       engineTreeMismatch: '引擎檔案未同步',
       engineTreeMismatchDetail:
         '上次更新記錄了新版本,但磁碟上的引擎檔案並未替換,目前顯示的版本號可能不準確。請點下方更新引擎以重新下載正確的檔案。',
@@ -1335,8 +1332,8 @@ export const zhHant = defineLocale({
       signInFirst: '請先登入你的 APEX 帳號。',
       saved: '裝置名稱已儲存。',
       enableFailed: '儲存失敗——本系統的安全儲存不可用。',
-      engineOutdated: value =>
-        `目前引擎版本過舊，本機 Agent 調度需要 ${value} 或更新版本。請到「設定 › 關於」更新引擎，否則工具呼叫可能靜默失敗。`
+      engineOutdated:
+        `目前引擎版本過舊，本機 Agent 調度需要更新版本的引擎。請到「設定 › 關於」更新引擎，否則工具呼叫可能靜默失敗。`
     },
     personalization: {
       personalityTitle: '人格',
@@ -2408,9 +2405,9 @@ export const zhHant = defineLocale({
       preparingTitle: version => (version ? `正在準備 APEX ${version}` : '正在準備 APEX 更新'),
       downloadedPercent: percent => `已下載 ${percent}%`,
       readyTitle: 'APEX 更新已準備好',
-      appAndEngine: (appVersion, engineVersion) => `應用程式 ${appVersion} + ${engineVersion}`,
+      appAndEngine: appVersion => `應用程式 ${appVersion} + 引擎更新`,
       appOnly: version => `應用程式 ${version}`,
-      engineOnly: version => version,
+      engineOnly: '引擎更新',
       installRestart: '安裝並重新啟動',
       installing: '正在準備更新…',
       confirmTitle: '安裝 APEX 更新？',

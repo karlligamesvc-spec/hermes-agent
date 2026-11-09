@@ -1,7 +1,7 @@
 {
  "contract_name": "apexnodes-plugin-tools-parity",
- "contract_version": 16,
- "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948, hc-969, hc-1011, hc-1000, hc-1054, hc-1143, hc-1136, hc-1046",
+ "contract_version": 17,
+ "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948, hc-969, hc-1011, hc-1000, hc-1054, hc-1143, hc-1136, hc-1046, hc-1189",
  "sync_policy": {
   "copies": [
    "hermes-cloud: tests/contracts/plugin_tools_contract.json (source of truth)",
@@ -151,6 +151,13 @@
       "gateway"
      ],
      "note": "hc-929: both transcribe endpoints return Doubao segments (utterances with nested word timing, milliseconds) inline; the tool result never carries them inline. The plugin writes the full array, unchanged, to <runtime HERMES_HOME>/cache/documents/<stem>.segments.json and returns segments_path plus segments_summary {count, word_count, first_start_ms, last_end_ms}. A response without segments returns segments_summary {count: 0} and no segments_path; a client older than this contract returns neither. Reason: word timing runs at about 20K chars per minute of speech, so an inline array pushes a long video's result past the runtime's 100K-char per-result spill threshold and replaces even the transcript with a 1.5K preview, while caption tools read timing from a file anyway. APEX Desktop 0.17.58's gateway leg dropped segments entirely."
+    },
+    "transcript_readback_file": {
+     "legs": [
+      "legacy",
+      "gateway"
+     ],
+     "note": "hc-1189: a transcription with speech also writes <runtime HERMES_HOME>/cache/documents/<stem>.txt and returns it as transcript_text_path: the verbatim transcript split into the same paragraphs as the .docx body (one blank line between paragraphs, no line longer than 1000 characters, a line broken only after a pause mark; not one character changed). One call names all of its files from one stem: <stem>.docx (when the verbatim .docx is rendered), <stem>.txt and <stem>.segments.json differ only in extension, so the .docx the user could not open leads back to the text of the same call. The stem is the platform title, or the local video's file name without its 8-hex unique tail when the platform gives no title (the result's title field stays as the platform gave it). A clip without speech writes no text file; an unwritable cache drops the field and the transcription still succeeds. Reason: a user who could not open the second of two transcripts was given the first one's text, rebuilt from chat memory (liusession 10-08)."
     }
    }
   },

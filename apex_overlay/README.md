@@ -109,6 +109,9 @@ disarm into a **loud CI failure**, the prerequisite for trusting monkey-patch.
 | `cron_account_env` | Once a process serves several profiles (several assistants), every cron fire's scope gets the signed-in account's credentials Desktop put into the process environment: platform tools, web search, the Feishu and WeChat apps of the IM 入口. The profile's own value wins; a name any `.env` loaded and the per-assistant gates are never lent. Only inside cron fires: no turn, adapter or gateway config scope changes (hc-1169). |
 | `im_launch_profile` | With several profiles (several assistants), the IM 入口's Feishu and WeChat credentials Desktop puts into the process environment belong to the profile the process was started for; Desktop always starts the messaging gateway as APEX's default profile (`MESSAGING_GATEWAY_PROFILE` in apex-gateway.ts), so on Desktop the IM is APEX's. Only that profile's scope gets them, so its platform config has both apps and exactly one adapter connects. Its own `.env` value wins; no other profile's scope changes (hc-1171). |
 | `lark_log_redaction` | The Feishu SDK logs its websocket address with the connection's credentials in it (`access_key`, `ticket`). A filter on its `Lark` logger masks them before the SDK's own stdout handler (Desktop's `desktop.log`) and before propagation (`agent.log`); the rest of the address stays readable. Desktop masks the same names in every `desktop.log` line (hc-1174). |
+| `cron_update_notice` | `cronjob_manage` `update` that sets `deliver` adds the same "local-only" notice `create` gives when the job's delivery resolves to no target (a Desktop chat has no origin; with no Feishu or WeChat home channel the result is only saved locally). Wraps `_JOB_ACTIONS["update"]` once `tools.cronjob_tools` has loaded; the notice comes from upstream's `_local_delivery_notice` (hc-1183). |
+| `cron_desktop_delivery` | A job made or changed in a Desktop chat is stamped with that chat (`apex_desktop_origin`; an omitted `deliver` becomes `origin`). Wraps `cron.scheduler._deliver_result`: upstream delivers first (a bound Feishu or WeChat home channel still gets it), then the result is posted into the chat as a `cron_result` row without a model turn: compression tip followed, a deleted chat falls back to the newest Desktop chat, a chat busy in a turn gets it when the turn ends (pending files under `cron/apex_desktop_results/`, drained again at start), never twice. `cron.changed` then carries `apex_cron_result` for Desktop's card refresh and OS notification. Stands aside for upstream's own Desktop origin (`origin.platform == "desktop"`, open upstream PR #83975) (hc-1186). |
+| `session_title` | Session titles: with `auxiliary.title_generation.language` empty, the title follows `agent.response_language` through `hermes_cli.personality.response_language_name` (the system prompt's resolver; APEX Desktop's `display` = the interface language). In a pinned language a bare greeting is always titled with the fixed English placeholder, returned in the title language (「友好问候」 for Simplified Chinese) and recognised in those languages, so it stays a `derived` placeholder the next request renames. A `custom` / `custom:<name>` route holds the model title until the turn ends only when its `base_url` is local (loopback, private, link-local, CGNAT, single-label or local-suffix host); the remote relay titles at turn start. Patches `agent.title_generator` through `post_import.when_imported` (hc-1192). |
 | `packaged_engine` | An engine installed by APEX Desktop never builds a frontend, and `hermes --tui` runs its shipped TUI on the bundled Node (hc-954). Hooked in place from `source_build.py` and `main_tui_launch.py`: plugin discovery runs too late on those paths. |
 
 `plugins/apex-overlay/__init__.py` is the authoritative registration order.
@@ -178,6 +181,14 @@ provider」 (2026-11-04/05). The new sentence names the chosen provider as
 Settings shows it, says nothing was spoken and no other voice was used, and
 tells the model not to install anything or substitute a voice. The choice is
 not changed and nothing is routed to Doubao.
+
+hc-1193: Desktop Settings › 语音 offers 「APEX 配音（默认）」 again (product mode
+on an APEX account) and saves `tts.provider: ''` for it; 恢复默认 sends upstream's
+defaults with that value instead of `edge` (`apps/desktop/src/app/settings/apex-voice.ts`).
+An empty provider is what `load_tts_config` already reads as no choice, so this
+seam is unchanged; the no-engine sentence now names that entry as the way back
+and leaves switching to the user. `tests/apex_overlay/test_doubao_tts_settings.py`
+runs the real `PUT /api/config` against this seam.
 `test_the_wrapped_engine_choice_is_still_where_upstream_calls_it` pins the
 upstream symbol and its call site.
 

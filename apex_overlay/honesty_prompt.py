@@ -12,8 +12,9 @@ subprocess also sees). A cloud container that runs this overlay already has the 
 in its prompt, so it gets no second copy.
 
 The rules are also enforced where that is cheap: apexnodes-honesty-tools refuses a
-skill or memory write that raises an evidence level and an unasked model switch after
-a failure; apexnodes-next-steps lists paid files the reply did not show.
+skill or memory write that raises an evidence level (and, hc-1195, undoes one that a
+terminal / execute_code call wrote straight into skills/ or memories/) and an unasked
+model switch after a failure; apexnodes-next-steps lists paid files the reply did not show.
 """
 
 from __future__ import annotations

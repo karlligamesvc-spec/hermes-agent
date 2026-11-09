@@ -83,12 +83,13 @@ def missing_engine_message(provider: str) -> str:
     """hc-1035: what the model reads when the voice chosen in Settings has no engine in APEX.
     Upstream's text (`No TTS provider available. Enable Edge TTS with: pip install …` or run
     `hermes setup tts`) names commands an APEX user cannot run and the model rendered it as
-    「无可用 TTS provider」 (2026-11-04/05)."""
+    「无可用 TTS provider」 (2026-11-04/05). hc-1193: the list offers APEX's own voice again
+    (apps/desktop/src/app/settings/apex-voice.ts), and switching back is the user's call."""
     name = _ENGINE_NAMES.get(provider, provider)
     return (
         f"配音没做成：设置 → 语音 里的「文字转语音提供方」选的是「{name}」，APEX 没带这个组件；"
-        "这次没有配音，也没有换成别的声音。APEX 配音只在这一项没选的时候用，设置里的列表现在还选不回它。"
-        "把这些照实告诉用户，不要自己装组件、写代码或换别的声音顶上。"
+        "这次没有配音，也没有换成别的声音。在这一项里改选「APEX 配音（默认）」就用回 APEX 配音。"
+        "把这些照实告诉用户，由用户自己去改；不要替用户改设置，也不要自己装组件、写代码或换别的声音顶上。"
     )
 
 

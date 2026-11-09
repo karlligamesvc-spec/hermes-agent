@@ -1,7 +1,7 @@
 /**
  * Copy for hc-1109: Settings in single-thread product mode — the line under
  * its title, the rail's three product names and the 记忆 / 连接微信和飞书 / 用量
- * pages.
+ * pages; hc-1193: 语音's entry for APEX's own voice.
  *
  * Kept beside the main catalogs instead of inside them: those files are past
  * the code-health size cap (they may only shrink). Each locale is a whole typed
@@ -28,6 +28,8 @@ export interface SettingsProductCopy {
   usageNone: string
   /** Opens the per-day usage history (the account menu's 个人资料 page). */
   usageHistory: string
+  /** 语音 › 文字转语音提供方: APEX's own voice, what speaks while no other provider is chosen. */
+  apexVoice: string
 }
 
 const en: SettingsProductCopy = {
@@ -39,7 +41,8 @@ const en: SettingsProductCopy = {
   usageIntro: 'Your plan, and how much of it you have used this period.',
   usageUsed: ({ percent, period }) => `${percent} used this ${period}`,
   usageNone: 'No usage to show yet. Sign in to your APEX account to see your plan and how much you have used.',
-  usageHistory: 'See usage history'
+  usageHistory: 'See usage history',
+  apexVoice: 'APEX voice (default)'
 }
 
 const zh: SettingsProductCopy = {
@@ -51,7 +54,8 @@ const zh: SettingsProductCopy = {
   usageIntro: '你的套餐，和这个周期用了多少。',
   usageUsed: ({ percent, period }) => `${period === 'week' ? '本周' : '本月'}用了 ${percent}`,
   usageNone: '还没读到用量。登录 APEX 账号后，这里会显示套餐和用了多少。',
-  usageHistory: '查看使用记录'
+  usageHistory: '查看使用记录',
+  apexVoice: 'APEX 配音（默认）'
 }
 
 const zhHant: SettingsProductCopy = {
@@ -63,7 +67,8 @@ const zhHant: SettingsProductCopy = {
   usageIntro: '你的方案，和這個週期用了多少。',
   usageUsed: ({ percent, period }) => `${period === 'week' ? '本週' : '本月'}用了 ${percent}`,
   usageNone: '還沒讀到用量。登入 APEX 帳號後，這裡會顯示方案和用了多少。',
-  usageHistory: '查看使用紀錄'
+  usageHistory: '查看使用紀錄',
+  apexVoice: 'APEX 配音（預設）'
 }
 
 export const SETTINGS_PRODUCT_COPY: Readonly<Record<Locale, SettingsProductCopy>> = {

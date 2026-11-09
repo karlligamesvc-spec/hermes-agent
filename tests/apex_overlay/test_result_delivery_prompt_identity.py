@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from apex_overlay import browser_login_prompt, result_delivery_prompt
+from apex_overlay import browser_login_prompt, cron_result_prompt, result_delivery_prompt
 from hermes_cli.plugins_dispatch import PLUGIN_SECTIONS_END, format_system_prompt_section
 
 HERE = Path(__file__).resolve().parent
@@ -94,6 +94,18 @@ def _golden() -> dict[str, dict[str, str]]:
     }
 
 
+def _added_sections(name: str, platform: str) -> list[str]:
+    """What later tickets add to the clean-main golden, in id order (both ids sort after every other one)."""
+    added = []
+    if (name, platform) == ("desktop-product-mode", "desktop"):
+        added.append(format_system_prompt_section(result_delivery_prompt.SECTION_ID,
+                                                  result_delivery_prompt.RESULT_DELIVERY_PROMPT))
+    # hc-1183: every Desktop chat; the probe signs no APEX account in, so the settings page is never named.
+    if platform == "desktop" and SURFACES[name].env.get("HERMES_DESKTOP") == "1":
+        added.append(format_system_prompt_section(cron_result_prompt.SECTION_ID, cron_result_prompt.prompt()))
+    return added
+
+
 def _heading(section_id: str) -> str:
     """The ``## Plugin Context: <id>`` line a section renders under, from the real formatter."""
     return format_system_prompt_section(section_id, "").split("\n", 1)[0]
@@ -101,22 +113,22 @@ def _heading(section_id: str) -> str:
 
 def _expected(name: str, platform: str) -> str:
     golden = _golden()[SURFACES[name].golden][platform]
-    if (name, platform) != ("desktop-product-mode", "desktop"):
+    added = _added_sections(name, platform)
+    if (name, platform) == ("desktop-product-mode", "desktop"):
+        # Sections render in sorted-id order (plugins_dispatch.render_system_prompt_sections).
+        # hc-1179 apex.browser-login sorts between apex.approval-rules and apex.honesty, so it goes
+        # in just before the apex.honesty heading.
+        honesty = _heading("apex.honesty")
+        assert golden.count(honesty) == 1
+        browser = format_system_prompt_section(
+            browser_login_prompt.SECTION_ID, browser_login_prompt.BROWSER_LOGIN_PROMPT)
+        golden = golden.replace(honesty, f"{browser}\n\n{honesty}")
+    if not added:
         return golden
-    # Sections render in sorted-id order (plugins_dispatch.render_system_prompt_sections).
-    # hc-1179 apex.browser-login sorts between apex.approval-rules and apex.honesty, so it goes
-    # in just before the apex.honesty heading.
-    honesty = _heading("apex.honesty")
-    assert golden.count(honesty) == 1
-    browser = format_system_prompt_section(
-        browser_login_prompt.SECTION_ID, browser_login_prompt.BROWSER_LOGIN_PROMPT)
-    golden = golden.replace(honesty, f"{browser}\n\n{honesty}")
-    # hc-1131 apex.user-results sorts after every other section: the last block before END.
+    # The last sections, since their ids sort after every other one.
     end = f"\n{PLUGIN_SECTIONS_END}"
     assert golden.count(end) == 1
-    results = format_system_prompt_section(
-        result_delivery_prompt.SECTION_ID, result_delivery_prompt.RESULT_DELIVERY_PROMPT)
-    return golden.replace(end, f"\n\n{results}{end}")
+    return golden.replace(end, "".join(f"\n\n{section}" for section in added) + end)
 
 
 def test_write_goldens_when_asked(tmp_path_factory):
@@ -168,6 +180,17 @@ def test_only_product_modes_chat_carries_the_rule(tmp_path_factory):
         if result_delivery_prompt.RESULT_DELIVERY_PROMPT in prompt
     }
     assert carrying == {("desktop-product-mode", "desktop")}
+
+
+def test_only_desktop_chats_carry_the_scheduled_result_rule(tmp_path_factory):
+    """hc-1183: every Desktop surface's chat, whatever the mode; no subagent, cron run, IM chat or cloud prompt."""
+    carrying = {
+        (name, platform)
+        for name in SURFACES
+        for platform, prompt in _prompts(tmp_path_factory, name).items()
+        if cron_result_prompt.HEADER in prompt
+    }
+    assert carrying == {(name, "desktop") for name in SURFACES if name != "cloud"}
 
 
 def test_only_product_mode_desktop_carries_the_browser_login_rule(tmp_path_factory):

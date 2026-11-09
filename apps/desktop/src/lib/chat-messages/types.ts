@@ -5,6 +5,8 @@ import type { ErrorSurface } from '@/lib/error-surface'
 import type { ToolResultMetadata } from '@/lib/tool-result-metadata'
 import type { MessageReaction, SessionMessage, UsageStats } from '@/types/hermes'
 
+import type { CronResult } from './cron-result'
+
 export interface TimelinePartMetadata {
   /** Original streamed text, retained while MEDIA links are being rendered. */
   mediaSourceText?: string
@@ -24,6 +26,8 @@ export type ChatMessage = {
   parts: ChatMessagePart[]
   /** Result body only; the system text remains the compact completion label. */
   asyncResult?: string
+  /** hc-1186: a scheduled job's result that came back into this chat (a `cron_result` row). */
+  cronResult?: CronResult
   timestamp?: number
   completedAt?: number
   pending?: boolean

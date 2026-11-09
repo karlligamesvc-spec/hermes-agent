@@ -57,11 +57,12 @@ def _serve(monkeypatch, plugin, *, gateway: bool, section: dict | None = None) -
         sent.append(payload)
         return {"ok": True, "model": payload.get("model")}
 
-    def gateway_request(_method, path, payload=None, *, timeout=None):
+    def gateway_request(_method, path, payload=None, *, timeout=None, headers=None):
         if path == "/tools/v1/check":
             return {"image": section}
         sent.append(payload)
-        return {"data": {"ok": True, "model": payload.get("model")}}
+        # The image job submit (hc-1190), answered as already done.
+        return {"job_id": "j1", "status": "done", "data": {"ok": True, "model": payload.get("model")}}
 
     monkeypatch.setattr(plugin, "_use_gateway", lambda: gateway)
     monkeypatch.setattr(plugin, "_request", legacy)

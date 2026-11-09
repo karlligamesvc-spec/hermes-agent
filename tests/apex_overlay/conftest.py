@@ -79,6 +79,14 @@ _SEAM_MODULES = (
     "im_launch_profile",
     # hc-1174 the Feishu SDK's websocket address is logged without its credentials.
     "lark_log_redaction",
+    # hc-1183 a Desktop chat says where a scheduled job's result goes.
+    "cron_result_prompt",
+    # hc-1183 a cron update that leaves the job delivering nowhere says so, as create does.
+    "cron_update_notice",
+    # hc-1186 a job made in a Desktop chat posts its result back into that chat.
+    "cron_desktop_delivery",
+    # hc-1192 session titles in the interface language; a remote custom route titles at turn start.
+    "session_title",
     # hc-1179 the Desktop browser window: a persistent profile + off-by-default hide-automation arg.
     "browser_window",
     # hc-1179 hand a browser sign-in / human check to the user (Desktop product mode).

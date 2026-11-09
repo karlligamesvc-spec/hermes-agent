@@ -13,6 +13,12 @@ import { dispatchNativeNotification } from './native-notifications'
 // A task == a one-shot cron job (see task-model.ts for the honest rationale).
 export const $tasks = computed($cronJobs, jobs => jobs.filter(isOneShotJob))
 
+/** hc-1186: a job made in a Desktop chat posts its result back there (unless it is save-only), and that
+ *  notification (store/cron-result-notify.ts) opens the chat; this one would only repeat it. */
+function postsToItsChat(job: CronJob): boolean {
+  return Boolean((job as CronJob & { apex_desktop_origin?: unknown }).apex_desktop_origin) && job.deliver !== 'local'
+}
+
 // ── Completion / failure notifications ──────────────────────────────────────
 // The cron ticker advances job state in the backend; the controller poll swaps
 // $cronJobs. We watch phase transitions here and fire a native OS notification
@@ -29,12 +35,16 @@ let seeded = false
 
 function notifyTransition(job: CronJob, phase: TaskPhase): void {
   const title = jobTitleShort(job)
+  // hc-1183: no chat session owns a task, so the alert is global (it fires only while the user is away);
+  // a session-less completion was dropped by shouldFire. The tag keeps two tasks ending together apart.
+  const owner = { global: true, tag: `task:${job.id}` }
 
   if (phase === 'done') {
     dispatchNativeNotification({
       kind: 'backgroundDone',
       title: translateNow('tasks.notify.doneTitle'),
-      body: title
+      body: title,
+      ...owner
     })
   } else if (phase === 'failed' || phase === 'delivery-failed') {
     dispatchNativeNotification({
@@ -42,7 +52,8 @@ function notifyTransition(job: CronJob, phase: TaskPhase): void {
       title: translateNow(
         phase === 'delivery-failed' ? 'tasks.notify.deliveryFailedTitle' : 'tasks.notify.failedTitle'
       ),
-      body: jobOutcomeError(job) || title
+      body: jobOutcomeError(job) || title,
+      ...owner
     })
   }
 }
@@ -60,7 +71,12 @@ export function startTaskNotifier(): () => void {
       lastPhase.set(job.id, phase)
 
       // Fire only on a real running → terminal edge that we've been tracking.
-      if (seeded && prev === 'running' && (phase === 'done' || phase === 'failed' || phase === 'delivery-failed')) {
+      if (
+        seeded &&
+        prev === 'running' &&
+        (phase === 'done' || phase === 'failed' || phase === 'delivery-failed') &&
+        !postsToItsChat(job)
+      ) {
         notifyTransition(job, phase)
       }
     }

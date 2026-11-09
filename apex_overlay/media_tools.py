@@ -24,6 +24,16 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / 'scripts/media-tools/desktop-lock.json'
 COS_HOST = 'apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com'
+#: hc-1201: Desktop's install of the editor's parts sets this, and the downloads then say how far they are, one line
+#: each on stdout (``PROGRESS_MARK`` + JSON), which the editor's first-run check shows (electron/openfilm-studio.ts).
+PROGRESS_ENV = 'APEX_MEDIA_TOOLS_PROGRESS'
+PROGRESS_MARK = '@@apex-progress '
+
+
+def _progress(step: str, done: int, total: int) -> None:
+    """One progress line for Desktop, only when it asked for them (``PROGRESS_ENV``); every other caller gets none."""
+    if os.environ.get(PROGRESS_ENV) == '1':
+        print(f'{PROGRESS_MARK}{json.dumps({"step": step, "done": done, "total": total})}', flush=True)
 
 
 def native_target() -> str:
@@ -63,6 +73,7 @@ def ensure_browser(*, render=False) -> Path:
                     output.write(chunk)
                     digest.update(chunk)
                     size += len(chunk)
+                    _progress('browser', size, spec['bytes'])
             if size != spec['bytes'] or digest.hexdigest() != spec['sha256']:
                 raise ValueError('COS browser archive checksum mismatch')
             unpacked = temporary / 'unpacked'
@@ -125,6 +136,123 @@ def ensure_font(name: str = 'subtitle') -> Path:
     return destination
 
 
+def openfilm_pin() -> dict:
+    """desktop-lock's ``openfilm``: the toolkit this engine pins, and so the only one its editor runs (hc-1199).
+
+    ``ensure_openfilm`` installs it. An APEX update that moves the pin leaves the old toolkit and its ready.json in
+    place, so every reader of ready.json (``film_project.ready_toolkit``, Desktop's ``findOpenfilmToolkit``, which
+    reads this same file under the engine's root) takes the toolkit it names only while its ``sha256`` is this one's.
+    """
+    return json.loads(LOCK.read_text(encoding='utf-8-sig'))['openfilm']
+
+
+def ensure_openfilm() -> Path:
+    """APEX's OpenFilm toolkit (hc-1176), for the editor Desktop opens an Agent's film.html in.
+
+    The toolkit (desktop-lock ``openfilm``: the pinned openfilm package with APEX's patches, and its dependencies) is
+    downloaded once from APEX COS, size and SHA-256 checked, and unpacked into HERMES_HOME/tool-cache/openfilm/<sha256>/.
+    It draws in the Agent browser's Chromium (``ensure_browser(render=True)``), never in one it downloads itself.
+    ``tool-cache/openfilm/ready.json`` is written last and names both: Desktop reads only that file, so it never sees
+    a half-done install. Returns its path.
+    """
+    from filelock import FileLock
+    from hermes_constants import get_hermes_home
+    from urllib.parse import urlsplit
+    spec = openfilm_pin()
+    url = urlsplit(spec['url'])
+    if url.scheme != 'https' or url.hostname != COS_HOST:
+        raise ValueError('OpenFilm toolkit download must use APEX COS')
+    chromium = ensure_browser(render=True)
+    cache = Path(get_hermes_home()) / 'tool-cache' / 'openfilm'
+    cache.mkdir(parents=True, exist_ok=True)
+    destination = cache / spec['sha256']
+
+    def installed(folder: Path) -> bool:
+        try:
+            manifest = json.loads((folder / 'apex-toolkit.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return False
+        patches = [str(p.get('file', '')).removesuffix('.patch') for p in manifest.get('patches', [])]
+        return (manifest.get('openfilm') == spec['version'] and patches == spec['patches']
+                and (folder / 'node_modules/openfilm/studio/server/server.mjs').is_file())
+
+    with FileLock(str(cache / 'install.lock'), timeout=1800):
+        if not installed(destination):
+            with tempfile.TemporaryDirectory(prefix='install-', dir=cache) as temporary:
+                temporary = Path(temporary)
+                archive = temporary / 'openfilm-toolkit.tgz'
+                digest, size = hashlib.sha256(), 0
+                with urllib.request.urlopen(spec['url'], timeout=120) as response, archive.open('wb') as output:
+                    while chunk := response.read(1024 * 1024):
+                        output.write(chunk)
+                        digest.update(chunk)
+                        size += len(chunk)
+                        _progress('toolkit', size, spec['bytes'])
+                if size != spec['bytes'] or digest.hexdigest() != spec['sha256']:
+                    raise ValueError('COS OpenFilm toolkit checksum mismatch')
+                unpacked = temporary / 'unpacked'
+                unpacked.mkdir()
+                tar = str(Path(os.environ.get('SystemRoot', 'C:/Windows')) / 'System32/tar.exe') if os.name == 'nt' else '/usr/bin/tar'
+                subprocess.run([tar, '-xzf', str(archive), '-C', str(unpacked)], stdin=subprocess.DEVNULL, check=True, timeout=300)
+                if not installed(unpacked):
+                    raise ValueError('COS OpenFilm toolkit archive is not the locked toolkit')
+                # A previous interrupted installation cannot leave a half-valid tree.
+                if destination.exists():
+                    shutil.rmtree(destination)
+                unpacked.rename(destination)
+        ready = cache / 'ready.json'
+        staged = cache / 'ready.json.tmp'
+        staged.write_text(json.dumps({
+            'schema': 1, 'version': spec['version'], 'patches': spec['patches'], 'sha256': spec['sha256'],
+            'toolkit': str(destination), 'chromium': str(chromium),
+        }, indent=2), encoding='utf-8')
+        os.replace(staged, ready)
+    return ready
+
+
+#: What installing a missing part takes on disk, as a multiple of its download: the archive, then its unpacked tree
+#: beside it until the move (measured 2026-11-09 on mac-arm64: the browser 191 MB → 359 MB, the toolkit 42 MB →
+#: 67 MB), with room to spare; and what is kept free on top.
+INSTALL_ROOM_FACTOR = 3
+INSTALL_ROOM_MARGIN = 256 * 1024 * 1024
+
+
+def openfilm_check() -> dict:
+    """What the editor still needs on this computer, for Desktop's first-run check of the titlebar's 剪辑 (hc-1201).
+
+    The browser Studio draws in and the toolkit this engine pins: whether each is installed, and its download's size;
+    and the free space where APEX keeps its data against what installing the missing ones takes. Reads only: it
+    installs nothing (``ensure_openfilm`` does). The toolkit counts as installed only while ready.json names the
+    pinned one and its files are there, as every reader of ready.json takes it.
+    """
+    from hermes_constants import get_hermes_home
+    lock = json.loads(LOCK.read_text(encoding='utf-8-sig'))
+    target = native_target()
+    browser = lock['browser'][f'render-{target}' if os.name == 'nt' else target]
+    toolkit = openfilm_pin()
+    home = Path(get_hermes_home())
+    browser_ready = (home / 'tool-cache' / 'chrome' / browser['sha256'] / browser['executable']).is_file()
+    try:
+        said = json.loads((home / 'tool-cache' / 'openfilm' / 'ready.json').read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError):
+        said = None
+    toolkit_ready = (isinstance(said, dict) and said.get('sha256') == toolkit['sha256']
+                     and (Path(str(said.get('toolkit', ''))) / 'node_modules/openfilm/studio/server/server.mjs').is_file()
+                     and Path(str(said.get('chromium', ''))).is_file())
+    missing = [part['bytes'] for part, ready in ((browser, browser_ready), (toolkit, toolkit_ready)) if not ready]
+    existing = home
+    while not existing.exists() and existing != existing.parent:
+        existing = existing.parent
+    return {
+        'browser': {'ready': browser_ready, 'bytes': browser['bytes']},
+        'toolkit': {'ready': toolkit_ready, 'bytes': toolkit['bytes']},
+        'disk': {
+            'free': shutil.disk_usage(existing).free,
+            'needed': sum(missing) * INSTALL_ROOM_FACTOR + (INSTALL_ROOM_MARGIN if missing else 0),
+        },
+    }
+
+
 def _bundled_hypit_version() -> str:
     package = ROOT / '.runtime/hypit/node_modules/@hypit/hypit/package.json'
     return json.loads(package.read_text(encoding='utf-8'))['version']
@@ -174,11 +302,23 @@ def apply() -> bool:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['browser', 'prepare-hypit', 'enable-hosted-hypit', 'font'])
+    parser.add_argument('command', choices=['browser', 'prepare-hypit', 'enable-hosted-hypit', 'font', 'openfilm',
+                                            'openfilm-check'])
     parser.add_argument('--workspace', '--project', type=Path, default=Path.cwd())
     parser.add_argument('--hypit-version')
     args = parser.parse_args()
-    if args.command == 'font':
+    if args.command == 'openfilm-check':  # hc-1201: Desktop's first-run check of the editor; reads only
+        try:
+            print(json.dumps(openfilm_check()))
+        except (OSError, ValueError, KeyError) as exc:  # Desktop then starts the install without the check
+            raise SystemExit(f'APEX OpenFilm check unavailable: {type(exc).__name__}: {exc}') from None
+        raise SystemExit(0)
+    if args.command == 'openfilm':
+        try:
+            print(ensure_openfilm())
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:  # Desktop retries later; one line, no traceback
+            raise SystemExit(f'APEX OpenFilm toolkit unavailable: {type(exc).__name__}: {exc}') from None
+    elif args.command == 'font':
         try:
             print(ensure_font())
         except (OSError, ValueError, KeyError) as exc:  # the Agent relays this line instead of a traceback

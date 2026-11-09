@@ -1,10 +1,20 @@
 import { atom, computed } from 'nanostores'
 
+import { openfilmStudioCopyNow } from '@/i18n/openfilm-studio'
+import {
+  $openfilmStudioOn,
+  isOpenfilmStudioTab,
+  OPENFILM_STUDIO_TAB_ID,
+  openfilmProjectFolder,
+  openfilmStudioUrl,
+  waitForOpenfilmEditor
+} from '@/lib/openfilm-studio'
 import { persistentAtom } from '@/lib/persisted'
 import { readKey } from '@/lib/storage'
 import { normalize } from '@/lib/text'
 
 import { $rightRailActiveTabId, type RightRailTabId, selectRightRailTab } from './layout'
+import { notify } from './notifications'
 import { canOpenBrowserWindow, openBrowserInNewWindow } from './windows'
 
 /**
@@ -338,7 +348,9 @@ export function previewTabId(target: PreviewTarget): RightRailTabId {
   return `${target.kind}:${target.url}`
 }
 
-const isBrowserTab = (tab: PreviewTab): boolean => tab.target.kind === 'url'
+// The editor's tab (hc-1188) is a url target but no Browser: an address opened
+// while it shows goes to a Browser tab of its own, never into the editor.
+const isBrowserTab = (tab: PreviewTab): boolean => tab.target.kind === 'url' && !isOpenfilmStudioTab(tab.id)
 
 /** A Browser tab's id, minted the way a terminal's is — there is no identity to
  *  derive one from. Random rather than the lowest free slot: an id is never
@@ -383,6 +395,75 @@ function previewTargetForSource(target: PreviewTarget, source: PreviewRecordSour
  *  its target so a stale label/path can't outlive the thing it points at. The
  *  only way anything reaches a preview. */
 export function openPreview(target: PreviewTarget, source: PreviewRecordSource = 'manual') {
+  const filmFolder = $openfilmStudioOn.get() ? openfilmProjectFolder(target) : null
+
+  if (filmFolder) {
+    void openFilmInStudio(filmFolder, target, source)
+
+    return
+  }
+
+  showPreview(target, source)
+}
+
+/** lib/openfilm-studio.ts: an agent's film.html opens in OpenFilm Studio, in a
+ *  tab of its own that is never persisted (Studio's address lives one launch);
+ *  the file itself opens as before when Studio can't. Before the editor is
+ *  installed it plays as before, says so once, and switches to the editor when
+ *  it is ready, if it is still what the pane shows. */
+async function openFilmInStudio(folder: string, target: PreviewTarget, source: PreviewRecordSource) {
+  const opened = await openfilmStudioUrl(folder)
+
+  if (!opened.ok) {
+    const id = showPreview(target, source)
+
+    if (opened.code === 'not_ready') {
+      notify({ id: 'openfilm-studio-preparing', kind: 'info', message: openfilmStudioCopyNow().preparing })
+      waitForOpenfilmEditor(
+        () => $rightRailActiveTabId.get() === id && $previewTabs.get().some(tab => tab.id === id),
+        () => void openFilmInStudio(folder, target, source)
+      )
+    }
+
+    return
+  }
+
+  showStudioTab(folder, opened.url, target.source)
+}
+
+/**
+ * The titlebar's 剪辑 (hc-1201): the film in `folder` in the editor's tab, or
+ * false when the editor cannot open it now (no film.html there any more, not
+ * ready, not open to this account), with nothing shown in its place.
+ * `source` names the film for the rail (`$previewTabSources`).
+ */
+export async function openFilmFolderInEditor(folder: string, source: string): Promise<boolean> {
+  const opened = await openfilmStudioUrl(folder)
+
+  if (!opened.ok) {
+    return false
+  }
+
+  showStudioTab(folder, opened.url, source)
+
+  return true
+}
+
+/** The editor's one tab, re-pointed at Studio's address for `folder`, and fronted. */
+function showStudioTab(folder: string, url: string, source: string) {
+  const tab: PreviewTab = {
+    id: OPENFILM_STUDIO_TAB_ID,
+    target: { kind: 'url', label: folder.split(/[\\/]/).pop() || 'film', source, transient: true, url }
+  }
+
+  const current = $previewTabs.get()
+  const index = current.findIndex(item => item.id === tab.id)
+
+  $previewTabs.set(index === -1 ? [...current, tab] : current.map((item, i) => (i === index ? tab : item)))
+  selectRightRailTab(tab.id)
+}
+
+function showPreview(target: PreviewTarget, source: PreviewRecordSource): RightRailTabId {
   const resolved = previewTargetForSource(target, source)
   const current = $previewTabs.get()
   const id = resolved.kind === 'url' ? browserTabId(current) : previewTabId(resolved)
@@ -391,6 +472,8 @@ export function openPreview(target: PreviewTarget, source: PreviewRecordSource =
 
   $previewTabs.set(index === -1 ? [...current, tab] : current.map((item, i) => (i === index ? tab : item)))
   selectRightRailTab(id)
+
+  return id
 }
 
 const blankPage = (): PreviewTarget => ({ kind: 'url', label: 'Browser', source: 'about:blank', url: 'about:blank' })
