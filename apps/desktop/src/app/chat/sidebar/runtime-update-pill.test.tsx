@@ -91,7 +91,7 @@ describe('RuntimeUpdatePill', () => {
     expect(screen.getByText('New engine available')).toBeTruthy()
   })
 
-  it('shows the offer copy and the new version when an update is available', () => {
+  it('shows the offer copy, and no engine version, when an update is available', () => {
     $runtimeUpdateCheck.set(UPDATE_AVAILABLE)
     render(<RuntimeUpdatePill />)
 
@@ -99,17 +99,12 @@ describe('RuntimeUpdatePill', () => {
 
     expect((button as HTMLButtonElement).disabled).toBe(false)
     expect(screen.getByText('New engine available')).toBeTruthy()
-    // hc-591: the fixture's 'v2026.7.1' is a pure-calver engine pin, so the
-    // pill now shows the humanized "Engine 2026.7.1", not the raw string --
-    // this assertion intentionally changed from the pre-hc-591 'v2026.7.1'.
-    expect(screen.getByText('Engine 2026.7.1')).toBeTruthy()
+    // hc-1200: the engine pin's calver reads as a date, so the pill names no version.
+    expect(button.textContent).not.toMatch(/2026|7\.1/u)
   })
 
-  // hc-591: Kael flagged the update overlay's raw engine pin as an exposed
-  // internal ops key; this pins the SAME contract for the sidebar pill with
-  // the exact `-fork.<sha>` shape (the fixture above uses a pure-calver
-  // string, which doesn't by itself prove the fork segment gets stripped).
-  it('humanizes a -fork.<sha> engine pin and never shows the ops segment (hc-591)', () => {
+  // hc-591 hid the -fork.<sha> ops segment; hc-1200 hides the calver date too.
+  it('never shows a -fork.<sha> engine pin or its date (hc-591, hc-1200)', () => {
     $runtimeUpdateCheck.set({
       current: { key: 'aaaa1111', version: 'v2026.6.25' },
       latest: { compatibilityNotes: null, key: 'bbbb2222', version: 'v2026.7.25-fork.b0a720a5' },
@@ -118,9 +113,8 @@ describe('RuntimeUpdatePill', () => {
     })
     const { container } = render(<RuntimeUpdatePill />)
 
-    expect(screen.getByText('Engine 2026.7.25')).toBeTruthy()
-    expect(container.textContent).not.toContain('-fork.')
-    expect(container.textContent).not.toContain('b0a720a5')
+    expect(screen.getByText('New engine available')).toBeTruthy()
+    expect(container.textContent).not.toMatch(/\d{4}\.\d{1,2}\.\d{1,2}|-fork\.|b0a720a5/u)
   })
 
   it('applies the update on click and refreshes the check when no reload is required', async () => {

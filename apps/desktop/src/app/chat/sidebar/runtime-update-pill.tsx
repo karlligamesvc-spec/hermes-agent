@@ -2,7 +2,6 @@ import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
 
 import { useI18n } from '@/i18n'
-import { formatEngineDisplayVersion } from '@/lib/engine-display'
 import { AlertTriangle, ChevronRight, Loader2, Sparkles } from '@/lib/icons'
 import { queueDeferredRuntimeUpdate } from '@/store/desktop-update'
 import {
@@ -100,13 +99,7 @@ export function RuntimeUpdatePill() {
     return null
   }
 
-  // hc-591: check.latest.version is the raw internal engine pin (calver+fork,
-  // e.g. v2026.7.25-fork.b0a720a5); humanize it before it renders in the
-  // capsule. The .key fallback (a raw commit sha / branch name on an older
-  // marker) isn't a calver string either way, so the formatter fails open and
-  // passes it through unchanged -- no worse than before.
-  const rawVersion = check.latest.version ?? check.latest.key
-  const version = rawVersion ? formatEngineDisplayVersion(rawVersion) : rawVersion
+  // hc-1200: the capsule names no engine version (an internal pin whose calver reads as a date).
   const state = applying ? 'applying' : failed ? 'error' : 'idle'
 
   const handleClick = async () => {
@@ -160,7 +153,6 @@ export function RuntimeUpdatePill() {
         <span className="p5-update-pill-title">
           {applying ? s.updating : state === 'error' ? s.failedRolledBack : s.found}
         </span>
-        {state !== 'error' && version ? <span className="p5-update-pill-version">{version}</span> : null}
       </span>
       {state === 'idle' ? <ChevronRight aria-hidden className="p5-update-pill-chevron size-3.5" /> : null}
     </button>

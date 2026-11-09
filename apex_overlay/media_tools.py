@@ -136,6 +136,16 @@ def ensure_font(name: str = 'subtitle') -> Path:
     return destination
 
 
+def openfilm_pin() -> dict:
+    """desktop-lock's ``openfilm``: the toolkit this engine pins, and so the only one its editor runs (hc-1199).
+
+    ``ensure_openfilm`` installs it. An APEX update that moves the pin leaves the old toolkit and its ready.json in
+    place, so every reader of ready.json (``film_project.ready_toolkit``, Desktop's ``findOpenfilmToolkit``, which
+    reads this same file under the engine's root) takes the toolkit it names only while its ``sha256`` is this one's.
+    """
+    return json.loads(LOCK.read_text(encoding='utf-8-sig'))['openfilm']
+
+
 def ensure_openfilm() -> Path:
     """APEX's OpenFilm toolkit (hc-1176), for the editor Desktop opens an Agent's film.html in.
 
@@ -148,7 +158,7 @@ def ensure_openfilm() -> Path:
     from filelock import FileLock
     from hermes_constants import get_hermes_home
     from urllib.parse import urlsplit
-    spec = json.loads(LOCK.read_text(encoding='utf-8-sig'))['openfilm']
+    spec = openfilm_pin()
     url = urlsplit(spec['url'])
     if url.scheme != 'https' or url.hostname != COS_HOST:
         raise ValueError('OpenFilm toolkit download must use APEX COS')

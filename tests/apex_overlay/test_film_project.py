@@ -129,13 +129,25 @@ def test_openfilm_folders_are_the_ones_desktop_editor_uses():
     assert "join(hermesHome, 'openfilm')" in source, 'Desktop keeps them under HERMES_HOME/openfilm, as here'
 
 
-def _ready(home: Path) -> dict:
-    toolkit, chromium = home / 'tool-cache/openfilm/abc', home / 'tool-cache/chrome/x/chrome'
+def _pin() -> str:
+    from apex_overlay import media_tools
+    return media_tools.openfilm_pin()['sha256']
+
+
+OLD_PIN = '9890ddff' + '0' * 56
+
+
+def _ready(home: Path, sha256: str | None = '') -> dict:
+    """The toolkit as ensure_openfilm installs it: its folder named by its sha256 (this engine's pin unless said),
+    the Agent browser, and ready.json naming both with that sha256 (None: a ready.json without one)."""
+    sha256 = _pin() if sha256 == '' else sha256
+    toolkit, chromium = home / 'tool-cache/openfilm' / (sha256 or 'abc'), home / 'tool-cache/chrome/x/chrome'
     (toolkit / 'node_modules/openfilm/bin').mkdir(parents=True)
     (toolkit / 'node_modules/openfilm/bin/openfilm.mjs').write_text('')
-    chromium.parent.mkdir(parents=True)
+    chromium.parent.mkdir(parents=True, exist_ok=True)
     chromium.write_text('')
-    (home / 'tool-cache/openfilm/ready.json').write_text(json.dumps({'toolkit': str(toolkit), 'chromium': str(chromium)}))
+    said = {'toolkit': str(toolkit), 'chromium': str(chromium), **({'sha256': sha256} if sha256 else {})}
+    (home / 'tool-cache/openfilm/ready.json').write_text(json.dumps(said))
     return {'toolkit': toolkit, 'chromium': chromium}
 
 
@@ -181,6 +193,53 @@ def test_env_installs_the_toolkit_first_when_it_is_not_there(tmp_path, monkeypat
     monkeypatch.setattr(media_tools, 'ensure_openfilm', lambda: installs.append(_ready(tmp_path)))
     assert film_project.main(['env']) == 0
     assert len(installs) == 1 and json.loads(capsys.readouterr().out)['cli'].endswith('openfilm.mjs')
+
+
+# hc-1199: an APEX update that moves the toolkit pin leaves the old toolkit and its ready.json behind. Only the toolkit
+# this engine pins counts: status says not ready, and env (the Agent's `openfilm`) installs the pinned one first.
+@pytest.mark.parametrize('installed', [OLD_PIN, None], ids=['an earlier pin', 'no sha256'])
+def test_status_and_env_take_only_the_toolkit_this_engine_pins(tmp_path, monkeypatch, capsys, scheduler, installed):
+    monkeypatch.setenv('HERMES_HOME', str(tmp_path))
+    _ready(tmp_path, installed)
+    from apex_overlay import media_tools
+    installs = []
+    monkeypatch.setattr(media_tools, 'ensure_openfilm', lambda: installs.append(_ready(tmp_path)))
+
+    assert film_project.main(['status']) == 0
+    assert json.loads(capsys.readouterr().out) == {'on': True, 'ready': False}
+    assert film_project.main(['env']) == 0
+    assert len(installs) == 1, 'the pinned toolkit is installed first'
+    assert json.loads(capsys.readouterr().out)['cli'] == str(tmp_path / 'tool-cache/openfilm' / _pin() / 'node_modules/openfilm/bin/openfilm.mjs')
+
+
+def test_the_pinned_toolkit_is_used_as_installed(tmp_path, monkeypatch, capsys, scheduler):
+    monkeypatch.setenv('HERMES_HOME', str(tmp_path))
+    _ready(tmp_path)
+    from apex_overlay import media_tools
+    monkeypatch.setattr(media_tools, 'ensure_openfilm', lambda: pytest.fail('the pinned toolkit is there'))
+    assert film_project.main(['status']) == 0
+    assert json.loads(capsys.readouterr().out) == {'on': True, 'ready': True}
+    assert film_project.main(['env']) == 0
+
+
+def test_a_pin_that_does_not_read_counts_no_toolkit(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    from apex_overlay import media_tools
+    missing = tmp_path / 'no-lock.json'
+    monkeypatch.setattr(media_tools, 'LOCK', missing)
+    assert film_project.ready_toolkit(tmp_path) is None
+    missing.write_text(json.dumps({'browser': {}}))
+    assert film_project.ready_toolkit(tmp_path) is None
+
+
+def test_desktop_reads_the_same_pin_and_compares_the_same_field():
+    # Desktop's findOpenfilmToolkit (electron/openfilm-studio.ts) reads this engine's lock under the engine's root and
+    # takes ready.json only while its sha256 is the lock's: the same file and field as openfilm_pin and ready_toolkit.
+    from apex_overlay import media_tools
+    source = (ROOT / 'apps/desktop/electron/openfilm-studio.ts').read_text(encoding='utf-8')
+    parts = re.search(r'export const ENGINE_TOOLKIT_LOCK = \[([^\]]*)\] as const', source).group(1)
+    assert Path(*re.findall(r"'([^']+)'", parts)) == media_tools.LOCK.relative_to(media_tools.ROOT)
+    assert 'lock?.openfilm?.sha256' in source and 'said?.sha256 !== pinned' in source
 
 
 # ── what the person changed since the Agent's copy ─────────────────────────

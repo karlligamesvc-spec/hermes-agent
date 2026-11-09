@@ -21,6 +21,7 @@ export interface DesktopUpdateProgress {
   error: string | null
   runtimeProgress: DesktopRuntimeUpdateProgress | null
   stages: DesktopUpdateStage[]
+  /** hc-1200: the APEX version this update installs, for the card; never an engine version (those stay internal). */
   targetVersion: string | null
 }
 
@@ -333,7 +334,7 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
     error: null,
     runtimeProgress: null,
     stages,
-    targetVersion: runtimeTarget(runtime) ?? shell?.version ?? null
+    targetVersion: needsShell ? (shell?.version ?? null) : null
   })
 
   try {
@@ -375,8 +376,7 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
       setProgress({
         completedStages: [...completedStages, 'runtime'],
         currentStage: 'restart',
-        runtimeProgress: null,
-        targetVersion: appliedRuntimeTarget?.version ?? appliedRuntimeTarget?.key ?? null
+        runtimeProgress: null
       })
     }
 
@@ -466,7 +466,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
       error: null,
       runtimeProgress: null,
       stages: ['check', 'shell', 'runtime', 'restart'],
-      targetVersion: plan.targetRuntimeVersion
+      targetVersion: plan.targetShellVersion
     })
 
     try {

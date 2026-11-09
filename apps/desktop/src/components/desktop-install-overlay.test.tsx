@@ -131,7 +131,8 @@ describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restorat
         updateInfo: { isUpdate: true, toVersion: '0.17.0', fromVersion: '0.16.17' }
       })
 
-      expect(await screen.findByText('Updating to 0.17.0')).toBeTruthy()
+      // hc-1200: an engine update names no version (toVersion is an engine pin).
+      expect(await screen.findByText('Updating APEX')).toBeTruthy()
       expect(screen.getByText(/Unchanged dependencies are skipped automatically/)).toBeTruthy()
       expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0')
       expect(screen.queryByText('Setting up APEX')).toBeNull()
@@ -190,7 +191,8 @@ describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restorat
       expect(view.container.innerHTML).toBe('')
 
       act(() => emit({ phase: 'activating' }))
-      expect(screen.getByText('Updating to Engine 2026.8.8')).toBeTruthy()
+      // hc-1200: the card names the APEX version the plan installs, never the engine's.
+      expect(screen.getByText('Updating to v0.18.0')).toBeTruthy()
 
       activeKey = 'new'
       await act(async () => finish({ ok: true, applied: true, reloadRequired: false }))
@@ -211,13 +213,13 @@ describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restorat
         error: null,
         runtimeProgress: { attempt: 1, phase: 'downloading', received: 512 * 1024 * 1024, total: 1024 * 1024 * 1024 },
         stages: ['check', 'shell', 'runtime', 'restart'],
-        targetVersion: 'v2026.8.8-fork.abc123'
+        targetVersion: '0.18.0'
       })
 
       render(<DesktopInstallOverlay />)
       await act(async () => {})
 
-      expect(screen.getByText('Updating to Engine 2026.8.8')).toBeTruthy()
+      expect(screen.getByText('Updating to v0.18.0')).toBeTruthy()
       expect(screen.getByText('Check updates')).toBeTruthy()
       expect(screen.getByText('App package')).toBeTruthy()
       expect(screen.getByText('AI engine')).toBeTruthy()
@@ -267,7 +269,7 @@ describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restorat
         error: null,
         runtimeProgress: { phase: 'verifying' },
         stages: ['check', 'shell', 'runtime', 'restart'],
-        targetVersion: 'v2026.8.8-fork.abc123'
+        targetVersion: '0.18.0'
       })
 
       render(<DesktopInstallOverlay />)
@@ -280,13 +282,9 @@ describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restorat
     }
   })
 
-  // hc-591: Kael flagged the update overlay reading "正在更新到
-  // v2026.7.25-fork.b0a720a5" -- the internal engine pin's `-fork.<sha>`
-  // segment must never reach this title/desc. Distinct from the test above
-  // (which uses a desktop-semver-shaped '0.17.0' placeholder that never had a
-  // `-fork.` segment to begin with): this drives the overlay with the actual
-  // calver+fork shape the bootstrap stamp really produces.
-  it('humanizes the internal engine pin in the update title and description (hc-591)', async () => {
+  // hc-591 kept the engine pin's -fork.<sha> off this title/desc; hc-1200 keeps
+  // its calver (which reads as a date) off too. Driven with the real pin shape.
+  it('names no engine version in the update title and description (hc-591, hc-1200)', async () => {
     const desktop = stubDesktop()
 
     try {
@@ -300,10 +298,9 @@ describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restorat
         updateInfo: { isUpdate: true, toVersion: 'v2026.7.25-fork.b0a720a5', fromVersion: 'v2026.7.15-fork.b21a7e0d' }
       })
 
-      expect(await screen.findByText('Updating to Engine 2026.7.25')).toBeTruthy()
-      expect(screen.getByText(/^Updating to Engine 2026\.7\.25\. Unchanged dependencies/)).toBeTruthy()
-      expect(container.textContent).not.toContain('-fork.')
-      expect(container.textContent).not.toContain('b0a720a5')
+      expect(await screen.findByText('Updating APEX')).toBeTruthy()
+      expect(screen.getByText(/^Updating APEX\. Unchanged dependencies/)).toBeTruthy()
+      expect(container.textContent).not.toMatch(/\d{4}\.\d{1,2}\.\d{1,2}|-fork\.|b0a720a5|b21a7e0d/u)
     } finally {
       desktop.restore()
     }

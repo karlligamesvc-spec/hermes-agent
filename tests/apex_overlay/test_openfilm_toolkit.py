@@ -100,6 +100,22 @@ def test_a_damaged_install_is_downloaded_again(toolkit):
     assert (folder / 'node_modules/openfilm/studio/server/server.mjs').is_file()
 
 
+def test_a_moved_pin_installs_the_pinned_toolkit_and_ready_json_names_it(toolkit):
+    # hc-1199: an APEX update moves the pin; the old toolkit stays on disk, but ready.json now names the new one.
+    toolkit['lock'](toolkit['payload'])
+    toolkit['served'] = toolkit['payload']
+    old = json.loads(media_tools.ensure_openfilm().read_text(encoding='utf-8'))
+    moved = gzip.compress(gzip.decompress(toolkit['payload']) + b'\0' * 512)  # the same files, another archive
+    toolkit['lock'](moved)
+    toolkit['served'] = moved
+    assert media_tools.openfilm_pin()['sha256'] == hashlib.sha256(moved).hexdigest()
+    said = json.loads(media_tools.ensure_openfilm().read_text(encoding='utf-8'))
+    assert toolkit['downloads'] == 2
+    assert said['sha256'] == hashlib.sha256(moved).hexdigest() != old['sha256']
+    assert said['toolkit'] == str(toolkit['cache'] / said['sha256']) != old['toolkit']
+    assert Path(old['toolkit']).is_dir(), 'a Studio may still run from it until Desktop restarts it'
+
+
 def test_only_apex_cos_is_downloaded_from(toolkit):
     toolkit['lock'](toolkit['payload'], url='https://registry.npmjs.org/openfilm/-/openfilm-0.3.0.tgz')
     toolkit['served'] = toolkit['payload']

@@ -77,7 +77,6 @@ export const ja = defineLocale({
     tryHint: term => `「${term}」を試す`,
     on: 'オン',
     off: 'オフ',
-    engineVersionPrefix: 'エンジン'
   },
 
   fileMenu: {
@@ -811,8 +810,6 @@ export const ja = defineLocale({
       engineSection: 'AI エンジン',
       // hc-591: value はすでに表示用に整形済み("エンジン 2026.7.25")なので、
       // ここでは重複する「エンジン」を外している。
-      engineVersion: value => `バージョン：${value}`,
-      engineVersionUnavailable: 'エンジンバージョンを取得できません',
       engineCheck: 'エンジンの更新を確認',
       engineChecking: '確認中…',
       engineUpToDate: 'エンジンは最新です。',
@@ -831,8 +828,8 @@ export const ja = defineLocale({
       engineConfirmBodyGeneric: 'AI エンジンを更新し、適用のためアプリを再起動します。作業内容は安全です。',
       engineConfirmApply: 'エンジンを更新',
       engineUpdateNeeded: 'エンジンの更新が必要です',
-      engineUpdateNeededDetail: value =>
-        `このアプリは ${value} 以降が必要です。下の「更新を確認」からエンジンを更新してください。`,
+      engineUpdateNeededDetail:
+        `このアプリには新しいエンジンが必要です。下の「更新を確認」からエンジンを更新してください。`,
       engineTreeMismatch: 'エンジンファイルが未同期です',
       engineTreeMismatchDetail:
         '前回の更新で新しいバージョンが記録されましたが、ディスク上のエンジンファイルは置き換えられていないため、表示中のバージョンが正しくない可能性があります。下のエンジン更新を実行して正しいファイルを再ダウンロードしてください。',
@@ -1329,8 +1326,8 @@ export const ja = defineLocale({
       signInFirst: '先に APEX アカウントにサインインしてください。',
       saved: 'デバイス名を保存しました。',
       enableFailed: '保存できませんでした — このシステムではセキュアストレージを利用できません。',
-      engineOutdated: value =>
-        `インストール済みエンジンが古すぎます（ローカルエージェント実行には ${value} 以降が必要）。「設定 › 情報」でエンジンを更新してください。更新しないとツール呼び出しが黙って失敗する場合があります。`
+      engineOutdated:
+        `インストール済みエンジンが古すぎます（ローカルエージェント実行には新しいエンジンが必要）。「設定 › 情報」でエンジンを更新してください。更新しないとツール呼び出しが黙って失敗する場合があります。`
     },
     personalization: {
       personalityTitle: '人格',
@@ -2432,9 +2429,9 @@ export const ja = defineLocale({
       preparingTitle: version => (version ? `APEX ${version} を準備中` : 'APEX アップデートを準備中'),
       downloadedPercent: percent => `${percent}% ダウンロード済み`,
       readyTitle: 'APEX アップデートの準備ができました',
-      appAndEngine: (appVersion, engineVersion) => `アプリ ${appVersion} + ${engineVersion}`,
+      appAndEngine: appVersion => `アプリ ${appVersion} + エンジン更新`,
       appOnly: version => `アプリ ${version}`,
-      engineOnly: version => version,
+      engineOnly: 'エンジン更新',
       installRestart: 'インストールして再起動',
       installing: 'アップデートを準備中…',
       confirmTitle: 'APEX アップデートをインストールしますか？',

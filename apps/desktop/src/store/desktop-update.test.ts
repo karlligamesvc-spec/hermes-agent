@@ -198,6 +198,52 @@ describe('desktop update orchestration', () => {
     expect($desktopUpdateProgress.get()).toMatchObject({ active: false, currentStage: null, error: null })
   })
 
+  // hc-1200: the runtime check carries the server's latest engine even when it is older than the
+  // installed one (updateAvailable false). A shell-only update put it on the card as its target:
+  // "正在更新到 引擎 2026.10.13", while the new shell brought its own engine.
+  it('names the APEX version on the card for a shell-only update, never the server engine (hc-1200)', async () => {
+    $shellUpdate.set(SHELL_UPDATE)
+    $runtimeUpdateCheck.set({
+      ...RUNTIME_UPDATE,
+      latest: { compatibilityNotes: null, key: 'stale', version: 'v2026.10.13-fork.f043a490' },
+      updateAvailable: false
+    })
+    const shown: Array<string | null> = []
+    const stop = $desktopUpdateProgress.listen(progress => shown.push(progress.targetVersion))
+    window.hermesDesktop = {
+      shellUpdate: { install: vi.fn(async () => ({ ok: true, deferred: true })) },
+      updateCenter: { setShellOnly: vi.fn(async () => ({ ok: true })), transitionPlan: vi.fn(async () => ({ ok: true })) }
+    } as unknown as typeof window.hermesDesktop
+
+    try {
+      await applyDesktopUpdates({ reload: vi.fn() })
+    } finally {
+      stop()
+    }
+
+    expect(shown).toContain('0.18.0')
+    expect(shown.filter(version => version !== '0.18.0' && version !== null)).toEqual([])
+  })
+
+  it('names no version on the card for an engine-only update (hc-1200)', async () => {
+    $runtimeUpdateCheck.set(RUNTIME_UPDATE)
+    const shown: Array<string | null> = []
+    const stop = $desktopUpdateProgress.listen(progress => shown.push(progress.targetVersion))
+    window.hermesDesktop = {
+      runtime: { applyUpdate: async () => ({ ok: true, applied: false, deferred: true }) },
+      updateCenter: { setRuntimeAfterShell: vi.fn(async () => ({ ok: true })), transitionPlan: async () => ({ ok: true }) }
+    } as unknown as typeof window.hermesDesktop
+
+    try {
+      await applyDesktopUpdates({ reload: vi.fn() })
+    } finally {
+      stop()
+    }
+
+    expect(shown.length).toBeGreaterThan(0)
+    expect(shown.filter(version => version !== null)).toEqual([])
+  })
+
   describe('hc-1117: telling the caller the update waits, and for what', () => {
     const CHILD = { pid: 4242, kind: 'leftover_child', name: 'python3.14', created: 7.5, endable: true } as const
     const updateCenter = { setShellOnly: vi.fn(async () => ({ ok: true })), setRuntimeAfterShell: vi.fn(async () => ({ ok: true })), transitionPlan: vi.fn(async () => ({ ok: true })) }
@@ -1318,7 +1364,8 @@ describe('a plan waiting for the engine retries out of the way (hc-1118)', () =>
         currentStage: null,
         error: 'owned install failure',
         stages: ['check', 'shell', 'runtime', 'restart'],
-        targetVersion: 'v2026.8.8'
+        // hc-1200: the APEX version the plan installs, never the engine's.
+        targetVersion: '0.18.0'
       })
       expect(wait.$runtimeUpdateWait.get()).toBeNull()
       expect(readDesktopUpdatePlan(file)).toMatchObject({ lastError: 'owned install failure', phase: 'failed' })
