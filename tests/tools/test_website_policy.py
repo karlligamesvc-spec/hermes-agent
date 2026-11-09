@@ -130,31 +130,31 @@ def test_check_website_access_blocks_scheme_less_urls(tmp_path):
     assert blocked["rule"] == "blocked.test"
 
 
-def test_browser_navigate_returns_policy_block(monkeypatch):
-    from tools import browser_tool
+def test_browser_exec_refuses_a_blocklisted_url_before_any_browser_runs(monkeypatch):
+    """hc-1203: v0.23.0 removed browser_navigate with agent-browser; browser_exec is the browser that opens
+    pages now. Every URL literal in its code passes tools.browser_url_policy (SSRF floors, then this website
+    policy) before the browser-use CLI is even looked up (ApexNodes #149: the blocklist covers every exit)."""
+    from tools import browser_url_policy, browser_use_cli
 
-    # Allow SSRF check to pass so the policy check is reached
-    monkeypatch.setattr(browser_tool, "_is_safe_url", lambda url: True)
-    monkeypatch.setattr(
-        browser_tool,
-        "check_website_access",
-        lambda url: {
-            "host": "blocked.test",
-            "rule": "blocked.test",
-            "source": "config",
-            "message": "Blocked by website policy",
-        },
-    )
-    monkeypatch.setattr(
-        browser_tool._session,
-        "_run_browser_command",
-        lambda *args, **kwargs: pytest.fail("browser command should not run for blocked URL"),
-    )
+    monkeypatch.setattr(browser_url_policy, "is_safe_url", lambda url: True)  # reach the policy check
+    monkeypatch.setattr(browser_url_policy, "hybrid_routes_locally", lambda url: False)
+    monkeypatch.setattr(browser_use_cli, "hybrid_routes_locally", lambda url: False, raising=False)
+    checked = []
 
-    result = json.loads(browser_tool.browser_navigate("https://blocked.test"))
+    def blocked(url):
+        checked.append(url)
+        return {"host": "blocked.test", "rule": "blocked.test", "source": "config",
+                "message": "Blocked by website policy"}
 
-    assert result["success"] is False
-    assert result["blocked_by_policy"]["rule"] == "blocked.test"
+    monkeypatch.setattr(browser_url_policy, "check_website_access", blocked)
+    monkeypatch.setattr(browser_use_cli, "_find_cli",
+                        lambda: pytest.fail("the browser must not start for a blocked URL"))
+
+    result = json.loads(browser_use_cli.browser_exec('new_tab("https://blocked.test/page")\nprint(page_info())'))
+
+    assert checked == ["https://blocked.test/page"]
+    assert result.get("success") is not True
+    assert "Blocked by website policy" in result["error"]
 
 
 def test_browser_navigate_allows_when_shared_file_missing(monkeypatch, tmp_path):
@@ -262,11 +262,13 @@ class TestWebToolPolicy:
 
         class FakeFirecrawlClient:
             def scrape(self, url, formats, **_kwargs):
+                # hc-1203: v0.23.0 reads the post-redirect URL from ``url``; ``sourceURL`` echoes the request.
                 return {
                     "markdown": "secret content",
                     "metadata": {
                         "title": "Redirected",
-                        "sourceURL": "https://blocked.test/final",
+                        "sourceURL": url,
+                        "url": "https://blocked.test/final",
                     },
                 }
 
