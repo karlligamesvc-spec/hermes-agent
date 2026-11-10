@@ -38,6 +38,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import type { IpcHandleRegistry } from './apex-account-reads'
+import { desktopClientHeaders } from './apex-desktop-client'
 import {
   applyPlatformSkills,
   fetchPlatformSkills,
@@ -200,14 +201,16 @@ export interface StoredPlatformSkills {
 
 /**
  * The fetch half of a refresh (hc-1205 runs it on its own while the app is open): one
- * request with the installed hash as `known_hash`. Null when there is nothing to install
- * (no login JWT, offline, a 401, garbage, an unchanged or identical manifest), each logged
- * as before. Writes nothing.
+ * request with the installed hash as `known_hash`, saying which Desktop asks (hc-1201).
+ * Null when there is nothing to install (no login JWT, offline, a 401, garbage, an
+ * unchanged or identical manifest), each logged as before. Writes nothing.
  *
+ * @param opts.env main's environment, where the Desktop version and platform are
  * @param opts.token a getter, read only here
  */
 export async function fetchNewPlatformSkills({
   apiBase,
+  env,
   fetchJson,
   log = () => {},
   reason,
@@ -227,6 +230,8 @@ export async function fetchNewPlatformSkills({
   const fetched = await fetchPlatformSkills({
     apiBase,
     fetchJson,
+    // Which Desktop asks (hc-1201): `env` is main's, where registerOpenfilmStudio wrote it before any sync.
+    headers: desktopClientHeaders(env),
     knownHash: state.manifestHash,
     log,
     timeoutMs,
@@ -326,7 +331,16 @@ export async function syncPlatformSkills({
     return { newStored: removed || state.manifestHash ? { count: 0, installedAt: now(), manifestHash: '' } : null }
   }
 
-  const fetched = await fetchNewPlatformSkills({ apiBase, fetchJson, log, reason, stored: state, timeoutMs, token })
+  const fetched = await fetchNewPlatformSkills({
+    apiBase,
+    env,
+    fetchJson,
+    log,
+    reason,
+    stored: state,
+    timeoutMs,
+    token
+  })
 
   if (!fetched) {
     // The root keeps what it has; the profiles still catch up to it.

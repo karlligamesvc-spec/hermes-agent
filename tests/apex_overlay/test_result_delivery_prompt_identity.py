@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from apex_overlay import cron_result_prompt, result_delivery_prompt
+from apex_overlay import browser_login_prompt, cron_result_prompt, result_delivery_prompt
 from hermes_cli.plugins_dispatch import PLUGIN_SECTIONS_END, format_system_prompt_section
 
 HERE = Path(__file__).resolve().parent
@@ -106,9 +106,23 @@ def _added_sections(name: str, platform: str) -> list[str]:
     return added
 
 
+def _heading(section_id: str) -> str:
+    """The ``## Plugin Context: <id>`` line a section renders under, from the real formatter."""
+    return format_system_prompt_section(section_id, "").split("\n", 1)[0]
+
+
 def _expected(name: str, platform: str) -> str:
     golden = _golden()[SURFACES[name].golden][platform]
     added = _added_sections(name, platform)
+    if (name, platform) == ("desktop-product-mode", "desktop"):
+        # Sections render in sorted-id order (plugins_dispatch.render_system_prompt_sections).
+        # hc-1179 apex.browser-login sorts between apex.approval-rules and apex.honesty, so it goes
+        # in just before the apex.honesty heading.
+        honesty = _heading("apex.honesty")
+        assert golden.count(honesty) == 1
+        browser = format_system_prompt_section(
+            browser_login_prompt.SECTION_ID, browser_login_prompt.BROWSER_LOGIN_PROMPT)
+        golden = golden.replace(honesty, f"{browser}\n\n{honesty}")
     if not added:
         return golden
     # The last sections, since their ids sort after every other one.
@@ -177,3 +191,16 @@ def test_only_desktop_chats_carry_the_scheduled_result_rule(tmp_path_factory):
         if cron_result_prompt.HEADER in prompt
     }
     assert carrying == {(name, "desktop") for name in SURFACES if name != "cloud"}
+
+
+def test_only_product_mode_desktop_carries_the_browser_login_rule(tmp_path_factory):
+    """hc-1179: the browser-login handoff, exactly like the result-delivery rule, appears in one
+    surface only — product-mode desktop — and never in developer mode, IM, the terminal, cron,
+    the cloud, or any non-desktop platform."""
+    carrying = {
+        (name, platform)
+        for name in SURFACES
+        for platform, prompt in _prompts(tmp_path_factory, name).items()
+        if browser_login_prompt.BROWSER_LOGIN_PROMPT in prompt
+    }
+    assert carrying == {("desktop-product-mode", "desktop")}

@@ -301,6 +301,7 @@ export function createPlatformSkillsRefresh(deps: PlatformSkillsRefreshDeps) {
 
       const fetched = await fetchNewPlatformSkills({
         apiBase: deps.apiBase(),
+        env: deps.env,
         fetchJson: deps.fetchJson,
         log: deps.log,
         reason,

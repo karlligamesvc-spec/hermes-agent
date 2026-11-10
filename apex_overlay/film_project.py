@@ -32,6 +32,13 @@ CHECK_PATH = '/tools/v1/check'
 BASE_ENV = 'TOOLS_GATEWAY_BASE'
 KEY_ENV = 'TOOLS_GATEWAY_KEY'
 CHECK_TIMEOUT_SECONDS = 5.0
+#: Which Desktop asks (hc-1201): its main process puts its version and platform in every engine's environment
+#: (electron/apex-desktop-client.ts), and the check sends them as Desktop's own does. The editor opened to a whole
+#: plan reaches only a Desktop that says it is new enough; without them the check is an older Desktop's.
+CLIENT_HEADERS = (
+    ('APEX_DESKTOP_VERSION', 'X-Apex-Desktop-Version'),
+    ('APEX_DESKTOP_PLATFORM', 'X-Apex-Desktop-Platform'),
+)
 FILM = 'film.html'
 #: OpenFilm's folders, all under HERMES_HOME/openfilm; Desktop's editor uses the same (electron/openfilm-studio.ts).
 FOLDERS = {
@@ -57,8 +64,10 @@ def editor_on(env=os.environ) -> bool:
         return False
     import httpx
 
+    said_by = {header: str(env.get(name, '')).strip() for name, header in CLIENT_HEADERS}
+    headers = {header: value for header, value in said_by.items() if value}
     try:
-        answer = httpx.get(f'{base}{CHECK_PATH}', headers={'Authorization': f'Bearer {key}'},
+        answer = httpx.get(f'{base}{CHECK_PATH}', headers={**headers, 'Authorization': f'Bearer {key}'},
                            timeout=CHECK_TIMEOUT_SECONDS)
         block = answer.json().get('openfilm') if answer.status_code == 200 else None
     except (httpx.HTTPError, ValueError, AttributeError):

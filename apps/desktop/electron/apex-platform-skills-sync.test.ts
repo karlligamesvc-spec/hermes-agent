@@ -259,6 +259,22 @@ test.each([
   }
 )
 
+test('hc-1201: the fetch says which Desktop asks, from main’s environment, and nothing for an older one', async () => {
+  const told = await run(makeHomes(), {
+    overrides: { env: { ...ON, APEX_DESKTOP_VERSION: '0.17.77', APEX_DESKTOP_PLATFORM: 'mac-arm64' } }
+  })
+
+  const silent = await run(makeHomes())
+
+  // The film-edit skill comes to a whole plan only with a build that says it is new enough (apex-nodes).
+  assert.deepEqual(told.calls[0].options.headers, {
+    'X-Apex-Desktop-Version': '0.17.77',
+    'X-Apex-Desktop-Platform': 'mac-arm64'
+  })
+  assert.deepEqual(silent.calls[0].options.headers, {})
+  assert.equal(told.calls[0].options.bearer, 'jwt-current')
+})
+
 test('the 401 path still hands the stored JWT to the transport (hc-1073 hears it) and logs as before', async () => {
   const homes = await rootOnM1WithStaleWriter()
   const { calls, lines } = await run(homes, { overrides: { stored: STORED_M1 }, reply: unauthorized })
@@ -556,6 +572,10 @@ test('main.ts feeds the running check: window focus, the quit teardown, and what
 
   assert.match(wiring, /[ ,]onFocus: listener => app\.on\('browser-window-focus', listener\),/)
   assert.match(wiring, /[ ,]signal: localBackendLifecycle\.signal,/)
+  // Main's own environment: registerOpenfilmStudio writes which Desktop asks into it at load (hc-1201), before
+  // the boot refresh and any later check reads it.
+  assert.match(wiring, /[ ,]env: process\.env,/)
+  assert.match(main, /\nregisterOpenfilmStudio\(openfilmStudio, ipcMain, app\)\n/)
   assert.match(wiring, /[ ,]windowTurns: \(\) => mergeActiveWork\(activeWorkByWebContents\.values\(\)\)\.count,/)
   assert.match(wiring, /[ ,]engines: \(\) => localEngines\(\), probe: engine => probeEngineIdle\(engine\),/)
   assert.match(

@@ -123,7 +123,7 @@ function makeRig(options: { env?: Record<string, string>; probeDeadlineMs?: numb
   const statePath = path.join(root, 'userdata', 'apex-platform-skills.json')
   const gatewayStatePath = path.join(root, 'gateway_state.json')
   const lines: string[] = []
-  const calls: { bearer: unknown; url: string }[] = []
+  const calls: { bearer: unknown; headers: unknown; url: string }[] = []
   const timers: { cancelled: boolean; ms: number; run: () => void }[] = []
   const controller = new AbortController()
 
@@ -133,14 +133,15 @@ function makeRig(options: { env?: Record<string, string>; probeDeadlineMs?: numb
   let clock = T0
 
   const activity: Activity = { gateway: null, snapshot: IDLE_SNAPSHOT, windowTurns: 0 }
+  const env: Record<string, string> = options.env ?? {}
   let probes = 0
 
   const refresher = createPlatformSkillsRefresh({
     apiBase: () => 'https://apex-nodes.com',
     engines: async () => [{ baseUrl: 'http://127.0.0.1:41001', token: 'engine-token' }],
-    env: options.env ?? {},
+    env,
     fetchJson: async (url: string, opts: any) => {
-      calls.push({ bearer: opts?.bearer, url })
+      calls.push({ bearer: opts?.bearer, headers: opts?.headers, url })
 
       return reply()
     },
@@ -190,6 +191,7 @@ function makeRig(options: { env?: Record<string, string>; probeDeadlineMs?: numb
     calls,
     controller,
     editor,
+    env,
     lines,
     refresher,
     root,
@@ -428,6 +430,30 @@ test('focus and the timer ask the server at most once per CHECK_EVERY_MS of wall
   rig.advance(-3 * CHECK_EVERY_MS)
   await rig.tick()
   assert.equal(rig.calls.length, 3)
+})
+
+test('hc-1201: the running check says which Desktop asks, from main’s environment as it is when the check runs', async () => {
+  const rig = makeRig()
+  await rig.boot()
+  rig.serve(() => UNCHANGED('m1'))
+
+  // An older Desktop (nothing in the environment) says nothing.
+  rig.advance(CHECK_EVERY_MS)
+  await rig.focus()
+
+  // registerOpenfilmStudio writes the version and platform into main's environment; the next check carries them.
+  Object.assign(rig.env, { APEX_DESKTOP_PLATFORM: 'mac-arm64', APEX_DESKTOP_VERSION: '0.17.77' })
+  rig.advance(CHECK_EVERY_MS)
+  await rig.focus()
+
+  assert.deepEqual(
+    rig.calls.map(call => call.headers),
+    [{}, { 'X-Apex-Desktop-Platform': 'mac-arm64', 'X-Apex-Desktop-Version': '0.17.77' }]
+  )
+  assert.deepEqual(
+    rig.calls.map(call => call.bearer),
+    [JWT, JWT]
+  )
 })
 
 test('a burst of focus events while a check runs costs one request', async () => {
