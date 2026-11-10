@@ -13,7 +13,7 @@ Two things upstream keeps on the launch profile, which an engine of its own used
 each assistant:
 
 1. **Account credentials Desktop injects at spawn** (``ACCOUNT_ENV_NAMES``): the platform
-   tools' key and endpoints, web search, and the Feishu / WeChat apps of the IM 入口. A
+   tools' key and endpoints, web search and extraction, and the Feishu / WeChat apps of the IM 入口. A
    hosted profile's ``get_secret()`` never falls back to the process environment
    (``agent.secret_scope``), so web search, ChatCut's MCP entry, sending to Feishu or
    WeChat and cron delivery to their home channels would fail for every assistant but

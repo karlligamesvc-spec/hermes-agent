@@ -43,18 +43,23 @@ function desktopAccountNames(): string[] {
     descriptor.fields.map((field: any) => field.key)
   )
 
-  const webSearch = Object.keys(
-    buildDesktopBackendEnv({
-      currentEnv: {},
-      hermesHome: '/apex/home',
-      platform: 'darwin',
-      runtimeRoot: '/apex/runtime',
-      venvRoot: '/apex/runtime/venv',
-      webSearchApiKey: 'relay-key'
-    })
-  ).filter(name => name.startsWith('SEARXNG_'))
+  // Whatever the backend env carries only because an account is signed in (web search, and since
+  // hc-1214 web extraction), not a fixed prefix: a new account-bound name cannot slip past.
+  const signedOut = new Set(Object.keys(backendEnv()))
+  const web = Object.keys(backendEnv('relay-key')).filter(name => !signedOut.has(name))
 
-  return [...PLATFORM_TOOL_ENV_KEYS, ...Object.keys(feishu), ...imEntry, ...webSearch]
+  return [...PLATFORM_TOOL_ENV_KEYS, ...Object.keys(feishu), ...imEntry, ...web]
+}
+
+function backendEnv(webSearchApiKey?: string) {
+  return buildDesktopBackendEnv({
+    currentEnv: {},
+    hermesHome: '/apex/home',
+    platform: 'darwin',
+    runtimeRoot: '/apex/runtime',
+    venvRoot: '/apex/runtime/venv',
+    webSearchApiKey
+  })
 }
 
 test('every account name Desktop injects either reaches cron fires or stays a gate of each assistant', () => {
@@ -66,23 +71,21 @@ test('every account name Desktop injects either reaches cron fires or stays a ga
   assert.deepEqual([...new Set(desktopAccountNames())].sort(), classified.sort())
 })
 
-test('cron fires get every credential the platform tools and web search are spawned with', () => {
+test('cron fires get every credential the platform tools, web search and web extraction are spawned with', () => {
   const shared = new Set(overlayNames('ACCOUNT_ENV_NAMES'))
+  const web = ['SEARXNG_URL', 'SEARXNG_API_KEY', 'FIRECRAWL_API_URL', 'FIRECRAWL_API_KEY']
 
-  assert.deepEqual(
-    [...PLATFORM_TOOL_ENV_KEYS, 'SEARXNG_URL', 'SEARXNG_API_KEY'].filter(name => !shared.has(name)),
-    []
-  )
+  assert.deepEqual([...PLATFORM_TOOL_ENV_KEYS, ...web].filter(name => !shared.has(name)), [])
 })
 
-test('the web search pair is only injected for a signed-in account', () => {
-  const signedOut = buildDesktopBackendEnv({
-    currentEnv: {},
-    hermesHome: '/apex/home',
-    platform: 'darwin',
-    runtimeRoot: '/apex/runtime',
-    venvRoot: '/apex/runtime/venv'
-  })
+test('the web pairs (search, extraction) are only injected for a signed-in account', () => {
+  const web = /^(SEARXNG|FIRECRAWL)_/
 
-  assert.equal(Object.keys(signedOut).filter(name => name.startsWith('SEARXNG_')).length, 0)
+  assert.deepEqual(Object.keys(backendEnv()).filter(name => web.test(name)), [])
+  assert.deepEqual(Object.keys(backendEnv('relay-key')).filter(name => web.test(name)).sort(), [
+    'FIRECRAWL_API_KEY',
+    'FIRECRAWL_API_URL',
+    'SEARXNG_API_KEY',
+    'SEARXNG_URL'
+  ])
 })

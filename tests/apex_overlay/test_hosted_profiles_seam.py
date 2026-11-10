@@ -166,7 +166,9 @@ def test_the_shared_names_are_the_accounts_and_never_a_provider_or_relay_secret(
     assert not names & set(cron_account_env.PER_ASSISTANT_GATES)
     assert not names & {"API_SERVER_KEY", "MODEL_API_KEY", "HERMES_DASHBOARD_SESSION_TOKEN"}
     assert not [n for n in names if n.startswith(("GATEWAY_RELAY_", "AUXILIARY_"))]
-    assert [n for n in names if n.endswith("_API_KEY")] == ["SEARXNG_API_KEY"]
+    # Both carry the account's managed relay key for the platform's own gateways (search, and
+    # since hc-1214 extraction): an account credential, not a provider's.
+    assert sorted(n for n in names if n.endswith("_API_KEY")) == ["FIRECRAWL_API_KEY", "SEARXNG_API_KEY"]
 
 
 def test_installing_twice_wraps_once(seam):

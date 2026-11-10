@@ -31,6 +31,7 @@ SHIPPED_FOR_APEX = {
     "feishu": "the IM 入口's Feishu bot",
     "anthropic": "bring-your-own-key MiniMax (Anthropic-compatible endpoints)",
     "doc-extract": "read_file on a PDF / Office document the user sends",
+    "firecrawl": "web_extract through the platform's Firecrawl gateway (hc-1214)",
 }
 
 #: The anchor is a core dependency; the extra itself installs nothing.
@@ -53,7 +54,7 @@ FALLBACK_ONLY = {
 #: local TTS / wake words, telemetry).
 NOT_APEX = {
     "audio-io", "azure-identity", "bedrock", "computer-use", "daytona", "dingtalk", "discord", "exa",
-    "fal", "firecrawl", "google-chat", "google-meet", "kittentts", "matrix", "messaging", "mistral",
+    "fal", "google-chat", "google-meet", "kittentts", "matrix", "messaging", "mistral",
     "modal", "neutts", "otlp", "parallel-web", "piper", "slack", "teams", "telegram", "trace-upload",
     "tts-premium", "vercel", "vertex", "wake", "wake-openwakeword", "wake-porcupine", "wake-sherpa",
     "wecom",

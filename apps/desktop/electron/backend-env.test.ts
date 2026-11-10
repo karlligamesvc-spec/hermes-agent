@@ -6,6 +6,7 @@ import path from 'node:path'
 import { test } from 'vitest'
 
 import {
+  APEX_FIRECRAWL_GATEWAY_URL,
   APEX_SEARXNG_GATEWAY_URL,
   appendUniquePathEntries,
   buildDesktopBackendEnv,
@@ -199,6 +200,52 @@ test('an explicit self-hosted SearXNG URL remains keyless and is never overwritt
 
   assert.equal(env.SEARXNG_URL, 'http://localhost:8080')
   assert.equal(env.SEARXNG_API_KEY, undefined)
+})
+
+// hc-1214: web_extract through the platform's Firecrawl gateway, same pairing rule as search.
+test('managed desktop extraction gets the platform Firecrawl gateway host and the same key', () => {
+  const env = buildDesktopBackendEnv({
+    hermesHome: '/Users/test/.apexnodes',
+    currentEnv: { PATH: '/usr/bin:/bin' },
+    webSearchApiKey: 'sk-managed',
+    platform: 'darwin',
+    pathModule: path.posix
+  })
+
+  assert.equal(env.FIRECRAWL_API_URL, APEX_FIRECRAWL_GATEWAY_URL)
+  assert.equal(env.FIRECRAWL_API_KEY, 'sk-managed')
+  // firecrawl-py drops any path in its base (urljoin with "/v2/scrape"): only the host may be here.
+  assert.equal(new URL(APEX_FIRECRAWL_GATEWAY_URL).pathname, '/')
+  assert.equal(new URL('/v2/scrape', `${APEX_FIRECRAWL_GATEWAY_URL}/`).href, 'https://api.apex-nodes.com/v2/scrape')
+})
+
+test('signed-out desktop gets no Firecrawl URL or key', () => {
+  const env = buildDesktopBackendEnv({
+    hermesHome: '/Users/test/.apexnodes',
+    currentEnv: { PATH: '/usr/bin:/bin' },
+    platform: 'darwin',
+    pathModule: path.posix
+  })
+
+  assert.equal(env.FIRECRAWL_API_URL, undefined)
+  assert.equal(env.FIRECRAWL_API_KEY, undefined)
+})
+
+test.each([
+  ['a self-hosted Firecrawl URL', { FIRECRAWL_API_URL: 'http://localhost:3002' }, 'http://localhost:3002', undefined],
+  ['a Firecrawl cloud key', { FIRECRAWL_API_KEY: 'fc-own' }, undefined, 'fc-own'],
+  ['both', { FIRECRAWL_API_URL: 'https://fc.example', FIRECRAWL_API_KEY: 'fc-own' }, 'https://fc.example', 'fc-own']
+])('the user\'s own Firecrawl (%s) is kept and never pointed at the platform', (_label, own, url, key) => {
+  const env = buildDesktopBackendEnv({
+    hermesHome: '/Users/test/.apexnodes',
+    currentEnv: { PATH: '/usr/bin:/bin', ...own },
+    webSearchApiKey: 'sk-managed',
+    platform: 'darwin',
+    pathModule: path.posix
+  })
+
+  assert.equal(env.FIRECRAWL_API_URL, url)
+  assert.equal(env.FIRECRAWL_API_KEY, key)
 })
 
 // --- hc-926: agent commands get uv dirs inside the Hermes root and the bundled Python ---
