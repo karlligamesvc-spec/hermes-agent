@@ -38,6 +38,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import type { IpcHandleRegistry } from './apex-account-reads'
+import { desktopClientHeaders } from './apex-desktop-client'
 import {
   applyPlatformSkills,
   fetchPlatformSkills,
@@ -242,6 +243,8 @@ export async function syncPlatformSkills({
   const fetched = await fetchPlatformSkills({
     apiBase,
     fetchJson,
+    // Which Desktop asks (hc-1201): `env` is main's, where registerOpenfilmStudio wrote it before any sync.
+    headers: desktopClientHeaders(env),
     knownHash: state.manifestHash,
     log,
     timeoutMs,

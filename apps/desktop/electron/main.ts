@@ -20921,12 +20921,11 @@ function apexAuthPostJson(url, { body, bearer, method = 'POST', timeoutMs = 12_0
   })
 }
 
-// Bearer-authed body-less JSON request (GET / DELETE) — the read/revoke
-// counterpart to apexAuthPostJson (same electronNet transport + explicit
-// timeout). A >=400 rejects with an Error carrying `.statusCode` (reported to
-// cloudLogin on the way, hc-1073), so the caller can tell 401 (expired JWT →
-// re-login) from a transient failure.
-function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any = {}): Promise<any> {
+// Bearer-authed body-less JSON request (GET / DELETE) — the read/revoke counterpart to apexAuthPostJson (same
+// electronNet transport + explicit timeout), with any extra `headers` the caller names (hc-1201: which Desktop asks).
+// A >=400 rejects with an Error carrying `.statusCode` (reported to cloudLogin on the way, hc-1073), so the caller
+// can tell 401 (expired JWT → re-login) from a transient failure.
+function apexAuthBodylessJson(method, url, { bearer, headers = {}, timeoutMs = 12_000 }: any = {}): Promise<any> {
   return new Promise((resolve, reject) => {
     let parsed
 
@@ -20945,7 +20944,8 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
     }
 
     const request = electronNet.request({ method, url, redirect: 'follow' })
-    request.setHeader('Accept', 'application/json')
+
+    for (const [name, value] of Object.entries({ Accept: 'application/json', ...headers })) {request.setHeader(name, String(value))}
 
     if (bearer) {
       request.setHeader('Authorization', `Bearer ${bearer}`)

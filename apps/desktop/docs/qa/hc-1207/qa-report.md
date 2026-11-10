@@ -48,6 +48,6 @@ e2e 层另做了两项：
 - 去掉 preload 记录拖入路径的那一行后重建，「拖入文件夹」一步变红（`第二批素材` 被拒），菜单两步仍绿。
 - 在 fork main 上跑加强后的 hc-906 e2e，连跑 2 次都在新断言 `not.toContain('outside the allowed workspace')` 处变红。原来只断言 `prompt.includes(folder)` 的版本，在 fork main 上是绿的。
 
-## 顺带确认的既有行为（未改）
+## 顺带确认的既有行为
 
-在已有会话的对话里用菜单选文件，会暂存两份（`作品列表.xlsx` 和 `作品列表-2.xlsx`）：先是 drop-time 上传一份，发送时又传一份，模型拿到的是 `-2` 那份。fork main 上用同一流程复现了同样的结果，与本改动无关。
+在已有会话的对话里用菜单选文件，原来会暂存两份（`作品列表.xlsx` 和 `作品列表-2.xlsx`）：先是 drop-time 上传一份，发送时又传一份。fork main 9f44bfc65a 上同样能复现，与本改动无关。这个问题已由 hc-1210（#604）修好；合并 main 之后，`e2e/folder-grants.spec.ts` 改为只认 `作品列表.xlsx` 一份。

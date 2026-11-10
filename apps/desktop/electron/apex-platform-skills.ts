@@ -262,17 +262,27 @@ function platformSkillsCategoryDir(skillsRoot) {
  * @param {string} opts.token login JWT (Bearer)
  * @param {(url: string, options?: object) => Promise<any>} opts.fetchJson
  * @param {string} [opts.knownHash] currently installed manifest hash (skip hint)
+ * @param {Record<string, string>} [opts.headers] which Desktop asks (hc-1201, apex-desktop-client.ts): the
+ *   film-edit skill comes to a plan only with a build that says it is new enough
  * @param {number} [opts.timeoutMs]
  * @param {(msg: string) => void} [opts.log]
  * @returns {Promise<null | ReturnType<typeof parsePlatformSkillsResponse>>}
  */
-async function fetchPlatformSkills({ apiBase, token, fetchJson, knownHash, timeoutMs = 12_000, log = () => {} }: any) {
+async function fetchPlatformSkills({
+  apiBase,
+  token,
+  fetchJson,
+  knownHash,
+  headers = {},
+  timeoutMs = 12_000,
+  log = () => {}
+}: any) {
   if (!apiBase || !token || typeof fetchJson !== 'function') {return null}
   const url = platformSkillsUrl(apiBase, knownHash)
   let body
 
   try {
-    body = await fetchJson(url, { bearer: token, timeoutMs })
+    body = await fetchJson(url, { bearer: token, headers, timeoutMs })
   } catch (err: any) {
     // 401 (expired JWT), network error, HTML gateway page, timeout → "nothing
     // new"; the installed set stands.

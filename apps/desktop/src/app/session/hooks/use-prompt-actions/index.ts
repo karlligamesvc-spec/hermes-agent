@@ -398,10 +398,13 @@ export function usePromptActions({
     [selectedStoredSessionIdRef, updateSessionState]
   )
 
-  // In-flight drop-time eager uploads, keyed by attachment id. Submit joins
-  // these before re-uploading so a drop-then-immediately-Enter can't fire
-  // file.attach twice and stage duplicate copies on the gateway.
-  const eagerUploadInFlight = useRef<Map<string, Promise<void>>>(new Map())
+  // In-flight drop-time eager uploads, keyed by attachment id, each resolving
+  // to the staged attachment (null when it failed). Submit joins these instead
+  // of calling file.attach again: every extra call leaves another copy
+  // (`x-2.xlsx`) in the session's attachments.
+  const eagerUploadInFlight = useRef<Map<string, Promise<ComposerAttachment | null>>>(new Map())
+  // Attachment ids a send is staging. The eager effect leaves these alone.
+  const sendingAttachmentIds = useRef<Set<string>>(new Set())
 
   const syncAttachmentsForSubmit = useCallback(
     async (
@@ -421,66 +424,101 @@ export function usePromptActions({
         setActiveSessionId(recoveredId)
       }
 
-      for (const original of attachments) {
-        let attachment = original
+      // Look every chip up before the first await. One a drop-time upload is
+      // staging is joined below. Every other one is claimed for this send: a
+      // new chat's first send creates its session with the chips still in the
+      // composer, and the eager effect starts on them the moment that session
+      // is active. Looking a chip up only when the loop reaches it misses an
+      // upload that settled meanwhile (it has left the map), and the chip is
+      // staged again.
+      const joins = new Map<string, Promise<ComposerAttachment | null>>()
+      const claimed: string[] = []
 
-        // Join a drop-time eager upload still in flight for this attachment
-        // before deciding anything — otherwise submit and the eager task both
-        // call file.attach and stage duplicate files. After it settles, take the
-        // store's updated copy (its gateway ref, or its failure) over the stale
-        // pre-upload snapshot.
+      for (const attachment of attachments) {
         const inFlight = eagerUploadInFlight.current.get(attachment.id)
 
         if (inFlight) {
-          await inFlight
-          attachment = $composerAttachments.get().find(item => item.id === attachment.id) ?? attachment
+          joins.set(attachment.id, inFlight)
+        } else if (!sendingAttachmentIds.current.has(attachment.id)) {
+          sendingAttachmentIds.current.add(attachment.id)
+          claimed.push(attachment.id)
         }
+      }
 
-        // Already-synced or pathless refs (terminal, url, etc.) pass through.
-        // A drop-time eager upload may already have staged this one (matching
-        // attachedSessionId) — don't re-upload it. Compare against the LIVE id:
-        // after a mid-loop recovery an earlier chip's attachedSessionId points
-        // at the dead runtime and must be re-staged.
-        if (!attachment.path || attachment.attachedSessionId === liveSessionId) {
-          synced.push(attachment)
+      try {
+        for (const original of attachments) {
+          let attachment = original
 
-          continue
-        }
+          // Take a joined upload's result over the pre-upload snapshot. Use the
+          // result itself, not the store: the main composer clears its chips
+          // before the send and a Start → chat hand-off stashes them, so a
+          // re-read finds nothing and stages the file twice. A failed upload
+          // (null) leaves the snapshot, and the send retries it.
+          const join = joins.get(attachment.id)
+          const staged = join ? await join : null
 
-        if (attachment.kind === 'image' || attachment.kind === 'file' || attachment.kind === 'folder') {
-          const nextAttachment = await uploadComposerAttachment(attachment, {
-            backendCwd: $currentCwd.get(),
-            remote,
-            requestGateway,
-            sessionId: liveSessionId,
-            storedSessionId,
-            onSessionRecovered,
-            terminalBackend: $terminalBackend.get()
-          })
-
-          // Update-only: never resurrect a chip the user removed mid-upload.
-          if (updateComposerAttachments) {
-            if (original.occurrenceId) {
-              // Preserve a preview that may have completed after staging began,
-              // while still refusing a remove + re-add of the same path.
-              patchMainComposerAttachmentOccurrence(original, {
-                attachedSessionId: nextAttachment.attachedSessionId,
-                label: nextAttachment.label,
-                path: nextAttachment.path,
-                refText: nextAttachment.refText,
-                uploadState: nextAttachment.uploadState
-              })
-            } else {
-              updateComposerAttachment(nextAttachment)
+          if (staged) {
+            attachment = {
+              ...attachment,
+              attachedSessionId: staged.attachedSessionId,
+              label: staged.label,
+              path: staged.path,
+              refText: staged.refText,
+              uploadState: undefined
             }
           }
 
-          synced.push(nextAttachment)
+          // Already-synced or pathless refs (terminal, url, etc.) pass through.
+          // A drop-time eager upload may already have staged this one (matching
+          // attachedSessionId) — don't re-upload it. Compare against the LIVE id:
+          // after a mid-loop recovery an earlier chip's attachedSessionId points
+          // at the dead runtime and must be re-staged.
+          if (!attachment.path || attachment.attachedSessionId === liveSessionId) {
+            synced.push(attachment)
 
-          continue
+            continue
+          }
+
+          if (attachment.kind === 'image' || attachment.kind === 'file' || attachment.kind === 'folder') {
+            const nextAttachment = await uploadComposerAttachment(attachment, {
+              backendCwd: $currentCwd.get(),
+              remote,
+              requestGateway,
+              sessionId: liveSessionId,
+              storedSessionId,
+              onSessionRecovered,
+              terminalBackend: $terminalBackend.get()
+            })
+
+            // Update-only: never resurrect a chip the user removed mid-upload.
+            if (updateComposerAttachments) {
+              if (original.occurrenceId) {
+                // Preserve a preview that may have completed after staging began,
+                // while still refusing a remove + re-add of the same path.
+                patchMainComposerAttachmentOccurrence(original, {
+                  attachedSessionId: nextAttachment.attachedSessionId,
+                  label: nextAttachment.label,
+                  path: nextAttachment.path,
+                  refText: nextAttachment.refText,
+                  uploadState: nextAttachment.uploadState
+                })
+              } else {
+                updateComposerAttachment(nextAttachment)
+              }
+            }
+
+            synced.push(nextAttachment)
+
+            continue
+          }
+
+          synced.push(attachment)
         }
-
-        synced.push(attachment)
+      } finally {
+        // Done or failed (an upload error ends the send), hand the chips back.
+        for (const id of claimed) {
+          sendingAttachmentIds.current.delete(id)
+        }
       }
 
       return { attachments: synced, sessionId: liveSessionId }
@@ -499,29 +537,34 @@ export function usePromptActions({
   // Original bytes are still uploaded sequentially at submit via
   // image.attach_bytes.
   const eagerlyUploadAttachment = useCallback(
-    async (sessionId: string, attachment: ComposerAttachment) => {
+    async (sessionId: string, attachment: ComposerAttachment): Promise<ComposerAttachment | null> => {
       const remote = isSessionRemote(sessionId)
 
       setComposerAttachmentUploadState(attachment.id, 'uploading')
 
       try {
-        // Update-only: if the user removed the chip while this was uploading,
-        // don't resurrect it — just drop the staged result on the floor.
-        updateComposerAttachment(
-          await uploadComposerAttachment(attachment, {
-            backendCwd: $currentCwd.get(),
-            remote,
-            requestGateway,
-            sessionId,
-            terminalBackend: $terminalBackend.get()
-          })
-        )
+        const staged = await uploadComposerAttachment(attachment, {
+          backendCwd: $currentCwd.get(),
+          remote,
+          requestGateway,
+          sessionId,
+          terminalBackend: $terminalBackend.get()
+        })
+
+        // Update-only: if the chip left the composer while this was uploading
+        // (removed, or already on its way out with a send), don't resurrect
+        // it. A send that joined this upload takes the result from the return.
+        updateComposerAttachment(staged)
+
+        return staged
       } catch (err) {
         // Leave the chip in place so submit-time sync can retry (or the user can
         // remove it) and flag the card; also toast so a hard failure (unreadable
         // file, gateway perms) isn't swallowed while the user keeps typing.
         setComposerAttachmentUploadState(attachment.id, 'error')
         notifyError(err, copy.dropFiles)
+
+        return null
       }
     },
     [copy.dropFiles, requestGateway]
@@ -540,7 +583,8 @@ export function usePromptActions({
         Boolean(attachment.path) &&
         !attachment.attachedSessionId &&
         !attachment.uploadState &&
-        !eagerUploadInFlight.current.has(attachment.id)
+        !eagerUploadInFlight.current.has(attachment.id) &&
+        !sendingAttachmentIds.current.has(attachment.id)
 
       if (!needsUpload) {
         continue

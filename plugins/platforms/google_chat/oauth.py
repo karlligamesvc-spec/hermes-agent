@@ -49,7 +49,7 @@ _REQUIRED_PACKAGES = [
     "google-auth-oauthlib==1.3.1",
     "google-auth-httplib2==0.3.1",
     "httplib2==0.32.0",
-    "pyasn1==0.6.4",
+    "pyasn1==0.6.5",
 ]
 
 # Google deprecated the ``oob`` flow: use a localhost redirect that is expected

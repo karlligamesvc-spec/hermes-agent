@@ -436,7 +436,11 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   openfilmStudio: {
     status: () => ipcRenderer.invoke('hermes:openfilmStudio:status'),
     open: folder => ipcRenderer.invoke('hermes:openfilmStudio:open', folder),
-    prefetch: () => ipcRenderer.invoke('hermes:openfilmStudio:prefetch')
+    prefetch: manual => ipcRenderer.invoke('hermes:openfilmStudio:prefetch', manual === true),
+    // hc-1201: the titlebar's 剪辑 — the engine's first-run check, the install's progress, the last project.
+    check: () => ipcRenderer.invoke('hermes:openfilmStudio:check'),
+    progress: () => ipcRenderer.invoke('hermes:openfilmStudio:progress'),
+    lastProject: () => ipcRenderer.invoke('hermes:openfilmStudio:lastProject')
   },
   // Platform client-config sync — informational read of the cached versioned
   // config (no network). Application happens in the MAIN process pre-gateway

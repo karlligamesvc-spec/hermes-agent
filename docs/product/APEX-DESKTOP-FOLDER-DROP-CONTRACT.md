@@ -178,6 +178,6 @@ gateway, a pooled or primary engine without the key, a folder chip skipped at
 send (main composer, tile, edit composer), and a typed reference sent for a
 grant. They cannot catch a real native dialog panel (E2E answers it from main,
 through main's own handler) or Windows native drag and paste (not run on
-Windows). The E2E runs dev Electron, not the packaged app. A picked file into a
-chat that already has a session is staged twice (`作品列表-2.xlsx`); that is
-the drop-time upload plus the send, unchanged by this work.
+Windows). The E2E runs dev Electron, not the packaged app. Since hc-1210
+(#604) a file picked into a chat that already has a session is staged once,
+and the E2E asserts exactly `作品列表.xlsx`.

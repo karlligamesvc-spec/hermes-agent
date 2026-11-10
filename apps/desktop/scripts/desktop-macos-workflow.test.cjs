@@ -65,8 +65,16 @@ function namedStep(source, name) {
   const start = source.indexOf(`      - name: ${name}`)
   assert.notEqual(start, -1, `missing workflow step: ${name}`)
 
-  const nextStep = source.indexOf('\n      - name:', start + 1)
-  return source.slice(start, nextStep === -1 ? source.length : nextStep)
+  // A step ends at the next step, or at the next job / top-level key for a job's last step.
+  const end = source.slice(start + 1).search(/\n(?: {6}- name:| {0,5}\S)/)
+  return source.slice(start, end === -1 ? source.length : start + 1 + end)
+}
+
+// The step's own lines, without the comments that introduce the step after it.
+function ownStepLines(step) {
+  const lines = step.split('\n')
+  const end = lines.findIndex((line, index) => index > 0 && !line.startsWith('        '))
+  return lines.slice(0, end === -1 ? lines.length : end).join('\n')
 }
 
 function bashRunBody(step) {
@@ -101,7 +109,6 @@ test('actual Mac publish shell uploads assets before feed and stops when the sha
     fs.writeFileSync(path.join(release, name), 'fixture')
   }
   const log = path.join(root, 'calls')
-  fs.writeFileSync(path.join(bin, 'pip3'), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
   fs.writeFileSync(path.join(bin, 'python3'), `#!/bin/sh
 printf '%s\\n' "$5" >> "$CALLS"
 printf '%s\\n' "$6" >> "$CALLS.flags"
@@ -162,12 +169,17 @@ test('macOS matrix stages and reads back the requested package architecture', ()
 test('the macOS matrix builds only arm64 and the parity readback covers exactly what it builds', async () => {
   // Mac x64 (Intel) stopped after 0.17.63. A feed built but not read back would advance
   // unchecked; one read back but not built fails every release.
+  // The publish job (hc-1204) has its own matrix: it must publish exactly the arches built.
   const source = workflowSource()
-  const matrixAt = source.indexOf('      matrix:')
-  assert.notEqual(matrixAt, -1, 'missing build matrix')
-  const matrix = source.slice(matrixAt, source.indexOf('\n    steps:', matrixAt))
-  const arches = [...matrix.matchAll(/^ +- arch: (\S+)$/gm)].map(match => match[1])
+  const jobs = releaseJobs(source)
+  const matrixArches = block => {
+    const matrixAt = block.indexOf('      matrix:')
+    assert.notEqual(matrixAt, -1, 'missing matrix')
+    return [...block.slice(matrixAt, block.indexOf('\n    steps:', matrixAt)).matchAll(/^ +- arch: (\S+)$/gm)].map(match => match[1])
+  }
+  const arches = matrixArches(jobs.build)
   assert.deepEqual(arches, ['arm64'])
+  assert.deepEqual(matrixArches(jobs.publish), arches)
   assert.doesNotMatch(source, /runner: macos-\d+-intel/)
 
   const { MAC_FEEDS, WINDOWS_FEED } = await import(pathToFileURL(path.resolve(__dirname, 'verify-cross-platform-release.mjs')).href)
@@ -202,7 +214,8 @@ test('Windows packaging reads back APEX PE metadata and exports proof', () => {
   assert.match(identityStep, /assert-exe-identity\.mjs release\/win-unpacked\/APEX\.exe/)
   assert.match(identityStep, /identity_verified=true/)
   assert.match(source, /identity_verified: \$\{\{ steps\.exe-identity\.outputs\.identity_verified \}\}/)
-  assert.match(source, /value: \$\{\{ jobs\.build\.outputs\.identity_verified \}\}/)
+  // hc-1204: a promotion skips build and takes the proof from the candidate's build job.
+  assert.match(source, /value: \$\{\{ jobs\.build\.outputs\.identity_verified \|\| jobs\.publish\.outputs\.identity_verified \}\}/)
 })
 
 test('release identity steps are valid Bash on both platform workflows', () => {
@@ -243,24 +256,34 @@ test('the release builds Mac arm64 every time and Windows x64 only when dispatch
   const jobs = releaseJobs(source)
   const inputs = releaseInputs(source)
 
-  assert.deepEqual(Object.keys(jobs), ['macos', 'windows', 'verify-release-parity'])
-  assert.deepEqual(Object.keys(inputs), ['publish', 'windows'])
-  for (const [name, block] of Object.entries(inputs)) {
-    assert.match(block, /^ {8}type: boolean$/m, `${name} must be a boolean input`)
-    assert.match(block, /^ {8}default: false$/m, `${name} must default to false`)
+  assert.deepEqual(Object.keys(jobs), ['candidate', 'macos', 'windows', 'verify-release-parity'])
+  assert.deepEqual(Object.keys(inputs), ['publish', 'windows', 'candidate_run_id'])
+  for (const name of ['publish', 'windows']) {
+    assert.match(inputs[name], /^ {8}type: boolean$/m, `${name} must be a boolean input`)
+    assert.match(inputs[name], /^ {8}default: false$/m, `${name} must default to false`)
   }
+  // Empty means "build from source": a release only promotes when told which candidate.
+  assert.match(inputs.candidate_run_id, /^ {8}type: string$/m)
+  assert.match(inputs.candidate_run_id, /^ {8}default: ''$/m)
   // A misspelt input in an if: or env: evaluates to empty, which would silently drop Windows.
   for (const [, name] of source.matchAll(/\binputs\.([A-Za-z_][\w-]*)/g)) {
     assert.ok(name in inputs, `desktop-release.yml reads an undeclared input: inputs.${name}`)
   }
 
+  // Mac arm64 is part of every release; only a failed or cancelled promotion gate stops it.
+  const gateOpen = "!cancelled() && (needs.candidate.result == 'success' || needs.candidate.result == 'skipped')"
+  assert.match(jobs.candidate, /^ {4}if: \$\{\{ inputs\.candidate_run_id != '' \}\}$/m)
   assert.match(jobs.macos, /^ {4}uses: \.\/\.github\/workflows\/desktop-macos\.yml$/m)
-  assert.doesNotMatch(jobs.macos, /^ {4}if:/m, 'Mac arm64 is built by every release')
+  assert.match(jobs.macos, /^ {4}needs: candidate$/m)
+  assert.equal(jobs.macos.match(/^ {4}if: \$\{\{ (.*) \}\}$/m)?.[1], gateOpen)
   assert.match(jobs.macos, /^ {6}publish: \$\{\{ inputs\.publish \}\}$/m)
+  assert.match(jobs.macos, /^ {6}candidate_run_id: \$\{\{ inputs\.candidate_run_id \}\}$/m)
 
   assert.match(jobs.windows, /^ {4}uses: \.\/\.github\/workflows\/desktop-windows\.yml$/m)
-  assert.match(jobs.windows, /^ {4}if: \$\{\{ inputs\.windows \}\}$/m)
+  assert.match(jobs.windows, /^ {4}needs: candidate$/m)
+  assert.equal(jobs.windows.match(/^ {4}if: \$\{\{ (.*) \}\}$/m)?.[1], `inputs.windows && ${gateOpen}`)
   assert.match(jobs.windows, /^ {6}publish: \$\{\{ inputs\.publish \}\}$/m)
+  assert.match(jobs.windows, /^ {6}candidate_run_id: \$\{\{ inputs\.candidate_run_id \}\}$/m)
 
   const parity = jobs['verify-release-parity']
   assert.match(parity, /^ {4}needs: \[macos, windows\]$/m)
@@ -394,4 +417,134 @@ test('both platform workflows prove the legacy upgrade on a genuine F8 runtime b
     assert.match(source.slice(smokeAt, source.indexOf('\n', smokeAt)), / --legacy-source "\$RUNNER_TEMP\/legacy-f8\/tree" /,
       `${name} must hand the genuine F8 tree to the smoke`)
   }
+})
+
+// hc-1204: promotion. desktop-release.yml dispatched with candidate_run_id publishes the
+// accepted candidate run's installer artifacts and builds nothing.
+const PROMOTION_PLATFORMS = [
+  { file: workflowPath, platform: 'mac-arm64', publishStep: 'Publish installer + updater feed to COS (skipped when secrets absent)' },
+  { file: windowsWorkflowPath, platform: 'win-x64', publishStep: 'Publish installer + updater feed to Tencent COS' }
+]
+
+function stepNames(block) {
+  return [...block.matchAll(/^ {6}- name: (.+)$/gm)].map(match => match[1])
+}
+
+function workflowCallBlock(source) {
+  return source.slice(source.indexOf('  workflow_call:'), source.indexOf('  workflow_dispatch:'))
+}
+
+test('a promotion builds nothing and publishes only what passed both promotion checks', () => {
+  const publishIf = "!cancelled() && (inputs.publish || inputs.candidate_run_id != '') && needs.preflight.result == 'success' && " +
+    "(needs.build.result == 'success' || (inputs.candidate_run_id != '' && needs.build.result == 'skipped'))"
+  for (const { file, platform, publishStep } of PROMOTION_PLATFORMS) {
+    const name = path.basename(file)
+    const source = fs.readFileSync(file, 'utf8')
+    const jobs = releaseJobs(source)
+    assert.match(workflowCallBlock(source), /^ {6}candidate_run_id:\n {8}description: .+\n {8}required: false\n {8}type: string\n {8}default: ''$/m, name)
+    assert.equal(jobs.build.match(/^ {4}if: \$\{\{ (.*) \}\}$/m)?.[1], "inputs.candidate_run_id == ''", `${name} build must be skipped by a promotion`)
+    assert.match(jobs.publish, /^ {4}needs: \[preflight, build\]$/m, name)
+    assert.equal(jobs.publish.match(/^ {4}if: \$\{\{ (.*) \}\}$/m)?.[1], publishIf, name)
+    assert.match(jobs.publish, /^ {4}permissions:\n {6}contents: read\n {6}actions: read$/m, `${name} publish must be able to read the candidate run`)
+
+    // Order matters: nothing is downloaded from a candidate that was not checked, and
+    // nothing is uploaded from a bundle that was not checked against its feed.
+    const steps = stepNames(jobs.publish)
+    const at = step => {
+      assert.ok(steps.includes(step), `${name} publish has no step "${step}"`)
+      return steps.indexOf(step)
+    }
+    assert.ok(at('Record release identity') < at('Verify the accepted candidate run'), name)
+    assert.ok(at('Verify the accepted candidate run') < at("Download the accepted candidate's installer artifact"), name)
+    assert.ok(at("Download the accepted candidate's installer artifact") < at('Verify the release bundle against its updater feed'), name)
+    assert.ok(at("Download this run's installer artifact") < at('Verify the release bundle against its updater feed'), name)
+    assert.ok(at('Verify the release bundle against its updater feed') < at(publishStep), name)
+
+    const platformArg = platform === 'mac-arm64' ? '"mac-${{ matrix.arch }}"' : platform
+    const verifyRun = namedStep(jobs.publish, 'Verify the accepted candidate run')
+    assert.match(verifyRun, /^ {8}if: \$\{\{ inputs\.candidate_run_id != '' \}\}$/m)
+    assert.match(verifyRun, /^ {10}CANDIDATE_RUN_ID: \$\{\{ inputs\.candidate_run_id \}\}$/m)
+    // The run id reaches the shell only through the environment, never as template text.
+    assert.equal(verifyRun.match(/^ {8}run: (.*)$/m)?.[1],
+      `node scripts/release-candidate-promotion.mjs candidate --run-id "$CANDIDATE_RUN_ID" --platform ${platformArg}`, name)
+    const sameRun = namedStep(jobs.publish, "Download this run's installer artifact")
+    assert.match(sameRun, /^ {8}if: \$\{\{ inputs\.candidate_run_id == '' \}\}$/m)
+    assert.doesNotMatch(sameRun, /run-id:|github-token:/)
+    const fromCandidate = namedStep(jobs.publish, "Download the accepted candidate's installer artifact")
+    assert.match(fromCandidate, /^ {8}if: \$\{\{ inputs\.candidate_run_id != '' \}\}$/m)
+    assert.match(fromCandidate, /^ {10}run-id: \$\{\{ inputs\.candidate_run_id \}\}$/m)
+    assert.match(fromCandidate, /^ {10}github-token: \$\{\{ github\.token \}\}$/m)
+    const bundle = namedStep(jobs.publish, 'Verify the release bundle against its updater feed')
+    assert.doesNotMatch(bundle, /^ {8}if:/m, `${name} must check every bundle it publishes`)
+    assert.match(bundle, /RELEASE_VERSION: \$\{\{ steps\.release-identity\.outputs\.version \}\}/)
+    assert.equal(bundle.match(/^ {8}run: (.*)$/m)?.[1],
+      `node scripts/release-candidate-promotion.mjs bundle --dir release --platform ${platformArg} --expected-version "$RELEASE_VERSION"`, name)
+    assert.match(namedStep(jobs.publish, publishStep), /^ {8}if: \$\{\{ inputs\.publish \}\}$/m, `${name} must upload only when publishing`)
+
+    // The publish job reports the identity exactly as the build job does: same step body.
+    assert.equal(ownStepLines(namedStep(jobs.publish, 'Record release identity')), ownStepLines(namedStep(jobs.build, 'Record release identity')), name)
+    const outputs = workflowCallBlock(source).slice(workflowCallBlock(source).indexOf('    outputs:'))
+    for (const [, output, value] of outputs.matchAll(/^ {6}([a-z_]+):\n(?: {8}#.*\n)*(?: {8}description: .*\n) {8}value: \$\{\{ (.*) \}\}$/gm)) {
+      assert.equal(value, `jobs.build.outputs.${output} || jobs.publish.outputs.${output}`, `${name} output ${output} must survive a skipped build`)
+    }
+  }
+})
+
+test('the Windows promotion takes its PE identity proof from the candidate build', () => {
+  const jobs = releaseJobs(fs.readFileSync(windowsWorkflowPath, 'utf8'))
+  assert.match(jobs.publish, /^ {6}identity_verified: \$\{\{ steps\.candidate\.outputs\.verified \}\}$/m)
+  assert.match(namedStep(jobs.publish, 'Verify the accepted candidate run'), /^ {8}id: candidate$/m)
+})
+
+test('the Mac artifact carries everything its publish step uploads', () => {
+  const jobs = releaseJobs(workflowSource())
+  const upload = namedStep(jobs.build, 'Upload installer artifact')
+  const paths = [...upload.matchAll(/^ {12}apps\/desktop\/release\/(\S+)$/gm)].map(match => match[1])
+  assert.deepEqual(paths, ['*.dmg', '*.zip', '*.blockmap', 'latest-mac.yml'])
+  assert.match(upload, /^ {10}if-no-files-found: error$/m)
+  const loop = bashRunBody(namedStep(jobs.publish, 'Publish installer + updater feed to COS (skipped when secrets absent)')).match(/^for f in (.*); do$/m)?.[1]
+  assert.deepEqual(loop?.split(' '), paths, 'the publish loop uploads exactly the artifact set, feed last')
+})
+
+test('the promotion gate names the jobs, steps and artifacts the workflows really have', async () => {
+  const { PLATFORMS } = await import(pathToFileURL(path.resolve(__dirname, 'release-candidate-promotion.mjs')).href)
+  const callers = releaseJobs(fs.readFileSync(synchronizedWorkflowPath, 'utf8'))
+  for (const [platform, caller, file, arch] of [
+    ['mac-arm64', callers.macos, workflowPath, 'arm64'],
+    ['win-x64', callers.windows, windowsWorkflowPath, 'x64']
+  ]) {
+    const spec = PLATFORMS[platform]
+    const jobs = releaseJobs(fs.readFileSync(file, 'utf8'))
+    const callerName = caller.match(/^ {4}name: (.+)$/m)[1]
+    const buildName = jobs.build.match(/^ {4}name: (.+)$/m)[1].replaceAll('${{ matrix.arch }}', arch)
+    assert.equal(spec.buildJob, `${callerName} / ${buildName}`, platform)
+    for (const step of spec.proofSteps) assert.ok(stepNames(jobs.build).includes(step), `${platform} build has no step "${step}"`)
+    const artifactName = namedStep(jobs.build, 'Upload installer artifact').match(/^ {10}name: (.+)$/m)[1].replaceAll('${{ matrix.arch }}', arch)
+    assert.equal(spec.artifact, artifactName, platform)
+    assert.equal(spec.artifact, namedStep(jobs.publish, "Download the accepted candidate's installer artifact").match(/^ {10}name: (.+)$/m)[1].replaceAll('${{ matrix.arch }}', arch), platform)
+  }
+  assert.equal(PLATFORMS['mac-arm64'].feed, 'latest-mac.yml')
+  assert.equal(PLATFORMS['win-x64'].feed, 'latest.yml')
+})
+
+test('the release gate checks the candidate for every platform before either platform starts', () => {
+  const source = fs.readFileSync(synchronizedWorkflowPath, 'utf8')
+  assert.match(source, /^permissions:\n {2}contents: read\n {2}actions: read$/m)
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-release-gate-'))
+  const calls = path.join(bin, 'calls')
+  fs.writeFileSync(path.join(bin, 'node'), '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$CALLS"\n', { mode: 0o755 })
+  try {
+    for (const [windows, platforms] of [
+      ['true', '--platform mac-arm64 --platform win-x64'],
+      ['false', '--platform mac-arm64']
+    ]) {
+      fs.rmSync(calls, { force: true })
+      const run = runStep(source, 'Assert the candidate built this commit for every platform this run publishes', {
+        path: bin, env: { CALLS: calls, CANDIDATE_RUN_ID: '42570408228', RELEASE_WINDOWS: windows }
+      })
+      assert.equal(run.status, 0, run.stderr)
+      assert.deepEqual(fs.readFileSync(calls, 'utf8').trim().split('\n'),
+        [`scripts/release-candidate-promotion.mjs candidate --run-id 42570408228 ${platforms}`])
+    }
+  } finally { fs.rmSync(bin, { recursive: true, force: true }) }
 })

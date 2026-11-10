@@ -10,7 +10,7 @@ test('native home folder drop stages a card and sends the directory through the 
   try {
     const { page, sandbox } = fixture
     const ownKey = page.getByRole('button', { name: '使用自己的密钥' })
-    if (await ownKey.waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false)) {
+    if (await ownKey.waitFor({ state: 'visible', timeout: 60_000 }).then(() => true, () => false)) {
       await ownKey.click()
       const later = page.getByRole('button', { name: '稍后再选择提供方' })
       if (await later.waitFor({ state: 'visible', timeout: 3000 }).then(() => true, () => false)) {await later.click()}

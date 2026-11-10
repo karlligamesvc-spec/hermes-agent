@@ -29,6 +29,7 @@ import { $titlebarAppActionsSide } from '@/store/titlebar-app-actions'
 
 import { appViewForPath, hidesFixedTitlebarClusters, isOverlayView } from '../routes'
 
+import { useOpenfilmEditorTool } from './openfilm-editor-tool'
 import { $productFold } from './product-fold'
 import {
   TITLEBAR_ICON_BADGE_SCALE,
@@ -57,6 +58,8 @@ export interface TitlebarTool {
   /** Durable `data-tour` handle. Tools are addressed by icon and translated
    *  label otherwise, and neither survives a theme or a locale change. */
   tour?: string
+  /** What the button sits in, e.g. a popover anchored to it (the 剪辑 switch's first-run check, hc-1201). */
+  wrap?: (button: ReactNode) => ReactNode
 }
 
 export type TitlebarToolSide = 'left' | 'right'
@@ -144,6 +147,8 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   const appActionsSide = useStore($titlebarAppActionsSide)
   // hc-1085: the developer controls single-thread product mode folds (product-fold.ts).
   const fold = useStore($productFold)
+  // hc-1201: 剪辑, beside 打开设置 — shown only while the editor is open to this account.
+  const editorTool = useOpenfilmEditorTool()
   const unreadBadge = unreadCount > 0 ? unreadCount : undefined
   const unreadHint = unreadBadge ? ` · ${t.titlebar.unreadSessions(unreadBadge)}` : ''
 
@@ -206,6 +211,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   // Static system tools — always pinned to the screen's right edge so the
   // left titlebar stays free for tabs (#107351).
   const systemTools: TitlebarTool[] = [
+    editorTool,
     {
       actionId: 'nav.settings',
       icon: <TitlebarIcon name="settings-gear" />,
@@ -376,7 +382,7 @@ function TitlebarToolButton({ navigate, tool }: { navigate: ReturnType<typeof us
     )
   }
 
-  return (
+  const button = (
     <Tip label={tooltipLabel}>
       <Button
         aria-label={tool.label}
@@ -400,4 +406,6 @@ function TitlebarToolButton({ navigate, tool }: { navigate: ReturnType<typeof us
       </Button>
     </Tip>
   )
+
+  return tool.wrap ? tool.wrap(button) : button
 }

@@ -17,7 +17,10 @@ authors = [{ name = "Nous Research" }]
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
-  "filelock>=3.24.3,<4",  # Cross-process COS tool cache, pure Python.
+  # Cross-process COS tool cache, pure Python. 4.2.1 fixes GHSA-v4x8-3wr5-3wq8
+  # and the rest of the <=4.2.0 advisory set; the only 4.0 break is the
+  # SoftReadWriteLock on-disk protocol, which the plain FileLock here never uses.
+  "filelock>=4.2.1,<5",
   # Core — every direct dep is exact-pinned to ==X.Y.Z (no ranges).
   # Rationale: ranges allow PyPI to ship a fresh version of a transitive
   # at any time without a code review on our side. Exact pins mean the
@@ -39,7 +42,7 @@ dependencies = [
   # user picks that backend. Smaller `dependencies` = smaller blast
   # radius for the next supply-chain attack.
   "openai==2.24.0; python_version >= '3.14'",
-  "certifi==2026.5.20; python_version >= '3.14'",
+  "certifi==2026.10.19; python_version >= '3.14'",
   # TLS trust comes from the OS certificate store (agent/ssl_verify.py), so
   # a corporate/internal root installed on the machine just works. certifi
   # above stays a direct pin because httpx/requests/openai each depend on
@@ -93,10 +96,13 @@ dependencies = [
   # it out of the lazy-install path that exists only for the heavy matrix deps.
   "Markdown==3.10.2; python_version >= '3.14'",
   # Skills Hub (GitHub App JWT auth — optional, only needed for bot identity)
-  "PyJWT[crypto]==2.13.0; python_version >= '3.14'",  # PYSEC-2026-175/177/178/179
-  # urllib3 2.7.0 fixes GHSA-mf9v-mfxr-j63j (decompression-bomb bypass)
-  # and GHSA-qccp-gfcp-xxvc (header leak across origins).
-  "urllib3>=2.7.0,<3; python_version >= '3.14'",
+  "PyJWT[crypto]==2.15.1; python_version >= '3.14'",  # PYSEC-2026-175/177/178/179 + GHSA-ffc3-869f-jxw9, GHSA-42vr-xj54-vc7v (fixed in 2.14.0/2.15.0)
+  # urllib3 2.8.0 fixes GHSA-8988-9cw3-xx77 (proxy TLS config ignored),
+  # GHSA-gh4c-6fx4-qh6g (chunked-deflate infinite loop) and
+  # GHSA-vxq7-64xx-v4gw (unbounded chunk buffering). 2.8.0 is the latest
+  # release older than 3 days and still supports Python >= 3.10
+  # (3.11 bridge intact).
+  "urllib3>=2.8.0,<3; python_version >= '3.14'",
   # PyJWT[crypto] pulls cryptography in transitively. Pin it here as well, so
   # that the WeCom and Weixin crypto paths cannot fall below the patched
   # version. 50.0.0 is the floor: it fixes CVE-2026-69247, a Bleichenbacher
@@ -171,7 +177,7 @@ dependencies = [
   # libs required for the codecs we use, so it's safe to ship in the base
   # install rather than gating it behind an extra + a mid-session lazy install
   # (which deadlocked the CLI under prompt_toolkit — see #40490).
-  "Pillow==12.3.0; python_version >= '3.14'",
+  "Pillow==13.0.0; python_version >= '3.14'",
   # HEIF/HEIC/AVIF decode for the vision tools. iPhone photos and screenshots
   # are HEIC (frequently mislabeled .jpg by upload pipelines); Pillow has no
   # built-in HEIF codec, so without this the vision resolver rejects them as
@@ -264,14 +270,14 @@ google-meet = ["playwright==1.62.0", "websockets==15.0.1"]
 messaging = [
   "python-telegram-bot[webhooks]==22.8",
   "discord.py[voice]==2.7.1",
-  "aiohttp==3.14.3",
-  "brotlicffi==1.2.0.2",
+  "aiohttp==3.14.5",
+  "brotlicffi==1.2.1.0",
   "slack-bolt==1.30.0",
   "slack-sdk==3.44.1",
   "qrcode==7.4.2",
-] # aiohttp 3.14.3: prior CVEs + GHSA-cq5v-8q36-5273/GHSA-mfx4-hv73-q22v/GHSA-mq44-7p77-q5h7
+] # aiohttp 3.14.5: prior CVEs + GHSA-9xw5-w5jj-pvcg/GHSA-2g87-pp6c-29x5/GHSA-5wr8-gcqf-gqf3 family
 cron = [] # croniter is now a core dependency; this extra kept for back-compat
-slack = ["slack-bolt==1.30.0", "slack-sdk==3.44.1", "aiohttp==3.14.3"]
+slack = ["slack-bolt==1.30.0", "slack-sdk==3.44.1", "aiohttp==3.14.5"]
 # Matrix gateway deps. `mautrix[encryption]` pulls `python-olm`, whose
 # vendored libolm (archived 2023) cannot build on Windows or modern macOS:
 # no wheels for those targets AND the sdist fails to compile on current
@@ -284,8 +290,8 @@ matrix = [
   "aiosqlite==0.22.1; sys_platform == 'linux'",
   "asyncpg==0.31.0; sys_platform == 'linux'",
   "aiohttp-socks==0.11.0; sys_platform == 'linux'",
-  "aiohttp==3.14.3; sys_platform == 'linux'",
-] # aiohttp 3.14.3: prior CVEs + GHSA-cq5v-8q36-5273/GHSA-mfx4-hv73-q22v/GHSA-mq44-7p77-q5h7 (mautrix/aiohttp-socks only cap aiohttp<4 / >=3.10, so pin the patched floor directly)
+  "aiohttp==3.14.5; sys_platform == 'linux'",
+] # aiohttp 3.14.5: prior CVEs + GHSA-9xw5-w5jj-pvcg/GHSA-2g87-pp6c-29x5/GHSA-5wr8-gcqf-gqf3 family (mautrix/aiohttp-socks only cap aiohttp<4 / >=3.10, so pin the patched floor directly)
 
 # WeCom callback-mode adapter — parses untrusted XML POST bodies from
 # WeCom-controlled callback endpoints, so we use defusedxml (drop-in
@@ -386,7 +392,7 @@ pty = []
 # extra that exposes a Starlette-backed server surface so pip/uv can't resolve
 # a vulnerable pre-1.0.1 transitive. Bump in lockstep with uv.lock.
 #
-# mcp 2.0.0 implements MCP revision 2026-07-28 and moved its own HTTP stack
+# mcp 2.x implements MCP revision 2026-07-28 and moved its own HTTP stack
 # from `httpx` to `httpx2`. httpx2 arrives transitively, but tools/mcp_tool.py
 # and tools/mcp_oauth_manager.py import it by name to build the client objects
 # they hand to the SDK, so it is pinned here explicitly rather than left to
@@ -394,22 +400,22 @@ pty = []
 # unaffected — the two distributions install side by side under different
 # module names.
 mcp = [
-  "mcp==2.0.0",
+  "mcp==2.3.0",
   "httpx2==2.12.0",
   "starlette==1.3.1",
 ] # starlette: CVE-2026-48710
 # Backwards-compatible no-op alias. Relay is a core dependency on supported
 # wheel targets and intentionally unavailable on other platforms.
 nemo-relay = []
-sms = ["aiohttp==3.14.3"]
+sms = ["aiohttp==3.14.5"]
 teams = [
   "microsoft-teams-apps==2.0.13.4",
-  "aiohttp==3.14.3",
-] # aiohttp 3.14.3: prior CVEs + GHSA-cq5v-8q36-5273/GHSA-mfx4-hv73-q22v/GHSA-mq44-7p77-q5h7
+  "aiohttp==3.14.5",
+] # aiohttp 3.14.5: prior CVEs + GHSA-9xw5-w5jj-pvcg/GHSA-2g87-pp6c-29x5/GHSA-5wr8-gcqf-gqf3 family
 # Computer use talks to PM's pinned cua-driver over MCP stdio. This extra
 # provides the MCP client, independently of the native driver package.
 computer-use = [
-  "mcp==2.0.0",
+  "mcp==2.3.0",
   "httpx2==2.12.0",
   "starlette==1.3.1",
 ] # starlette: CVE-2026-48710
@@ -418,18 +424,20 @@ acp = ["agent-client-protocol==0.9.0"]
 # The `mistralai` PyPI project was quarantined 2026-05-12 after the malicious
 # 2.4.6 release (Mini Shai-Hulud worm); 2.4.6 was removed from PyPI and the
 # project is serving clean releases again (2.4.7 2026-05-25, 2.4.8 2026-05-28).
+# 2.9.2+ drops the opentelemetry-semantic-conventions<0.61 cap that blocked
+# the [otlp] OpenTelemetry 1.45.x bump.
 # Like other opt-in TTS/STT backends, this is lazy-installed via
 # pm (stt.mistral / tts.mistral) at first use — deliberately
 # NOT re-added to [all] so a future quarantined release can't break fresh
 # installs (see [all] policy comment below).
-mistral = ["mistralai==2.4.8"]
+mistral = ["mistralai==2.10.1"]
 # OTLP gateway monitoring export (optional). Provides the OpenTelemetry SDK +
 # OTLP/HTTP exporter for monitoring.gateway_health_export. Lazy-installed via
 # PM on first use; never a core dependency and deliberately
 # NOT in [all].
 otlp = [
-  "opentelemetry-sdk==1.39.1",
-  "opentelemetry-exporter-otlp-proto-http==1.39.1",
+  "opentelemetry-sdk==1.45.1",
+  "opentelemetry-exporter-otlp-proto-http==1.45.1",
 ]
 bedrock = ["boto3==1.42.89"]
 vertex = ["google-auth==2.55.1"]
@@ -469,9 +477,9 @@ google = [
   # The Google SDKs permit older vulnerable transitives, so unlocked installs
   # must carry the same fixed floors as uv.lock and the runtime installers:
   # httplib2 0.32.0 (GHSA-j5g9-f88f-gfj3 decompression bomb DoS),
-  # pyasn1 0.6.4, google-auth 2.55.1.
+  # pyasn1 0.6.5, google-auth 2.55.1.
   "httplib2==0.32.0",
-  "pyasn1==0.6.4",
+  "pyasn1==0.6.5",
 ]
 youtube = [
   # Required by skills/media/youtube-content and
@@ -551,13 +559,13 @@ dev = [
   "debugpy==1.8.20",
   "pytest==9.1.1",
   "pytest-asyncio==1.3.0",
-  "mcp==2.0.0",
+  "mcp==2.3.0",
   "httpx2==2.12.0",
   "starlette==1.3.1",
   "ty==0.0.82",
   "ruff==0.15.10",
-  "setuptools==83.0.0",
-] # starlette: CVE-2026-48710; setuptools: 83 (torch >=2.13 requires setuptools 83)
+  "setuptools==84.1.0",
+] # starlette: CVE-2026-48710; setuptools: 84.1.0 (GHSA-xmj3-9gf7-h52w; torch >=2.13 requires setuptools 83+)
 # Native launcher and provider-catalog E2E dependencies belong in the test
 # environment, not the core runtime. Keep the Anthropic SDK at the same
 # reviewed version as the optional runtime extra above.
@@ -571,7 +579,7 @@ test = [
 # PEP 517 isolated builds. Without wheel in
 # requires, the isolation sandbox only gets setuptools and the build
 # fails with ModuleNotFoundError: wheel.cli (#96488).
-requires = ["setuptools==83.0.0", "wheel"]
+requires = ["setuptools==84.1.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
@@ -636,6 +644,18 @@ override-dependencies = [
   # replace that requirement too, not only the vendor's upper bound.
   # Remove this line when alibabacloud-tea-openapi lifts the cap.
   "cryptography==50.0.1",
+  # browser-harness 0.1.13 (core dependency, latest release) pins
+  # pillow==12.3.0 exactly, which holds Pillow below 13.0.0, the first
+  # release fixing GHSA-8g5g-8vmr-9782, GHSA-w889-685w-c8fh and the rest of
+  # the 13.0.0 advisory set. browser-harness only opens, converts, composes
+  # and draws images (Image.open/new/convert, ImageDraw, ImageFont,
+  # ImageOps.contain), none of which changed in 13. Keep this exact version
+  # equal to the direct dependency (uv overrides replace that requirement
+  # too). PM's install-time `uv pip check` accepts the resulting mismatch
+  # because uv.lock records this override (pm/pip_check.py).
+  # Remove this line when browser-harness allows Pillow 13. Plugin workspaces
+  # inherit [tool.uv], so a plugin requiring pillow<13 also gets 13.0.0.
+  "Pillow==13.0.0",
   # misaki[en] (pulled by [kittentts]) lists spacy-curated-transformers.
   # The newest release that fits spacy 3.8 (2.x needs thinc 9), 0.3.1, caps
   # Python below 3.14, so PM's `uv pip check` rejects the venv. Nothing
@@ -649,8 +669,12 @@ override-dependencies = [
 # check), never on users' machines: PM installs from this vetted lock and drops the
 # cutoff from what it generates (pm/workspace.py::_trust_core_lock), because many
 # package mirrors publish no upload times and uv rejects a file it cannot date
-# (#135589). Exact pins follow the same 3-day rule; there are no exemptions.
+# (#135589). Exact pins follow the same 3-day rule. The one exemption is CA
+# trust stores: a release that revokes or distrusts a compromised CA must reach
+# the lock the day it ships, because holding it back keeps the bad root trusted.
+# Only packages whose job is CA trust belong in exclude-newer-package.
 exclude-newer = "3 days"
+exclude-newer-package = { certifi = false }
 
 [tool.setuptools]
 # Root single-file modules are derived by setup.py at build time from the

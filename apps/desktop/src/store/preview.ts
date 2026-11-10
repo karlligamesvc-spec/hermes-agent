@@ -428,11 +428,32 @@ async function openFilmInStudio(folder: string, target: PreviewTarget, source: P
     return
   }
 
-  const url = opened.url
+  showStudioTab(folder, opened.url, target.source)
+}
 
+/**
+ * The titlebar's 剪辑 (hc-1201): the film in `folder` in the editor's tab, or
+ * false when the editor cannot open it now (no film.html there any more, not
+ * ready, not open to this account), with nothing shown in its place.
+ * `source` names the film for the rail (`$previewTabSources`).
+ */
+export async function openFilmFolderInEditor(folder: string, source: string): Promise<boolean> {
+  const opened = await openfilmStudioUrl(folder)
+
+  if (!opened.ok) {
+    return false
+  }
+
+  showStudioTab(folder, opened.url, source)
+
+  return true
+}
+
+/** The editor's one tab, re-pointed at Studio's address for `folder`, and fronted. */
+function showStudioTab(folder: string, url: string, source: string) {
   const tab: PreviewTab = {
     id: OPENFILM_STUDIO_TAB_ID,
-    target: { kind: 'url', label: folder.split(/[\\/]/).pop() || 'film', source: target.source, transient: true, url }
+    target: { kind: 'url', label: folder.split(/[\\/]/).pop() || 'film', source, transient: true, url }
   }
 
   const current = $previewTabs.get()

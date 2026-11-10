@@ -216,8 +216,7 @@ test.describe('hc-1207 handed-over files and folders outside the working directo
       await pick(page, '添加文件或视频', '作品列表.xlsx')
       const sheetPrompt = await send(page, mock, '复盘这张表')
       expect(sheetPrompt).not.toContain(OUTSIDE)
-      // A file picked into an open chat is staged by the drop-time upload and again at send (作品列表-2.xlsx).
-      expect(sheetPrompt).toMatch(/📎 @file:\S*attachments\/作品列表(-\d+)?\.xlsx/)
+      expect(sheetPrompt).toMatch(/📎 @file:\S*attachments\/作品列表\.xlsx /)
 
       // A folder dropped on the composer
       await dropOnComposer(page, [handed.more])
@@ -296,7 +295,7 @@ test.describe('hc-1207 handed-over files and folders outside the working directo
 
       expectListing(prompt, handed.clips, ['镜头1.mp4', '说明.txt'])
       // The sheet was copied into apex-bot-2's own attachments/: this turn ran on that assistant's engine.
-      expect(prompt).toMatch(/📎 @file:\S*profiles\/apex-bot-2\/attachments\/作品列表(-\d+)?\.xlsx/)
+      expect(prompt).toMatch(/📎 @file:\S*profiles\/apex-bot-2\/attachments\/作品列表\.xlsx /)
     } finally {
       await app.close().catch(() => {})
       await mock.close()
