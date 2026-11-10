@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
 
 from tests._fixtures import apex_desktop_baseline as baseline
 
@@ -38,7 +39,8 @@ def test_every_parametrized_entry_is_a_test_id_pytest_collects():
     """hc-1203: the name check above passes a parametrized id that no longer exists. v0.23.0 swapped
     ``[...host-backend-attach.ts]`` for ``[...local-gateway.ts]``: the old entry kept passing while the
     new case ran unskipped and failed. Only collection knows the exact ids."""
-    entries = [nodeid for nodeid in [*baseline.SKIPS, *baseline.FORK_RUNNER_SKIPS] if "[" in nodeid]
+    entries = [nodeid for nodeid in [*baseline.SKIPS, *baseline.FORK_RUNNER_SKIPS, *baseline.FORK_MACOS_RUNNER_SKIPS]
+               if "[" in nodeid]
     modules = sorted({nodeid.partition("::")[0] for nodeid in entries})
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", *modules],
@@ -58,9 +60,9 @@ def test_every_cited_upstream_desktop_path_is_still_absent():
 
 
 def test_fork_runner_skips_name_real_tests_and_their_follow_up():
-    for nodeid, reason in baseline.FORK_RUNNER_SKIPS.items():
+    for nodeid, reason in (baseline.FORK_RUNNER_SKIPS | baseline.FORK_MACOS_RUNNER_SKIPS).items():
         module, _, test = nodeid.partition("::")
-        name = test.rsplit("::", 1)[-1]
+        name = re.sub(r"\[.*\]$", "", test.rsplit("::", 1)[-1])  # hc-1203: a parametrized id names its function
         assert re.search(rf"^\s*def {re.escape(name)}\(", (REPO / module).read_text(encoding="utf-8"), re.MULTILINE), nodeid
         assert "follow-up" in reason, f"{nodeid}: a fork-runner skip must name the follow-up that removes it"
 
@@ -87,6 +89,33 @@ def test_fork_runner_skips_apply_only_in_the_fork_s_github_actions(monkeypatch):
     assert skipped(value) == [True] * len(baseline.FORK_RUNNER_SKIPS)
     assert not any(skipped(None)), "a developer's own run must exercise them"
     assert not any(skipped("false")), "only GitHub Actions' own value counts"
+
+
+def test_macos_runner_skips_apply_only_on_the_fork_s_macos_runner(monkeypatch):
+    """hc-1203: the fork's Linux runner passes these, so only its macOS run (and no developer's) skips them."""
+    class Item:
+        def __init__(self, nodeid):
+            self.nodeid, self.markers = nodeid, []
+
+        def add_marker(self, marker):
+            self.markers.append(marker)
+
+    name, value = baseline.FORK_CI_SIGNAL
+    assert baseline.FORK_MACOS_RUNNER_SKIPS
+
+    def skipped(platform, signal):
+        monkeypatch.setattr(baseline, "sys", SimpleNamespace(platform=platform))
+        if signal is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, signal)
+        items = [Item(nodeid) for nodeid in baseline.FORK_MACOS_RUNNER_SKIPS]
+        baseline.pytest_collection_modifyitems(None, items)
+        return [bool(item.markers) for item in items]
+
+    assert all(skipped("darwin", value)), "the fork's macOS runner must skip them"
+    assert not any(skipped("linux", value)), "the fork's Linux runner passes them: they must run there"
+    assert not any(skipped("darwin", None)), "a developer's own Mac must exercise them"
 
 
 def test_fork_ci_signal_reaches_pytest_through_the_hermetic_runner():

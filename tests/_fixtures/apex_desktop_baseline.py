@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import itertools
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -61,6 +62,14 @@ SKIPS: dict[str, tuple[str, ...]] = {
     # hc-1203: v0.23.0's update path (hermes_cli/source_build.py) runs upstream's Webapp recipe; the APEX
     # baseline has none, and the scan of the update's JS closure stops at the first absent file.
     "tests/ci/test_update_ci_routing.py::test_build_scripts_the_update_runs_start_the_upgrade_suite": ("apps/desktop/scripts/build-webapp.mjs",),
+    # hc-1203: v0.23.0's `hermes update` keeps a packaged Desktop across commits when a build at HEAD would bake
+    # the same install stamp; the test copies upstream's stamp inputs into a scratch checkout. APEX's
+    # write-build-stamp.mjs has no buildStampPayload, so on this tree the probe stops ("buildStampPayload is not
+    # a function") and the update rebuilds (hermes_cli/desktop_build_reuse.py: anything unreadable means build).
+    **{f"tests/hermes_cli/test_desktop_build_reuse.py::{test}": (
+        "apps/desktop/scripts/bundle-env.mjs", "apps/desktop/product-identity.cjs")
+       for test in ("test_update_reuses_the_packaged_app_until_a_desktop_input_changes",
+                    "test_a_stamp_a_build_would_bake_differently_still_rebuilds")},
     # hc-913: these expect the e2e-desktop-core / e2e-desktop-update jobs to run, gate the merge, or be
     # required consumers. Each one's APEX counterpart (the job deferred while its suite is absent, every other
     # lane still routed) is in tests/apex_overlay/test_desktop_e2e_lanes.py.
@@ -115,6 +124,16 @@ FORK_RUNNER_SKIPS: dict[str, str] = {
     "tests/hermes_cli/test_git_trampoline_windows_live.py::TestGitTrampolineLive::test_locate_real_git_finds_runner_git_core": _GIT_CORE_ON_RUNNER,
     "tests/hermes_cli/test_git_trampoline_windows_live.py::TestGitTrampolineLive::test_ensure_non_trampoline_git_swaps_live": _GIT_CORE_ON_RUNNER,
 }
+_SLOW_BROWSE_ON_MACOS_RUNNER = (
+    "hc-1203 follow-up (upstream report): upstream runs its macOS lane on 12-vCPU Blacksmith runners; on the fork's "
+    "GitHub-hosted macos-latest the slowed DDL comes back as the generic 'schema is unavailable or corrupt' 503, not "
+    "the browse budget's 'nothing was changed' one (dd6ba36b96 and 55b26f01ef, in-job retry included). A developer "
+    "Mac passes, and on its efficiency cores boot's 5 s wait runs out instead. Find which error escapes the budget")
+# Fork-runner skips that only the fork's macOS runner trips: the fork's Linux runner passes them, so they keep
+# running there. Same rules as FORK_RUNNER_SKIPS otherwise.
+FORK_MACOS_RUNNER_SKIPS: dict[str, str] = {
+    "tests/hermes_cli/test_browse_schema_drift.py::test_slow_browse_reconcile_gives_up_inside_its_budget_and_boot_waits_it_out[ddl]": _SLOW_BROWSE_ON_MACOS_RUNNER,
+}
 
 
 def _absent(paths: tuple[str, ...]) -> bool:
@@ -154,9 +173,10 @@ def pytest_pycollect_makemodule(module_path, parent):
 
 def pytest_collection_modifyitems(config, items):
     on_fork_ci = os.environ.get(FORK_CI_SIGNAL[0]) == FORK_CI_SIGNAL[1]
+    runner_skips = FORK_RUNNER_SKIPS | (FORK_MACOS_RUNNER_SKIPS if sys.platform == "darwin" else {})
     for item in items:
         paths = SKIPS.get(item.nodeid)
         if paths and _absent(paths):
             item.add_marker(pytest.mark.skip(reason=_reason(paths)))
-        elif on_fork_ci and item.nodeid in FORK_RUNNER_SKIPS:
-            item.add_marker(pytest.mark.skip(reason=f"ApexNodes {FORK_RUNNER_SKIPS[item.nodeid]}"))
+        elif on_fork_ci and item.nodeid in runner_skips:
+            item.add_marker(pytest.mark.skip(reason=f"ApexNodes {runner_skips[item.nodeid]}"))
