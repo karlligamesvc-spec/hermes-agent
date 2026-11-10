@@ -208,6 +208,11 @@ const APEX_PRODUCT_DEFAULTS = {
   'sessions.auto_prune': false,
   // Optional v0.20 credential injection stays a deliberate future opt-in.
   'proxy.enabled': false,
+  // hc-1179: Desktop drives its browser as a visible window on the user's screen, so a
+  // sign-in or human check can be handed to them (browser.headed resolves to --headed in
+  // tools/browser_tool_cloud._is_headed_mode). Add-only below, so a user who sets it false
+  // keeps the headless browser. Cloud reads its own config and is unaffected.
+  'browser.headed': true,
   timezone: ''
 }
 
@@ -256,6 +261,9 @@ const SEED_PRODUCT_DEFAULTS_BLOCK =
   '  nudge_interval: 0\n' +
   'proxy:\n' +
   '  enabled: false\n' +
+  '# hc-1179: drive the browser as a visible window so sign-ins can be handed to the user.\n' +
+  'browser:\n' +
+  '  headed: true\n' +
   "timezone: ''\n" +
   '_apex_budget_defaults_version: 2\n'
 
