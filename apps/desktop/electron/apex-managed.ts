@@ -209,8 +209,8 @@ const APEX_PRODUCT_DEFAULTS = {
   // Optional v0.20 credential injection stays a deliberate future opt-in.
   'proxy.enabled': false,
   // hc-1179: Desktop drives its browser as a visible window on the user's screen, so a
-  // sign-in or human check can be handed to them (browser.headed resolves to --headed in
-  // tools/browser_tool_cloud._is_headed_mode). Add-only below, so a user who sets it false
+  // sign-in or human check can be handed to them (tools/browser_session_cloud.is_headed_mode
+  // reads browser.headed for browser_exec's launch). Add-only below, so a user who sets it false
   // keeps the headless browser. Cloud reads its own config and is unaffected.
   'browser.headed': true,
   timezone: ''
