@@ -120,9 +120,19 @@ _GIT_CORE_ON_RUNNER = (
     "hc-911 follow-up (upstream fix): _locate_real_git() probes only <arch>\\libexec\\git-core\\git.exe, which "
     "current Git for Windows no longer ships (the fork's windows-2025-vs2026 runner has 2.56.0; MinGit 2.54 keeps "
     "the real binary at mingw64\\bin\\git.exe); APEX's Windows installs (COS archive, no .git) never take this path")
+_COMPACTION_EDGE_ON_RUNNER = (
+    "hc-1203 follow-up (upstream report): the outcome hangs on the system prompt's length, which carries tmp_path four "
+    "times plus the date. On upstream v0.23.0 itself (fork ubuntu runner, diag runs 42901981913 and 42904107258), plain "
+    "pytest with a 30- or 48-char --basetemp compacts at the fourth pressure turn and passes; at 64 chars or more "
+    "(scripts/run_tests.sh's /var/tmp/hermes-pytest-<uid>/r-<id>/pytest-of-runner/pytest-0 is 64) it compacts one turn "
+    "early, PRESSURE_1 stays verbatim and both cases fail. Report it upstream (size the pressure from the measured "
+    "prompt), then drop these entries")
 FORK_RUNNER_SKIPS: dict[str, str] = {
     "tests/hermes_cli/test_git_trampoline_windows_live.py::TestGitTrampolineLive::test_locate_real_git_finds_runner_git_core": _GIT_CORE_ON_RUNNER,
     "tests/hermes_cli/test_git_trampoline_windows_live.py::TestGitTrampolineLive::test_ensure_non_trampoline_git_swaps_live": _GIT_CORE_ON_RUNNER,
+    **{"tests/gateway/test_journey_compress_restart_fifo.py::"
+       f"test_followers_survive_compression_and_restart_in_order_exactly_once[{restart}]": _COMPACTION_EDGE_ON_RUNNER
+       for restart in ("graceful", "crash")},
 }
 _SLOW_BROWSE_ON_MACOS_RUNNER = (
     "hc-1203 follow-up (upstream report): upstream runs its macOS lane on 12-vCPU Blacksmith runners; on the fork's "
