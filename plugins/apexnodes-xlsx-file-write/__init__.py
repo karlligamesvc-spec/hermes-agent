@@ -1,8 +1,9 @@
 """ApexNodes structured Excel workbook export tool (hc-326).
 
 hc-1212: a sheet may carry a ``title`` (one bold row merged across its columns, above the
-header), and a cell may hold ``{"image": "<path>"}``, a picture from the tool's working directory
-scaled into that cell. A call that uses neither writes the same workbook as before.
+header), and a cell may hold ``{"image": "<path>"}``, scaled into that cell: a picture from the
+tool's working directory, or one the user sent in chat (the runtime's image cache). A call that
+uses neither writes the same workbook as before.
 """
 
 from __future__ import annotations
@@ -24,6 +25,9 @@ IMAGE_ROW_HEIGHT = 96  # 128 px: a 9:16 keyframe shows about 72 px wide
 IMAGE_PADDING = 4  # px kept clear on each side, so a picture never reaches the next cell
 # A URL scheme (http:, https:, file:, data:). One letter before the colon is a Windows drive.
 _URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]+:")
+# A chat attachment as the conversation shows it: the runtime's hint ``[Image attached at: <path>]``
+# or the APEX Desktop composer's ``@image:`<path>``` (``@file:`` for a dragged file).
+_ATTACHMENT = re.compile(r"^(?:\[Image attached at:\s*(?P<hint>.+?)\s*\]|@(?:image|file):(?P<token>.+))$", re.DOTALL)
 
 XLSX_FILE_WRITE_SCHEMA = {
     "name": "xlsx_file_write",
@@ -44,8 +48,9 @@ XLSX_FILE_WRITE_SCHEMA = {
                     "be strings or {key, header, width}; rows may be arrays or objects. "
                     "title is optional: one bold line merged across all columns, above the header row. "
                     'A cell value may be {"image": "<path>"}: a PNG/JPEG/GIF/BMP file inside the working '
-                    "directory (a relative path starts there; web links are refused), placed in that cell "
-                    "scaled to fit, with its row made taller."
+                    "directory (a relative path starts there), or a picture the user sent in this chat (its "
+                    "local path; a whole [Image attached at: ...] or @image: marker works too). Web links are "
+                    "refused. The picture is placed in that cell scaled to fit, with its row made taller."
                 ),
             },
             "title": {
@@ -147,6 +152,32 @@ def _row_cells(row: Any, columns: list[dict[str, Any]]) -> list[Any]:
     return [row, *[""] * (len(columns) - 1)]
 
 
+def _image_cache_dirs() -> list[Path]:
+    """Where the runtime keeps the pictures users send in chat: ``cache/images`` under its home, or
+    ``image_cache`` in an older install, the folders its gateway image cache resolves to."""
+    try:
+        from hermes_constants import get_hermes_home
+    except ImportError:  # outside the runtime only a HERMES_HOME someone set names the cache
+        raw = os.getenv("HERMES_HOME", "").strip()
+        if not raw:
+            return []
+        home = Path(raw)
+    else:
+        home = Path(get_hermes_home())
+    return [home / "cache" / "images", home / "image_cache"]
+
+
+def _attachment_path(text: str) -> str:
+    """The file a chat attachment marker copied whole names; any other text as it is."""
+    match = _ATTACHMENT.match(text)
+    if not match:
+        return text
+    inner = (match.group("hint") or match.group("token")).strip()
+    if len(inner) >= 2 and inner[0] == inner[-1] and inner[0] in "`\"'":
+        inner = inner[1:-1].strip()
+    return inner
+
+
 def _cell_value(value: Any) -> Any:
     if value is None:
         return ""
@@ -155,22 +186,26 @@ def _cell_value(value: Any) -> Any:
     return str(value)
 
 
-def _load_image(cell: dict, root: Path, where: str) -> dict[str, Any]:
-    """Read one image cell's picture. Only a real picture file inside ``root`` is taken."""
+def _load_image(cell: dict, roots: list[Path], where: str) -> dict[str, Any]:
+    """Read one image cell's picture. Only a real picture file inside one of ``roots`` is taken:
+    the working directory (relative paths start there), then the chat image cache."""
     from xlsxwriter.exceptions import XlsxWriterException
     from xlsxwriter.utility import get_image_properties
 
     text = cell.get("image")
-    text = text.strip() if isinstance(text, str) else ""
+    text = _attachment_path(text.strip()) if isinstance(text, str) else ""
     if not text:
         raise ImageCellError(f"{where}的 image 要写本机图片的文件路径")
     if _URL_SCHEME.match(text):
-        raise ImageCellError(f"{where}的 image 是网址;表格里只能放工作目录里的本机图片，不收网址")
-    base = root.resolve()
+        raise ImageCellError(f"{where}的 image 是网址;表格里只能放本机图片，不收网址")
+    base, *caches = (root.resolve() for root in roots)
     path = Path(text).expanduser()
     path = (path if path.is_absolute() else base / path).resolve()
-    if not path.is_relative_to(base):
-        raise ImageCellError(f"{where}的图片 {text} 不在工作目录 {base} 里;表格里只能放工作目录里的本机图片")
+    if not any(path.is_relative_to(root) for root in (base, *caches)):
+        raise ImageCellError(
+            f"{where}的图片 {text} 不在工作目录 {base} 里，也不是用户在对话里发的图;"
+            "表格里只能放工作目录里的图片和用户在对话里发的图"
+        )
     if not path.is_file():
         raise ImageCellError(f"{where}的图片 {text} 不存在(相对路径从工作目录 {base} 算起)")
     data = path.read_bytes()
@@ -189,16 +224,16 @@ def _load_images(
 ) -> dict[tuple[int, int, int], dict[str, Any]]:
     """Every image cell, checked and read before anything is written; keyed by (sheet, row, column)."""
     images: dict[tuple[int, int, int], dict[str, Any]] = {}
-    root = image_root
+    roots: list[Path] | None = None
     for sheet_index, (_raw_sheet, rows, columns) in enumerate(tables):
         for row_index, row in enumerate(rows):
             for column_index, value in enumerate(_row_cells(row, columns)):
                 if not (isinstance(value, dict) and "image" in value):
                     continue
-                if root is None:
-                    root = _work_dir()
+                if roots is None:
+                    roots = [image_root or _work_dir(), *_image_cache_dirs()]
                 where = f"sheets[{sheet_index}].rows[{row_index}] 的「{columns[column_index]['header']}」列"
-                images[sheet_index, row_index, column_index] = _load_image(value, root, where)
+                images[sheet_index, row_index, column_index] = _load_image(value, roots, where)
     return images
 
 

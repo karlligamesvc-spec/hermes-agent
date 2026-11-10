@@ -8,8 +8,10 @@
 
 - 表名行(``sheets[].title``):合并 A1 到最后一列，表头下移一行，冻结和筛选跟着下移;只有一列不合并。
 - 图片单元格(``{"image": 路径}``):相对路径从工作目录(``agent.runtime_cwd.resolve_agent_cwd``)算起;
-  图片缩放后整张落在自己那一格，保持比例，行高加大;网址、工作目录外(含 ``..`` 和软链接)、不存在、
-  不是图片都拒绝，报错写明哪一格，并且不写文件。
+  图片缩放后整张落在自己那一格，保持比例，行高加大。用户在对话里发的图也收：运行时把它们存在
+  HERMES_HOME 下的 ``cache/images``(老安装是 ``image_cache``),消息里的 ``[Image attached at: …]``、
+  ``@image:`…``` 整段照填也认。网址、这两处以外(含 ``..`` 和软链接)、不存在、不是图片都拒绝，
+  报错写明哪一格，并且不写文件。
 - 旧调用(没有表名、没有图片)版式不变。
 """
 
@@ -261,11 +263,45 @@ def test_a_session_working_directory_comes_before_terminal_cwd(xlsx, tmp_path, w
     assert [item["bytes"] for item in _read(Path(result["file_path"]))["pictures"]] == [frame]
 
 
-def _refused_cell(case: str, work: Path, outside: Path):
+@pytest.mark.parametrize("named_as", ["path", "runtime-hint", "desktop-marker", "older-install"])
+def test_a_picture_the_user_sent_in_chat_goes_into_its_cell(xlsx, tmp_path, workdir, monkeypatch, named_as):
+    """The runtime keeps chat pictures under its home, outside the working directory; the cell takes
+    the path, or the marker the conversation shows copied whole."""
+    home = tmp_path / "home"
+    folder = home / ("image_cache" if named_as == "older-install" else "cache/images")
+    picture = folder / "img_7f3a.jpg"
+    sent = _picture(picture, (300, 400), (30, 160, 90))
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    cell = {
+        "path": str(picture),
+        "runtime-hint": f"[Image attached at: {picture}]",
+        "desktop-marker": f"@image:`{picture}`",
+        "older-install": str(picture),
+    }[named_as]
+
+    result = json.loads(xlsx._handle_xlsx_file_write({"sheets": [_shot_table([{"image": cell}])]}))
+
+    assert result.get("success") is True, result
+    pictures = _read(Path(result["file_path"]))["pictures"]
+    assert [(item["cell"], item["ends_in"], item["bytes"]) for item in pictures] == [((2, 3), (2, 3), sent)]
+
+
+def _refused_cell(case: str, work: Path, outside: Path, home: Path):
     if case == "symlink":
         (work / "link-out.png").symlink_to(outside / "secret.png")
         return {"image": "link-out.png"}
+    if case == "chat-cache-symlink":
+        (home / "cache" / "images").mkdir(parents=True)
+        (home / "cache" / "images" / "img_out.png").symlink_to(outside / "secret.png")
+        return {"image": str(home / "cache" / "images" / "img_out.png")}
+    if case == "chat-cache-dot-dot":
+        _picture(home / "skills" / "logo.png", (60, 60), (7, 8, 9))
+        return {"image": str(home / "cache" / "images" / ".." / ".." / "skills" / "logo.png")}
+    if case == "hermes-home-not-cache":
+        _picture(home / "skills" / "logo.png", (60, 60), (7, 8, 9))
+        return {"image": str(home / "skills" / "logo.png")}
     return {
+        "marker-url": {"image": "[Image attached at: https://example.com/frame.png]"},
         "https": {"image": "https://example.com/frame.png"},
         "data-url": {"image": "data:image/png;base64,iVBORw0KGgo="},
         "dot-dot": {"image": "../outside/secret.png"},
@@ -296,6 +332,10 @@ def _unusable_files(work: Path) -> None:
         ("dot-dot", "不在工作目录"),
         ("absolute-outside", "不在工作目录"),
         ("symlink", "不在工作目录"),
+        ("hermes-home-not-cache", "不在工作目录"),
+        ("chat-cache-dot-dot", "不在工作目录"),
+        ("chat-cache-symlink", "不在工作目录"),
+        ("marker-url", "网址"),
         ("missing", "不存在"),
         ("not-a-picture", "不是表格能放的图片"),
         ("webp", "不是表格能放的图片"),
@@ -304,12 +344,13 @@ def _unusable_files(work: Path) -> None:
         ("empty", "文件路径"),
     ],
 )
-def test_a_refused_picture_names_its_cell_and_writes_nothing(xlsx, tmp_path, workdir, case, reason):
-    outside = tmp_path / "outside"
+def test_a_refused_picture_names_its_cell_and_writes_nothing(xlsx, tmp_path, workdir, monkeypatch, case, reason):
+    outside, home = tmp_path / "outside", tmp_path / "home"
+    monkeypatch.setenv("HERMES_HOME", str(home))  # the chat image cache is then home/cache/images
     _picture(workdir / "frames" / "ok.png", (100, 100), (1, 2, 3))
     _picture(outside / "secret.png", (100, 100), (4, 5, 6))
     _unusable_files(workdir)
-    material = [{"image": "frames/ok.png"}, _refused_cell(case, workdir, outside)]
+    material = [{"image": "frames/ok.png"}, _refused_cell(case, workdir, outside, home)]
 
     result = json.loads(xlsx._handle_xlsx_file_write({"sheets": [_shot_table(material)]}))
 
