@@ -20,7 +20,10 @@ export const DESKTOP_BUNDLE_EXTRAS = Object.freeze([
   'anthropic',
   // read_file on a PDF / Office document the user sends (anydoc). Already pulled in by another
   // dependency; named here so a dependency change upstream cannot drop it silently.
-  'doc-extract'
+  'doc-extract',
+  // web_extract through the platform's Firecrawl gateway (hc-1214, firecrawl-py). Without it the
+  // provider's lazy install lands where the bundled engine cannot import it.
+  'firecrawl'
 ])
 
 /** The uv arguments that sync the bundle's venv, hash-verified against uv.lock unless `locked` is false. */
