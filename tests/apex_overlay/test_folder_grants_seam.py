@@ -7,7 +7,11 @@ the session dict. Only that session's Desktop turns resolve references under it.
 autocompleted references elsewhere, other sessions and IM turns keep the workspace refusal.
 
 The turn tests run the real ``prompt.submit`` → ``_prepare_turn_input`` → ``agent.context_references``
-path with a fake agent that records the prompt it is given.
+path with a fake agent that records the prompt it is given. The turn runs on the thread prompt.submit
+starts, as in production. ``threading.Thread`` is not stubbed: the stub would replace it for the whole
+process, and the folder listing runs ``rg --files`` through ``_run_quiet``, which drains the output on
+threads started with arguments. Where ``rg`` is installed (CI), that turned the 📁 listing into a
+TypeError warning.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -25,7 +30,6 @@ from tui_gateway import server
 from tui_gateway.contracts import registry
 
 KEY = bytes(range(32))
-_REAL_THREAD = threading.Thread
 OUTSIDE = "path is outside the allowed workspace"
 SENSITIVE = "sensitive credential"
 
@@ -37,18 +41,12 @@ class _Agent:
 
     def __init__(self):
         self.prompts: list[str] = []
+        self.asked = threading.Event()
 
     def run_conversation(self, prompt, conversation_history=None, stream_callback=None, **_kwargs):
         self.prompts.append(prompt)
+        self.asked.set()
         return {"final_response": "ok", "messages": [{"role": "assistant", "content": "ok"}]}
-
-
-class _ImmediateThread:
-    def __init__(self, target=None, daemon=None, **_options):
-        self._target = target
-
-    def start(self):
-        self._target()
 
 
 class Tree:
@@ -98,9 +96,8 @@ def seam(monkeypatch):
 
 @pytest.fixture
 def desk(seam, tree, monkeypatch):
-    """Open Desktop sessions (cwd = tree.work) whose turns run inline with a recording agent."""
+    """Open Desktop sessions (cwd = tree.work) whose turns reach a recording agent."""
     monkeypatch.setattr(server, "_sessions", {})
-    monkeypatch.setattr(server.threading, "Thread", _ImmediateThread)
     monkeypatch.setattr(server, "_emit", lambda *args, **kwargs: None)
     monkeypatch.setattr(server, "make_stream_renderer", lambda cols: None)
     monkeypatch.setattr(server, "render_message", lambda raw, cols: None)
@@ -124,8 +121,15 @@ def attach(sid: str, path: str, grant: str | None = None) -> dict:
 
 
 def turn(agent: _Agent, sid: str, text: str) -> str:
+    """Submit ``text`` and return the prompt the agent got, once the turn thread has finished."""
+    agent.asked.clear()
     response = server.handle_request({"id": "2", "method": "prompt.submit", "params": {"session_id": sid, "text": text}})
     assert "error" not in (response or {}), response
+    assert agent.asked.wait(30), "the turn never reached the agent"
+    deadline = time.monotonic() + 30
+    while server._sessions[sid].get("running") and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert not server._sessions[sid].get("running"), "the turn did not finish"
     return agent.prompts[-1]
 
 
@@ -315,7 +319,6 @@ def test_im_turns_never_see_desktop_grants(desk, tree, monkeypatch):
     monkeypatch.setattr(gateway_run, "_load_gateway_config",
                         lambda: {"model": {"default": "openai/gpt-4.1-mini", "context_length": 128000}})
     monkeypatch.setenv("TERMINAL_CWD", str(tree.work))
-    monkeypatch.setattr(threading, "Thread", _REAL_THREAD)  # the IM path runs on a real event loop
     source = SessionSource(platform=Platform.TELEGRAM, chat_id="123", chat_name="DM", chat_type="private",
                            user_name="Alice")
 
