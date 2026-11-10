@@ -31,13 +31,15 @@ import {
   PLATFORM_SKILLS_CATEGORY,
   PLATFORM_SKILLS_PATH,
   platformSkillsCategoryDir,
+  platformSkillsStagingDir,
   platformSkillsUrl,
   removePlatformSkills,
   shouldApplyManifest
 } from './apex-platform-skills'
 
+/** `<temp home>/skills`: the install stages beside skills/, so each test gets a home of its own. */
 function tmpSkillsRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'apex-skills-'))
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'apex-skills-')), 'skills')
 }
 
 const DOUYIN = {
@@ -216,7 +218,7 @@ test('applyPlatformSkills: writes under skills/apexnodes/<name>/, agent-visible 
     assert.match(fs.readFileSync(skillMd, 'utf8'), /social_download/)
     assert.equal(platformSkillsCategoryDir(root), path.join(root, PLATFORM_SKILLS_CATEGORY))
   } finally {
-    fs.rmSync(root, { force: true, recursive: true })
+    fs.rmSync(path.dirname(root), { force: true, recursive: true })
   }
 })
 
@@ -234,7 +236,7 @@ test('applyPlatformSkills: clean replace drops a skill the cloud removed', () =>
     assert.ok(!fs.existsSync(path.join(root, PLATFORM_SKILLS_CATEGORY, 'old-skill')))
     assert.ok(fs.existsSync(path.join(root, PLATFORM_SKILLS_CATEGORY, 'douyin-video-transcript', 'SKILL.md')))
   } finally {
-    fs.rmSync(root, { force: true, recursive: true })
+    fs.rmSync(path.dirname(root), { force: true, recursive: true })
   }
 })
 
@@ -260,7 +262,7 @@ test('applyPlatformSkills: SECURITY — a traversal path never escapes the categ
     assert.ok(!fs.existsSync(path.join(root, 'escape.txt')))
     assert.ok(!fs.existsSync(path.join(path.dirname(root), 'escape.txt')))
   } finally {
-    fs.rmSync(root, { force: true, recursive: true })
+    fs.rmSync(path.dirname(root), { force: true, recursive: true })
   }
 })
 
@@ -276,7 +278,53 @@ test('applyPlatformSkills: unsafe skill NAME is skipped', () => {
     assert.deepEqual(result.installed, [])
     assert.ok(result.skippedUnsafe.includes('../evil'))
   } finally {
-    fs.rmSync(root, { force: true, recursive: true })
+    fs.rmSync(path.dirname(root), { force: true, recursive: true })
+  }
+})
+
+test('applyPlatformSkills: a write that fails midway leaves the previous set installed (hc-1205)', () => {
+  const root = tmpSkillsRoot()
+
+  try {
+    applyPlatformSkills({ skills: [DOUYIN], skillsRoot: root })
+    const installed = path.join(root, PLATFORM_SKILLS_CATEGORY, 'douyin-video-transcript', 'SKILL.md')
+    const before = fs.readFileSync(installed, 'utf8')
+
+    // `notes` lands as a file, then `notes/deeper.md` needs it to be a directory: the write throws.
+    const clash = {
+      files: [
+        { content: 'ok', path: 'SKILL.md' },
+        { content: 'x', path: 'notes' },
+        { content: 'y', path: 'notes/deeper.md' }
+      ],
+      name: 'clash'
+    }
+
+    const next = { ...DOUYIN, files: [{ content: '---\nname: douyin-video-transcript\n---\nv2', path: 'SKILL.md' }] }
+
+    assert.throws(() => applyPlatformSkills({ skills: [next, clash], skillsRoot: root }))
+    assert.deepEqual(fs.readdirSync(path.join(root, PLATFORM_SKILLS_CATEGORY)), ['douyin-video-transcript'])
+    assert.equal(fs.readFileSync(installed, 'utf8'), before)
+
+    // The next install clears what the failed one left half built, and lands whole.
+    applyPlatformSkills({ skills: [next], skillsRoot: root })
+    assert.match(fs.readFileSync(installed, 'utf8'), /v2$/)
+    assert.equal(fs.existsSync(platformSkillsStagingDir(root)), false)
+  } finally {
+    fs.rmSync(path.dirname(root), { force: true, recursive: true })
+  }
+})
+
+test('applyPlatformSkills: builds beside skills/, where the runtime never indexes, and moves in whole', () => {
+  const root = tmpSkillsRoot()
+
+  try {
+    assert.equal(platformSkillsStagingDir(root), path.join(path.dirname(root), '.apexnodes-skill-staging'))
+    applyPlatformSkills({ skills: [DOUYIN], skillsRoot: root })
+    assert.deepEqual(fs.readdirSync(root), [PLATFORM_SKILLS_CATEGORY])
+    assert.deepEqual(fs.readdirSync(path.dirname(root)), ['skills'])
+  } finally {
+    fs.rmSync(path.dirname(root), { force: true, recursive: true })
   }
 })
 
@@ -290,7 +338,7 @@ test('removePlatformSkills: idempotent category removal', () => {
     // second removal is a no-op
     assert.equal(removePlatformSkills({ skillsRoot: root }).removed, false)
   } finally {
-    fs.rmSync(root, { force: true, recursive: true })
+    fs.rmSync(path.dirname(root), { force: true, recursive: true })
   }
 })
 

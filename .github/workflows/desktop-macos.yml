@@ -31,6 +31,15 @@
 # exists to avoid: an Intel updater handed the arm64 yml finds no matching zip.
 # The root 404 is expected and harmless; verified end-to-end that every shipped
 # arch resolves its subdir feed + installer (both HTTP 200).
+#
+# hc-1204: publishing is its own job, as it has been on Windows since hc-657. It
+# uploads an installer artifact, never a rebuild: this run's own build, or, when
+# desktop-release.yml passes candidate_run_id, the artifact of the candidate run
+# that was accepted, so users get the bytes that were checked. A promotion skips
+# `build`, so it neither notarizes a second time nor waits for a macOS runner. The
+# artifact therefore carries latest-mac.yml and the blockmaps, and the publish job
+# checks it against latest-mac.yml before the first upload. A stalled upload costs
+# a publish retry ("Re-run failed jobs" reuses the artifact), not a rebuild.
 
 name: Desktop macOS build
 
@@ -41,19 +50,25 @@ on:
         description: Publish the notarized installer and updater feed to production COS
         required: true
         type: boolean
+      candidate_run_id:
+        description: Accepted desktop-release.yml candidate run of this commit to publish instead of building
+        required: false
+        type: string
+        default: ''
     outputs:
+      # A promotion skips build; the publish job then reports the same identity.
       source_sha:
         description: Source commit packaged by this workflow
-        value: ${{ jobs.build.outputs.source_sha }}
+        value: ${{ jobs.build.outputs.source_sha || jobs.publish.outputs.source_sha }}
       version:
         description: Desktop version packaged by this workflow
-        value: ${{ jobs.build.outputs.version }}
+        value: ${{ jobs.build.outputs.version || jobs.publish.outputs.version }}
       runtime_commit:
         description: Full pinned runtime commit carried in each installer
-        value: ${{ jobs.build.outputs.runtime_commit }}
+        value: ${{ jobs.build.outputs.runtime_commit || jobs.publish.outputs.runtime_commit }}
       runtime_version:
         description: Pinned runtime release label carried in each installer
-        value: ${{ jobs.build.outputs.runtime_version }}
+        value: ${{ jobs.build.outputs.runtime_version || jobs.publish.outputs.runtime_version }}
   workflow_dispatch:
 
 permissions:
@@ -85,6 +100,8 @@ jobs:
   build:
     name: APEX macOS installer (${{ matrix.arch }}, signed)
     needs: preflight
+    # A promotion publishes the accepted candidate's artifact; it builds nothing.
+    if: ${{ inputs.candidate_run_id == '' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
     outputs:
@@ -303,21 +320,112 @@ jobs:
         working-directory: apps/desktop
         run: ls -lh release/*.dmg release/*.zip release/*.blockmap release/latest-mac.yml 2>/dev/null || true
 
+      # hc-1204: the feed and blockmaps travel with the installers, so the publish job
+      # below, in this run or in a later promotion run, uploads exactly this set.
       - name: Upload installer artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: apexnodes-desktop-macos-${{ matrix.arch }}
-          # Installers ship through COS; this artifact is only the per-run handoff to the
-          # publish job and a short-lived diagnostic copy. The 90-day default kept ~52 GB
-          # and exhausted the account-wide artifact quota on 2026-09-23. 7 days was still
-          # too much: at ~3 builds a week, ~0.8 GB per three-platform set, it keeps ~2.4 GB,
-          # above the account's included storage, which is judged on GB-hours accumulated
-          # over the month. 3 days (Owner, 2026-09-25) keeps it under ~1 GB; re-running the
-          # publish job more than 3 days after the build needs a fresh build.
+          # Installers ship through COS; this artifact is only the handoff to the publish
+          # job (this run's, or a promotion run's) and a short-lived diagnostic copy. The
+          # 90-day default kept ~52 GB and exhausted the account-wide artifact quota on
+          # 2026-09-23. 7 days was still too much: at ~3 builds a week, ~0.8 GB per
+          # three-platform set, it keeps ~2.4 GB, above the account's included storage,
+          # which is judged on GB-hours accumulated over the month. 3 days (Owner,
+          # 2026-09-25) keeps it under ~1 GB; publishing more than 3 days after the build
+          # needs a fresh build.
           retention-days: 3
           path: |
             apps/desktop/release/*.dmg
             apps/desktop/release/*.zip
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest-mac.yml
+          if-no-files-found: error
+
+  # hc-1204: publish from the installer artifact on a Linux runner. Nothing here
+  # needs macOS, and hosted macOS runners are the ones that queue (up to 10
+  # minutes in recent releases) or are not acquired at all. It runs only when the
+  # release publishes or promotes; a plain candidate stops at its artifact.
+  publish:
+    name: Publish installer + updater feed (${{ matrix.arch }})
+    needs: [preflight, build]
+    if: ${{ !cancelled() && (inputs.publish || inputs.candidate_run_id != '') && needs.preflight.result == 'success' && (needs.build.result == 'success' || (inputs.candidate_run_id != '' && needs.build.result == 'skipped')) }}
+    runs-on: ubuntu-latest
+    # Each upload sizes its own budget (up to 90 minutes for one installer).
+    timeout-minutes: 200
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      source_sha: ${{ steps.release-identity.outputs.source_sha }}
+      version: ${{ steps.release-identity.outputs.version }}
+      runtime_commit: ${{ steps.release-identity.outputs.runtime_commit }}
+      runtime_version: ${{ steps.release-identity.outputs.runtime_version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: 22
+
+      - name: Record release identity
+        id: release-identity
+        working-directory: apps/desktop
+        run: |
+          echo "source_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          node -e "process.stdout.write('version=' + require('./package.json').version + '\\n')" >> "$GITHUB_OUTPUT"
+          node -e "const p=require('./bundled-runtime.json'); process.stdout.write('runtime_commit='+p.runtime_commit+'\\nruntime_version='+p.runtime_version+'\\n')" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the accepted candidate run
+        if: ${{ inputs.candidate_run_id != '' }}
+        working-directory: apps/desktop
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: node scripts/release-candidate-promotion.mjs candidate --run-id "$CANDIDATE_RUN_ID" --platform "mac-${{ matrix.arch }}"
+
+      - name: Download this run's installer artifact
+        if: ${{ inputs.candidate_run_id == '' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: apexnodes-desktop-macos-${{ matrix.arch }}
+          path: apps/desktop/release
+
+      - name: Download the accepted candidate's installer artifact
+        if: ${{ inputs.candidate_run_id != '' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: apexnodes-desktop-macos-${{ matrix.arch }}
+          path: apps/desktop/release
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify the release bundle against its updater feed
+        working-directory: apps/desktop
+        env:
+          RELEASE_VERSION: ${{ steps.release-identity.outputs.version }}
+        run: node scripts/release-candidate-promotion.mjs bundle --dir release --platform "mac-${{ matrix.arch }}" --expected-version "$RELEASE_VERSION"
+
+      - name: Setup publication Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      # Also runs in a promotion rehearsal (publish=false), which proves this
+      # runner's uploader toolchain without writing to COS.
+      - name: Install the COS uploader dependency
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet cos-python-sdk-v5==1.9.44
+          python3 -c "import qcloud_cos"
 
       # Installer + electron-updater feed, original electron-builder names, one
       # per-arch prefix per matrix job (see the header comment for why flat
@@ -333,7 +441,6 @@ jobs:
             echo "COS_SECRET_ID/COS_SECRET_KEY not set; skipping COS publish (artifact still uploaded)."
             exit 0
           fi
-          pip3 install --quiet --break-system-packages cos-python-sdk-v5==1.9.44
           PREFIX="desktop/mac-${{ matrix.arch }}"
           cd apps/desktop/release
           # latest-mac.yml must exist — without it the updater feed is dead.

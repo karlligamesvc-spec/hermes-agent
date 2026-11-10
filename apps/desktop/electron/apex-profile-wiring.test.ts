@@ -251,7 +251,9 @@ describe('pooled engines', () => {
       '...backend.env',
       '...desktopFeishuSpawnEnv()',
       '...desktopImEntrySpawnEnv()',
-      '...desktopPlatformToolSpawnEnv()'
+      '...desktopPlatformToolSpawnEnv()',
+      // hc-1207: both engines that serve Desktop chats can check a folder grant.
+      '...referenceGrants.spawnEnv()'
     ]) {
       assert.ok(pool.includes(required), `${required} missing from the pooled spawn env`)
     }
@@ -261,5 +263,13 @@ describe('pooled engines', () => {
       'hc-417 binding wins the FEISHU_* keys'
     )
     assert.equal(pool[0], '...process.env', 'the parent env comes first, so nothing after it is shadowed by it')
+  })
+
+  // hc-1207: the messaging gateway serves IM turns, which never take a Desktop folder grant: it gets no key.
+  test('the messaging gateway is not given the folder-grant key', () => {
+    const gateway = spawnEnv(body('async function startMessagingGateway('), 'env: {')
+
+    assert.ok(gateway.includes('...desktopPlatformToolSpawnEnv()'), 'parsed the gateway spawn env')
+    assert.ok(!gateway.some(entry => entry.includes('referenceGrants')), JSON.stringify(gateway))
   })
 })

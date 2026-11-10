@@ -387,14 +387,16 @@ const SEED_DISABLED_SKILLS = [
   'dogfood'
 ]
 
-// hc-645 activates only the search leg of the platform web gateway. Extraction
-// remains intentionally absent until hc-414 has a public Firecrawl endpoint.
+// hc-645 pins only the search leg of the platform web gateway. Extraction (hc-1214) is
+// deliberately not pinned: signed in, backend-env.ts sets FIRECRAWL_API_URL and the
+// runtime's autodetect routes web_extract to the platform's Firecrawl gateway. A pin
+// would send signed-out installs to Firecrawl's keyless cloud instead.
 const SEED_WEB_GATEWAY = Object.freeze({ 'web.search_backend': 'searxng' })
 
 function seedWebGatewayBlockYaml() {
   return (
-    '# ApexNodes authenticated web-search gateway (hc-645). Extraction is not\n' +
-    '# configured here; web_extract remains honestly unavailable.\n' +
+    '# ApexNodes authenticated web gateway (hc-645). Search is pinned here; page\n' +
+    '# reading is not: when signed in, APEX points it at the platform reader.\n' +
     'web:\n' +
     '  search_backend: searxng\n'
   )

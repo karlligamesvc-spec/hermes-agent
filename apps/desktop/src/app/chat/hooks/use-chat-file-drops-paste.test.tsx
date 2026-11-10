@@ -292,7 +292,7 @@ describe('⌘V of a video copied in Finder on the Start page', () => {
     expect(attachDropped).toHaveBeenCalledTimes(2)
     expect(attachDropped.mock.calls[0]).toEqual(attachDropped.mock.calls[1])
     expect(attachDropped.mock.calls[0]![0]).toEqual([
-      { isDirectory: true, path: '/work/客户 素材' },
+      { isDirectory: true, native: true, path: '/work/客户 素材' },
       { file: take.file, path: TAKE }
     ])
   })
@@ -333,12 +333,14 @@ describe('where the Start page leaves the paste alone', () => {
   it('a drawer over Start shows the chat composer: a paste on the page goes to it, as before', async () => {
     const attachDropped = await renderStart({ chatBarVisible: true })
     const folder: Copied = { file: new File([], 'b-roll'), folder: true, path: '/work/b-roll' }
+    const shot = copied('/Users/me/Desktop/截图.png', 'image/png')
 
-    await pasteOnPage(finderCopy([folder]))
+    await pasteOnPage(finderCopy([folder, shot]))
 
-    // The composer's own route: a folder becomes an inline @folder: ref, not an attachment.
-    expect(attachDropped).not.toHaveBeenCalled()
-    expect(attached()).toEqual([])
+    // The composer's own route (hc-1207: a folder is handed over as an attachment there too). Start's
+    // would have handed over the picture with it; the composer leaves pictures to its image paste.
+    expect(attachDropped.mock.calls).toEqual([[[{ isDirectory: true, native: true, path: '/work/b-roll' }]]])
+    expect(attached()).toEqual([{ kind: 'folder', path: '/work/b-roll' }])
   })
 
   it('a running turn: Start takes no paste, as it takes no drop', async () => {

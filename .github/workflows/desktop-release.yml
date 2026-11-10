@@ -17,20 +17,29 @@ name: Desktop synchronized release
 # Mac x64 (Intel) stopped after 0.17.63; desktop/mac-x64/ stays at 0.17.63 and is
 # never built, published or read back here.
 #
+# Promotion (hc-1204), the normal way to publish: first dispatch a candidate
+# (publish=false) and accept its installers, then dispatch publish=true with
+# candidate_run_id=<that run> on the same ref with no new commit. Nothing is built
+# again: the run checks the candidate (this exact commit, a desktop-release.yml
+# run that succeeded and built every platform this run publishes, artifacts still
+# kept for their 3 days) and publishes those accepted bytes. Without
+# candidate_run_id, publish=true builds and publishes in one run as before. A
+# promotion with publish=false is a rehearsal that stops before the first upload.
+#
 # One platform live, the other failed (windows=true, publish=true): there is no
 # cross-platform publish gate. Each platform uploads its binaries first and flips
 # its feed last. Cancel only while no feed has flipped; that leaves nothing a user
 # can see. Once one feed is live, let the run end, then run
 # `gh run rerun <run-id> --failed` on this same run, so the same commit and version
-# finish. Windows republishes from its build artifact (kept 3 days); Mac rebuilds
-# and notarizes the same commit. Never publish the missing platform from another
-# commit under this version. If it cannot be finished from this commit, it stays at
-# its previous version until the next fixed version, and this run stays red.
+# finish. Both platforms republish from their artifact (kept 3 days), so a rerun of
+# a failed publish job builds nothing. Never publish the missing platform from
+# another commit under this version. If it cannot be finished from this commit, it
+# stays at its previous version until the next fixed version, and this run stays red.
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the updater feeds this run builds to production COS
+        description: Publish to production COS (the candidate_run_id's installers, or this run's own build)
         required: false
         type: boolean
         default: false
@@ -39,24 +48,67 @@ on:
         required: false
         type: boolean
         default: false
+      candidate_run_id:
+        description: Accepted candidate run of this same commit to publish instead of rebuilding (empty builds from source)
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
+  # hc-1204: before either platform starts, prove the candidate covers every
+  # platform this run publishes. Checking per platform only would let Mac flip its
+  # feed and Windows then fail on a candidate built without windows=true.
+  candidate:
+    name: Verify the accepted candidate run
+    if: ${{ inputs.candidate_run_id != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: 22
+
+      - name: Assert the candidate built this commit for every platform this run publishes
+        working-directory: apps/desktop
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          RELEASE_WINDOWS: ${{ inputs.windows }}
+        run: |
+          set -euo pipefail
+          platforms=(--platform mac-arm64)
+          if [ "$RELEASE_WINDOWS" = "true" ]; then
+            platforms+=(--platform win-x64)
+          fi
+          node scripts/release-candidate-promotion.mjs candidate --run-id "$CANDIDATE_RUN_ID" "${platforms[@]}"
+
   macos:
     name: Build macOS arm64
+    needs: candidate
+    # Every release publishes Mac arm64; the gate is skipped unless this is a promotion.
+    if: ${{ !cancelled() && (needs.candidate.result == 'success' || needs.candidate.result == 'skipped') }}
     uses: ./.github/workflows/desktop-macos.yml
     with:
       publish: ${{ inputs.publish }}
+      candidate_run_id: ${{ inputs.candidate_run_id }}
     secrets: inherit
 
   windows:
     name: Build Windows x64
-    if: ${{ inputs.windows }}
+    needs: candidate
+    if: ${{ inputs.windows && !cancelled() && (needs.candidate.result == 'success' || needs.candidate.result == 'skipped') }}
     uses: ./.github/workflows/desktop-windows.yml
     with:
       publish: ${{ inputs.publish }}
+      candidate_run_id: ${{ inputs.candidate_run_id }}
     secrets: inherit
 
   verify-release-parity:
