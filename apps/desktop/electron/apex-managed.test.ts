@@ -789,6 +789,7 @@ test('ensureProductDefaultsYaml fills the missing product keys on a config the s
     'apex.generation_image_model',
     'apex.generation_video_model',
     'approvals.mode',
+    'browser.headed',
     'delegation.max_iterations',
     'display.language',
     'display.show_reasoning',
@@ -849,6 +850,8 @@ test('ensureProductDefaultsYaml never overrules a value the user set', () => {
     '  auto_prune: true\n' +
     'approvals:\n' +
     '  mode: smart\n' +
+    'browser:\n' +
+    '  headed: false\n' +
     'memory:\n' +
     '  nudge_interval: 3\n' +
     'skills:\n' +
@@ -879,6 +882,7 @@ test('ensureProductDefaultsYaml fills only the gaps in a partially-set config', 
     'apex.generation_image_model',
     'apex.generation_video_model',
     'approvals.mode',
+    'browser.headed',
     'delegation.max_iterations',
     'display.language',
     'memory.nudge_interval',
@@ -917,6 +921,7 @@ test('ensureProductDefaultsYaml is idempotent and leaves a fresh seed alone', ()
     'memory:\n  nudge_interval: 0\n' +
     'skills:\n  creation_nudge_interval: 0\n' +
     'proxy:\n  enabled: false\n' +
+    'browser:\n  headed: true\n' +
     "timezone: ''\n"
 
   assert.equal(ensureProductDefaultsYaml(seeded).changed, false)
@@ -1148,6 +1153,7 @@ test('ensureProductDefaultsYaml refuses to write a child under an inline mapping
     'apex.generation_image_model',
     'apex.generation_video_model',
     'approvals.mode',
+    'browser.headed',
     'delegation.max_iterations',
     'memory.nudge_interval',
     'proxy.enabled',

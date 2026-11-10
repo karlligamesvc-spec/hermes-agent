@@ -17,7 +17,10 @@ authors = [{ name = "Nous Research" }]
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
-  "filelock>=3.24.3,<5",  # Cross-process COS tool cache, pure Python. 4.x: upstream's lock and the 4.2.1 advisory fixes (hc-1203).
+  # Cross-process COS tool cache, pure Python. 4.2.1 fixes GHSA-v4x8-3wr5-3wq8
+  # and the rest of the <=4.2.0 advisory set; the only 4.0 break is the
+  # SoftReadWriteLock on-disk protocol, which the plain FileLock here never uses.
+  "filelock>=4.2.1,<5",
   # Core — every direct dep is exact-pinned to ==X.Y.Z (no ranges).
   # Rationale: ranges allow PyPI to ship a fresh version of a transitive
   # at any time without a code review on our side. Exact pins mean the
