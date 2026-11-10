@@ -527,34 +527,65 @@ function functionBody(name: string): string {
   return main.slice(start, main.indexOf('\n}\n', start)).replace(/^\s*\/\/.*$/gm, '')
 }
 
-test('main.ts refreshes through syncPlatformSkills on the JWT transport cloudLogin watches', () => {
-  const body = functionBody('refreshPlatformSkillsFromPlatform')
+/** The argument object main.ts passes createPlatformSkillsRefresh (hc-1205 moved the wiring there). */
+function refreshWiring(): string {
+  const start = main.indexOf('const platformSkills = createPlatformSkillsRefresh({')
 
-  assert.match(body, /await syncPlatformSkills\(\{\n\s+\.\.\.platformSkillsHomes\(\),/)
-  assert.match(body, /\n\s+fetchJson: apexAuthGetJson,\n/)
-  assert.match(body, /\n\s+token: \(\) => resolveManagedConfig\(\)\.accessToken\n/)
-  assert.match(body, /\n\s+stored: readPlatformSkillsState\(\),\n/)
-  assert.match(body, /if \(result\.newStored\) \{writePlatformSkillsState\(result\.newStored\)\}/)
+  assert.notEqual(start, -1, 'main.ts no longer creates the platform skills refresh')
+
+  return main.slice(start, main.indexOf('\n})\n', start))
+}
+
+test('main.ts refreshes through the JWT transport cloudLogin watches, with the stored state and the JWT getter', () => {
+  const wiring = refreshWiring()
+
+  assert.match(wiring, /[ ,]fetchJson: apexAuthGetJson,/)
+  assert.match(wiring, /[ ,]token: \(\) => resolveManagedConfig\(\)\.accessToken,/)
+  assert.match(wiring, /[ ,]statePath: DESKTOP_PLATFORM_SKILLS_PATH,/)
+  assert.match(
+    main,
+    /\nconst DESKTOP_PLATFORM_SKILLS_PATH = path\.join\(app\.getPath\('userData'\), 'apex-platform-skills\.json'\)\n/
+  )
+  assert.ok(main.includes('\nconst refreshPlatformSkillsFromPlatform = platformSkills.refresh\n'))
   assert.equal(main.match(/void refreshPlatformSkillsFromPlatform\('(?:boot|sign-in)'\)/g)?.length, 3)
   // apexAuthGetJson is a GET on apexAuthBodylessJson, one of the transports hc-1073 counts.
   assert.match(functionBody('apexAuthGetJson'), /return apexAuthBodylessJson\('GET', url, opts\)/)
 })
 
 test('main.ts gives the refresh and the M2 entry the same homes, and preload exposes the entry', () => {
-  assert.equal(main.match(/\.\.\.platformSkillsHomes\(\)/g)?.length, 2)
-  // The homes are hc-1080's: the root plus every profile on the managed relay.
-  assert.match(
-    functionBody('platformSkillsHomes'),
-    /\{\n {2}return \{ homes: apexConfigHomes\(\), skillsRoot: path\.join\(HERMES_HOME, 'skills'\) \}$/
-  )
-  assert.ok(
-    main.includes(
-      'registerProfileSkillsSync(ipcMain, () => ({ ...platformSkillsHomes(), env: process.env, log: msg => rememberLog(msg), manifestHash: readPlatformSkillsState().manifestHash }))'
-    )
-  )
+  const wiring = refreshWiring()
+
+  // The homes are hc-1080's: the root plus every profile on the managed relay, read when used.
+  assert.match(wiring, /[ ,]homes: \(\) => apexConfigHomes\(\),/)
+  assert.match(wiring, /[ ,]skillsRoot: path\.join\(HERMES_HOME, 'skills'\),/)
+  // The M2 entry reads the same refresh's homes and stored manifest.
+  assert.ok(main.includes('registerProfileSkillsSync(ipcMain, platformSkills.fillArgs)'))
   assert.ok(
     preload.includes("syncApexProfileSkills: profile => ipcRenderer.invoke('hermes:apex:syncProfileSkills', profile),")
   )
   // No second writer of the platform category is left in main.ts.
-  assert.equal(/applyPlatformSkills|removePlatformSkills/.test(main), false)
+  assert.equal(/applyPlatformSkills|removePlatformSkills|installPlatformSkills|syncPlatformSkills/.test(main), false)
+})
+
+test('main.ts feeds the running check: window focus, the quit teardown, and what runs in windows, engines and the IM gateway', () => {
+  const wiring = refreshWiring()
+
+  assert.match(wiring, /[ ,]onFocus: listener => app\.on\('browser-window-focus', listener\),/)
+  assert.match(wiring, /[ ,]signal: localBackendLifecycle\.signal,/)
+  // Main's own environment: registerOpenfilmStudio writes which Desktop asks into it at load (hc-1201), before
+  // the boot refresh and any later check reads it.
+  assert.match(wiring, /[ ,]env: process\.env,/)
+  assert.match(main, /\nregisterOpenfilmStudio\(openfilmStudio, ipcMain, app\)\n/)
+  assert.match(wiring, /[ ,]windowTurns: \(\) => mergeActiveWork\(activeWorkByWebContents\.values\(\)\)\.count,/)
+  assert.match(wiring, /[ ,]engines: \(\) => localEngines\(\), probe: engine => probeEngineIdle\(engine\),/)
+  assert.match(
+    wiring,
+    /[ ,]gatewayState: \(\) => \(messagingGatewayChildAlive\(\) \? gatewayStatePath\(HERMES_HOME, messagingGatewayRuntime\.profile\) : null\)/
+  )
+  // The engines and the probe are the quit confirmation's own (hc-1104), not a second list.
+  assert.match(main, /\n {2}engines: localEngines, probe: probeEngineIdle,\n/)
+  assert.match(
+    main,
+    /\nconst probeEngineIdle = engine => fetchJson\(`\$\{engine\.baseUrl\}\$\{ENGINE_IDLE_PATH\}`, engine\.token, /
+  )
 })
