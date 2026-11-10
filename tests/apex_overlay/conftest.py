@@ -91,6 +91,8 @@ _SEAM_MODULES = (
     "browser_window",
     # hc-1179 hand a browser sign-in / human check to the user (Desktop product mode).
     "browser_login_prompt",
+    # hc-1207 a folder handed over in Desktop is granted to that one session (folder.attach).
+    "folder_grants",
 )
 
 

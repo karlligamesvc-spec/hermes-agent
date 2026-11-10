@@ -235,7 +235,7 @@ export function useSessionTileActions({ requestGateway, runtimeId, scope, stored
           continue
         }
 
-        if (attachment.kind === 'image' || attachment.kind === 'file') {
+        if (attachment.kind === 'image' || attachment.kind === 'file' || attachment.kind === 'folder') {
           const next = await uploadComposerAttachment(attachment, {
             backendCwd: readState()?.cwd,
             remote,

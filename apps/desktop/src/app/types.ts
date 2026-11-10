@@ -28,6 +28,19 @@ export interface ImageDetachResponse {
   count?: number
 }
 
+// folder.attach (hc-1207): a handed-over folder granted to the session, or why not.
+export interface FolderAttachResponse {
+  attached?: boolean
+  message?: string
+  // Gateway-side folder, symlinks resolved.
+  path?: string
+  // Stable refusal code (src/i18n/folder-grant.ts words it).
+  reason?: string
+  ref_path?: string
+  // @folder: ref that resolves for this session.
+  ref_text?: string
+}
+
 export interface FileAttachResponse {
   attached?: boolean
   message?: string

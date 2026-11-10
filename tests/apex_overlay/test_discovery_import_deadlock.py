@@ -342,6 +342,8 @@ def test_register_imports_no_gateway_module_and_seams_land_before_the_startup_lo
         "tools.cronjob_job_args",
         # hc-1192 session_title: armed for the turn-start entry's import of the title generator.
         "agent.title_generator",
+        # hc-1207 folder_grants: the reference guard and the Desktop gateway, armed for their imports.
+        "agent.context_references", "tui_gateway.server",
     }, post_import.pending_modules()
 
     from gateway.run import GatewayRunner          # what run_gateway() does
@@ -351,7 +353,7 @@ def test_register_imports_no_gateway_module_and_seams_land_before_the_startup_lo
     # generator; those patches wait for the tool registry's, the cron ticker's and the first turn's imports.
     assert set(post_import.pending_modules()) <= {
         "tools.vision_tools", "cron.scheduler", "tools.cronjob_tools", "tools.cronjob_job_args",
-        "agent.title_generator"}
+        "agent.title_generator", "agent.context_references", "tui_gateway.server"}
 
     # The real start-up loop (GatewayRunner._start_prefilter_platforms) on a bare runner: Feishu must
     # be scheduled in the background instead of being created on the start-up stack.

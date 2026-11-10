@@ -161,7 +161,7 @@ describe('ChatView render isolation', () => {
       }})
       if (state === 'ready') {
         expect(onAttachDroppedItems).toHaveBeenCalledExactlyOnceWith([
-          {isDirectory: true, path: '/work/客户 素材'}, {file: video, path: '/work/片段.mp4'}
+          {isDirectory: true, native: true, path: '/work/客户 素材'}, {file: video, path: '/work/片段.mp4'}
         ])
       } else {
         expect(onAttachDroppedItems).not.toHaveBeenCalled()

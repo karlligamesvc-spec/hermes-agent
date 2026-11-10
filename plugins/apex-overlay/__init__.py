@@ -128,6 +128,13 @@ _TOOL_SEAMS = (
         "persistent profile, so a sign-in in it is lost next turn; and the "
         "apex.browser_hide_automation switch no longer reaches the Chromium launch args.",
     ),
+    (
+        "folder_grants",
+        "apex-overlay: hc-1207 folder grants seam did not fully apply (see prior "
+        "error). A folder handed over in Desktop (添加文件夹, a Finder drop or paste) "
+        "that is outside the chat's working directory reaches the agent only as "
+        "\"path is outside the allowed workspace\".",
+    ),
 )
 
 

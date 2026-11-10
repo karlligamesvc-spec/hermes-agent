@@ -35,6 +35,7 @@ _STATIC_PROVIDER_ENV_BLOCKLIST = frozenset({
     "SIGNAL_HOME_CHANNEL_NAME", "SIGNAL_IGNORE_STORIES",
     "EMAIL_ADDRESS", "EMAIL_PASSWORD", "EMAIL_IMAP_HOST", "EMAIL_SMTP_HOST",
     "EMAIL_HOME_ADDRESS", "EMAIL_HOME_ADDRESS_NAME", "HERMES_DASHBOARD_SESSION_TOKEN",
+    "HERMES_DESKTOP_REFERENCE_GRANT_KEY",  # Desktop's folder-grant key (apex_overlay.folder_grants)
     "GATEWAY_ALLOWED_USERS", "GH_TOKEN", "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY_PATH",
     "GITHUB_APP_INSTALLATION_ID", "MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET",
     "DAYTONA_API_KEY", "GATEWAY_RELAY_ID", "GATEWAY_RELAY_SECRET",
@@ -383,6 +384,8 @@ _ALWAYS_STRIP_KEYS: frozenset[str] = frozenset({
     # enumerated here to stay stripped on the inherit_credentials=True path.
     "GATEWAY_RELAY_ID", "GATEWAY_RELAY_SECRET", "GATEWAY_RELAY_DELIVERY_KEY",
     "EMAIL_PASSWORD", "HERMES_DASHBOARD_SESSION_TOKEN",
+    # Desktop's per-launch key for folder grants (apex_overlay.folder_grants): a holder could sign one.
+    "HERMES_DESKTOP_REFERENCE_GRANT_KEY",
     # Dashboard auth: the basic-auth password and session-signing secret, the OIDC client
     # secret and the drain bearer. They let a holder mint or forge dashboard sessions, and no
     # child (credentialed CLIs included) consumes them.

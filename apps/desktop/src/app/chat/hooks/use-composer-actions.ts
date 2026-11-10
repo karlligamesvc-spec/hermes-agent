@@ -87,6 +87,9 @@ export interface DroppedFile {
   /** True if the entry is a directory. Set by in-app drags, and by OS drops via
    * DataTransferItem.webkitGetAsEntry(). */
   isDirectory?: boolean
+  /** An OS drop or paste with no File kept (a folder): its path came from a real File through
+   * preload, so it is handed over like a dropped file, not an in-app ref. */
+  native?: boolean
   /** First line number for in-app line-ref drags (source view gutter). */
   line?: number
   /** Last line number for line-range drags (`line..lineEnd` inclusive). */
@@ -151,9 +154,11 @@ export function extractDroppedFiles(transfer: DataTransfer): DroppedFile[] {
 
   // Add a native OS-drop entry. A dropped directory has no byte content to
   // upload, so it's emitted as a path-only entry with `isDirectory: true` —
-  // that routes it to a `@folder:` ref / folder attachment (like the folder
-  // picker) instead of the file-upload pipeline, which can't stage a directory
-  // (the gateway can't read its bytes and there's no data_url to send).
+  // that routes it to a folder attachment (like the folder picker) instead of
+  // the file-upload pipeline, which can't stage a directory (the gateway can't
+  // read its bytes and there's no data_url to send). `native` keeps it apart
+  // from an in-app drag: like the picker's folder, it is granted to the
+  // session at send when it is outside the working directory (hc-1207).
   const pushNativeEntry = (file: File, isDirectory: boolean) => {
     if (seenFiles.has(file)) {
       return
@@ -180,7 +185,7 @@ export function extractDroppedFiles(transfer: DataTransfer): DroppedFile[] {
 
     if (isDirectory) {
       if (path) {
-        result.push({ isDirectory: true, path })
+        result.push({ isDirectory: true, native: true, path })
       }
 
       return
@@ -244,7 +249,8 @@ export function extractDroppedFiles(transfer: DataTransfer): DroppedFile[] {
 
 /**
  * Split dropped entries by origin. OS/Finder drops carry a native `File`
- * handle; in-app drags (project tree, gutter line refs) are path-only.
+ * handle (a dropped folder is marked `native` instead); in-app drags (project
+ * tree, gutter line refs) are path-only.
  *
  * The distinction is load-bearing: an in-app path is workspace-relative and
  * resolves on the gateway as-is, so it stays an inline `@file:`/`@line:` ref.
@@ -261,7 +267,7 @@ export function partitionDroppedFiles(candidates: DroppedFile[]): {
   const inAppRefs: DroppedFile[] = []
 
   for (const candidate of candidates) {
-    if (candidate.file) {
+    if (candidate.file || candidate.native) {
       osDrops.push(candidate)
     } else {
       inAppRefs.push(candidate)
