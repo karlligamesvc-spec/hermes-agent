@@ -846,6 +846,9 @@ def resolve_skill_config_values(config_vars: list[dict[str, Any]]) -> dict[str, 
 SKILL_PROMPT_DESC_LIMIT = 60
 _LAST_WHITESPACE_RE = re.compile(r"\s\S*$")
 _CLIP_TRAIL_RE = re.compile(r"[\s.,;:\-\u2013\u2014(/]+$")
+# ApexNodes hc-1203: CJK ideographs, kana, hangul and fullwidth forms. Chinese puts no space between
+# words, and a line may break next to any of these (UAX #14), so a cut beside one shows no half word.
+_CJK_BREAK_RE = re.compile(r"[\u2e80-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]")
 
 
 def _normalize_skill_description(frontmatter: dict[str, Any]) -> str:
@@ -860,9 +863,21 @@ def clip_skill_description(desc: str) -> str:
         return desc
     head = desc[:SKILL_PROMPT_DESC_LIMIT - 2]  # one char past the budget: whitespace there means the last word is whole
     boundary = _LAST_WHITESPACE_RE.search(head)  # any whitespace (tab, NBSP, ...) separates words, not just " "
-    if not boundary or boundary.start() == 0:  # a single word longer than the budget has no boundary to cut at
+    # ApexNodes hc-1203: a CJK character is a boundary too. Without it a Chinese description falls back to
+    # its last ASCII space (the one before an English term) and loses most of the budget, and the triggers
+    # APEX skills keep in their first 57 chars (hc-1165) never reach the model.
+    cut = max(boundary.start() if boundary else 0, _last_cjk_break(head))
+    if cut == 0:  # a single word longer than the budget has no boundary to cut at
         return desc[:SKILL_PROMPT_DESC_LIMIT - 3] + "..."
-    return _CLIP_TRAIL_RE.sub("", head[:boundary.start()]) + "..."
+    return _CLIP_TRAIL_RE.sub("", head[:cut]) + "..."
+
+
+def _last_cjk_break(head: str) -> int:
+    """ApexNodes hc-1203: the last cut ``head[:cut]`` that ends or stops next to a CJK character (0: none)."""
+    for cut in range(len(head) - 1, 0, -1):
+        if _CJK_BREAK_RE.match(head[cut - 1]) or _CJK_BREAK_RE.match(head[cut]):
+            return cut
+    return 0
 
 
 def extract_skill_description(frontmatter: dict[str, Any]) -> str:
