@@ -169,3 +169,10 @@ def test_the_parameters_are_the_ones_short_video_studio_names():
     assert set(jianying_draft.SCHEMA["parameters"]["properties"]) == {
         "timeline", "name", "subtitles", "subtitle_position", "narration", "music", "music_volume", "dissolve_after"}
     assert jianying_draft.SCHEMA["parameters"]["required"] == ["timeline"]
+
+
+def test_the_command_writes_nothing_with_the_switch_off(monkeypatch, tmp_path, capsys):
+    monkeypatch.delenv(jianying_draft.SWITCH_ENV, raising=False)
+    monkeypatch.setattr(jianying_draft, "handle", lambda args: pytest.fail("wrote with the switch off"))
+    assert jianying_draft.main(["write", str(tmp_path / "t.json")]) == 1
+    assert json.loads(capsys.readouterr().out) == {"error": jianying_draft.SWITCHED_OFF}

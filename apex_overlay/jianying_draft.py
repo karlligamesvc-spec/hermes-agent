@@ -85,6 +85,7 @@ NOT_TAKEN_NOTE = (
     "剪映开着，但它没有认出这份草稿（{why}）。照实告诉用户这份草稿可能打不开，先交成片；不要说草稿已经好了。"
 )
 CLOSED_NOTE = "剪映现在没开，打开后草稿会出现在首页。"
+SWITCHED_OFF = "剪映草稿在这台电脑上没有打开（desktop_features.jianying 关着）。"
 
 
 def switch_on() -> bool:
@@ -221,7 +222,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(json.dumps(status(), ensure_ascii=False, indent=1))
         return 0
     args = {key: value for key, value in vars(options).items() if key != "command" and value is not None}
-    output = json.loads(handle(args))
+    # Off means nothing here too: the command is the tool's own path, for tests on a real 剪映.
+    output = json.loads(handle(args)) if switch_on() else {"error": SWITCHED_OFF}
     print(json.dumps(output, ensure_ascii=False, indent=1))
     return 1 if "error" in output else 0
 
