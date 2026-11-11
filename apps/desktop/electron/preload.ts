@@ -436,7 +436,11 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   openfilmStudio: {
     status: () => ipcRenderer.invoke('hermes:openfilmStudio:status'),
     open: folder => ipcRenderer.invoke('hermes:openfilmStudio:open', folder),
-    prefetch: () => ipcRenderer.invoke('hermes:openfilmStudio:prefetch')
+    prefetch: manual => ipcRenderer.invoke('hermes:openfilmStudio:prefetch', manual === true),
+    // hc-1201: the titlebar's 剪辑 — the engine's first-run check, the install's progress, the last project.
+    check: () => ipcRenderer.invoke('hermes:openfilmStudio:check'),
+    progress: () => ipcRenderer.invoke('hermes:openfilmStudio:progress'),
+    lastProject: () => ipcRenderer.invoke('hermes:openfilmStudio:lastProject')
   },
   // Platform client-config sync — informational read of the cached versioned
   // config (no network). Application happens in the MAIN process pre-gateway
@@ -543,11 +547,19 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   saveClipboardImage: () => ipcRenderer.invoke('hermes:saveClipboardImage'),
   getPathForFile: file => {
     try {
-      return webUtils.getPathForFile(file) || ''
+      const filePath = webUtils.getPathForFile(file) || ''
+
+      // Only a real dropped or pasted File has a path: main may sign it as a folder grant (apex-reference-grants.ts).
+      if (filePath) {
+        ipcRenderer.send('hermes:noteHandedOverPaths', [filePath])
+      }
+
+      return filePath
     } catch {
       return ''
     }
   },
+  folderGrants: paths => ipcRenderer.invoke('hermes:folderGrants', paths),
   normalizePreviewTarget: (target, baseDir) => ipcRenderer.invoke('hermes:normalizePreviewTarget', target, baseDir),
   watchPreviewFile: url => ipcRenderer.invoke('hermes:watchPreviewFile', url),
   watchDirectory: dir => ipcRenderer.invoke('hermes:watchDirectory', dir),

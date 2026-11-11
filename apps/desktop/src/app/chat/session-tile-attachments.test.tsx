@@ -319,4 +319,29 @@ describe('session tile attachment occurrence ownership', () => {
 
     expect(scope.attachments.$attachments.get()).toEqual([])
   })
+
+  // hc-1207: a tile's handed-over folder is granted to the tile's session before its prompt.
+  it('grants a handed-over folder to the tile session before the prompt is submitted', async () => {
+    const scope = createScope()
+    const folder = '/Users/alice/Downloads/素材'
+    const folderGrants = vi.fn(async () => ({ [folder]: 'signed-by-main' }))
+
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { folderGrants } })
+    requestGateway.mockImplementation(async (method: string) =>
+      method === 'folder.attach' ? { attached: true, ref_text: `@folder:${folder}` } : {}
+    )
+    scope.attachments.add({ id: `folder:${folder}`, kind: 'folder', label: '素材', path: folder, refText: `@folder:${folder}` })
+
+    const { result } = renderHook(() =>
+      useSessionTileActions({ requestGateway, runtimeId: RUNTIME_ID, scope, storedSessionId: STORED_ID })
+    )
+
+    await act(async () => {
+      await expect(result.current.submitText('看看')).resolves.toBe(true)
+    })
+
+    expect(folderGrants).toHaveBeenCalledExactlyOnceWith([folder])
+    expect(requestGateway.mock.calls.map(call => call[0])).toEqual(['folder.attach', 'prompt.submit'])
+    expect(requestGateway.mock.calls[0]![1]).toEqual({ grant: 'signed-by-main', path: folder, session_id: RUNTIME_ID })
+  })
 })

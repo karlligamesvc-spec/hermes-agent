@@ -5,7 +5,7 @@ which writes through its own stdout handler (Desktop copies that into ``desktop.
 propagates to the Hermes log files. The url carries ``access_key`` and ``ticket``.
 
 The SDK is the ``feishu`` extra, which the test environment does not install, so the
-subprocess tests build the ``Lark`` logger the way ``lark_oapi/core/log.py`` (1.6.8) does. The
+subprocess tests build the ``Lark`` logger the way ``lark_oapi/core/log.py`` (1.6.8, unchanged in 1.7.5) does. The
 last test runs the real SDK where it is installed (the Desktop bundle ships it since hc-1170).
 """
 
@@ -119,13 +119,17 @@ def test_records_without_credentials_keep_their_arguments():
 
 
 def test_the_feishu_extra_still_pins_the_sdk_this_was_checked_against():
-    """lark-oapi 1.6.8: logger "Lark" with its own stdout handler; the ws client logs the url.
+    """lark-oapi 1.7.5: logger "Lark" with its own stdout handler; the ws client logs the url.
 
     A version bump has to re-check those three facts (and the credential names) before
-    this pin is moved.
+    this pin is moved. Rechecked for 1.7.5 (hc-1203, upstream v0.23.0's pin): lark_oapi/core/log.py
+    still builds ``logging.getLogger("Lark")`` with a ``StreamHandler(sys.stdout)``;
+    lark_oapi/ws/client.py still logs ``connected to {url}`` / ``disconnected to {url}`` at INFO;
+    the url is the endpoint the server returns, its query (``access_key``, ``ticket``) passed through
+    unchanged (``build_connection_url`` replaces only the authority). The real-SDK test below passes.
     """
     pyproject = (REPO / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'feishu = ["lark-oapi==1.6.8"' in pyproject
+    assert 'feishu = ["lark-oapi==1.7.5"' in pyproject
 
 
 def test_plugin_register_applies_the_seam():

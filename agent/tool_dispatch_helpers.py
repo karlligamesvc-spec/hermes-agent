@@ -207,6 +207,9 @@ def _batch_admission(tool_call, execution_cwd: Optional[Path]) -> tuple[str, lis
     name, args = _peel_bridge_call(tool_name, function_args)
     if name in _NEVER_PARALLEL_TOOLS:
         return None
+    # ApexNodes hc-1068: a same-tool long tool (generate_video) is admitted before the extended-deadline
+    # barrier below. Upstream's own deadline change folds that barrier into the line above; hc-1203's merge
+    # took it and every clip ran one after another again (tests/agent/test_parallel_video_generation.py).
     if name in _PARALLEL_SAME_TOOL_LIMITS:
         return name, [], False
     if _requires_extended_tool_deadline(name):

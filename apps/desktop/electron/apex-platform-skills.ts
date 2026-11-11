@@ -249,6 +249,13 @@ function platformSkillsCategoryDir(skillsRoot) {
   return path.join(skillsRoot, PLATFORM_SKILLS_CATEGORY)
 }
 
+/** Per home, beside `skills/` (same volume, never indexed): where a category is built before it moves in. */
+const PLATFORM_SKILLS_STAGING = '.apexnodes-skill-staging'
+
+function platformSkillsStagingDir(skillsRoot) {
+  return path.join(path.dirname(path.resolve(skillsRoot)), PLATFORM_SKILLS_STAGING)
+}
+
 /**
  * Fetch + parse the platform skill manifest. NEVER throws — returns null on any
  * failure (offline, 401 expired JWT, garbage body) so the boot / post-sign-in
@@ -262,17 +269,27 @@ function platformSkillsCategoryDir(skillsRoot) {
  * @param {string} opts.token login JWT (Bearer)
  * @param {(url: string, options?: object) => Promise<any>} opts.fetchJson
  * @param {string} [opts.knownHash] currently installed manifest hash (skip hint)
+ * @param {Record<string, string>} [opts.headers] which Desktop asks (hc-1201, apex-desktop-client.ts): the
+ *   film-edit skill comes to a plan only with a build that says it is new enough
  * @param {number} [opts.timeoutMs]
  * @param {(msg: string) => void} [opts.log]
  * @returns {Promise<null | ReturnType<typeof parsePlatformSkillsResponse>>}
  */
-async function fetchPlatformSkills({ apiBase, token, fetchJson, knownHash, timeoutMs = 12_000, log = () => {} }: any) {
+async function fetchPlatformSkills({
+  apiBase,
+  token,
+  fetchJson,
+  knownHash,
+  headers = {},
+  timeoutMs = 12_000,
+  log = () => {}
+}: any) {
   if (!apiBase || !token || typeof fetchJson !== 'function') {return null}
   const url = platformSkillsUrl(apiBase, knownHash)
   let body
 
   try {
-    body = await fetchJson(url, { bearer: token, timeoutMs })
+    body = await fetchJson(url, { bearer: token, headers, timeoutMs })
   } catch (err: any) {
     // 401 (expired JWT), network error, HTML gateway page, timeout → "nothing
     // new"; the installed set stands.
@@ -300,6 +317,12 @@ async function fetchPlatformSkills({ apiBase, token, fetchJson, knownHash, timeo
  * resolved target confirmed inside the category dir (defense in depth) before
  * writing; unsafe entries are skipped and reported, never written.
  *
+ * hc-1205: the new category is written in a staging dir beside `skills/` (the
+ * runtime indexes every SKILL.md under skills/) and moved in with one rename,
+ * the way hc-1081 copies a profile. An engine that reads skills meanwhile finds
+ * the previous set, not a half-written one, and a write that fails midway
+ * leaves the previous set installed.
+ *
  * @param {object} opts
  * @param {string} opts.skillsRoot HERMES_HOME/skills
  * @param {{ name: string, files: { path: string, content: string }[] }[]} opts.skills
@@ -308,8 +331,9 @@ async function fetchPlatformSkills({ apiBase, token, fetchJson, knownHash, timeo
  */
 function applyPlatformSkills({ skillsRoot, skills, log = () => {} }: any) {
   const categoryDir = platformSkillsCategoryDir(skillsRoot)
-  const categoryResolved = path.resolve(categoryDir)
-  fs.rmSync(categoryDir, { force: true, recursive: true })
+  const staging = path.resolve(platformSkillsStagingDir(skillsRoot))
+  fs.rmSync(staging, { force: true, recursive: true })
+  fs.mkdirSync(staging, { recursive: true })
 
   const installed = []
   const skippedUnsafe = []
@@ -323,7 +347,7 @@ function applyPlatformSkills({ skillsRoot, skills, log = () => {} }: any) {
       continue
     }
 
-    const skillDir = path.join(categoryResolved, name)
+    const skillDir = path.join(staging, name)
     let wroteAny = false
 
     for (const file of Array.isArray(skill.files) ? skill.files : []) {
@@ -338,8 +362,8 @@ function applyPlatformSkills({ skillsRoot, skills, log = () => {} }: any) {
       const abs = path.resolve(skillDir, relPath)
 
       // Belt-and-braces containment: even with the per-segment guard, refuse
-      // anything that resolves outside the category dir.
-      if (abs !== categoryResolved && !abs.startsWith(categoryResolved + path.sep)) {
+      // anything that resolves outside the category being built.
+      if (abs !== staging && !abs.startsWith(staging + path.sep)) {
         skippedUnsafe.push(`${name}/${relPath}`)
 
         continue
@@ -353,6 +377,9 @@ function applyPlatformSkills({ skillsRoot, skills, log = () => {} }: any) {
     if (wroteAny) {installed.push(name)}
   }
 
+  fs.rmSync(categoryDir, { force: true, recursive: true })
+  fs.mkdirSync(path.dirname(categoryDir), { recursive: true })
+  fs.renameSync(staging, categoryDir)
   log(`[platform-skills] installed ${installed.length} skill(s) under ${categoryDir}`)
 
   return { categoryDir, installed, skippedUnsafe }
@@ -389,7 +416,9 @@ export {
   parsePlatformSkillsResponse,
   PLATFORM_SKILLS_CATEGORY,
   PLATFORM_SKILLS_PATH,
+  PLATFORM_SKILLS_STAGING,
   platformSkillsCategoryDir,
+  platformSkillsStagingDir,
   platformSkillsUrl,
   removePlatformSkills,
   shouldApplyManifest

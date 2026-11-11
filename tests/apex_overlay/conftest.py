@@ -87,6 +87,12 @@ _SEAM_MODULES = (
     "cron_desktop_delivery",
     # hc-1192 session titles in the interface language; a remote custom route titles at turn start.
     "session_title",
+    # hc-1179 the Desktop browser window: a persistent profile + off-by-default hide-automation arg.
+    "browser_window",
+    # hc-1179 hand a browser sign-in / human check to the user (Desktop product mode).
+    "browser_login_prompt",
+    # hc-1207 a folder handed over in Desktop is granted to that one session (folder.attach).
+    "folder_grants",
 )
 
 

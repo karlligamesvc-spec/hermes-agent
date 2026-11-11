@@ -28,6 +28,10 @@ const POSIX_SANE_PATH_ENTRIES = Object.freeze([
 // is purely for the Python libs it shells into.
 const HF_MIRROR_ENDPOINT = 'https://hf-mirror.com'
 const APEX_SEARXNG_GATEWAY_URL = 'https://api.apex-nodes.com/api/v1/search/searxng'
+// hc-1214: the platform's Firecrawl-compatible extract gateway. Only the host: firecrawl-py
+// joins "/v2/scrape" onto FIRECRAWL_API_URL with urljoin, which drops any path, so the
+// gateway answers POST /v2/scrape at the root of api.apex-nodes.com.
+const APEX_FIRECRAWL_GATEWAY_URL = 'https://api.apex-nodes.com'
 
 function delimiterForPlatform(platform = process.platform) {
   return platform === 'win32' ? ';' : ':'
@@ -252,30 +256,56 @@ function buildDesktopBackendEnv({
   const existingHfEndpoint = String(currentEnv?.HF_ENDPOINT || '').trim()
   env.HF_ENDPOINT = existingHfEndpoint || HF_MIRROR_ENDPOINT
 
-  // hc-645: the runtime registers web_search only when the configured provider
-  // is actually usable. The ApexNodes SearXNG gateway is authenticated, so URL
-  // and the already-provisioned desktop relay key must travel together. A
-  // parent-env URL/key remains authoritative for staging and self-hosted users;
-  // signed-out installs receive neither platform value and stay honestly
-  // unavailable instead of advertising a tool that will return 401.
-  const existingSearchUrl = String(currentEnv?.SEARXNG_URL || '').trim()
-  const existingSearchKey = String(currentEnv?.SEARXNG_API_KEY || '').trim()
-  const managedSearchKey = String(webSearchApiKey || '').trim()
-
-  if (existingSearchUrl) {
-    env.SEARXNG_URL = existingSearchUrl
-
-    if (existingSearchKey) {env.SEARXNG_API_KEY = existingSearchKey}
-  } else if (managedSearchKey) {
-    env.SEARXNG_URL = APEX_SEARXNG_GATEWAY_URL
-    env.SEARXNG_API_KEY = managedSearchKey
-  }
+  Object.assign(env, platformWebGatewayEnv(currentEnv, String(webSearchApiKey || '').trim()))
 
   return Object.assign(env, agentToolEnv({ hermesHome, venvRoot, currentEnv, platform, pathModule }))
 }
 
+/**
+ * The platform's authenticated web gateways a signed-in account brings to an engine: search
+ * (hc-645) and page reading (hc-1214), each a URL that travels with the managed relay key.
+ * Signed out (no key), neither is set, and the tools stay honestly unavailable instead of
+ * advertising a gateway that answers 401. A value the parent env already has is the user's
+ * (staging, self-hosted, their own vendor key) and is passed through explicitly, because a
+ * value set here wins over inheritance.
+ */
+function platformWebGatewayEnv(currentEnv: any, managedKey: string) {
+  const env: any = {}
+  // hc-645: the runtime registers web_search only when the configured provider is usable.
+  const ownSearchUrl = String(currentEnv?.SEARXNG_URL || '').trim()
+  const ownSearchKey = String(currentEnv?.SEARXNG_API_KEY || '').trim()
+
+  if (ownSearchUrl) {
+    env.SEARXNG_URL = ownSearchUrl
+
+    if (ownSearchKey) {env.SEARXNG_API_KEY = ownSearchKey}
+  } else if (managedKey) {
+    env.SEARXNG_URL = APEX_SEARXNG_GATEWAY_URL
+    env.SEARXNG_API_KEY = managedKey
+  }
+
+  // hc-1214: with FIRECRAWL_API_URL set, the runtime's backend autodetect picks firecrawl for
+  // web_extract (search stays pinned to searxng), so config.yaml needs no extract pin; a pin
+  // would send signed-out installs to Firecrawl's keyless cloud. The user's own Firecrawl, a
+  // self-hosted URL or a Firecrawl cloud key, is never pointed at the platform.
+  const ownExtractUrl = String(currentEnv?.FIRECRAWL_API_URL || '').trim()
+  const ownExtractKey = String(currentEnv?.FIRECRAWL_API_KEY || '').trim()
+
+  if (ownExtractUrl || ownExtractKey) {
+    if (ownExtractUrl) {env.FIRECRAWL_API_URL = ownExtractUrl}
+
+    if (ownExtractKey) {env.FIRECRAWL_API_KEY = ownExtractKey}
+  } else if (managedKey) {
+    env.FIRECRAWL_API_URL = APEX_FIRECRAWL_GATEWAY_URL
+    env.FIRECRAWL_API_KEY = managedKey
+  }
+
+  return env
+}
+
 export {
   agentUvDirs,
+  APEX_FIRECRAWL_GATEWAY_URL,
   APEX_SEARXNG_GATEWAY_URL,
   appendUniquePathEntries,
   buildDesktopBackendEnv,

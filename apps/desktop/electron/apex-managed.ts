@@ -208,6 +208,11 @@ const APEX_PRODUCT_DEFAULTS = {
   'sessions.auto_prune': false,
   // Optional v0.20 credential injection stays a deliberate future opt-in.
   'proxy.enabled': false,
+  // hc-1179: Desktop drives its browser as a visible window on the user's screen, so a
+  // sign-in or human check can be handed to them (tools/browser_session_cloud.is_headed_mode
+  // reads browser.headed for browser_exec's launch). Add-only below, so a user who sets it false
+  // keeps the headless browser. Cloud reads its own config and is unaffected.
+  'browser.headed': true,
   timezone: ''
 }
 
@@ -256,6 +261,9 @@ const SEED_PRODUCT_DEFAULTS_BLOCK =
   '  nudge_interval: 0\n' +
   'proxy:\n' +
   '  enabled: false\n' +
+  '# hc-1179: drive the browser as a visible window so sign-ins can be handed to the user.\n' +
+  'browser:\n' +
+  '  headed: true\n' +
   "timezone: ''\n" +
   '_apex_budget_defaults_version: 2\n'
 
@@ -379,14 +387,16 @@ const SEED_DISABLED_SKILLS = [
   'dogfood'
 ]
 
-// hc-645 activates only the search leg of the platform web gateway. Extraction
-// remains intentionally absent until hc-414 has a public Firecrawl endpoint.
+// hc-645 pins only the search leg of the platform web gateway. Extraction (hc-1214) is
+// deliberately not pinned: signed in, backend-env.ts sets FIRECRAWL_API_URL and the
+// runtime's autodetect routes web_extract to the platform's Firecrawl gateway. A pin
+// would send signed-out installs to Firecrawl's keyless cloud instead.
 const SEED_WEB_GATEWAY = Object.freeze({ 'web.search_backend': 'searxng' })
 
 function seedWebGatewayBlockYaml() {
   return (
-    '# ApexNodes authenticated web-search gateway (hc-645). Extraction is not\n' +
-    '# configured here; web_extract remains honestly unavailable.\n' +
+    '# ApexNodes authenticated web gateway (hc-645). Search is pinned here; page\n' +
+    '# reading is not: when signed in, APEX points it at the platform reader.\n' +
     'web:\n' +
     '  search_backend: searxng\n'
   )

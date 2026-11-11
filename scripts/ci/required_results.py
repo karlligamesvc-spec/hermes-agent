@@ -34,7 +34,7 @@ EXCLUDED_JOBS = frozenset((*PR_ONLY_JOBS, *DEFERRED_JOBS))
 NEEDS_JSON_OUTPUT = "needs-json"
 
 # Reusable-workflow parents of the update/E2E consumers, and of the real
-# remote-backend lane. The actual detect outputs already arrive in
+# remote-backend and catalog lanes. The actual detect outputs already arrive in
 # toJSON(needs); a selected consumer cannot skip merely because this is a PR
 # rather than a release.
 _UPDATE_CONSUMER_LANES = {
@@ -43,6 +43,7 @@ _UPDATE_CONSUMER_LANES = {
     # ApexNodes hc-913: "e2e-desktop-update": ("e2e_desktop_update",) is deferred
     # (see DEFERRED_JOBS); restore it here when apps/desktop/e2e/update is ported.
     "remote-backends": ("remote_backends",),
+    "catalog-tests": ("catalog",),
 }
 
 

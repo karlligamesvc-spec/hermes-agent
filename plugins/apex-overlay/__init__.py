@@ -121,6 +121,20 @@ _TOOL_SEAMS = (
         "as the final title, and on the APEX relay the model title waits for the "
         "whole first turn.",
     ),
+    (
+        "browser_window",
+        "apex-overlay: hc-1179 Desktop browser window seam did not fully apply (see "
+        "prior error). With browser.headed on, the browser_exec window gets no "
+        "persistent profile, so a sign-in in it is lost next turn; and the "
+        "apex.browser_hide_automation switch no longer reaches the Chromium launch args.",
+    ),
+    (
+        "folder_grants",
+        "apex-overlay: hc-1207 folder grants seam did not fully apply (see prior "
+        "error). A folder handed over in Desktop (添加文件夹, a Finder drop or paste) "
+        "that is outside the chat's working directory reaches the agent only as "
+        "\"path is outside the allowed workspace\".",
+    ),
 )
 
 
@@ -226,6 +240,13 @@ _CONTEXT_SEAMS = (
         "prior warning). Asked which version it is, APEX may look up the "
         "open-source engine's releases, say it runs on Hermes Agent and offer "
         "to upgrade it, instead of naming the APEX version and how to update.",
+    ),
+    (
+        "browser_login_prompt",
+        "apex-overlay: hc-1179 browser login prompt section did not register (see "
+        "prior warning). In Desktop product mode, the agent may try to fill a "
+        "login or solve a human check in its browser window itself, instead of "
+        "stopping and handing the sign-in to the user.",
     ),
 )
 

@@ -63,6 +63,7 @@ LEFT_UPSTREAM: dict[str, str] = {
         "slash.update.description",
     )},
     "gateway.debug.full_logs_hint": "/debug uploads logs to upstream's paste service; whether APEX turns it off is Kael's call",
+    "gateway.debug.local_refused": "/debug uploads logs to upstream's paste service; whether APEX turns it off is Kael's call",
     "gateway.debug.share_hint": "/debug uploads logs to upstream's paste service; whether APEX turns it off is Kael's call",
     "gateway.kanban.ping.gave_up": "kanban dispatcher notice; the only way on is the hermes kanban CLI, APEX has none",
     "gateway.kanban.truncated_suffix": "kanban dispatcher notice; the only way on is the hermes kanban CLI, APEX has none",
@@ -70,6 +71,7 @@ LEFT_UPSTREAM: dict[str, str] = {
     "gateway.unauthorized.owner_notice": "pairing a stranger with the bot; how APEX pairs is Kael's call",
     "gateway.model.err_skew": "only on a git checkout whose code moved under a running gateway; never APEX's packaged engine or image",
     **{key: "the /model command's own lines (usage, picker); whether APEX keeps /model in IM is Kael's call" for key in (
+        "gateway.model.err_once_local", "gateway.model.usage_reset",
         "gateway.model.usage_persist", "gateway.model.usage_switch_model", "gateway.model.usage_switch_provider",
         "platform.shared.model_picker_expired", "platform.discord.picker.more_available",
         "platform.slack.picker.more_available", "platform.telegram.picker.expired_model",

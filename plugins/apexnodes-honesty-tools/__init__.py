@@ -585,8 +585,9 @@ def _handle_honesty_verify(args: dict, **_kwargs) -> str:
 #
 # 1. 证据等级：要写进技能或记忆的内容(skill_manage / memory / 桌面 apex_memory / 云端 IM memory_ledger，以及写进 skills/、
 #    memories/ 目录的 write_file / patch)把资料标成「官方」，或在定义了「✅=官方」的内容里打 ✅，
-#    那一行就得写着本会话真打开过的页面(web_extract / browser_navigate 成功过的网址)，或写明是
-#    用户给的材料;转述(社媒、博主、公众号)打 ✅、说「直连抖音」也不让存。工具结果说清哪几行、怎么改。
+#    那一行就得写着本会话真打开过的页面(web_extract / browser_navigate 成功过的网址;browser_exec 见
+#    _exec_opened_urls)，或写明是用户给的材料;转述(社媒、博主、公众号)打 ✅、说「直连抖音」也不让存。
+#    工具结果说清哪几行、怎么改。
 # 2. 不自己换模型：这一轮里 generate_video / generate_image / text_to_speech 已经失败或超时过，
 #    又换了一个这一轮没用过的 model / provider，就拦下，让助手先问用户。同样的设置重试不拦，
 #    用户回了话(新的一轮)再换也不拦。
@@ -597,6 +598,10 @@ def _handle_honesty_verify(args: dict, **_kwargs) -> str:
 DURABLE_WRITE_TOOLS = frozenset({"skill_manage", "memory", "apex_memory", "memory_ledger"})
 DURABLE_FILE_TOOLS = frozenset({"write_file", "patch"})
 PAGE_OPEN_TOOLS = {"web_extract": ("urls", "url"), "browser_navigate": ("url",)}
+# hc-1203: from Hermes v0.23.0 on the browser is browser_exec, whose argument is Python code (see
+# _exec_opened_urls for what counts as a page it opened).
+BROWSER_EXEC = "browser_exec"
+_EXEC_NAVIGATION = re.compile(r"\b(?:new_tab|goto_url)\(\s*(?:url\s*=\s*)?[rRuU]?(['\"])(https?://[^'\"\s]+)\1")
 SWITCH_KEYS = {"generate_video": ("model", "provider"), "generate_image": ("model", "provider"), "text_to_speech": ("provider",)}
 SWITCH_LABELS = {"generate_video": "生成视频", "generate_image": "生成图片", "text_to_speech": "配音"}
 FAILED_STATUSES = frozenset({"error", "timeout"})
@@ -717,6 +722,30 @@ def _call_failed(status: Any, result: Any) -> bool:
     return isinstance(result, dict) and bool(result.get("error") or result.get("success") is False or result.get("ok") is False)
 
 
+def _exec_succeeded(result: Any) -> bool:
+    """browser_exec said ``success: true``. With native vision its JSON rides in ``text_summary``."""
+    if isinstance(result, dict) and isinstance(result.get("text_summary"), str):
+        result = result["text_summary"]
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except ValueError:
+            return False
+    return isinstance(result, dict) and result.get("success") is True
+
+
+def _exec_opened_urls(args: dict, result: Any) -> list[str]:
+    """The pages a browser_exec call opened, counted conservatively: a URL string literal passed straight to
+    the harness's navigation helpers ``new_tab(...)`` / ``goto_url(...)``, in a call whose result says
+    ``success: true``. A URL built at run time, held in a variable, only printed or fetched another way does
+    not count, and neither does a call that failed or did not say it succeeded. Too few pages only means an
+    「官方」 line is refused and the model opens the page so it shows (web_extract, or new_tab with the URL);
+    too many would let a page the call never reached back an 「官方」 claim."""
+    if not _exec_succeeded(result):
+        return []
+    return [match.group(2) for match in _EXEC_NAVIGATION.finditer(str(args.get("code") or ""))]
+
+
 def _choice(tool_name: str, args: dict) -> tuple[str, ...]:
     return tuple(str(args.get(key) or "").strip() for key in SWITCH_KEYS[tool_name])
 
@@ -767,12 +796,16 @@ def _on_pre_tool_call(tool_name: str = "", args: Any = None, session_id: str = "
 def _on_post_tool_call(
     tool_name: str = "", args: Any = None, result: Any = None, status: Any = None, session_id: str = "", **_: Any
 ) -> None:
-    if not isinstance(args, dict) or (tool_name not in PAGE_OPEN_TOOLS and tool_name not in SWITCH_KEYS):
+    watched = tool_name in PAGE_OPEN_TOOLS or tool_name in SWITCH_KEYS or tool_name == BROWSER_EXEC
+    if not isinstance(args, dict) or not watched:
         return
     failed = _call_failed(status, result)
     with _guard_lock:
         state = _guard_session(session_id or "")
-        if tool_name in PAGE_OPEN_TOOLS and not failed:
+        if tool_name == BROWSER_EXEC:
+            if not failed:
+                state["pages"].update(h for url in _exec_opened_urls(args, result) for h in _hosts(url))
+        elif tool_name in PAGE_OPEN_TOOLS and not failed:
             for key in PAGE_OPEN_TOOLS[tool_name]:
                 urls = args.get(key) if isinstance(args.get(key), list) else [args.get(key)]
                 state["pages"].update(h for url in urls for h in _hosts(str(url or "")))

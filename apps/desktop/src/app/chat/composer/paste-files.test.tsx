@@ -269,14 +269,21 @@ describe('⌘V of a video copied in Finder, composer focused', () => {
     expect(spies.attachDropped.mock.calls[0]![0]).toEqual([{ file: take.file, path: TAKE }])
   })
 
-  it('puts a copied folder in as the @folder: chip a dropped folder becomes', async () => {
+  // hc-1207: a copied folder is handed over like a dropped one: a folder attachment the
+  // session is granted at send, not an inline @folder: ref outside the workspace refuses.
+  it('hands a copied folder to the attach pipeline, as a dropped folder is', async () => {
     const spies = await renderComposer()
     const folder: Copied = { file: new File([], '客户 素材'), folder: true, path: '/work/客户 素材' }
 
     await paste(finderCopy([folder]))
+    fireEvent.drop(editor(), { dataTransfer: finderCopy([folder]) })
+    await settle()
 
-    expect(spies.attachDropped).not.toHaveBeenCalled()
-    expect(editor().querySelector('[data-ref-text]')?.getAttribute('data-ref-text')).toBe('@folder:`客户 素材`')
+    expect(spies.attachDropped.mock.calls).toEqual([
+      [[{ isDirectory: true, native: true, path: '/work/客户 素材' }]],
+      [[{ isDirectory: true, native: true, path: '/work/客户 素材' }]]
+    ])
+    expect(editor().querySelector('[data-ref-text]')).toBeNull()
   })
 })
 
@@ -347,7 +354,7 @@ describe('copiedFilesInClipboard', () => {
 
     expect(copiedFilesInClipboard(finderCopy([take, folder, shot, pathless]))).toEqual([
       { file: take.file, path: TAKE },
-      { isDirectory: true, path: '/work/b-roll' }
+      { isDirectory: true, native: true, path: '/work/b-roll' }
     ])
   })
 })

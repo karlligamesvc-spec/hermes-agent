@@ -24,6 +24,65 @@ function Write-Success { param($m) Write-Host "    [ok]   $m" }
 
 . (Join-Path $PSScriptRoot 'apexnodes-region-detect.ps1')
 
+# hc-1203: on the windows-2025-vs2026 20261103 runner image tar.exe crashes
+# (exit -1073741819, 0xC0000005) building the round-trip fixture. Neither the
+# fixture builder nor the cross-check oracle is under test, so when tar cannot
+# do the job, Python's tarfile and then Git for Windows' GNU tar stand in (both
+# independent of the reader), and every assertion names the one that ran.
+$script:GitTar = Join-Path $env:ProgramFiles 'Git\usr\bin\tar.exe'
+$script:PyTar = @'
+import sys, tarfile
+mode, archive, path = sys.argv[1:4]
+if mode == 'create':
+    with tarfile.open(archive, 'w:gz', format=tarfile.PAX_FORMAT) as t:
+        t.add(path)
+else:
+    with tarfile.open(archive) as t:
+        for m in t.getmembers():
+            head, _, rest = m.name.partition('/')
+            if not rest:
+                continue
+            m.name = rest
+            if hasattr(tarfile, 'data_filter'):
+                t.extract(m, path, filter='data')
+            else:
+                t.extract(m, path)
+'@
+
+function Invoke-FixtureTar {
+    # create: archive the directory $Path (relative to the current location) into $Archive.
+    # extract: unpack $Archive into the directory $Path, dropping its first path component.
+    # Returns the tool that did it, or $null when none could. Python comes before GNU tar:
+    # its pax format writes the CJK fixture name as UTF-8 whatever the console code page.
+    param([string]$Mode, [string]$Archive, [string]$Path)
+    if ($Mode -eq 'create') { $tarArgs = @('-czf', $Archive, $Path) }
+    else { $tarArgs = @('-xzf', $Archive, '-C', $Path, '--strip-components=1') }
+    & tar @tarArgs
+    if ($LASTEXITCODE -eq 0) { return 'tar' }
+    Write-Info "tar exited $LASTEXITCODE; trying Python's tarfile"
+    $py = Join-Path ([System.IO.Path]::GetTempPath()) ('hc1203-tar-' + [Guid]::NewGuid().ToString('N') + '.py')
+    Set-Content -LiteralPath $py -Value $script:PyTar -Encoding ASCII
+    try {
+        & python $py $Mode $Archive $Path
+        if ($LASTEXITCODE -eq 0) { return "Python's tarfile" }
+        Write-Info "Python's tarfile exited $LASTEXITCODE"
+    } catch {
+        Write-Info "Python is not available: $($_.Exception.Message)"
+    } finally {
+        Remove-Item -Force -LiteralPath $py -ErrorAction SilentlyContinue
+    }
+    if (Test-Path -LiteralPath $script:GitTar) {
+        Write-Info "trying Git for Windows' tar"
+        $oldPath = $env:PATH
+        # Its -z runs gzip from the same directory.
+        $env:PATH = (Split-Path -Parent $script:GitTar) + ';' + $env:PATH
+        try { & $script:GitTar --force-local @tarArgs } finally { $env:PATH = $oldPath }
+        if ($LASTEXITCODE -eq 0) { return "Git for Windows' tar" }
+        Write-Info "Git for Windows' tar exited $LASTEXITCODE"
+    }
+    return $null
+}
+
 $script:Failures = 0
 function Assert-True($cond, $msg) {
     if ($cond) { Write-Host "  ok   $msg" }
@@ -61,8 +120,8 @@ try {
 
     $tgz = Join-Path $ws 'runtime.tar.gz'
     Push-Location $ws
-    try { & tar -czf $tgz 'hermes-agent' } finally { Pop-Location }
-    Assert-Eq $LASTEXITCODE 0 'fixture tarball built'
+    try { $builder = Invoke-FixtureTar 'create' $tgz 'hermes-agent' } finally { Pop-Location }
+    Assert-True ($null -ne $builder) "fixture tarball built (by $builder)"
 
     $dest = Join-Path $ws 'out'
     New-Item -ItemType Directory -Force -Path $dest | Out-Null
@@ -93,7 +152,8 @@ try {
     # above (name + content), which is the stronger check anyway.
     $ref = Join-Path $ws 'ref'
     New-Item -ItemType Directory -Force -Path $ref | Out-Null
-    & tar -xzf $tgz -C $ref --strip-components=1
+    $oracle = Invoke-FixtureTar 'extract' $tgz $ref
+    Assert-True ($null -ne $oracle) "reference tree extracted (by $oracle)"
     $expected = @('pyproject.toml', 'README.md', 'deep.txt')
     $listAscii = { param($root) Get-ChildItem -Recurse -File -LiteralPath $root |
         Where-Object { $expected -contains $_.Name } |
@@ -191,7 +251,8 @@ try {
     Set-Content -LiteralPath (Join-Path $src 'hermes_cli.py') -Value "print(1)" -NoNewline
     $tgz = Join-Path $ws 'runtime.tar.gz'
     Push-Location $ws
-    try { & tar -czf $tgz 'hermes-agent' } finally { Pop-Location }
+    try { $builder = Invoke-FixtureTar 'create' $tgz 'hermes-agent' } finally { Pop-Location }
+    Assert-True ($null -ne $builder) "fixture tarball built (by $builder)"
 
     # Fake System32 holding a tar.exe that is NOT a valid executable -> launching
     # it throws, which is what an AV denial looks like to this script.

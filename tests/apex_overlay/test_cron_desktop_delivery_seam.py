@@ -424,6 +424,10 @@ def test_with_an_im_bound_the_result_goes_to_both(home, desktop_turn, broadcasts
     job.pop("execution_id")
 
     assert scheduler.run_one_job(job) is True
+    # v0.23.0: an agent fire with an execution id queues its delivery; the gateway's housekeeping tick
+    # drains the queue through cron.scheduler._deliver_result, the function this seam wraps (hc-1203).
+    assert sent == []
+    assert scheduler.drain_delivery_queue(None, None) == 1
 
     assert [call["chat_id"] for call in sent] == ["C0HOME"] and "今天的新闻标题" in sent[0]["message"]
     [row] = _rows(home)

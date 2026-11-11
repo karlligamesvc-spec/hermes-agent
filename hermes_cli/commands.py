@@ -93,6 +93,9 @@ COMMAND_REGISTRY: list[CommandDef] = [
                cli_only=True, desktop="terminal"),
     CommandDef("redraw", "Force a full UI repaint (recovers from terminal drift)", "Session",
                cli_only=True, desktop="terminal"),
+    # ApexNodes hc-1203: the APEX Desktop baseline has no handler for these four (approvals are cards;
+    # /history and /config would reach slash.exec and be refused), so it keeps v0.22's desktop= markers
+    # that upstream dropped once its own Desktop gained handlers (live commands.catalog + offline dump).
     CommandDef("history", "Show conversation history", "Session",
                cli_only=True, desktop="terminal"),
     CommandDef("save", "Export the current conversation (bare /save shows usage)", "Session",
@@ -102,6 +105,8 @@ COMMAND_REGISTRY: list[CommandDef] = [
                cli_only=True, args_hint="[initial text]", aliases=("compose",)),
     CommandDef("undo", "Back up N user turns and re-prompt (default 1)", "Session",
                args_hint="[N]"),
+    CommandDef("rewind", "Rewind to an earlier prompt to edit & resend it, or fork from there (Esc Esc)",
+               "Session", cli_only=True, args_hint="[N | fork N]", desktop="terminal"),
     CommandDef("title", "Set a title for the current session", "Session", args_hint="[name]"),
     CommandDef("handoff", "Hand off this session to a messaging platform (Telegram, Discord, etc.)", "Session",
                args_hint="<platform>", cli_only=True, argument_mode="options"),
@@ -109,7 +114,7 @@ COMMAND_REGISTRY: list[CommandDef] = [
                "Session", aliases=("fork",), args_hint="[--here] [name]"),
     CommandDef("worktree", "Show, list, create, or prune isolated git worktrees", "Session",
                cli_only=True, args_hint="[new [name]|list|prune [--dry-run]]",
-               subcommands=("new", "list", "prune")),
+               subcommands=("new", "list", "prune"), desktop="terminal"),
     CommandDef("compress", "Compress conversation context (add 'here [N]' to keep recent N turns; --preview shows what would happen)", "Session",
                aliases=("compact",), args_hint="[here [N] | focus topic | --preview|--dry-run]"),
     CommandDef("rollback", "List or restore filesystem checkpoints (restores keep your hand-edits; --all overrides)", "Session",
@@ -123,14 +128,16 @@ COMMAND_REGISTRY: list[CommandDef] = [
                cli_only=True, args_hint="<archive.tar.gz> [--name <name>]"),
     CommandDef("stop", "Kill all running background processes", "Session",
                busy_policy="interrupt_then_dispatch", busy_handler="stop"),
+    CommandDef("discard", "Drop a turn lost when Hermes restarted so this chat's queue runs again", "Session",
+               gateway_only=True, busy_policy="dispatch"),
     CommandDef("pause", "Pause new work globally (emergency stop); '/pause off' resumes", "Session",
                gateway_only=True, args_hint="[reason | off]", busy_policy="dispatch"),
     CommandDef("approve", "Approve a pending dangerous command", "Session",
                gateway_only=True, args_hint="[session|always]", busy_policy="dispatch",
-               desktop="messaging"),
+               desktop="messaging"),  # ApexNodes hc-1203: see /history above
     CommandDef("deny", "Deny a pending dangerous command (optionally with a reason)", "Session",
                gateway_only=True, args_hint="[all] [reason]", busy_policy="dispatch",
-               desktop="messaging"),
+               desktop="messaging"),  # ApexNodes hc-1203: see /history above
     CommandDef("bg", "Run a prompt in a separate background session", "Session",
                args_hint="<prompt>", busy_policy="dispatch"),
     CommandDef("btw", "Ask a side question about the current conversation without interrupting it", "Session",
@@ -185,9 +192,9 @@ COMMAND_REGISTRY: list[CommandDef] = [
 
     # Configuration
     CommandDef("config", "Show current configuration", "Configuration",
-               cli_only=True, desktop="terminal"),
+               cli_only=True, desktop="terminal"),  # ApexNodes hc-1203: see /history above
     CommandDef("model", "Switch model (session-scoped; --global to persist)", "Configuration",
-               args_hint="[model] [--provider name] [--reasoning level] [--global|--session] [--refresh]",
+               args_hint="[model|reset] [--provider name] [--reasoning level] [--global|--session] [--refresh]",
                busy_policy="reject", busy_handler="model", desktop="hidden"),
     CommandDef("codex-runtime", "Toggle codex app-server runtime for OpenAI/Codex models",
                "Configuration", aliases=("codex_runtime",), args_hint="[auto|codex_app_server]",
@@ -240,6 +247,9 @@ COMMAND_REGISTRY: list[CommandDef] = [
                args_hint="[queue|steer|interrupt|status]",
                subcommands=("queue", "steer", "interrupt", "status"),
                busy_policy="dispatch", desktop="terminal"),
+    CommandDef("autoprune", "Turn automatic pruning of old sessions on or off", "Configuration",
+               args_hint="[on|off|later|status]", subcommands=("on", "off", "later", "status"),
+               busy_policy="dispatch", execute="autoprune", argument_mode="options"),
 
     # Tools & Skills
     CommandDef("tools", "Manage tools: /tools [list|disable|enable] [name...]", "Tools & Skills",
@@ -299,11 +309,12 @@ COMMAND_REGISTRY: list[CommandDef] = [
                aliases=("reload_mcp",), desktop="advanced"),
     CommandDef("reload-skills", "Re-scan ~/.hermes/skills/ for newly installed or removed skills",
                "Tools & Skills", aliases=("reload_skills",), desktop="advanced"),
-    CommandDef("browser", "Connect browser tools to your live Chromium-family browser via CDP, or switch to Browser Use mode", "Tools & Skills",
-               cli_only=True, args_hint="[connect|disconnect|status|use]",
-               subcommands=("connect", "disconnect", "status", "use")),
+    CommandDef("browser", "Connect browser tools to your live Chromium-family browser via CDP", "Tools & Skills",
+               cli_only=True, args_hint="[connect|disconnect|status]",
+               subcommands=("connect", "disconnect", "status")),
     CommandDef("plugins", "List installed plugins and their status",
-               "Tools & Skills", cli_only=True, desktop="terminal"),
+               "Tools & Skills", cli_only=True, desktop="terminal", args_hint="[update|auto-update [on|off]]",
+               subcommands=("update", "auto-update")),
 
     # Info
     CommandDef("commands", "Browse all commands and skills (paginated)", "Info",

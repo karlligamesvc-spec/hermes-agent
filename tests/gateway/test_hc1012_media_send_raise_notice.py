@@ -16,7 +16,7 @@ import pytest
 from gateway.config import PlatformConfig
 from gateway.platforms.base import SendResult
 from gateway.platforms.event import MessageEvent
-from gateway.platforms.weixin import WeixinAdapter
+from plugins.platforms.weixin.adapter import WeixinAdapter  # hc-1203: v0.23.0 moved it into the platform plugin
 from gateway.session import Platform, SessionSource
 
 

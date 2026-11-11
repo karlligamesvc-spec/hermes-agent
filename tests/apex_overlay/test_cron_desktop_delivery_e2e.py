@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -160,7 +162,18 @@ def test_a_job_made_in_a_desktop_chat_brings_its_result_back_into_that_chat(engi
         "provider": "custom", "api_mode": "chat_completions", "base_url": model.base_url, "api_key": "test-key"})
     monkeypatch.setattr("hermes_cli.runtime_provider.format_runtime_provider_error", lambda exc: str(exc))
     monkeypatch.setattr("model_tools.get_tool_definitions", lambda **_k: [])
-    success, _output, final_response, error = scheduler.run_job({**job, "model": "fake-model"})
+    # v0.23.0: an agent fire runs inside the gateway's cron execution; outside one, run_job hands the job to
+    # the gateway over RPC. Bind the owner execution the gateway's executor binds (hc-1203).
+    from gateway import session_cron
+    from hermes_state_registry import acquire, release_or_close
+
+    owner_db = acquire(home / "state.db")  # the registry's canonical store, as the gateway owner holds it
+    token = session_cron.bind_execution(SimpleNamespace(db=owner_db), f"cron_{job['id']}_e2e", job["id"], None)
+    try:
+        success, _output, final_response, error = scheduler.run_job({**job, "model": "fake-model"})
+    finally:
+        session_cron._execution.reset(token)
+        release_or_close(owner_db)
     assert (success, error) == (True, None) and final_response == RESULT
     assert scheduler._deliver_result({**job, "execution_id": "exec-e2e"}, final_response) is None
 

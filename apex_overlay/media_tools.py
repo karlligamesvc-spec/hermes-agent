@@ -24,6 +24,16 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / 'scripts/media-tools/desktop-lock.json'
 COS_HOST = 'apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com'
+#: hc-1201: Desktop's install of the editor's parts sets this, and the downloads then say how far they are, one line
+#: each on stdout (``PROGRESS_MARK`` + JSON), which the editor's first-run check shows (electron/openfilm-studio.ts).
+PROGRESS_ENV = 'APEX_MEDIA_TOOLS_PROGRESS'
+PROGRESS_MARK = '@@apex-progress '
+
+
+def _progress(step: str, done: int, total: int) -> None:
+    """One progress line for Desktop, only when it asked for them (``PROGRESS_ENV``); every other caller gets none."""
+    if os.environ.get(PROGRESS_ENV) == '1':
+        print(f'{PROGRESS_MARK}{json.dumps({"step": step, "done": done, "total": total})}', flush=True)
 
 
 def native_target() -> str:
@@ -63,6 +73,7 @@ def ensure_browser(*, render=False) -> Path:
                     output.write(chunk)
                     digest.update(chunk)
                     size += len(chunk)
+                    _progress('browser', size, spec['bytes'])
             if size != spec['bytes'] or digest.hexdigest() != spec['sha256']:
                 raise ValueError('COS browser archive checksum mismatch')
             unpacked = temporary / 'unpacked'
@@ -176,6 +187,7 @@ def ensure_openfilm() -> Path:
                         output.write(chunk)
                         digest.update(chunk)
                         size += len(chunk)
+                        _progress('toolkit', size, spec['bytes'])
                 if size != spec['bytes'] or digest.hexdigest() != spec['sha256']:
                     raise ValueError('COS OpenFilm toolkit checksum mismatch')
                 unpacked = temporary / 'unpacked'
@@ -198,6 +210,49 @@ def ensure_openfilm() -> Path:
     return ready
 
 
+#: What installing a missing part takes on disk, as a multiple of its download: the archive, then its unpacked tree
+#: beside it until the move (measured 2026-11-09 on mac-arm64: the browser 191 MB → 359 MB, the toolkit 42 MB →
+#: 67 MB), with room to spare; and what is kept free on top.
+INSTALL_ROOM_FACTOR = 3
+INSTALL_ROOM_MARGIN = 256 * 1024 * 1024
+
+
+def openfilm_check() -> dict:
+    """What the editor still needs on this computer, for Desktop's first-run check of the titlebar's 剪辑 (hc-1201).
+
+    The browser Studio draws in and the toolkit this engine pins: whether each is installed, and its download's size;
+    and the free space where APEX keeps its data against what installing the missing ones takes. Reads only: it
+    installs nothing (``ensure_openfilm`` does). The toolkit counts as installed only while ready.json names the
+    pinned one and its files are there, as every reader of ready.json takes it.
+    """
+    from hermes_constants import get_hermes_home
+    lock = json.loads(LOCK.read_text(encoding='utf-8-sig'))
+    target = native_target()
+    browser = lock['browser'][f'render-{target}' if os.name == 'nt' else target]
+    toolkit = openfilm_pin()
+    home = Path(get_hermes_home())
+    browser_ready = (home / 'tool-cache' / 'chrome' / browser['sha256'] / browser['executable']).is_file()
+    try:
+        said = json.loads((home / 'tool-cache' / 'openfilm' / 'ready.json').read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError):
+        said = None
+    toolkit_ready = (isinstance(said, dict) and said.get('sha256') == toolkit['sha256']
+                     and (Path(str(said.get('toolkit', ''))) / 'node_modules/openfilm/studio/server/server.mjs').is_file()
+                     and Path(str(said.get('chromium', ''))).is_file())
+    missing = [part['bytes'] for part, ready in ((browser, browser_ready), (toolkit, toolkit_ready)) if not ready]
+    existing = home
+    while not existing.exists() and existing != existing.parent:
+        existing = existing.parent
+    return {
+        'browser': {'ready': browser_ready, 'bytes': browser['bytes']},
+        'toolkit': {'ready': toolkit_ready, 'bytes': toolkit['bytes']},
+        'disk': {
+            'free': shutil.disk_usage(existing).free,
+            'needed': sum(missing) * INSTALL_ROOM_FACTOR + (INSTALL_ROOM_MARGIN if missing else 0),
+        },
+    }
+
+
 def _bundled_hypit_version() -> str:
     package = ROOT / '.runtime/hypit/node_modules/@hypit/hypit/package.json'
     return json.loads(package.read_text(encoding='utf-8'))['version']
@@ -215,42 +270,96 @@ def enable_hosted_hypit(workspace: Path, version: str | None = None) -> Path:
     return merge_hosted_endpoint(workspace, version or _bundled_hypit_version())
 
 
+#: Where this process keeps the COS browser once installed. The engine no longer reads it (v0.23.0 resolves its
+#: browser through ``hermes_cli.browser_runtime.chromium_executable``), but children inherit it, so a script the
+#: agent runs finds the same browser.
+BROWSER_ENV = 'AGENT_BROWSER_EXECUTABLE_PATH'
+_BROWSER_MARK = '_apex_cos_browser'
+
+
+def cos_browser() -> str | None:
+    """The COS browser this process installed (``BROWSER_ENV``), while it is a file."""
+    path = os.environ.get(BROWSER_ENV, '')
+    return path if path and Path(path).is_file() else None
+
+
+def _install_cos_browser(user_pinned) -> bool:
+    """APEX's replacement for upstream's one-shot ``pm.ensure("chromium")``: the verified COS build, never a
+    foreign host, nothing over a browser the user pinned in ``browser.executable_path`` (the launcher reports a
+    missing pin itself), and only where lazy installs are allowed (security.allow_lazy_installs)."""
+    from pm import lazy_installs_allowed
+    if user_pinned() or not lazy_installs_allowed():
+        return False
+    if cos_browser():
+        return True
+    try:
+        os.environ[BROWSER_ENV] = str(ensure_browser())
+        return True
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception('APEX COS browser preparation failed')
+        return False  # Do not fall through to a foreign download endpoint.
+
+
+def install_browser_seam() -> bool:
+    """hc-1203 (v0.23.0): browser_exec's Chromium comes from APEX COS.
+
+    v0.23.0 dropped agent-browser and its installer module; ``tools.browser_launcher.chromium_ready`` resolves
+    the browser through ``hermes_cli.browser_runtime.chromium_executable`` (``browser.executable_path``, then pm's
+    Chromium) and otherwise calls ``tools.browser_launcher._maybe_autoinstall_chromium`` (pm's download). Both are
+    wrapped, once: the installer becomes the COS one, and the resolver answers the COS browser after everything
+    upstream would pick (a user's pin or a pm build still wins)."""
+    import functools
+
+    from hermes_cli import browser_runtime
+    from tools import browser_launcher
+
+    resolve = browser_runtime.chromium_executable
+    if not getattr(resolve, _BROWSER_MARK, False):
+        @functools.wraps(resolve)
+        def chromium_executable(*, allow_override: bool = True) -> str | None:
+            found = resolve(allow_override=allow_override)
+            return found if found or not allow_override else cos_browser()
+        setattr(chromium_executable, _BROWSER_MARK, True)
+        browser_runtime.chromium_executable = chromium_executable
+        resolve_upstream = resolve
+    else:
+        resolve_upstream = resolve.__wrapped__
+
+    autoinstall = browser_launcher._maybe_autoinstall_chromium
+    if not getattr(autoinstall, _BROWSER_MARK, False):
+        def user_pinned() -> bool:
+            # upstream's own test (_explicit_executable_configured), on the resolver without this seam
+            return resolve_upstream(allow_override=True) != resolve_upstream(allow_override=False)
+
+        @functools.wraps(autoinstall)
+        def install() -> bool:
+            return _install_cos_browser(user_pinned)
+        setattr(install, _BROWSER_MARK, True)
+        browser_launcher._maybe_autoinstall_chromium = install
+    return True
+
+
 def apply() -> bool:
     # Cloud/Linux and unpackaged developer environments retain their own installer.
     if platform.system() not in {'Darwin', 'Windows'} or not LOCK.is_file() or not (ROOT / '.runtime/node').is_dir():
         return False
-    from tools import browser_tool_install as installer
-    original = installer._maybe_autoinstall_chromium
-    if getattr(original, '_apex_cos_browser', False):
-        return True
-
-    def install():
-        # hc-911: v0.22 retired tools.lazy_deps; pm owns the same lazy-install policy
-        # (security.allow_lazy_installs / HERMES_DISABLE_LAZY_INSTALLS).
-        from pm import lazy_installs_allowed
-        if not lazy_installs_allowed():
-            return False
-        if os.environ.get('AGENT_BROWSER_EXECUTABLE_PATH'):
-            return Path(os.environ['AGENT_BROWSER_EXECUTABLE_PATH']).is_file()
-        try:
-            # hermes_cli.browser_runtime.chromium_executable() reads this override first.
-            os.environ['AGENT_BROWSER_EXECUTABLE_PATH'] = str(ensure_browser())
-            return True
-        except Exception:
-            import logging
-            logging.getLogger(__name__).exception('APEX COS browser preparation failed')
-            return False  # Do not fall through to a foreign download endpoint.
-    install._apex_cos_browser = True
-    installer._maybe_autoinstall_chromium = install
-    return True
+    return install_browser_seam()
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['browser', 'prepare-hypit', 'enable-hosted-hypit', 'font', 'openfilm'])
+    parser.add_argument('command', choices=['browser', 'prepare-hypit', 'enable-hosted-hypit', 'font', 'openfilm',
+                                            'openfilm-check'])
     parser.add_argument('--workspace', '--project', type=Path, default=Path.cwd())
     parser.add_argument('--hypit-version')
     args = parser.parse_args()
+    if args.command == 'openfilm-check':  # hc-1201: Desktop's first-run check of the editor; reads only
+        try:
+            print(json.dumps(openfilm_check()))
+        except (OSError, ValueError, KeyError) as exc:  # Desktop then starts the install without the check
+            raise SystemExit(f'APEX OpenFilm check unavailable: {type(exc).__name__}: {exc}') from None
+        raise SystemExit(0)
     if args.command == 'openfilm':
         try:
             print(ensure_openfilm())

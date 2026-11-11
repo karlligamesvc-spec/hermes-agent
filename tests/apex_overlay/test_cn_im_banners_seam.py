@@ -42,11 +42,11 @@ def _plain() -> str:
     return i18n.t("gateway.session.auto_reset_plain_notice")
 
 ADAPTER_CLASSES = [
-    ("gateway.platforms.weixin", "WeixinAdapter"),
+    ("plugins.platforms.weixin.adapter", "WeixinAdapter"),
     ("plugins.platforms.wecom.adapter", "WeComAdapter"),
     ("plugins.platforms.wecom.callback_adapter", "WecomCallbackAdapter"),
     ("plugins.platforms.dingtalk.adapter", "DingTalkAdapter"),
-    ("gateway.platforms.qqbot.adapter", "QQAdapter"),
+    ("plugins.platforms.qqbot.adapter", "QQAdapter"),
     ("plugins.platforms.feishu.adapter", "FeishuAdapter"),
 ]
 

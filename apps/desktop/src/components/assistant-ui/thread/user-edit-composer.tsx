@@ -30,6 +30,7 @@ import { useEmojiCompletions } from '@/app/chat/composer/hooks/use-emoji-complet
 import { useSlashCompletions } from '@/app/chat/composer/hooks/use-slash-completions'
 import {
   dragHasAttachments,
+  droppedFileInlineRef,
   droppedFileInlineRefs,
   type InlineRefInput,
   insertInlineRefsIntoEditor
@@ -461,12 +462,14 @@ export const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sess
           continue
         }
 
-        const kind: ComposerAttachment['kind'] =
-          candidate.file?.type.startsWith('image/') || isImagePath(candidate.file?.name || path) ? 'image' : 'file'
+        const isImage = candidate.file?.type.startsWith('image/') || isImagePath(candidate.file?.name || path)
+        const kind: ComposerAttachment['kind'] = candidate.isDirectory ? 'folder' : isImage ? 'image' : 'file'
+        // A folder the engine does not grant keeps the inline ref a dropped folder always had.
+        const refText = kind === 'folder' ? (droppedFileInlineRef(candidate, cwd) ?? undefined) : undefined
 
         try {
           const uploaded = await uploadComposerAttachment(
-            { detail: path, id: attachmentId(kind, path), kind, label: pathLabel(path), path },
+            { detail: path, id: attachmentId(kind, path), kind, label: pathLabel(path), path, refText },
             { backendCwd: cwd, remote, requestGateway, sessionId, terminalBackend: $terminalBackend.get() }
           )
 

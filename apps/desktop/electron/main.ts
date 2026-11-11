@@ -155,14 +155,15 @@ import { ManagedCredentialLifetime, managedProvisionCommitToken, ManagedRelayRec
 import { clearAccountPromptMirrors } from './apex-memory-ledger'
 import { applyDesktopFeatureSwitches, modelTierStatus } from './apex-model-tiers'
 import { normalizeStoredPluginsState, syncPlatformPlugins } from './apex-platform-plugins'
-import { normalizeStoredManifest } from './apex-platform-skills'
-import { registerProfileSkillsSync, syncPlatformSkills } from './apex-platform-skills-sync'
+import { createPlatformSkillsRefresh } from './apex-platform-skills-refresh'
+import { registerProfileSkillsSync } from './apex-platform-skills-sync'
 import { buildPlatformToolSpawnEnv, describePlatformToolSpawnEnv } from './apex-platform-tools'
 import { makeRoomInPool, poolAllBusyError, reapIdlePoolEngine, stampPoolEngine } from './apex-pool-engines'
 import { guardProductBlocksInHomes, persistRelayKeyInHome } from './apex-profile-config'
 import { registerProfileConfigIpc } from './apex-profile-config-ipc'
 import { isMultiBotActive, managedProfileHomes, withLocalSharedPrimary } from './apex-profile-homes'
 import { createQuitConfirm, ENGINE_IDLE_PATH, ENGINE_PROBE_DEADLINE_MS, localEnginesOf } from './apex-quit-confirm'
+import { referenceGrants, registerReferenceGrantIpc } from './apex-reference-grants'
 import { fetchRelayModels, RelayTierMemo } from './apex-relay-tiers'
 import {
   checkForRuntimeUpdate,
@@ -13011,6 +13012,8 @@ async function runPoolBackendStart(profile, entry, opts: { forceLocal?: boolean;
           // hc-604: the platform-tool credential + endpoints (图片/视频生成、
           // 图片 OCR、媒体转写、社媒数据). {} when signed out.
           ...desktopPlatformToolSpawnEnv(),
+          // The key that signs folder grants for this launch (apex-reference-grants.ts).
+          ...referenceGrants.spawnEnv(),
           // Pin the gateway's tool/terminal cwd to the same directory we chose for
           // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
           // can still point at the install dir even when spawn cwd is home.
@@ -13473,6 +13476,8 @@ async function runHermesStart() {
             ...desktopImEntrySpawnEnv(),
             // hc-604: platform-tool credential + endpoints (see the pool spawn).
             ...desktopPlatformToolSpawnEnv(),
+            // The key that signs folder grants for this launch (apex-reference-grants.ts).
+            ...referenceGrants.spawnEnv(),
             TERMINAL_CWD: hermesCwd,
             HERMES_DASHBOARD_SESSION_TOKEN: token,
             // Marks this dashboard backend as desktop-spawned so it runs the cron
@@ -17206,42 +17211,7 @@ ipcMain.handle('hermes:readPluginSource', async (_event: unknown, filePath: unkn
   }
 })
 
-ipcMain.handle('hermes:selectPaths', async (_event, options: any = {}) => {
-  const properties = options?.directories ? ['openDirectory'] : ['openFile']
-
-  if (options?.multiple !== false) {
-    properties.push('multiSelections')
-  }
-
-  let resolvedDefaultPath
-
-  if (options?.defaultPath) {
-    try {
-      // On a Windows host with a WSL backend the cwd may be a POSIX/WSL path;
-      // bridge it to a UNC/drive form the native dialog can actually open.
-      const bridged = IS_WINDOWS
-        ? resolvePickerDefaultPath(String(options.defaultPath), undefined, options?.profile)
-        : String(options.defaultPath)
-
-      resolvedDefaultPath = bridged ? path.resolve(bridged) : undefined
-    } catch {
-      resolvedDefaultPath = undefined
-    }
-  }
-
-  const result = await dialog.showOpenDialog(mainWindow, {
-    title: options?.title || 'Add context',
-    defaultPath: resolvedDefaultPath,
-    properties: properties as any,
-    filters: Array.isArray(options?.filters) ? options.filters : undefined
-  })
-
-  if (result.canceled) {
-    return []
-  }
-
-  return result.filePaths
-})
+registerReferenceGrantIpc(ipcMain, { dialog, isWindows: IS_WINDOWS, mainWindow: () => mainWindow, resolvePickerDefaultPath })
 
 ipcMain.handle('hermes:writeClipboard', (_event, text) => {
   clipboard.writeText(String(text || ''))
@@ -20610,47 +20580,18 @@ const clientConfigSync = createClientConfigSync({
 
 const refreshClientConfigFromPlatform = clientConfigSync.refresh
 
-function readPlatformSkillsState() {
-  try {
-    const raw = fs.readFileSync(DESKTOP_PLATFORM_SKILLS_PATH, 'utf8')
+// The platform SKILL manifest into the root skills/ and every profile on the managed relay (hc-1081), at boot, after
+// sign-in and, while the app runs, on focus and a timer, installed between turns (apex-platform-skills-refresh.ts,
+// hc-1205). Non-blocking by contract (callers `void` it) and never throws: an error only logs.
+const platformSkills = createPlatformSkillsRefresh({
+  apiBase: apexApiBase, env: process.env, fetchJson: apexAuthGetJson, homes: () => apexConfigHomes(), log: msg => rememberLog(msg),
+  onFocus: listener => app.on('browser-window-focus', listener), signal: localBackendLifecycle.signal, skillsRoot: path.join(HERMES_HOME, 'skills'),
+  statePath: DESKTOP_PLATFORM_SKILLS_PATH, token: () => resolveManagedConfig().accessToken, writeFileAtomic,
+  windowTurns: () => mergeActiveWork(activeWorkByWebContents.values()).count, engines: () => localEngines(), probe: engine => probeEngineIdle(engine),
+  gatewayState: () => (messagingGatewayChildAlive() ? gatewayStatePath(HERMES_HOME, messagingGatewayRuntime.profile) : null)
+})
 
-    return normalizeStoredManifest(JSON.parse(raw))
-  } catch {
-    return normalizeStoredManifest(null)
-  }
-}
-
-function writePlatformSkillsState(next) {
-  fs.mkdirSync(path.dirname(DESKTOP_PLATFORM_SKILLS_PATH), { recursive: true })
-  writeFileAtomic(DESKTOP_PLATFORM_SKILLS_PATH, JSON.stringify(next, null, 2))
-}
-
-// Pull the platform SKILL manifest into the root skills/ and copy it into every
-// profile on the managed relay (apex-platform-skills-sync.ts, hc-1081).
-// Non-blocking by contract (callers `void` it), bounded (~12s), and never throws
-// — any error only logs and leaves the installed skills untouched.
-async function refreshPlatformSkillsFromPlatform(reason) {
-  try {
-    const result = await syncPlatformSkills({
-      ...platformSkillsHomes(),
-      apiBase: apexApiBase(),
-      env: process.env,
-      fetchJson: apexAuthGetJson,
-      log: msg => rememberLog(msg),
-      reason,
-      stored: readPlatformSkillsState(),
-      token: () => resolveManagedConfig().accessToken
-    })
-
-    if (result.newStored) {writePlatformSkillsState(result.newStored)}
-  } catch (error: any) {
-    rememberLog(`[platform-skills] refresh failed (ignored): ${error && error.message ? error.message : error}`)
-  }
-}
-
-function platformSkillsHomes() {
-  return { homes: apexConfigHomes(), skillsRoot: path.join(HERMES_HOME, 'skills') }
-}
+const refreshPlatformSkillsFromPlatform = platformSkills.refresh
 
 function readPlatformPluginsState() {
   try {
@@ -20951,12 +20892,11 @@ function apexAuthPostJson(url, { body, bearer, method = 'POST', timeoutMs = 12_0
   })
 }
 
-// Bearer-authed body-less JSON request (GET / DELETE) — the read/revoke
-// counterpart to apexAuthPostJson (same electronNet transport + explicit
-// timeout). A >=400 rejects with an Error carrying `.statusCode` (reported to
-// cloudLogin on the way, hc-1073), so the caller can tell 401 (expired JWT →
-// re-login) from a transient failure.
-function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any = {}): Promise<any> {
+// Bearer-authed body-less JSON request (GET / DELETE) — the read/revoke counterpart to apexAuthPostJson (same
+// electronNet transport + explicit timeout), with any extra `headers` the caller names (hc-1201: which Desktop asks).
+// A >=400 rejects with an Error carrying `.statusCode` (reported to cloudLogin on the way, hc-1073), so the caller
+// can tell 401 (expired JWT → re-login) from a transient failure.
+function apexAuthBodylessJson(method, url, { bearer, headers = {}, timeoutMs = 12_000 }: any = {}): Promise<any> {
   return new Promise((resolve, reject) => {
     let parsed
 
@@ -20975,7 +20915,8 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
     }
 
     const request = electronNet.request({ method, url, redirect: 'follow' })
-    request.setHeader('Accept', 'application/json')
+
+    for (const [name, value] of Object.entries({ Accept: 'application/json', ...headers })) {request.setHeader(name, String(value))}
 
     if (bearer) {
       request.setHeader('Authorization', `Bearer ${bearer}`)
@@ -23368,7 +23309,7 @@ ipcMain.handle('hermes:managed:signOut', async () => {
 ipcMain.handle('hermes:managed:cancelPending', deferManagedRuntimeRecovery)
 ipcMain.handle('hermes:managed:prepareSignOut', () => warmProvisionKeyCapabilities(resolveApexEndpoints(process.env).provisionKeyUrl, resolveManagedConfig().accessToken, apexAuthBodylessJson)) // hc-1142
 // hc-1081: M2 calls this right after it creates an assistant (apex-platform-skills-sync.ts).
-registerProfileSkillsSync(ipcMain, () => ({ ...platformSkillsHomes(), env: process.env, log: msg => rememberLog(msg), manifestHash: readPlatformSkillsState().manifestHash }))
+registerProfileSkillsSync(ipcMain, platformSkills.fillArgs)
 
 // selfHeal: on-demand relay-key recovery, triggered by the renderer when a chat
 // turn fails with a relay auth error (HTTP 401/403). Runs the SAME gated probe +
@@ -24504,6 +24445,13 @@ function configureSpellChecker() {
   }
 }
 
+// The local engines a quit would stop and their read-only idle snapshot: the quit confirmation asks them, and so does
+// the platform skills refresh before it installs a new manifest (hc-1104, hc-1205).
+const localEngines = () => localEnginesOf({ connection: backendConnectionState.getPendingPromise() ? null : backendConnectionState.getPromise(),
+  owned: backendConnectionState.getProcess() !== null }, backendPool.values())
+
+const probeEngineIdle = engine => fetchJson(`${engine.baseUrl}${ENGINE_IDLE_PATH}`, engine.token, { timeoutMs: ENGINE_PROBE_DEADLINE_MS })
+
 // Ask before a quit kills a turn in flight: from the windows' reports, or, on macOS with no window open, from the
 // local engines (hc-1104, apex-quit-confirm.ts). "Quit Anyway" re-enters before-quit and falls through to the teardown.
 const quitConfirm = createQuitConfirm({
@@ -24511,9 +24459,7 @@ const quitConfirm = createQuitConfirm({
   skip: () => SKIP_QUIT_CONFIRM || isQuittingForHandoff,
   windowWork: () => ({ reporters: activeWorkByWebContents.size, work: mergeActiveWork(activeWorkByWebContents.values()) }),
   parent: () => BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0],
-  engines: () => localEnginesOf({ connection: backendConnectionState.getPendingPromise() ? null : backendConnectionState.getPromise(),
-    owned: backendConnectionState.getProcess() !== null }, backendPool.values()),
-  probe: engine => fetchJson(`${engine.baseUrl}${ENGINE_IDLE_PATH}`, engine.token, { timeoutMs: ENGINE_PROBE_DEADLINE_MS }),
+  engines: localEngines, probe: probeEngineIdle,
   showMessageBox: (parent, options) => (parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options)),
   focusApp: () => app.focus({ steal: true }),
   quit: () => app.quit(),

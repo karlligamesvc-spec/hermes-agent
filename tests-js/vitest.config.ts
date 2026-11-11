@@ -12,6 +12,14 @@ const PRODUCT_IDENTITY = 'apps/desktop/product-identity.cjs'
 
 export const APEX_DESKTOP_BASELINE: Record<string, string[]> = {
   'scripts/desktop-smoke.test.ts': ['apps/desktop/electron/backend-discovery.ts', 'apps/desktop/electron/data-paths.mjs'],
+  // hc-1203 (v0.23.0): drives the packaged-Desktop smoke harness (tests/install/e2e-assets/desktop-smoke.ts).
+  'scripts/desktop-smoke-launch-failure.test.ts': [
+    'apps/desktop/electron/data-paths.mjs', 'apps/desktop/scripts/bundle-env.mjs',
+  ],
+  // hc-1203 (v0.23.0): imports desktop-smoke-process.ts, the packaged-Desktop smoke harness above.
+  'scripts/desktop-reused-build-commit.test.ts': [
+    'apps/desktop/electron/backend-discovery.ts', 'apps/desktop/electron/data-paths.mjs',
+  ],
   'desktop-builder.test.mjs': ['apps/desktop/scripts/build.mjs', PRODUCT_IDENTITY],
   'bundle-smoke-metadata.test.mjs': [PRODUCT_IDENTITY],
   'desktop-mac-usage-descriptions.test.ts': ['apps/desktop/electron-builder.config.cjs'],

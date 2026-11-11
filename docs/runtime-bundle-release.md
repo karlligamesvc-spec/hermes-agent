@@ -15,6 +15,22 @@ Desktop shell's source commit. Every installer must carry the pinned full
 engine commit and release label. Changing the pin does not change the Cloud
 default runtime.
 
+### Publishing the accepted candidate (hc-1204)
+
+A release is published by promotion. Dispatch the candidate (`publish=false`),
+accept its installers, then dispatch `publish=true` with
+`candidate_run_id=<candidate run id>` on the same ref, with no new commit. That
+run builds nothing. Its `candidate` job checks that the candidate is a
+`desktop-release.yml` run of this exact commit that succeeded, built every
+platform this run publishes, and still has its installer artifacts (kept 3
+days). Each platform's publish job then downloads that artifact, checks it
+against its updater feed (`apps/desktop/scripts/release-candidate-promotion.mjs
+bundle`) and uploads it. Users get the bytes that were accepted, and publishing
+takes minutes instead of a second build and a second notarization. The same
+dispatch with `publish=false` is a rehearsal that stops before the first upload.
+Without `candidate_run_id`, `publish=true` still builds and publishes in one
+run, for example when the candidate's artifacts have expired.
+
 ### A release that includes Windows
 
 - Cut it like any release, then run the candidate with `windows=true` and
@@ -24,7 +40,8 @@ default runtime.
   and `assert-exe-identity.mjs`. CI never installs the package, so check the
   candidate on a physical Windows machine over the previous fixed version and
   record that check on its own. The installer is unsigned.
-- Publish with `windows=true` and `publish=true` from the same commit. The
+- Promote that candidate with `windows=true`, `publish=true` and its
+  `candidate_run_id`; the gate refuses a candidate that did not build Windows. The
   parity job requires both platforms to report the caller's commit, the
   `package.json` version, the pinned engine commit and label, and the Windows PE
   identity, then reads back `desktop/mac-arm64/` and `desktop/win-x64/`.

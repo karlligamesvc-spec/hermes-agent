@@ -465,7 +465,20 @@ declare global {
           | { ok: true; url: string }
           | { ok: false; code: 'not_a_film' | 'not_ready' | 'off' | 'open_failed' | 'start_failed'; message: string }
         >
-        prefetch: () => Promise<'off' | 'preparing' | 'ready' | 'started' | 'waiting'>
+        /** `manual`: the person asked (the titlebar's 剪辑), so a recent failure does not make it wait (hc-1201). */
+        prefetch: (manual?: boolean) => Promise<'off' | 'preparing' | 'ready' | 'started' | 'waiting'>
+        // hc-1201, optional for an older main process: the engine's first-run check (null: it could not say), the
+        // background install's progress, and the project last opened in the editor (null: none, or it is gone).
+        check?: () => Promise<null | {
+          browser: { bytes: number; ready: boolean }
+          disk: { free: number; needed: number }
+          toolkit: { bytes: number; ready: boolean }
+        }>
+        progress?: () => Promise<{
+          failed: boolean
+          progress: null | { done: number; step: 'browser' | 'toolkit'; total: number }
+        }>
+        lastProject?: () => Promise<null | string>
       }
       // Continuous auth gate: fires when a backend call returns 401 (login lost)
       // or 403 account_disabled (account abnormal). The renderer clears auth and
@@ -603,6 +616,8 @@ declare global {
       savePastedText: (text: string) => Promise<string>
       saveClipboardImage: () => Promise<string>
       getPathForFile: (file: File) => string
+      /** Signatures for folders the user handed over this launch (dialog, drop, paste); other paths get none. */
+      folderGrants?: (paths: string[]) => Promise<Record<string, string>>
       normalizePreviewTarget: (target: string, baseDir?: string) => Promise<HermesPreviewTarget | null>
       watchPreviewFile: (url: string) => Promise<HermesPreviewWatch>
       /** Watch a directory for entry churn (disk-plugin door); same watcher

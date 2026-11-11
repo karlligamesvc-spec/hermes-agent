@@ -1,7 +1,7 @@
 """hc-1169 a cron job fires with the signed-in account's credentials, in every Desktop process.
 
 APEX Desktop puts the account's credentials (``ACCOUNT_ENV_NAMES``: the platform tools' key and
-endpoints, web search, the Feishu and WeChat apps of the IM 入口) into the environment of every
+endpoints, web search and extraction, the Feishu and WeChat apps of the IM 入口) into the environment of every
 engine it spawns and of the messaging gateway; no assistant's ``.env`` holds them. A cron fire runs
 under the firing profile's secret scope, built from that profile's files alone
 (``cron.scheduler._install_fire_secret_scope``: its ``.env``, secret sources and managed env). Once a
@@ -51,8 +51,8 @@ logger = logging.getLogger(__name__)
 
 #: The credentials and endpoints Desktop injects into every engine and messaging gateway it spawns
 #: that belong to the signed-in account (or this machine), not to one assistant: the platform tools
-#: (apex-platform-tools.ts PLATFORM_TOOL_ENV_KEYS), web search (backend-env.ts), the Feishu app
-#: (apex-feishu.ts) and the IM 入口 bindings (apex-im-entry.ts CHANNEL_ENV_DESCRIPTORS).
+#: (apex-platform-tools.ts PLATFORM_TOOL_ENV_KEYS), web search and web extraction (backend-env.ts),
+#: the Feishu app (apex-feishu.ts) and the IM 入口 bindings (apex-im-entry.ts CHANNEL_ENV_DESCRIPTORS).
 #: apps/desktop/electron/apex-cron-account-env.test.ts reads both tuples and turns red when Desktop
 #: injects a name neither lists.
 ACCOUNT_ENV_NAMES = (
@@ -61,6 +61,8 @@ ACCOUNT_ENV_NAMES = (
     "HERMES_PLATFORM_API_BASE",
     "SEARXNG_URL",
     "SEARXNG_API_KEY",
+    "FIRECRAWL_API_URL",
+    "FIRECRAWL_API_KEY",
     "FEISHU_APP_ID",
     "FEISHU_APP_SECRET",
     "FEISHU_DOMAIN",

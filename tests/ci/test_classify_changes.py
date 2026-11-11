@@ -49,12 +49,13 @@ DEFAULT = {
     "desktop_updater": True,
     "rust": True,
     "remote_backends": True,
+    "catalog": True,
 }
 
 SLOW_LANES = {"docker", "nix", "e2e", "e2e_upgrade", "e2e_desktop_core", "e2e_desktop_update"}
 
 
-def _lanes(python=False, frontend=False, site=False, scan=False, deps=False, uv_lock=False, npm_lock=False, bootstrap=False, desktop_updater=False, rust=False, docker_meta=False, python_prod=None, nix=False, docker=None, e2e=False, e2e_upgrade=False, e2e_desktop_core=False, e2e_desktop_update=False, remote_backends=False, installers=False) -> dict[str, bool]:
+def _lanes(python=False, frontend=False, site=False, scan=False, deps=False, uv_lock=False, npm_lock=False, bootstrap=False, desktop_updater=False, rust=False, docker_meta=False, python_prod=None, nix=False, docker=None, e2e=False, e2e_upgrade=False, e2e_desktop_core=False, e2e_desktop_update=False, remote_backends=False, installers=False, catalog=False) -> dict[str, bool]:
     # python_prod tracks python except for tests-only diffs; default it to
     # python so the majority of cases don't need to spell it out.
     #
@@ -85,6 +86,7 @@ def _lanes(python=False, frontend=False, site=False, scan=False, deps=False, uv_
         "desktop_updater": desktop_updater,
         "rust": rust,
         "remote_backends": remote_backends,
+        "catalog": catalog,
     }
 
 
@@ -93,9 +95,21 @@ CASES = {
     # through the same compilers (tests/ci/test_update_ci_routing.py).
     "shared JS builder → frontend + both update suites": (
         ["scripts/build/web.mjs"],
-        _lanes(python=True, frontend=True, e2e_upgrade=True, e2e_desktop_update=True),
+        _lanes(python=True, frontend=True, e2e_upgrade=True, e2e_desktop_update=True, docker=True),
+    ),
+    # The image builds the Webapp through this recipe; Desktop sources do not route to docker.
+    "webapp build recipe → docker": (
+        ["apps/desktop/scripts/build-webapp.mjs"],
+        _lanes(frontend=True, e2e_upgrade=True, e2e_desktop_core=True, e2e_desktop_update=True, docker=True),
     ),
     "root JS tests → frontend": (["tests-js/product-builders.test.mjs"], _lanes(python=True, frontend=True)),
+    # The bridge's node --test suites run in the JS & TS job (js-tests.yml).
+    "whatsapp bridge → frontend": (
+        ["scripts/whatsapp-bridge/bridge_helpers.js"], _lanes(python=True, frontend=True),
+    ),
+    "whatsapp adapter → frontend": (
+        ["plugins/platforms/whatsapp/adapter.py"], _lanes(python=True, frontend=True, scan=True),
+    ),
     "docs-only → nothing heavy": (["README.md", "docs/guide.md"], _lanes()),
     "python source → python": (["run_agent.py"], _lanes(python=True, scan=True)),
     # pyproject.toml declares the pytest markers the OS lanes select on, so it
@@ -260,6 +274,14 @@ CASES = {
         ["scripts/run_tests_parallel.py"],
         _lanes(python=True, scan=True, e2e=True, e2e_upgrade=True),
     ),
+    "runner launch module → same lanes as the runner": (
+        ["scripts/run_tests_launch.py"],
+        _lanes(python=True, scan=True, e2e=True, e2e_upgrade=True),
+    ),
+    "fork-server child → same lanes as the runner": (
+        ["scripts/run_tests_fork_child.py"],
+        _lanes(python=True, scan=True, e2e=True, e2e_upgrade=True),
+    ),
     # Supply-chain lanes
     ".pth file → scan": (["evil.pth"], _lanes(python=True, scan=True)),
     "setup.py → scan": (["setup.py"], _lanes(python=True, scan=True, docker=True, nix=True, e2e_upgrade=True)),
@@ -394,6 +416,10 @@ CASES = {
         ["apps/desktop/e2e/core/transcript-integrity.spec.ts"],
         _lanes(frontend=True, e2e_desktop_core=True),
     ),
+    "desktop queue panel (lost-turn card) → desktop core": (
+        ["apps/desktop/src/app/chat/composer/queue-panel.tsx"],
+        _lanes(frontend=True, e2e_desktop_core=True),
+    ),
     "desktop profile rail → desktop core": (
         ["apps/desktop/src/app/chat/sidebar/profile-switcher.tsx"],
         _lanes(frontend=True, e2e_desktop_core=True),
@@ -410,6 +436,19 @@ CASES = {
     "image tests → docker": (
         ["tests/docker/test_image_smoke.py"],
         _lanes(python=True, python_prod=False, scan=True, docker=True),
+    ),
+    # Catalog entry data runs the catalog tests INSTEAD of the Python suite.
+    "catalog entry → catalog only": (["plugin-catalog/foo.yaml"], _lanes(catalog=True)),
+    "catalog entry + email map → catalog only": (
+        ["plugin-catalog/foo.yaml", "contributors/emails/a@example.com"],
+        _lanes(catalog=True),
+    ),
+    # The rules README is mirrored by a docs-page test, so it keeps the suite.
+    "catalog README → python": (["plugin-catalog/README.md"], _lanes(python=True)),
+    # Any code next to the entry brings the full suite back.
+    "catalog entry + code → python and catalog": (
+        ["plugin-catalog/foo.yaml", "agent/display.py"],
+        _lanes(python=True, scan=True, catalog=True),
     ),
     # Fail open: CI-config / empty / blank diffs run everything.
     ".github change → all": ([".github/workflows/tests.yml"], DEFAULT),
@@ -501,7 +540,7 @@ _DESKTOP_UPDATE_PATH_FILES = (
     "apps/desktop/electron/handoff-result.ts",
     "apps/desktop/electron/desktop-installation.ts",
     "apps/desktop/electron/backend-discovery.ts",
-    "apps/desktop/electron/host-backend-attach.ts",
+    "apps/desktop/electron/local-gateway.ts",
     "scripts/desktop-update/windows.ps1",
     "scripts/desktop-update/posix.sh",
     "hermes_cli/desktop_update_verify.py",
@@ -584,6 +623,8 @@ _REAL_UPDATE_LANES = (
     ("tests-os.yml", "install-update-e2e", "windows-install-update-e2e.yml", "e2e_upgrade"),
     # Not an update suite, but the same contract: the real SSH/Docker backend lane.
     ("ci.yaml", "remote-backends", "remote-backends.yml", "remote_backends"),
+    # Catalog-only PRs skip the suite, so their catalog tests must gate the merge.
+    ("ci.yaml", "catalog-tests", "catalog-tests.yml", "catalog"),
 )
 
 
@@ -741,3 +782,20 @@ def test_pull_request_labels_prefers_the_live_labels_over_the_replayed_event(tmp
 @pytest.mark.parametrize("path", ["scripts/lib/apexnodes-region-detect.sh", "scripts/release/publish.sh"])
 def test_installer_and_release_scripts_turn_on_installers_lane(path):
     assert classify([path])["installers"] is True
+def test_catalog_lane_runs_every_test_that_reads_the_shipped_catalog():
+    """A catalog-only PR runs only the lane's discovered files, so a test that
+    reads the real ``plugin-catalog/`` must be among them."""
+    spec = importlib.util.spec_from_file_location("catalog_test_files", _REPO / "scripts/ci/catalog_test_files.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    files = set(mod.catalog_test_files())
+    for must in (
+        "tests/hermes_cli/test_plugin_catalog.py",
+        "tests/scripts/test_validate_plugin_catalog.py",
+        "tests/scripts/test_contributor_map.py",
+        "tests/website/test_extract_plugins.py",
+    ):
+        assert must in files
+    assert not any(f.startswith("tests/e2e/") for f in files)
+    text = (_REPO / ".github/workflows/catalog-tests.yml").read_text(encoding="utf-8-sig")
+    assert "scripts/ci/catalog_test_files.py" in text and "scripts/run_tests.sh" in text

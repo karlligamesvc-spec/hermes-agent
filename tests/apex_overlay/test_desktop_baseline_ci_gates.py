@@ -83,3 +83,25 @@ def test_windows_only_python_lane_fits_the_standard_runner():
     timeouts = re.fullmatch(r"\$\{\{ matrix\.marker == 'windows' && '([0-9]+)' \|\| '([0-9]+)' \}\}",
                             env["HERMES_TEST_FILE_TIMEOUT"])
     assert timeouts and timeouts[1] == "900", env["HERMES_TEST_FILE_TIMEOUT"]
+
+
+AGENT_NIX = REPO / "nix/hermes-agent.nix"
+AGENT_REFERENCES = REPO / "nix/tests/agent-references.py"
+WEBAPP_RECIPE = "apps/desktop/scripts/build-webapp.mjs"
+
+
+def test_the_nix_agent_carries_the_webapp_only_with_a_webapp_recipe():
+    """hc-1203: v0.23.0's agent package lists the Webapp among its frontends, and #600's first nix flake
+    check built it from the APEX Desktop renderer and failed (ERR_AMBIGUOUS_MODULE_SYNTAX in
+    apps/desktop/vite.config.ts), taking hermes-agent and every check that installs it along. The frontend
+    comes back on its own once a Webapp recipe is ported (the image's Webapp stage is gated the same way:
+    tests/apex_overlay/test_dockerfile_sources.py)."""
+    text = AGENT_NIX.read_text(encoding="utf-8")
+    gated = re.search(r"// lib\.optionalAttrs \(builtins\.pathExists \.\./(?P<path>[\w./-]+)\) \{\s*"
+                      r"webapp = toString hermesWebapp;\s*\}", text)
+    assert gated, "nix/hermes-agent.nix lost the gate on its webapp frontend"
+    assert gated["path"] == WEBAPP_RECIPE
+    assert text.count("webapp = toString hermesWebapp;") == 1, "the webapp frontend is listed outside the gate"
+    # The installed-agent check must accept an agent without that frontend instead of indexing it.
+    references = AGENT_REFERENCES.read_text(encoding="utf-8")
+    assert 'if name == "webapp" and name not in inputs["frontends"]:' in references

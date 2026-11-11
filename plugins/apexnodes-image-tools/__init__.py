@@ -190,9 +190,10 @@ def _desktop_image_model() -> str | None:
         load_config_readonly,
         require_readable_config_before_write,
     )
+    from hermes_cli.config_backend import config_exists  # hc-1203: v0.23.0 reads config only through the backend
 
     config_path = get_config_path()
-    if not config_path.exists():
+    if not config_exists(config_path):
         return None
     try:
         # The strict preflight prevents the config loader's last-known-good
