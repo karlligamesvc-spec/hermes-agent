@@ -396,7 +396,13 @@ def _rewrite_browser_exec(td: dict[str, Any], available: set) -> Optional[dict[s
     """browser_exec runs arbitrary host Python: a session without the terminal surface
     must not regain host execution via the browser toolset. Session-level gate rather
     than a check_fn because check_fns are TTL-cached process-wide across sessions."""
-    return td if "terminal" in available else None
+    if "terminal" in available:
+        return td
+    try:  # hc-1203: an APEX cloud container keeps it without terminal (apex_overlay/cloud_browser_exec.py)
+        from apex_overlay.cloud_browser_exec import keeps_browser_exec
+    except ImportError:  # a tree without the APEX overlay: upstream's gate
+        return None
+    return td if keeps_browser_exec() else None
 
 
 def _rewrite_browser_exec_vision(td: dict[str, Any], available: set) -> Optional[dict[str, Any]]:
