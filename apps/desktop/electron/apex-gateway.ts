@@ -91,6 +91,16 @@ function buildGatewayRunArgs(profile?) {
 const MESSAGING_GATEWAY_PROFILE = null
 
 /**
+ * hc-1217: the environment every desktop-managed messaging gateway is spawned
+ * with, on top of the credential fragments. It tells the engine's APEX overlay
+ * (apex_overlay/desktop_quiet_quit.py) that Desktop runs this gateway, so a stop
+ * — quit, an IM 入口 rebind, an engine update — leaves out the home-channel
+ * "shutting down" broadcast. On Desktop the Feishu home channel is the owner's
+ * own chat. A chat whose task is running when the gateway stops is still told.
+ */
+const GATEWAY_RUN_ENV = Object.freeze({ APEX_DESKTOP_MESSAGING_GATEWAY: '1' })
+
+/**
  * True when the normalized IM 入口 store (the map keyed by channel id that
  * resolveImEntryStore() returns) has at least one usable channel binding — i.e.
  * there is an adapter for the messaging gateway to host. When false the gateway
@@ -120,6 +130,7 @@ function imEntryStoreHasBinding(store) {
 
 export {
   buildGatewayRunArgs,
+  GATEWAY_RUN_ENV,
   imEntryStoreHasBinding,
   MESSAGING_GATEWAY_PROFILE
 }

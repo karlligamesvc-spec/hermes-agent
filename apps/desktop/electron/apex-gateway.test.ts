@@ -18,7 +18,7 @@ import path from 'node:path'
 
 import { test } from 'vitest'
 
-import { buildGatewayRunArgs, imEntryStoreHasBinding, MESSAGING_GATEWAY_PROFILE } from './apex-gateway'
+import { buildGatewayRunArgs, GATEWAY_RUN_ENV, imEntryStoreHasBinding, MESSAGING_GATEWAY_PROFILE } from './apex-gateway'
 
 test('buildGatewayRunArgs: default (no profile) is `gateway run --replace`', () => {
   assert.deepEqual(buildGatewayRunArgs(), ['gateway', 'run', '--replace'])
@@ -125,4 +125,25 @@ test('hc-1171: every path that starts the messaging gateway starts it as the def
 
   // A running gateway is judged against the same fixed profile, so switching assistants never restarts it.
   assert.match(mainBody('async function reconcileMessagingGateway('), /messagingGatewayRuntime\.profile === MESSAGING_GATEWAY_PROFILE/)
+})
+
+// hc-1217: the engine's overlay (apex_overlay/desktop_quiet_quit.py) makes a stop of the gateway
+// Desktop spawned leave out the home-channel broadcast; it knows that gateway by this mark.
+test('hc-1217: the messaging gateway carries the mark the overlay reads, and nothing else does', () => {
+  const overlay = fs.readFileSync(path.join(import.meta.dirname, '../../../apex_overlay/desktop_quiet_quit.py'), 'utf8')
+  const name = overlay.match(/^ENV_NAME = "([A-Z0-9_]+)"$/m)?.[1]
+
+  assert.equal(name, 'APEX_DESKTOP_MESSAGING_GATEWAY')
+  assert.deepEqual(GATEWAY_RUN_ENV, { [name]: '1' })
+  assert.ok(Object.isFrozen(GATEWAY_RUN_ENV))
+
+  // One gateway spawn, and it carries the mark after every fragment that could hold a stale copy.
+  assert.equal([...mainCode.matchAll(/buildGatewayRunArgs\(/g)].length, 1)
+  const start = mainBody('async function startMessagingGateway(')
+
+  assert.match(start, /resolveHermesBackend\(buildGatewayRunArgs\(profile\)\)/)
+  assert.match(start, /\.\.\.process\.env,[\s\S]*\.\.\.backend\.env,[\s\S]*\.\.\.GATEWAY_RUN_ENV,/)
+  // The dashboard and pool engines never get it: their stops send no IM notice to keep quiet.
+  assert.equal([...mainCode.matchAll(/GATEWAY_RUN_ENV/g)].length, 2, 'the import and the gateway spawn only')
+  assert.ok(!mainCode.includes(name as string), 'main.ts spells the variable only through GATEWAY_RUN_ENV')
 })

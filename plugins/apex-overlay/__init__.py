@@ -114,6 +114,12 @@ _TOOL_SEAMS = (
         "that chat; the chat then says so instead of promising it.",
     ),
     (
+        "desktop_quiet_quit",
+        "apex-overlay: hc-1217 Desktop quiet quit seam did not apply (see prior error). "
+        "Each time APEX Desktop quits, the owner's own Feishu chat (the home channel) is "
+        "told APEX is shutting down, also when nothing was running.",
+    ),
+    (
         "session_title",
         "apex-overlay: hc-1192 session title seam did not fully apply (see prior "
         "error). Session titles follow the language of the user's first message "
