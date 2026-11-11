@@ -336,7 +336,9 @@ GENERATE_IMAGE_SCHEMA = {
                 "type": "boolean",
                 "description": (
                     "Set true ONLY after the user explicitly confirmed that the real person in an uploaded "
-                    "photo (or named in the prompt) is themselves or agreed to it. Never set it on your own."
+                    "photo (or named in the prompt) is themselves or agreed to it, or that the person in an "
+                    "uploaded photo is fictional (AI-made or drawn, not based on a real person). "
+                    "Never set it on your own."
                 ),
             },
         },

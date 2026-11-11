@@ -34,6 +34,14 @@ REF_A = "media:" + "a" * 32 + "/image_1.png"
 SIGNED = "https://apex-nodes.com/api/v1/media/image/" + "t" * 32
 ROLES = ["first_frame", "last_frame", "reference"]
 KINDS = ["person", "product", "scene", "style", "other"]
+# hc-1216: the cloud plugins carry this sentence word for word (apex-nodes tests/test_hc1216_fictional_person_refs.py
+# pins the same literal): the user confirms it is them, that person agreed, or the person is fictional.
+RIGHTS_DESCRIPTION = (
+    "Set true ONLY after the user explicitly confirmed that the real person in an uploaded "
+    "photo (or named in the prompt) is themselves or agreed to it, or that the person in an "
+    "uploaded photo is fictional (AI-made or drawn, not based on a real person). "
+    "Never set it on your own."
+)
 
 
 def _load_plugin(name: str):
@@ -279,6 +287,7 @@ def test_the_schemas_offer_what_the_platform_takes(plugin):
     images = schema["parameters"]["properties"]["images"]
     assert images["items"]["properties"]["kind"]["enum"] == KINDS
     assert schema["parameters"]["properties"]["rights_confirmed"]["type"] == "boolean"
+    assert schema["parameters"]["properties"]["rights_confirmed"]["description"] == RIGHTS_DESCRIPTION
     if "image" in plugin:
         assert images["maxItems"] == 4 and "role" not in images["items"]["properties"]
     else:
