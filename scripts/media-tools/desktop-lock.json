@@ -192,5 +192,13 @@
     "bytes": 41612524,
     "sha256": "5254c8a04a735240ab10ec0a23aedc524cc0b49c37ca0990052f14d8c8a95571",
     "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/openfilm/0.3.0/5254c8a04a735240ab10ec0a23aedc524cc0b49c37ca0990052f14d8c8a95571/openfilm-toolkit.tgz"
+  },
+  "motion": {
+    "version": "0.4.0",
+    "integrity": "sha512-E1r5+mbmIsObyow1MtglFiMTyYQwDeLYMUH1pIxNFWDd3uveHj+m8vt/HS1C5GxLg3nKGRDceHpwPcHksv0vtg==",
+    "license": "MIT (huashu-motion 0.4.0, trimmed: no GSAP, no 豆子花叔 character, no model downloads); OFL-1.1 (Noto Sans SC)",
+    "bytes": 4409973,
+    "sha256": "8ef8cc4a9976d5128f7894a2f687796495c0613e457b882caf0c994c60d4bec7",
+    "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/motion/0.4.0/8ef8cc4a9976d5128f7894a2f687796495c0613e457b882caf0c994c60d4bec7/motion-toolkit.tgz"
   }
 }

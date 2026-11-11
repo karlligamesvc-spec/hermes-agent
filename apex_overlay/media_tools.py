@@ -253,6 +253,122 @@ def openfilm_check() -> dict:
     }
 
 
+def motion_pin() -> dict:
+    """desktop-lock's ``motion``: the huashu-motion toolkit this engine pins (hc-1221)."""
+    return json.loads(LOCK.read_text(encoding='utf-8-sig'))['motion']
+
+
+def ensure_motion() -> Path:
+    """APEX's motion toolkit (hc-1221): huashu-motion's renderer, trimmed (no GSAP, no model downloads), for the
+    explainer templates the ``explainer-video`` skill ships.
+
+    Downloaded once from APEX COS, size and SHA-256 checked, and unpacked whole into
+    HERMES_HOME/tool-cache/motion/<sha256>/. It renders in the Agent browser's Chromium (``ensure_browser(render=True)``),
+    never in a browser of the user's. ``tool-cache/motion/ready.json`` is written last and names the toolkit, the
+    Chromium and the pin. Returns its path.
+    """
+    from filelock import FileLock
+    from hermes_constants import get_hermes_home
+    from urllib.parse import urlsplit
+    spec = motion_pin()
+    url = urlsplit(spec['url'])
+    if url.scheme != 'https' or url.hostname != COS_HOST:
+        raise ValueError('Motion toolkit download must use APEX COS')
+    chromium = ensure_browser(render=True)
+    cache = Path(get_hermes_home()) / 'tool-cache' / 'motion'
+    cache.mkdir(parents=True, exist_ok=True)
+    destination = cache / spec['sha256']
+
+    def installed(folder: Path) -> bool:
+        try:
+            manifest = json.loads((folder / 'apex-toolkit.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return False
+        return (manifest.get('package') == 'huashu-motion' and manifest.get('version') == spec['version']
+                and manifest.get('integrity') == spec['integrity'] and (folder / 'cli/om.js').is_file())
+
+    with FileLock(str(cache / 'install.lock'), timeout=1800):
+        if not installed(destination):
+            with tempfile.TemporaryDirectory(prefix='install-', dir=cache) as temporary:
+                temporary = Path(temporary)
+                archive = temporary / 'motion-toolkit.tgz'
+                digest, size = hashlib.sha256(), 0
+                with urllib.request.urlopen(spec['url'], timeout=120) as response, archive.open('wb') as output:
+                    while chunk := response.read(1024 * 1024):
+                        output.write(chunk)
+                        digest.update(chunk)
+                        size += len(chunk)
+                        _progress('motion', size, spec['bytes'])
+                if size != spec['bytes'] or digest.hexdigest() != spec['sha256']:
+                    raise ValueError('COS motion toolkit checksum mismatch')
+                unpacked = temporary / 'unpacked'
+                unpacked.mkdir()
+                tar = str(Path(os.environ.get('SystemRoot', 'C:/Windows')) / 'System32/tar.exe') if os.name == 'nt' else '/usr/bin/tar'
+                subprocess.run([tar, '-xzf', str(archive), '-C', str(unpacked)], stdin=subprocess.DEVNULL, check=True, timeout=300)
+                if not installed(unpacked):
+                    raise ValueError('COS motion toolkit archive is not the locked toolkit')
+                # A previous interrupted installation cannot leave a half-valid tree.
+                if destination.exists():
+                    shutil.rmtree(destination)
+                unpacked.rename(destination)
+        ready = cache / 'ready.json'
+        staged = cache / 'ready.json.tmp'
+        staged.write_text(json.dumps({
+            'schema': 1, 'version': spec['version'], 'sha256': spec['sha256'],
+            'toolkit': str(destination), 'chromium': str(chromium),
+        }, indent=2), encoding='utf-8')
+        os.replace(staged, ready)
+    return ready
+
+
+#: ``om`` commands the motion toolkit does not carry (hc-1221), and what an Agent uses instead.
+MOTION_NOT_CARRIED = {
+    'voice': 'APEX voices with text_to_speech and times captions with media_transcribe',
+    'samples': 'APEX has its own music library',
+    'learn': 'keep notes in the project folder',
+    'share': 'deliver the rendered film and the publish package',
+    'grab': 'use the browser tools to capture pages',
+    'new': "start from the explainer-video skill's template",
+    'templates': "start from the explainer-video skill's template",
+    'demo': "start from the explainer-video skill's template",
+    'studio': 'look at frames with `still` and the film with `qa --sheet`; the user watches the rendered film',
+    'inbox': 'look at frames with `still` and the film with `qa --sheet`; the user watches the rendered film',
+}
+
+#: One `om` run, render included (a 30-second 1080x1920 film renders in about 20 s on a laptop).
+MOTION_TIMEOUT = 1800
+
+
+def motion_node() -> str:
+    """The engine's bundled Node (huashu-motion needs 22+), else the one on PATH."""
+    for folder in (ROOT / '.runtime/node/bin', ROOT / '.runtime/node'):
+        found = shutil.which('node', path=str(folder))
+        if found:
+            return found
+    found = shutil.which('node')
+    if not found:
+        raise ValueError('no Node runtime found for the motion toolkit')
+    return found
+
+
+def run_motion(args: list[str]) -> int:
+    """``motion <om command> …``: run the pinned toolkit's ``om`` in the Agent browser's Chromium."""
+    if args and args[0] in MOTION_NOT_CARRIED:
+        print(f'APEX motion: `{args[0]}` is not part of APEX\'s motion toolkit; {MOTION_NOT_CARRIED[args[0]]}.', flush=True)
+        return 2
+    ready = json.loads(ensure_motion().read_text(encoding='utf-8'))
+    env = dict(os.environ, OM_CHROME=ready['chromium'])
+    bundled = ROOT / '.runtime/bin'
+    if bundled.is_dir():  # the bundled ffmpeg/ffprobe render and mix
+        env['PATH'] = os.pathsep.join([str(bundled), env.get('PATH', '')])
+    try:
+        return subprocess.run([motion_node(), str(Path(ready['toolkit']) / 'cli/om.js'), *args], env=env,
+                              stdin=subprocess.DEVNULL, timeout=MOTION_TIMEOUT, check=False).returncode
+    except subprocess.TimeoutExpired:
+        print(f'APEX motion: `{" ".join(args[:1])}` did not finish within {MOTION_TIMEOUT // 60} minutes.', flush=True)
+        return 124
+
+
 def _bundled_hypit_version() -> str:
     package = ROOT / '.runtime/hypit/node_modules/@hypit/hypit/package.json'
     return json.loads(package.read_text(encoding='utf-8'))['version']
@@ -348,9 +464,15 @@ def apply() -> bool:
 
 
 if __name__ == '__main__':
+    import sys
+    if sys.argv[1:2] == ['motion']:  # hc-1221: everything after `motion` belongs to `om`
+        try:
+            raise SystemExit(run_motion(sys.argv[2:]))
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:  # the Agent relays this line
+            raise SystemExit(f'APEX motion toolkit unavailable: {type(exc).__name__}: {exc}') from None
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['browser', 'prepare-hypit', 'enable-hosted-hypit', 'font', 'openfilm',
-                                            'openfilm-check'])
+                                            'openfilm-check', 'motion'])
     parser.add_argument('--workspace', '--project', type=Path, default=Path.cwd())
     parser.add_argument('--hypit-version')
     args = parser.parse_args()
