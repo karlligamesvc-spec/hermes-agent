@@ -81,6 +81,33 @@ cover renderer extracts from that same archive; the publisher re-derives it from
 archive before any write. Until the object exists, the `font` command fails and the skill delivers
 the video with a separate SRT instead of falling back to a system font.
 
+## Title font (hc-1224)
+
+Titles and 花字 use a heavy face: `fonts.title` pins 思源黑体 Black, Noto Sans SC Black 2.004
+(`NotoSansSC-Black.otf`, 8,855,916 bytes, SHA-256 `ccb49602…`, SIL OFL-1.1), the static Black
+member of the official notofonts/noto-cjk release asset
+`https://github.com/notofonts/noto-cjk/releases/download/Sans2.004/18_NotoSansSC.zip`
+(50,077,940 bytes, SHA-256 `4d107c09ada479d3e48b6e78c83835773cbd9214bf6e12cdb7b60f8e068292ec`).
+Its `licenseFile` is that archive's `LICENSE` (the OFL text, 4,301 bytes), published as `OFL.txt`
+in the same COS folder. `python -m apex_overlay.media_tools font title` installs `OFL.txt` first,
+then the font, into `HERMES_HOME/tool-cache/fonts/<font sha256>/`, with the same COS-only, size
+and SHA-256 rules, and prints the font's path; plain `font` still prints 得意黑. A font it cannot
+give prints one line, `APEX title font unavailable: …` (`APEX subtitle font unavailable: …` for
+得意黑). Clients before hc-1224 answer `font title` with `unrecognized arguments: title`.
+
+The ASS `Fontname` is `Noto Sans SC Black`, the font's nameID 1 (the PostScript name
+`NotoSansSC-Black` also matches). The typographic family `Noto Sans SC`, `思源黑体` and
+`Noto Sans SC Bold` fall back to Helvetica in libass 0.17.5 (ffmpeg 9.0.1 and 9.0.2 on macOS,
+`fontselect` lines checked on 2026-11-11). Rendered in libass at PlayRes 1080×1920, a CJK character
+or full-width mark advances 0.69 × the font size (Latin letters and digits 0.42–0.46); the same
+measurement gives 0.667 for 得意黑, whose line breaking uses 0.66. libass reads one fonts folder,
+so a video that burns 得意黑 subtitles and Black titles needs both files copied into one folder.
+
+Publishing: put `18_NotoSansSC.zip` and `desktop-lock.json` in a folder and run
+`scripts/media-tools/publish_fonts.py <folder> --only title`. It refuses to upload unless both
+`OFL.txt` and the font equal the lock, uploads `OFL.txt` first, and reads each object back over
+public HTTPS.
+
 ## Hypit
 
 The owner confirmed that written Hypit.AI commercial redistribution authorization

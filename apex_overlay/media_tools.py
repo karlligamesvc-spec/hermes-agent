@@ -5,6 +5,8 @@ hc-1025: the same cache holds the one subtitle font Agents burn captions with
 YaHei are not cleared for commercial use, so subtitles never rely on them:
 ``python -m apex_overlay.media_tools font`` prints the verified font file, and
 ffmpeg loads it through ``subtitles=…:fontsdir=<its folder>`` or ``fontfile=``.
+hc-1224: ``font title`` gives the heavy face for titles and 花字, 思源黑体 Black (Noto Sans SC Black, OFL-1.1),
+with its OFL text beside it.
 """
 from __future__ import annotations
 
@@ -104,36 +106,48 @@ def ensure_browser(*, render=False) -> Path:
     return executable
 
 
+#: What ``font`` prints when it cannot give a font, one line the platform skill names (never a traceback).
+FONT_UNAVAILABLE = {'subtitle': 'APEX subtitle font unavailable', 'title': 'APEX title font unavailable'}
+
+
 def ensure_font(name: str = 'subtitle') -> Path:
-    """The licensed font ``name`` from desktop-lock, downloaded once from APEX COS and hash verified."""
+    """The licensed font ``name`` from desktop-lock, downloaded once from APEX COS and hash verified.
+
+    ``subtitle`` is 得意黑 (hc-1025); ``title`` is 思源黑体 Black (hc-1224). A font pinned with a ``licenseFile``
+    (its OFL text) gets that file in the same folder, installed first: the font is never there without it.
+    """
     from filelock import FileLock
     from hermes_constants import get_hermes_home
     from urllib.parse import urlsplit
     spec = json.loads(LOCK.read_text(encoding='utf-8-sig'))['fonts'][name]
-    url = urlsplit(spec['url'])
-    if url.scheme != 'https' or url.hostname != COS_HOST:
-        raise ValueError('Font download must use APEX COS')
+    items = [spec['licenseFile'], spec] if 'licenseFile' in spec else [spec]
+    for item in items:
+        url = urlsplit(item['url'])
+        if url.scheme != 'https' or url.hostname != COS_HOST:
+            raise ValueError('Font download must use APEX COS')
     cache = Path(get_hermes_home()) / 'tool-cache' / 'fonts'
     cache.mkdir(parents=True, exist_ok=True)
-    destination = cache / spec['sha256'] / spec['file']
+    folder = cache / spec['sha256']
     with FileLock(str(cache / 'install.lock'), timeout=600):
-        if destination.is_file():
-            with destination.open('rb') as cached:
-                if hashlib.file_digest(cached, 'sha256').hexdigest() == spec['sha256']:
-                    return destination
-        with tempfile.TemporaryDirectory(prefix='install-', dir=cache) as temporary:
-            download = Path(temporary) / spec['file']
-            digest, size = hashlib.sha256(), 0
-            with urllib.request.urlopen(spec['url'], timeout=120) as response, download.open('wb') as output:
-                while chunk := response.read(1024 * 1024):
-                    output.write(chunk)
-                    digest.update(chunk)
-                    size += len(chunk)
-            if size != spec['bytes'] or digest.hexdigest() != spec['sha256']:
-                raise ValueError('COS font checksum mismatch')
-            destination.parent.mkdir(exist_ok=True)
-            os.replace(download, destination)
-    return destination
+        for item in items:
+            destination = folder / item['file']
+            if destination.is_file():
+                with destination.open('rb') as cached:
+                    if hashlib.file_digest(cached, 'sha256').hexdigest() == item['sha256']:
+                        continue
+            with tempfile.TemporaryDirectory(prefix='install-', dir=cache) as temporary:
+                download = Path(temporary) / item['file']
+                digest, size = hashlib.sha256(), 0
+                with urllib.request.urlopen(item['url'], timeout=120) as response, download.open('wb') as output:
+                    while chunk := response.read(1024 * 1024):
+                        output.write(chunk)
+                        digest.update(chunk)
+                        size += len(chunk)
+                if size != item['bytes'] or digest.hexdigest() != item['sha256']:
+                    raise ValueError('COS font checksum mismatch')
+                folder.mkdir(exist_ok=True)
+                os.replace(download, destination)
+    return folder / spec['file']
 
 
 def openfilm_pin() -> dict:
@@ -353,7 +367,10 @@ if __name__ == '__main__':
                                             'openfilm-check'])
     parser.add_argument('--workspace', '--project', type=Path, default=Path.cwd())
     parser.add_argument('--hypit-version')
+    parser.add_argument('name', nargs='?', help='font: which pinned font, subtitle (the default) or title (hc-1224)')
     args = parser.parse_args()
+    if args.name is not None and args.command != 'font':  # only `font` takes a name
+        parser.error(f'unrecognized arguments: {args.name}')
     if args.command == 'openfilm-check':  # hc-1201: Desktop's first-run check of the editor; reads only
         try:
             print(json.dumps(openfilm_check()))
@@ -366,10 +383,12 @@ if __name__ == '__main__':
         except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:  # Desktop retries later; one line, no traceback
             raise SystemExit(f'APEX OpenFilm toolkit unavailable: {type(exc).__name__}: {exc}') from None
     elif args.command == 'font':
+        name = args.name or 'subtitle'
         try:
-            print(ensure_font())
+            print(ensure_font(name))
         except (OSError, ValueError, KeyError) as exc:  # the Agent relays this line instead of a traceback
-            raise SystemExit(f'APEX subtitle font unavailable: {type(exc).__name__}: {exc}') from None
+            unavailable = FONT_UNAVAILABLE.get(name, f'APEX font {name!r} unavailable')
+            raise SystemExit(f'{unavailable}: {type(exc).__name__}: {exc}') from None
     elif args.command == 'enable-hosted-hypit':
         try:
             print(enable_hosted_hypit(args.workspace, args.hypit_version))
