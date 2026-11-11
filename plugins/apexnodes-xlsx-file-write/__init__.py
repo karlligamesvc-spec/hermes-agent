@@ -1,14 +1,33 @@
-"""ApexNodes structured Excel workbook export tool (hc-326)."""
+"""ApexNodes structured Excel workbook export tool (hc-326).
+
+hc-1212: a sheet may carry a ``title`` (one bold row merged across its columns, above the
+header), and a cell may hold ``{"image": "<path>"}``, scaled into that cell: a picture from the
+tool's working directory, or one the user sent in chat (the runtime's image cache). A call that
+uses neither writes the same workbook as before.
+"""
 
 from __future__ import annotations
 
+import io
 import os
 import re
+import struct
 import uuid
 from pathlib import Path
 from typing import Any
 
 from tools.registry import tool_error, tool_result
+
+# Row heights are in points, as Excel stores them.
+TITLE_ROW_HEIGHT = 48
+TITLE_FONT_SIZE = 20
+IMAGE_ROW_HEIGHT = 96  # 128 px: a 9:16 keyframe shows about 72 px wide
+IMAGE_PADDING = 4  # px kept clear on each side, so a picture never reaches the next cell
+# A URL scheme (http:, https:, file:, data:). One letter before the colon is a Windows drive.
+_URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]+:")
+# A chat attachment as the conversation shows it: the runtime's hint ``[Image attached at: <path>]``
+# or the APEX Desktop composer's ``@image:`<path>``` (``@file:`` for a dragged file).
+_ATTACHMENT = re.compile(r"^(?:\[Image attached at:\s*(?P<hint>.+?)\s*\]|@(?:image|file):(?P<token>.+))$", re.DOTALL)
 
 XLSX_FILE_WRITE_SCHEMA = {
     "name": "xlsx_file_write",
@@ -16,7 +35,8 @@ XLSX_FILE_WRITE_SCHEMA = {
         "Render structured workbook data to a .xlsx file and return its local "
         "path. After calling this, put `MEDIA:<file_path>` on a separate line "
         "in your reply so the file is sent to the user. Input supports multiple "
-        "sheets, header columns, rows as arrays or objects, and optional column widths."
+        "sheets, header columns, rows as arrays or objects, and optional column widths; "
+        "a sheet may add a title row, and a cell may hold a local picture."
     ),
     "parameters": {
         "type": "object",
@@ -24,8 +44,13 @@ XLSX_FILE_WRITE_SCHEMA = {
             "sheets": {
                 "type": "array",
                 "description": (
-                    "Workbook sheets. Each item: {name, columns, rows}. columns may "
-                    "be strings or {key, header, width}; rows may be arrays or objects."
+                    "Workbook sheets. Each item: {name, columns, rows, title}. columns may "
+                    "be strings or {key, header, width}; rows may be arrays or objects. "
+                    "title is optional: one bold line merged across all columns, above the header row. "
+                    'A cell value may be {"image": "<path>"}: a PNG/JPEG/GIF/BMP file inside the working '
+                    "directory (a relative path starts there), or a picture the user sent in this chat (its "
+                    "local path; a whole [Image attached at: ...] or @image: marker works too). Web links are "
+                    "refused. The picture is placed in that cell scaled to fit, with its row made taller."
                 ),
             },
             "title": {
@@ -36,6 +61,10 @@ XLSX_FILE_WRITE_SCHEMA = {
         "required": ["sheets"],
     },
 }
+
+
+class ImageCellError(ValueError):
+    """An image cell the tool refuses; the message names the cell and the reason."""
 
 
 def _check_xlsx_file_write() -> bool:
@@ -58,6 +87,16 @@ def _document_cache_dir() -> Path:
     cache_dir = Path(home) / "cache" / "documents"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
+
+
+def _work_dir() -> Path:
+    """The tool's working directory, where video_breakdown leaves its 复刻包 folders."""
+    try:
+        from agent.runtime_cwd import resolve_agent_cwd
+    except ImportError:  # outside the runtime, or an older one
+        raw = os.getenv("TERMINAL_CWD", "").strip()
+        return Path(raw) if raw and Path(raw).is_dir() else Path.cwd()
+    return Path(resolve_agent_cwd())
 
 
 def _safe_filename(title: str) -> str:
@@ -104,6 +143,41 @@ def _normalise_columns(rows: list[Any], columns: Any) -> list[dict[str, Any]]:
     return [{"key": str(i), "header": f"Column {i + 1}", "width": None} for i in range(max_len)]
 
 
+def _row_cells(row: Any, columns: list[dict[str, Any]]) -> list[Any]:
+    """What each column shows for one row: by key for an object row, by position for an array row."""
+    if isinstance(row, dict):
+        return [row.get(column["key"], "") for column in columns]
+    if isinstance(row, list | tuple):
+        return [row[index] if index < len(row) else "" for index in range(len(columns))]
+    return [row, *[""] * (len(columns) - 1)]
+
+
+def _image_cache_dirs() -> list[Path]:
+    """Where the runtime keeps the pictures users send in chat: ``cache/images`` under its home, or
+    ``image_cache`` in an older install, the folders its gateway image cache resolves to."""
+    try:
+        from hermes_constants import get_hermes_home
+    except ImportError:  # outside the runtime only a HERMES_HOME someone set names the cache
+        raw = os.getenv("HERMES_HOME", "").strip()
+        if not raw:
+            return []
+        home = Path(raw)
+    else:
+        home = Path(get_hermes_home())
+    return [home / "cache" / "images", home / "image_cache"]
+
+
+def _attachment_path(text: str) -> str:
+    """The file a chat attachment marker copied whole names; any other text as it is."""
+    match = _ATTACHMENT.match(text)
+    if not match:
+        return text
+    inner = (match.group("hint") or match.group("token")).strip()
+    if len(inner) >= 2 and inner[0] == inner[-1] and inner[0] in "`\"'":
+        inner = inner[1:-1].strip()
+    return inner
+
+
 def _cell_value(value: Any) -> Any:
     if value is None:
         return ""
@@ -112,25 +186,99 @@ def _cell_value(value: Any) -> Any:
     return str(value)
 
 
-def render_workbook_to_xlsx(sheets: list[dict[str, Any]], title: str, dest: Path) -> Path:
+def _load_image(cell: dict, roots: list[Path], where: str) -> dict[str, Any]:
+    """Read one image cell's picture. Only a real picture file inside one of ``roots`` is taken:
+    the working directory (relative paths start there), then the chat image cache."""
+    from xlsxwriter.exceptions import XlsxWriterException
+    from xlsxwriter.utility import get_image_properties
+
+    text = cell.get("image")
+    text = _attachment_path(text.strip()) if isinstance(text, str) else ""
+    if not text:
+        raise ImageCellError(f"{where}的 image 要写本机图片的文件路径")
+    if _URL_SCHEME.match(text):
+        raise ImageCellError(f"{where}的 image 是网址;表格里只能放本机图片，不收网址")
+    base, *caches = (root.resolve() for root in roots)
+    path = Path(text).expanduser()
+    path = (path if path.is_absolute() else base / path).resolve()
+    if not any(path.is_relative_to(root) for root in (base, *caches)):
+        raise ImageCellError(
+            f"{where}的图片 {text} 不在工作目录 {base} 里，也不是用户在对话里发的图;"
+            "表格里只能放工作目录里的图片和用户在对话里发的图"
+        )
+    if not path.is_file():
+        raise ImageCellError(f"{where}的图片 {text} 不存在(相对路径从工作目录 {base} 算起)")
+    data = path.read_bytes()
+    try:
+        _kind, width, height, name, x_dpi, y_dpi, _digest = get_image_properties(str(path), io.BytesIO(data))
+    except (XlsxWriterException, struct.error, ArithmeticError):
+        # What XlsxWriter's probe raises: a format it does not know or no size inside (its own errors),
+        # a file cut short (struct), an EMF picture whose frame has no size (division by zero).
+        raise ImageCellError(f"{where}的 {text} 不是表格能放的图片(只收 PNG、JPEG、GIF、BMP)") from None
+    # Size in screen pixels, the unit XlsxWriter scales from.
+    return {"data": data, "name": name, "width": width * 96.0 / x_dpi, "height": height * 96.0 / y_dpi}
+
+
+def _load_images(
+    tables: list[tuple[dict, list, list]], image_root: Path | None
+) -> dict[tuple[int, int, int], dict[str, Any]]:
+    """Every image cell, checked and read before anything is written; keyed by (sheet, row, column)."""
+    images: dict[tuple[int, int, int], dict[str, Any]] = {}
+    roots: list[Path] | None = None
+    for sheet_index, (_raw_sheet, rows, columns) in enumerate(tables):
+        for row_index, row in enumerate(rows):
+            for column_index, value in enumerate(_row_cells(row, columns)):
+                if not (isinstance(value, dict) and "image" in value):
+                    continue
+                if roots is None:
+                    roots = [image_root or _work_dir(), *_image_cache_dirs()]
+                where = f"sheets[{sheet_index}].rows[{row_index}] 的「{columns[column_index]['header']}」列"
+                images[sheet_index, row_index, column_index] = _load_image(value, roots, where)
+    return images
+
+
+def _fit_in_cell(image: dict[str, Any], column_width: float) -> dict[str, Any]:
+    """insert_image options that scale a picture into its cell, keeping its shape, centred."""
+    # XlsxWriter's own pixel sizes for a column width in characters and a row height in points.
+    cell_width = int(column_width * 12 + 0.5) if column_width < 1 else int(column_width * 7 + 0.5) + 5
+    cell_height = int(4.0 / 3.0 * IMAGE_ROW_HEIGHT)
+    box_width = max(cell_width - 2 * IMAGE_PADDING, 1)
+    box_height = cell_height - 2 * IMAGE_PADDING
+    scale = min(box_width / image["width"], box_height / image["height"])
+    return {
+        "image_data": io.BytesIO(image["data"]),
+        "x_scale": scale,
+        "y_scale": scale,
+        "x_offset": IMAGE_PADDING + (box_width - image["width"] * scale) / 2,
+        "y_offset": IMAGE_PADDING + (box_height - image["height"] * scale) / 2,
+        "object_position": 1,  # moves and sizes with its cell, so sorting and filtering keep it on its row
+    }
+
+
+def render_workbook_to_xlsx(
+    sheets: list[dict[str, Any]], title: str, dest: Path, *, image_root: Path | None = None
+) -> Path:
     import xlsxwriter
+
+    tables: list[tuple[dict, list, list]] = []
+    for raw_sheet in sheets:
+        if not isinstance(raw_sheet, dict):
+            raise ValueError("each sheet must be an object")
+        rows = raw_sheet.get("rows") or []
+        if not isinstance(rows, list):
+            raise ValueError("sheet rows must be a list")
+        columns = _normalise_columns(rows, raw_sheet.get("columns"))
+        tables.append((raw_sheet, rows, columns or [{"key": "value", "header": "Value", "width": None}]))
+    images = _load_images(tables, image_root)
 
     workbook = xlsxwriter.Workbook(str(dest))
     header_format = workbook.add_format({"bold": True, "bg_color": "#EAF2F8", "border": 1})
     text_format = workbook.add_format({"text_wrap": True, "valign": "top"})
+    title_format = None
     used_names: set[str] = set()
 
     try:
-        for sheet_index, raw_sheet in enumerate(sheets):
-            if not isinstance(raw_sheet, dict):
-                raise ValueError("each sheet must be an object")
-            rows = raw_sheet.get("rows") or []
-            if not isinstance(rows, list):
-                raise ValueError("sheet rows must be a list")
-            columns = _normalise_columns(rows, raw_sheet.get("columns"))
-            if not columns:
-                columns = [{"key": "value", "header": "Value", "width": None}]
-
+        for sheet_index, (raw_sheet, rows, columns) in enumerate(tables):
             sheet_name = _safe_sheet_name(raw_sheet.get("name"), sheet_index)
             original = sheet_name
             suffix = 2
@@ -141,30 +289,42 @@ def render_workbook_to_xlsx(sheets: list[dict[str, Any]], title: str, dest: Path
             used_names.add(sheet_name.lower())
 
             worksheet = workbook.add_worksheet(sheet_name)
-            worksheet.freeze_panes(1, 0)
+            sheet_title = re.sub(r"\s+", " ", str(raw_sheet.get("title") or "")).strip()
+            header_row = 1 if sheet_title else 0
+            worksheet.freeze_panes(header_row + 1, 0)
+            if sheet_title:
+                if title_format is None:
+                    title_format = workbook.add_format(
+                        {"bold": True, "font_size": TITLE_FONT_SIZE, "align": "center", "valign": "vcenter", "shrink": True}
+                    )
+                worksheet.set_row(0, TITLE_ROW_HEIGHT)
+                if len(columns) > 1:
+                    worksheet.merge_range(0, 0, 0, len(columns) - 1, "", title_format)
+                worksheet.write_string(0, 0, sheet_title, title_format)
+
+            widths: list[float] = []
             for column_index, column in enumerate(columns):
-                worksheet.write(0, column_index, column["header"], header_format)
+                worksheet.write(header_row, column_index, column["header"], header_format)
                 width = column.get("width")
                 if isinstance(width, int | float) and width > 0:
-                    worksheet.set_column(column_index, column_index, min(float(width), 80), text_format)
+                    width = min(float(width), 80)
                 else:
-                    worksheet.set_column(column_index, column_index, min(max(len(str(column["header"])) + 4, 12), 36), text_format)
+                    width = min(max(len(str(column["header"])) + 4, 12), 36)
+                worksheet.set_column(column_index, column_index, width, text_format)
+                widths.append(width)
 
-            for row_index, row in enumerate(rows, start=1):
-                for column_index, column in enumerate(columns):
-                    if isinstance(row, dict):
-                        value = row.get(column["key"], "")
-                    elif isinstance(row, list | tuple):
-                        try:
-                            value = row[column_index]
-                        except IndexError:
-                            value = ""
-                    else:
-                        value = row if column_index == 0 else ""
-                    worksheet.write(row_index, column_index, _cell_value(value), text_format)
+            for row_offset, row in enumerate(rows):
+                row_index = header_row + 1 + row_offset
+                for column_index, value in enumerate(_row_cells(row, columns)):
+                    image = images.get((sheet_index, row_offset, column_index))
+                    if image is None:
+                        worksheet.write(row_index, column_index, _cell_value(value), text_format)
+                        continue
+                    worksheet.set_row(row_index, IMAGE_ROW_HEIGHT)
+                    worksheet.insert_image(row_index, column_index, image["name"], _fit_in_cell(image, widths[column_index]))
 
             if rows:
-                worksheet.autofilter(0, 0, len(rows), len(columns) - 1)
+                worksheet.autofilter(header_row, 0, header_row + len(rows), len(columns) - 1)
         workbook.set_properties({"title": title[:120]})
     finally:
         workbook.close()
@@ -186,6 +346,8 @@ def _handle_xlsx_file_write(args: dict, **_kwargs) -> str:
         render_workbook_to_xlsx(sheets, title, dest)
     except ImportError:
         return tool_error("XlsxWriter is not installed in this runtime image")
+    except ImageCellError as exc:
+        return tool_error(f"表格没生成:{exc}")
     except Exception as exc:
         return tool_error(f"Failed to render the Excel file: {exc}")
 

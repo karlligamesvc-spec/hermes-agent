@@ -1,7 +1,8 @@
 name: apexnodes-xlsx-file-write
-version: "0.1.0"
+version: "0.2.0"
 description: >-
   Render structured workbook data to a .xlsx file under the runtime document
-  cache and return a MEDIA tag for native delivery.
+  cache and return a MEDIA tag for native delivery. A sheet may add a merged
+  title row, and a cell may hold a picture from the working directory (hc-1212).
 provides_tools:
   - xlsx_file_write
