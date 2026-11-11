@@ -93,6 +93,8 @@ _SEAM_MODULES = (
     "browser_login_prompt",
     # hc-1207 a folder handed over in Desktop is granted to that one session (folder.attach).
     "folder_grants",
+    # hc-1219 the jianying_draft tool: the finished cut as a 剪映 draft (switch on, 剪映 installed).
+    "jianying_draft",
 )
 
 

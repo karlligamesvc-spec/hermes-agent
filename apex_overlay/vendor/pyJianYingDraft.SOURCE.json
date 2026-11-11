@@ -1,0 +1,73 @@
+{
+ "package": "pyJianYingDraft",
+ "version": "0.3.1",
+ "license": "Apache-2.0",
+ "repo": "GuanYixuan/pyJianYingDraft",
+ "tag": "0.3.1",
+ "commit": "1e228479dda361e312e85f6037002346cf6dca9a",
+ "pypi_wheel": {
+  "file": "pyjianyingdraft-0.3.1-py3-none-any.whl",
+  "sha256": "6ce5efb014caff01b6d1ae433d109d8fb4861924d3ec06b6fc8f9431c89c7ae8",
+  "note": "same files as the tag apart from CRLF line endings"
+ },
+ "upstream_pr": {
+  "number": 198,
+  "head": "44ed55f28da228690eadce90f99d4583c5599f2e",
+  "state_when_vendored": "open, 2026-11-11"
+ },
+ "changed": {
+  "draft_folder.py": "PR #198: the timeline is draft_info.json (DRAFT_FILE_NAME)",
+  "script_file.py": "PR #198: save(inline_materials=True) copies media into the draft's materials/",
+  "local_materials.py": "imports _apex_probe as pymediainfo: ffprobe instead of libmediainfo",
+  "__init__.py": "jianying_controller is not imported",
+  "metadata/filter_meta.py": "empty table: no filters in APEX drafts",
+  "metadata/video_scene_effect.py": "empty table: no scene effects in APEX drafts"
+ },
+ "added": {
+  "_apex_probe.py": "the ffprobe stand-in for pymediainfo",
+  "LICENSE": "upstream LICENSE (Apache-2.0)",
+  "NOTICE": "attribution and the list of ApexNodes changes (upstream ships none)"
+ },
+ "removed": {
+  "jianying_controller.py": "Windows UI automation of 剪映's export; the user exports"
+ },
+ "unchanged_sha256": {
+  "_script_file_protocol.py": "5c234ec94d887fe8aaef7e6226e34fc28ed326574f39627637cb41e85f966043",
+  "_script_file_segments.py": "b6af322d1f2abf85409a305b1120541662978f29ef1e694b5b3328033c48c51e",
+  "_script_file_template.py": "e4edb3ace38b95d0e1a20e8e59ff7e79660e7e34d13e2662fabe069fd9819d23",
+  "_script_file_tracks.py": "b8fa6a0350f84028591f81cc4f5264543e5e0b069b5db939b829689ec815e289",
+  "animation.py": "ba169593216caa056096d021bf632270bf75bafa8d3d6feb342bd5fe98d69921",
+  "assets/__init__.py": "d536fa8e01a9d8d2f5c6535fa03ae90e814ea5c961b8223b18bab20e3331fa5f",
+  "assets/draft_content_template.json": "f3b9036da3a0bce68145657bb3fa9b0147e0fe39f7082e43590fb91b63f99d94",
+  "assets/draft_meta_info.json": "8bbc602f00a61a31ee16059a7a4525aa5d97a06cde509930a159f0f5ed1a77f6",
+  "audio_segment.py": "c27649cb90e260b7dbf05c68d1c7cda6b58c9c6379b9469c33cd8488519f4830",
+  "draft_content_loader.py": "b716f9aa257ee65df72aff28060f9b191b7927635d41de10b61e5d28c810a34a",
+  "effect_segment.py": "3b8d65fdaf8295eaa9f4ef6f75d5caaa01ba792de2d14af87a22d0d0c33599ea",
+  "exceptions.py": "07ea1ed5da0d1f0e90a78caf1aa21ff476e762423e0e6fce9a833a3ed94c03ed",
+  "keyframe.py": "9e839f72f6ce7a2f20ae3736c75ed8ac1d338e4a1657fe1d56bfe4c1e8f5dc8b",
+  "metadata/__init__.py": "534bf2702ff962014b2d91367416d99015783a6b88106be043fa74740e46f4d1",
+  "metadata/audio_scene_effect.py": "9bb31ad9a373645d2a912d8727f16cf8ef2f5cfb1b9d922fee2baa7fffaed7b4",
+  "metadata/effect_meta.py": "6176b52d02b8469144da2efcd3479244e06a6419ede5cb91a939b61a2fca97fd",
+  "metadata/font_meta.py": "707ef81810eca58c166c1cfa9ad94a430df469418c8d5ca38426a9f2daa46014",
+  "metadata/mask_meta.py": "e136e86ed84b8a824cfe6f0c9e7625b484b24d2682d5121c80223371119c327a",
+  "metadata/mix_mode_meta.py": "f754591ab0621db3bd5bc1883b08507fa731259c2bfda70c4387623a7a2d6803",
+  "metadata/speech_to_song.py": "0a2bacc4ebecca3823ce0c73df870511237293def407d1caa1783acdf2a6828a",
+  "metadata/text_intro.py": "ce9440559ce5fbf29b2d6155a5abfc73570964e7c9a7e2ab7d2f55a7d0347291",
+  "metadata/text_loop.py": "5a750aed6470638fe7bde033b0d0fb1461de419db915f4512e01ed9bc3021a12",
+  "metadata/text_outro.py": "54d41312d732ba777f322d4071702f3cdf0f5f44056c37d6776b42af7e7bf836",
+  "metadata/tone_effect.py": "1762b6b2f322dd3d8fe14b79ef523f9e04ca190566a633ace0e3a6d449e5d0df",
+  "metadata/transition_meta.py": "6aa65a3b847d0ba79f7f577cda397d83732d433977c98eda230489afab7c1eae",
+  "metadata/video_character_effect.py": "e5657b0db2ddfda2f00d97e02ab6a7385c22c5060436c65a90ec2c54762e2817",
+  "metadata/video_group_animation.py": "71d5f50601e2c36464ac7d8c9fbad804d8f561f37f76757c8c0c7d6db46a25c3",
+  "metadata/video_intro.py": "5913fa37aac6caef5a5bd5719dd19f9563debbc835c4963e40b245f9fe7c5101",
+  "metadata/video_outro.py": "e12b9727d3945fd1d86a77180c1ad826cdc63ff21da57f4b4afbc508a59cb2d8",
+  "script_material.py": "a4a84ff4a7eb2ea9454a24021d6be501a3835f5caa6367959c2953f3bcd82ae8",
+  "segment.py": "f7b32b264d0a2e4eb63f1117f656dd50798440f10b92043d9947872fb7da9d6c",
+  "template_mode.py": "1d4d643971ef89ac50d59e284d6924d3045f16224914670c404426229390caba",
+  "text_segment.py": "273218253630f18694274a6172cc56ac6c788717b2309816c0dda1735c13da45",
+  "time_util.py": "2139d10da2c44935646218894dfab4f19875d228880bc92003c6011f0f940d99",
+  "track.py": "e2e691159b86b3da3b0d8367ed5d6cc46a0948662e6c1851c4a2328f262a926a",
+  "util.py": "32880a93fac8f9fa472f115f59004efb5e403dede888f59102b97dadf77e8ea7",
+  "video_segment.py": "c179e54c3a7de6f740305971deecd87921f44492d8754d0da9bed1c9c8f85da2"
+ }
+}

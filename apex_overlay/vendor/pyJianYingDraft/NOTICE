@@ -1,0 +1,14 @@
+pyJianYingDraft
+Copyright 2024 Gary Guan
+https://github.com/GuanYixuan/pyJianYingDraft
+Licensed under the Apache License, Version 2.0 (see LICENSE in this folder).
+
+This copy is version 0.3.1 (tag 0.3.1, commit 1e228479dda361e312e85f6037002346cf6dca9a), modified by ApexNodes
+for APEX Desktop. The changed files say so at their top; the full list is in ../pyJianYingDraft.SOURCE.json and
+../README.md:
+  - draft_folder.py, script_file.py: upstream pull request #198 (timeline file draft_info.json; media copied into
+    the draft's materials/ folder)
+  - local_materials.py and the added _apex_probe.py: media duration and size read with ffprobe instead of
+    pymediainfo
+  - __init__.py: jianying_controller.py (Windows UI automation) removed
+  - metadata/filter_meta.py, metadata/video_scene_effect.py: tables replaced by empty ones

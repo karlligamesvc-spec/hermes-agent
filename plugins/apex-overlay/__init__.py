@@ -242,6 +242,12 @@ _CONTEXT_SEAMS = (
         "to upgrade it, instead of naming the APEX version and how to update.",
     ),
     (
+        "jianying_draft",
+        "apex-overlay: hc-1219 剪映 draft seam did not register (see prior warning). "
+        "With desktop_features.jianying on, the agent cannot write the finished cut as a "
+        "剪映 draft, and never offers 「在剪映里接着剪」.",
+    ),
+    (
         "browser_login_prompt",
         "apex-overlay: hc-1179 browser login prompt section did not register (see "
         "prior warning). In Desktop product mode, the agent may try to fill a "
