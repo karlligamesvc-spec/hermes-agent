@@ -15,6 +15,8 @@ hc-1136: ``video_breakdown`` (the remake card) runs on this machine: ``breakdown
 this file cuts shots and writes the package, byte-identical with apex-nodes' hosted copy; only
 the labels request below is this plugin's own (``/tools/v1/video/shot-labels``, legacy
 ``/media/shot-labels``).
+hc-1220: ``find_music`` (the built-in background-music library) lives in
+``plugins/apexnodes_music_library.py`` and registers from here.
 """
 
 from __future__ import annotations
@@ -42,6 +44,11 @@ try:  # hc-1054: long-video analysis (video_highlights, video_moment_search); ne
     from plugins import apexnodes_video_analysis as _analysis
 except ImportError:  # pragma: no cover - a bare copy without it keeps generate_video
     _analysis = None  # type: ignore[assignment]
+
+try:  # hc-1220: the built-in background-music library (find_music); needs the gateway client.
+    from plugins import apexnodes_music_library as _music
+except ImportError:  # pragma: no cover - a bare copy without it keeps generate_video
+    _music = None  # type: ignore[assignment]
 
 
 def _use_gateway() -> bool:
@@ -538,3 +545,5 @@ def register(ctx):
     )
     if _analysis is not None:
         _analysis.register(ctx)
+    if _music is not None:
+        _music.register(ctx)

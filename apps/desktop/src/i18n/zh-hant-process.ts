@@ -143,6 +143,7 @@ export const zhHantProcess: ProcessCopy = {
       facts.count ? `找到 ${facts.count} 處畫面` : facts.empty ? '沒找到' : '已交給平台'
     ),
     video_breakdown: step('正在逐鏡看影片', '逐鏡拆影片', said('復刻卡做好了')),
+    find_music: step('正在找配樂', '找配樂', said('配樂選好了')),
     live_record_start: step('正在開始錄直播', '開始錄直播', said('開始錄了')),
     live_record_status: step('正在查看錄製進度', '查看錄製進度', said('看過了')),
     live_record_stop: step('正在結束錄製', '結束錄製', said('錄好了')),
