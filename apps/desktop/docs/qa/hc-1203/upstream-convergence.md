@@ -6,7 +6,7 @@
 - 合并原则沿用 hc-911 与 AGENTS 硬规则 #11：身份层、中文默认值、业务导航、托管服务接线和发布链路保留 APEX；上游的 runtime、安全和稳定性改进吸收进来；上游新的产品行为能接线就默认关，交给 Kael 决定。
 - **Desktop 仍以 APEX 现行版本为基线**：`apps/desktop` 与 fork main 逐文件一致，上游改动的 1,891 个 Desktop 文件和 Electron 44 都没有进来。为跑在 v0.23 运行时上改的 Desktop 文件只有三处：`package.json`（Node ≥26 与两条 override，见“Desktop”）、`package-lock.json` 里对应的 spec 行，以及重新生成的 `src/lib/desktop-slash-registry.json`。
 - 本票不是发版票：不推进 Desktop 版本号、updater feed、COS 安装包、云镜像或生产部署。
-- **合入前要 Kael 定的事**见文末“待 Kael 决定”。其中第 1 条（云端浏览器）必须在下一次云镜像 roll 之前定。
+- **云端浏览器已定：托管会话保留 `browser_exec`**（2026-11-10），fork 在云端容器里跳过上游的 terminal 闸（`apex_overlay/cloud_browser_exec.py`，见“APEX 接缝移植”）。其余要 Kael 定的事见文末“待 Kael 决定”。
 
 ## 合并冲突处理
 
@@ -41,6 +41,7 @@
 | APEX 媒体插件（图片、视频） | 新增 config-readers 守卫：配置只能经 `hermes_cli.config_backend` 读 | 改用 `config_exists()` |
 | 证据闸插件 `apexnodes-honesty-tools` | 浏览器只剩 `browser_exec` | 与 apex-nodes 同一份 `__init__.py`（逐字节复制，apex-nodes 的比对测试读 fork main） |
 | `apex_overlay/browser_window.py`（hc-1179，#582） | agent-browser 的 `tools.browser_tool._build_browser_env` 和 `tools.browser_tool_session._apply_chromium_sandbox_args` 被删，接缝什么都包不到 | 改包 `tools.browser_session_cloud` 的两个访问器，二者都在调用时读、不缓存：`user_data_dir()` 在没有固定资料目录、有窗口、Mac / Windows 时给 `<HERMES_HOME>/apex-browser-profile`（会话层按这个目录让所有会话共用一个窗口；用户固定的目录永远优先；无窗口的云端和 Linux 不变，Linux 上 Bot Desktop 自己固定资料目录）；`chromium_args()` 在 `apex.browser_hide_automation` 打开时加一次 `--disable-blink-features=AutomationControlled`，默认关。有窗口仍靠 #582 的 Desktop 产品配置 `browser.headed: true`；登录交给用户的提示词段不用改；接缝失败告警和种子注释改用 v0.23.0 的名字 |
+| `apex_overlay/cloud_browser_exec.py`（新，hc-1203） | 上游的会话闸 `model_tools._rewrite_browser_exec` 从没有 `terminal` 的工具表里拿掉 `browser_exec`；托管助手关了 `terminal`，agent-browser 又已删除，云端会话没有能打开网页的工具 | 云端容器（`HERMES_MANAGED_RUNTIME=1`，镜像里设）里放行，`terminal` 照旧关，后面的看图提示、密码库说明照旧按真实工具表；Desktop 和其他地方照上游。钩子写在 `_rewrite_browser_exec` 的函数体里（一行导入加判断，同 hc-1034 在 `model_tools.py` 里的先例）：`model_tools` 自己的导入就跑插件发现，补丁不能在 `apply()` 里导入它（hc-989），`post_import` 只接子模块；组合好的改写器攥着建表时的函数对象，换模块属性够不着（见“反向验证”）。apex-nodes 能力目录按镜像读这个钩子 |
 
 ## 合并缺陷（测试抓到、已修）
 
@@ -68,13 +69,28 @@
 | 证据闸插件 | 已改（与 apex-nodes 同一份） |
 | 云镜像 `Dockerfile` | 上游把烘焙路径改成 `/etc/hermes/chromium-executable-path`，原样接受；apex-nodes 侧的读法在配套 PR |
 | `apex_overlay/cn_mirror_env.py` | 核实：它设置的 `PLAYWRIGHT_DOWNLOAD_HOST`、`HERMES_NODE_DIST_BASE` 在 v0.23.0 已没有运行时读者（Chromium 走 pm 或 COS 接缝，node 走 pm），留着无害；清理列入后续 |
-| 托管助手（云端） | 见“待 Kael 决定”第 1 条 |
+| 托管助手（云端） | 已改：保留 `browser_exec`，出口见下一张表 |
 | Desktop：`apex_overlay/browser_window.py`（hc-1179） | 已改（见上） |
 | Desktop：`browser_login_prompt`（登录交给用户的提示词段） | 核实：只讲窗口、登录和人机验证交给用户，不涉及工具名，不用改 |
 | Desktop 种子 `browser.headed: true`（`apex-managed.ts`） | 核实：v0.23.0 的 `tools.browser_session_cloud.is_headed_mode` 读同一个键，不用改；注释里的旧函数名已更新 |
 | Bot Desktop（`tools/bot_desktop/browser.py` 也读 `user_data_dir()`） | 核实：只在 Linux 启用（`tools/bot_desktop/runtime.py`），接缝只在 Mac / Windows 生效，两者不重叠 |
 | 接缝失败告警（`plugins/apex-overlay/__init__.py`） | 已改：说 `browser_exec` 的窗口，不再说 agent-browser |
 | apex-nodes 侧（技能、操作截图、证据闸、飞书进度、容器环境、能力目录、Office PDF 兜底） | 配套 PR，出口清单在那边 |
+
+**托管会话里 `browser_exec` 的 terminal 闸（数过的全部位置）**
+
+| 位置 | 处理 |
+|---|---|
+| `model_tools._rewrite_browser_exec`：新建工具表（`_apply_dynamic_schemas`；CLI、gateway / IM、cron、API server 都走这里） | 已改：云端容器里放行 |
+| 同一个函数：会话重建时沿用旧工具表（`tools/mcp_tool_agent._drop_gated_carried_tools`） | 已覆盖；测试 `test_a_pinned_browser_exec_is_carried_over_only_in_a_cloud_container` |
+| Codex 运行时的 MCP 桥（`agent/transports/hermes_tools_mcp_server.EXPOSED_TOOLS`） | 核实：从来不给 `browser_exec`，和 terminal 无关；托管助手不走 Codex 运行时 |
+| `execute_code` 沙箱里能调的工具（`SANDBOX_ALLOWED_TOOLS`） | 核实：不含 `browser_exec`，和 terminal 无关 |
+| 工具搜索（`tools.tool_search.assemble_tool_defs`） | 核实：在闸之后执行，核心工具不延迟 |
+| hc-1034 审批暂停（`tools.approval.held_tool_call_error`） | 核实：只在本轮拒绝过审批后才拦，和 terminal 无关 |
+| `browser_exec` 的 `check_fn`（`browser_exec_available`） | 核实：只看 browser-harness 能否导入 |
+| 子代理（`delegation`）、看板（`kanban`） | 核实：托管配置里本来就关着；开着也走同一个函数 |
+| 上游注释（`tools/browser_use_cli.py` 注册处、`_drop_gated_carried_tools` 的 docstring） | 不改：云端以外仍然成立，保持上游原文 |
+| apex-nodes 能力目录 | 配套 PR：按镜像读这个钩子，旧镜像照旧报被 terminal 关掉 |
 
 **被删或搬走的模块**
 
@@ -173,6 +189,10 @@
 | hc-1179 移植逐项撤掉：不包 `user_data_dir`、覆盖用户固定的目录、忽略有窗口、忽略平台、忽略开关、不去重、包回 agent-browser 的旧目标、插件不再调用接缝 | `test_browser_window_seam.py` 各自点名的用例（8 处，每处 1–5 条） |
 | 截断去掉中日韩断点（即上游原样） | `test_skill_index_cjk_clip.py` 4 条；apex-nodes 的 hc-1165 守卫 2 条 |
 | 截断只认中日韩断点、不认空白 | `test_skill_index_cjk_clip.py` 的 english、mixed 两条 |
+| 撤掉云端钩子（即上游原样） | `test_cloud_browser_exec.py` 16 条（云端各例；非云端各例的“问过钩子”断言） |
+| 钩子恒为真 / 恒为假 | 非云端 5 条 / 云端 11 条 |
+| 没有 overlay 的检出也放行 | `test_a_tree_without_the_overlay_keeps_upstreams_gate` |
+| 不改函数体，只把 `model_tools._rewrite_browser_exec` 换成放行的函数 | 实测云端会话照样拿不到 `browser_exec`：组合改写器攥着原函数，所以钩子必须写在函数体里 |
 
 ## 验证
 
@@ -189,10 +209,7 @@
 
 ## 待 Kael 决定
 
-1. **（下一次云镜像 roll 之前必须定）云端助手要不要浏览器。** 托管助手关了 `terminal`（apex-nodes `HOSTED_DISABLED_TOOLSETS`），而上游会从没有 terminal 的会话里拿掉 `browser_exec`（`model_tools._rewrite_browser_exec`）；agent-browser 的工具在新镜像上已不存在。换上 v0.23.0 镜像后，云端助手没有任何能打开网页的浏览器工具。三条路：
-   - 一、fork overlay 让托管会话保留 `browser_exec`（它在每个助手自己的容器里跑 Python，与已开放的 `execute_code` 同类风险）；
-   - 二、托管配置放开 `terminal`（安全姿态变更，同时放出 shell）；
-   - 三、接受云端没有浏览器，技能改用 `web_extract`（先确认生产配了 `FIRECRAWL_API_URL`）。
+1. **云端浏览器：已定保留 `browser_exec`**（2026-11-10，经 hc-1203 协调会话转达，用户选「保留 browser_exec（推荐）」）。托管助手关了 `terminal`（apex-nodes `HOSTED_DISABLED_TOOLSETS`），上游会从没有 terminal 的会话里拿掉 `browser_exec`，agent-browser 的工具在新镜像上已不存在；实现见“APEX 接缝移植”的 `cloud_browser_exec`。另两条路（托管配置放开 `terminal`、技能改用 `web_extract`）不做。
 2. **#582（hc-1179）先合：已按此做完。** #582、#597 合入 fork main（`40a7e45a0f`、`1e635626d5`）之后，本 PR 合入 main 并带上浏览器接缝的移植（见“APEX 接缝移植”和“反向验证”）。
 3. **上游行为变化（已吸收，默认未改）**：
    - 一个 gateway 承载所有会话之后，本地 CLI / TUI / Desktop 自己的轮次里 `execute_code` 不再整段弹批准，靠脚本内每条 terminal 命令的批准（上游 T2）。消息平台、kanban、注入的轮次照旧整段批准。
