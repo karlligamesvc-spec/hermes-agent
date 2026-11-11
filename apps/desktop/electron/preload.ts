@@ -260,6 +260,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   syncApexProfileSkills: profile => ipcRenderer.invoke('hermes:apex:syncProfileSkills', profile),
   // hc-1131: main mirrors developer mode to a marker the engine reads (apex-developer-mode.ts).
   syncDeveloperMode: on => ipcRenderer.invoke('hermes:apex:developerMode', on),
+  // hc-1219: start 剪映 for a draft the engine wrote (jianying.ts); resolves { ok, listed } or { ok: false, reason }.
+  openInJianying: folder => ipcRenderer.invoke('hermes:jianying:open', folder),
   // ApexNodes managed-LLM (zero-key) default path. See electron/apex-managed.cjs.
   managed: {
     status: () => ipcRenderer.invoke('hermes:managed:status'),

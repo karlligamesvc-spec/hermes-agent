@@ -67,6 +67,7 @@ describe('hc-1063 the memory ledger step in 「看过程」', () => {
           'chatcut:read',
           'chatcut_save_export',
           'chatcut_upload_files',
+          'jianying_draft',
           MEMORY_FORGET_STEP,
           MEMORY_LIST_STEP
         ].sort()

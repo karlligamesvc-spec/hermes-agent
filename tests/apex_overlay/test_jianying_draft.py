@@ -162,3 +162,10 @@ def test_plugin_register_applies_the_seam():
     from tests.apex_overlay.conftest import run_plugin_register_with_stubbed_seams
 
     assert "jianying_draft" in run_plugin_register_with_stubbed_seams("_jianying_draft_plugin_under_test")
+
+
+def test_the_parameters_are_the_ones_short_video_studio_names():
+    """apex-nodes tests/test_hc1219_jianying_draft_skill.py pins the same set from the skill's side."""
+    assert set(jianying_draft.SCHEMA["parameters"]["properties"]) == {
+        "timeline", "name", "subtitles", "subtitle_position", "narration", "music", "music_volume", "dissolve_after"}
+    assert jianying_draft.SCHEMA["parameters"]["required"] == ["timeline"]

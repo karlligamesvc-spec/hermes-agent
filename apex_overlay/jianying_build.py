@@ -141,7 +141,7 @@ def _seconds(stamp: tuple[str, str, str, str]) -> float:
 def parse_srt(text: str) -> list[tuple[float, float, str]]:
     """Cues as (start, end, text). The last cue needs no blank line after it (the library's import_srt drops it)."""
     cues = []
-    for block in re.split(r"\n\s*\n", text.replace("\r\n", "\n").replace("\r", "\n").strip("﻿\n ")):
+    for block in re.split(r"\n\s*\n", text.replace("\r\n", "\n").replace("\r", "\n").strip("\ufeff\n ")):
         lines = [line for line in block.split("\n") if line.strip()]
         for at, line in enumerate(lines):
             times = _SRT_TIME.findall(line)

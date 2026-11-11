@@ -30,12 +30,14 @@ import { formatElapsed, useElapsedSeconds, useMeasuredDuration } from '@/compone
 import { ActivityTimerText } from '@/components/chat/activity-timer-text'
 import { GenLadderCard } from '@/components/chat/gen-ladder-card'
 import { GeneratedImage } from '@/components/chat/generated-image-result'
+import { JianyingDraftCard } from '@/components/chat/jianying-draft-card'
 import { SCAFFOLD_LABEL_CLASS, SCAFFOLD_META_CLASS, ScaffoldRow } from '@/components/chat/scaffold-row'
 import { DisclosureCaret } from '@/components/ui/disclosure-caret'
 import { useI18n } from '@/i18n'
 import { connectorCalls } from '@/lib/connector-tools'
 import { genLadderCardFromResult } from '@/lib/gen-ladder'
 import { generatedImageFromResult } from '@/lib/generated-images'
+import { isJianyingDraftCall, jianyingDraftFromResult } from '@/lib/jianying-draft'
 import { isOnboardingEnabled } from '@/lib/onboarding-enabled'
 import { separateGluedReasoningBlocks } from '@/lib/reasoning-blocks'
 import { isTodoToolName } from '@/lib/todos'
@@ -92,6 +94,23 @@ const GenLadderTool: FC<ToolCallMessagePartProps> = ({ result }) => {
   )
 }
 
+// hc-1219: a 剪映 draft the agent wrote, with 「在剪映中打开」. An error, or a
+// call still running, keeps the normal row with its own wording.
+const JianyingDraftTool: FC<TimelineToolCallProps> = props => {
+  const draft = props.isError ? null : jianyingDraftFromResult(props.result)
+
+  if (!draft) {
+    return <ToolFallback {...props} />
+  }
+
+  return (
+    <>
+      <TimelineTimestamp className="mb-0.5 block" completedAt={props.completedAt} timestamp={props.timestamp} />
+      <JianyingDraftCard draft={draft} />
+    </>
+  )
+}
+
 const DelegateToolPart: FC<TimelineToolCallProps> = props => {
   // A call that failed outright dispatched nothing — there are no children to
   // list, only an error. The generic row extracts and expands it properly.
@@ -142,6 +161,10 @@ const ChainToolFallback: FC<TimelineToolCallProps> = props => {
 
   if (props.toolName === 'gen_ladder') {
     return <GenLadderTool {...props} />
+  }
+
+  if (isJianyingDraftCall(props.toolName, props.args)) {
+    return <JianyingDraftTool {...props} />
   }
 
   if (props.toolName === 'clarify') {
