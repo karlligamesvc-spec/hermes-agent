@@ -4,7 +4,8 @@ The Scheduler answers ``chatcut.enabled`` on ``/tools/v1/check`` per APEX key (a
 local fake stands in for it and for the MCP proxy. Nothing here touches ChatCut. Pinned:
 
 1. The answer is read with this assistant's own key when it is needed, kept for a minute, and counts as no when it
-   cannot be read, when nobody is signed in and with the switch off.
+   cannot be read, when nobody is signed in and with the switch off. An older read landing last never replaces
+   the answer to a newer one.
 2. The prompt section, the two file tools and the MCP server exist only while it is yes; a developer's own
    ``chatcut`` server is never hidden.
 3. The MCP paths never wait for the Scheduler.
@@ -215,6 +216,59 @@ def test_another_account_signed_in_is_asked_afresh(scheduler, changes, monkeypat
     assert [c["headers"]["Authorization"] for c in scheduler.checks] == [f"Bearer {APEX_KEY}", "Bearer someone-elses-key"]
 
 
+def test_an_answer_asked_for_later_is_never_replaced_by_an_older_one(scheduler, changes, clock, monkeypatch):
+    """``known_entitled`` reads in the background while ``entitled`` reads on the spot, so two reads can overlap.
+    The older one landing last (a read that timed out counts as no, five seconds on) leaves the newer answer."""
+    background_asked, background_lands = threading.Event(), threading.Event()
+    answers = iter([False, True])  # the background read times out; the one asked after it says yes
+
+    def read(_base, _key):
+        answer = next(answers)
+        if answer is False:
+            background_asked.set()
+            assert background_lands.wait(10)
+        return answer
+
+    monkeypatch.setattr(chatcut, "_read_entitlement", read)
+    assert chatcut.known_entitled() is False  # nothing kept: asked in the background
+    assert background_asked.wait(10)
+    clock.now += 1
+    assert chatcut.entitled() is True  # asked later, answered first
+    background_lands.set()
+    wait_until(lambda: not chatcut._refreshing, what="the background read")
+
+    assert chatcut.entitled() is True and chatcut.known_entitled() is True
+
+
+def test_a_read_landing_after_a_newer_answer_answers_with_the_newer_one(scheduler, changes, clock, monkeypatch):
+    """The other way round: ``entitled`` asks first and lands last, after a background read asked later found the
+    account closed. It answers no, as the kept answer does, not the yes it read."""
+    asked, lands = threading.Event(), threading.Event()
+    answers = iter([True, False])  # asked first: still open; asked after it: closed
+
+    def read(_base, _key):
+        answer = next(answers)
+        if answer is True:
+            asked.set()
+            assert lands.wait(10)
+        return answer
+
+    def a_background_read_meanwhile():
+        assert asked.wait(10)
+        clock.now += 1
+        chatcut.known_entitled()  # nothing kept yet: asks in the background
+        wait_until(lambda: not chatcut._refreshing, what="the background read")
+        lands.set()
+
+    monkeypatch.setattr(chatcut, "_read_entitlement", read)
+    meanwhile = threading.Thread(target=a_background_read_meanwhile, daemon=True)
+    meanwhile.start()
+
+    assert chatcut.entitled() is False
+    meanwhile.join(10)
+    assert chatcut.known_entitled() is False
+
+
 # ---------------------------------------------------------------------------
 # 2. What follows it
 # ---------------------------------------------------------------------------
@@ -240,10 +294,12 @@ def test_the_mcp_server_is_left_out_while_the_account_is_closed(scheduler, chang
     load = chatcut.hide_unless_entitled(_ours_and_others)
 
     assert set(load()) == {"notion"}  # nothing known yet: no
-    wait_until(lambda: len(scheduler.checks) == 1, what="the background read")  # ...and asked in the background
+    # ...and asked in the background. Wait until that read has kept its no, not just until the Scheduler saw it:
+    # the no is kept after the answer arrives, and kept after the yes below it would replace it.
+    wait_until(lambda: len(scheduler.checks) == 1 and not chatcut._refreshing, what="the background read")
     scheduler.enabled = True
     chatcut._answers.clear()
-    chatcut._store(chatcut._account()[2], True)
+    chatcut._store(chatcut._account()[2], True, time.monotonic())
     assert set(load()) == {chatcut.SERVER_NAME, "notion"}
 
 
@@ -258,11 +314,11 @@ def test_registered_mcp_tools_go_quiet_as_soon_as_the_account_closes(scheduler, 
     chatcut.reconcile_at_boot()  # our entry in config.yaml
     make = chatcut.gate_mcp_tools(lambda name: (lambda: True))
     slot = chatcut._account()[2]
-    chatcut._store(slot, True)
+    chatcut._store(slot, True, time.monotonic())
     ours, other = make(chatcut.SERVER_NAME), make("notion")
 
     assert ours() is True and other() is True
-    chatcut._store(slot, False)
+    chatcut._store(slot, False, time.monotonic())
     assert ours() is False and other() is True
 
 

@@ -100,7 +100,7 @@ def signed_in() -> bool:
     return bool(os.environ.get(KEY_ENV, "").strip() and os.environ.get(BASE_ENV, "").strip())
 
 
-# key fingerprint -> (when read, the answer). A different account signed in reads afresh.
+# key fingerprint -> (when asked, the answer). A different account signed in reads afresh.
 _answers: dict[str, tuple[float, bool]] = {}
 _answers_lock = threading.Lock()
 _refreshing: set[str] = set()
@@ -126,12 +126,18 @@ def _read_entitlement(base: str, key: str) -> bool:
     return isinstance(block, dict) and block.get("enabled") is True
 
 
-def _store(slot: str, answer: bool) -> None:
+def _store(slot: str, answer: bool, asked_at: float) -> bool:
+    """Keep the answer to a question asked at ``asked_at``; returns the answer now kept. An answer to a question asked
+    later is never replaced: the read ``entitled`` waits for and the background one ``known_entitled`` starts can
+    overlap, and the older one may land last (a read that timed out, which counts as no, lands five seconds on)."""
     with _answers_lock:
         before = _answers.get(slot)
-        _answers[slot] = (time.monotonic(), answer)
+        if before is not None and before[0] > asked_at:
+            return before[1]
+        _answers[slot] = (asked_at, answer)
     if (before[1] if before else False) != answer:
         _spawn(_follow_change, name="apex-chatcut-entitlement")
+    return answer
 
 
 def _spawn(target: Callable[..., None], *, name: str, args: tuple = ()) -> None:
@@ -171,14 +177,14 @@ def entitled() -> bool:
         kept = _answers.get(slot)
     if kept is not None and time.monotonic() - kept[0] < ENTITLEMENT_TTL_SECONDS:
         return kept[1]
-    answer = _read_entitlement(base, key)
-    _store(slot, answer)
-    return answer
+    asked_at = time.monotonic()
+    return _store(slot, _read_entitlement(base, key), asked_at)
 
 
 def _refresh(base: str, key: str, slot: str) -> None:
     try:
-        _store(slot, _read_entitlement(base, key))
+        asked_at = time.monotonic()
+        _store(slot, _read_entitlement(base, key), asked_at)
     finally:
         with _answers_lock:
             _refreshing.discard(slot)
