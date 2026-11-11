@@ -81,6 +81,9 @@ function keyedPromptStore<T extends KeyedPrompt>(): PromptStore<T> {
 export interface ApprovalRequest extends KeyedPrompt {
   // false when the backend won't honor a permanent allow (tirith warning) → hide "Always allow".
   allowPermanent?: boolean
+  // hc-1223: the engine offers 「本任务都允许」 (the `task` choice). Read from `allow_task`, which a
+  // prompt restored from `approval.pending` carries without `choices`.
+  allowTask?: boolean
   choices?: string[]
   command: string
   description: string
@@ -95,6 +98,7 @@ interface ApprovalGateway {
 
 interface PendingApprovalPayload {
   allow_permanent?: boolean
+  allow_task?: boolean
   choices?: unknown
   command?: unknown
   description?: unknown
@@ -231,6 +235,7 @@ export async function replayPendingApproval(gateway: ApprovalGateway | null, ses
 
   await receiveApprovalRequest(gateway, {
     allowPermanent: pending.allow_permanent !== false,
+    allowTask: pending.allow_task === true,
     choices: Array.isArray(pending.choices) ? pending.choices.filter(choice => typeof choice === 'string') : undefined,
     command: typeof pending.command === 'string' ? pending.command : '',
     description: typeof pending.description === 'string' ? pending.description : 'dangerous command',

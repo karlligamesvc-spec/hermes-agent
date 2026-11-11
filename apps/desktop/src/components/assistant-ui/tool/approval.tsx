@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useI18n } from '@/i18n'
+import { useTaskApprovalCopy } from '@/i18n/task-approval'
 import { triggerHaptic } from '@/lib/haptics'
 import { AlertCircle, ChevronDown } from '@/lib/icons'
 import { isSubmitEnter } from '@/lib/ime'
@@ -50,8 +51,14 @@ import type { ToolPart } from './fallback-model'
 // event payload), which is the only place that data reliably exists.
 export const APPROVAL_TOOLS = new Set(['terminal', 'execute_code', 'patch', 'write_file'])
 
-// Canonical gateway choices (ui-tui/src/components/prompts.tsx).
-type ApprovalChoice = 'once' | 'session' | 'always' | 'deny'
+// Canonical gateway choices (ui-tui/src/components/prompts.tsx), plus hc-1223's `task`:
+// 「本任务都允许」 answers this card and every later approval of the same task (turn).
+type ApprovalChoice = 'once' | 'session' | 'always' | 'task' | 'deny'
+
+/** Whether the engine offers 「本任务都允许」: `task` in the request's choices, or, for a prompt
+ *  restored from `approval.pending` (no choices), its `allow_task` flag. An older engine never does. */
+export const offersTaskChoice = (request: ApprovalRequest): boolean =>
+  request.choices ? request.choices.includes('task') : request.allowTask === true
 
 export const PendingToolApproval: FC<{ part: ToolPart }> = ({ part }) => {
   // The tool row lives in whichever session's transcript rendered it — read
@@ -131,6 +138,7 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navi
 const ApprovalBar: FC<{ request: ApprovalRequest; surface: 'floating' | 'inline' }> = ({ request, surface }) => {
   const { t } = useI18n()
   const copy = t.assistant.approval
+  const taskCopy = useTaskApprovalCopy()
   const gateway = useStore($gateway)
   const [submitting, setSubmitting] = useState<ApprovalChoice | null>(null)
   // "Always allow" persists the pattern to ~/.hermes/config.yaml permanently, so
@@ -148,6 +156,7 @@ const ApprovalBar: FC<{ request: ApprovalRequest; surface: 'floating' | 'inline'
   const allowSession = choices ? choices.includes('session') : true
   const allowAlways = choices ? choices.includes('always') : allowPermanent
   const hasMoreOptions = allowSession || allowAlways
+  const allowTask = offersTaskChoice(request)
   const hasCommand = request.command.trim().length > 0
 
   const respond = useCallback(
@@ -261,6 +270,20 @@ const ApprovalBar: FC<{ request: ApprovalRequest; surface: 'floating' | 'inline'
             </DropdownMenu>
           )}
         </div>
+
+        {allowTask && (
+          <Button
+            className="h-6 rounded-md px-1.5 text-xs font-medium text-primary hover:bg-primary/10 hover:text-primary"
+            disabled={busy}
+            loading={submitting === 'task'}
+            onClick={() => void respond('task')}
+            size="xs"
+            title={taskCopy.allowTaskHint}
+            variant="ghost"
+          >
+            {taskCopy.allowTask}
+          </Button>
+        )}
 
         <Button
           className="h-6 gap-1.5 rounded-md px-1.5 text-xs font-normal text-(--ui-text-tertiary) hover:text-foreground"
