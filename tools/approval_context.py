@@ -23,6 +23,9 @@ def _ctx(name: str, default: str | None = "") -> contextvars.ContextVar:
 # process-global env var is racy (the env fallback stays for legacy single-threaded callers).
 _approval_session_key: contextvars.ContextVar[str] = _ctx("approval_session_key")
 _approval_turn_id: contextvars.ContextVar[str] = _ctx("approval_turn_id")
+# The outermost turn id bound in this context: a delegated child's dispatches bind its own turn id and keep
+# this one, its parent's, which is the task a 「本任务都允许」 grant covers (tools.approval_turn_grant, hc-1223).
+_approval_root_turn_id: contextvars.ContextVar[str] = _ctx("approval_root_turn_id")
 _approval_tool_call_id: contextvars.ContextVar[str] = _ctx("approval_tool_call_id")
 # Hermes session id (observability identity, distinct from the gateway routing session_key), forwarded to approval
 # hooks so observer plugins attach marks to the REAL session scope — otherwise they fall back to a synthetic "default"
@@ -123,18 +126,20 @@ def reset_current_session_key(token: contextvars.Token[str]) -> None:
     _approval_session_key.reset(token)
 
 
-_Tokens = tuple[contextvars.Token[str], contextvars.Token[str], contextvars.Token[str]]
+_Tokens = tuple[contextvars.Token[str], contextvars.Token[str], contextvars.Token[str], contextvars.Token[str]]
 
 
 def set_current_observability_context(*, turn_id: str = "", tool_call_id: str = "", session_id: str = "") -> _Tokens:
     """Bind active tool correlation IDs to approval hooks."""
+    root = _approval_root_turn_id.get() or turn_id or ""
     return (_approval_turn_id.set(turn_id or ""), _approval_tool_call_id.set(tool_call_id or ""),
-            _approval_session_id.set(session_id or ""))
+            _approval_session_id.set(session_id or ""), _approval_root_turn_id.set(root))
 
 
 def reset_current_observability_context(tokens: _Tokens) -> None:
     """Restore prior approval hook correlation IDs."""
-    turn_token, tool_token, session_token = tokens
+    turn_token, tool_token, session_token, root_token = tokens
+    _approval_root_turn_id.reset(root_token)
     _approval_session_id.reset(session_token)
     _approval_tool_call_id.reset(tool_token)
     _approval_turn_id.reset(turn_token)

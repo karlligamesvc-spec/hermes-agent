@@ -16,7 +16,7 @@ import time
 import uuid
 
 from tools.interrupt import get_interrupt_reason, is_interrupted
-from tools import approval_context as _ctx
+from tools import approval_context as _ctx, approval_turn_grant
 from tools.approval_human_wait import activity_heartbeat, human_wait_window
 
 logger = logging.getLogger("tools.approval")
@@ -261,4 +261,5 @@ def _await_gateway_decision(session_key: str, notify_cb, approval_data: dict, *,
         resolved = state != "timeout" or choice is not None
         extra = {"cancelled": cancelled} if cancelled else {}
         human.outcome = _hook_choice(resolved, choice, extra)
+        approval_turn_grant.answered(session_key, approval_data, choice)  # hc-1223 「本任务都允许」
         return _finish(payload, resolved, choice, entry.reason, **extra)
