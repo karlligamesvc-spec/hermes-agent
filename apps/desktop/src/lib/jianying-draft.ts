@@ -13,7 +13,7 @@ export const JIANYING_TOOL = 'jianying_draft'
 
 /**
  * 剪映 versions a draft was opened and exported on, per platform. Another
- * version still gets its card and button (Kael 2026-11-11: prompt, don't block);
+ * version still gets its card and button (hc-1219: prompt, don't block);
  * the card only says APEX has not checked it there. Add a version only after
  * that real test: the draft format is 剪映's own and changes without notice.
  */

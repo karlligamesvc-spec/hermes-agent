@@ -6,7 +6,7 @@ of ``file``, ``in``, ``dur``/``out``, ``zoom``), so the draft has the same cuts 
 on unburned footage, with the subtitles as text the user can edit in 剪映.
 
 What goes in: local media only, plus 叠化 (free) at the cuts the agent names. No filters, effects, animations,
-online fonts or VIP material (Kael 2026-11-11, decision 3). Subtitles are white with a black stroke, so they stay
+online fonts or VIP material (hc-1219). Subtitles are white with a black stroke, so they stay
 readable on a bright frame (report 2026-11-05 §3).
 
 剪映 takes in any new folder under its draft folder within about two seconds while it runs (a hidden one too) and

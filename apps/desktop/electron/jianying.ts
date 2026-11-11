@@ -5,7 +5,7 @@
  * (apex_overlay/jianying_build.py) and the renderer draws its result as a card
  * (src/components/chat/jianying-draft-card.tsx). The button asks main to start
  * 剪映专业版; the user then opens the draft from 剪映's home page and exports it
- * there. Nothing here clicks inside 剪映 (Kael 2026-11-11: the user exports).
+ * there. Nothing here clicks inside 剪映 (hc-1219: the user exports).
  *
  * What main checks before starting 剪映: the folder it was given is a draft the
  * engine wrote (`draft_info.json` and `draft_meta_info.json` in it), so the

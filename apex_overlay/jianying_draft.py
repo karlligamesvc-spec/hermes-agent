@@ -9,8 +9,8 @@ it, as in every cloud container, no tool is registered.
 draft folder, read each time the list is built (jianying_install.py). So the agent offers 「在剪映里接着剪」 only
 on a computer that can take it, and a 剪映 installed while APEX runs counts from the next turn.
 
-**APEX writes, the user exports.** The draft is written into 剪映's own draft folder; nothing operates 剪映 (Kael
-2026-11-11, decision 1). Desktop draws the result as a card with 「在剪映中打开」, which starts 剪映 and checks that
+**APEX writes, the user exports.** The draft is written into 剪映's own draft folder; nothing operates 剪映
+(hc-1219: the user exports). Desktop draws the result as a card with 「在剪映中打开」, which starts 剪映 and checks that
 it took the draft in (apps/desktop electron/jianying.ts). After writing, this side checks the same where it can: when
 剪映 is running it takes a new draft in within about two seconds, and ``root_meta_info.json`` must then list a
 timeline file that exists and a duration above 0. A draft is never read back: once open in 剪映 its files are no
