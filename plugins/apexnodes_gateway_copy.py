@@ -258,4 +258,37 @@ COPY: dict[str, tuple[str, str]] = {
         "Image {index} could not be uploaded: {reason}. Nothing was generated, and nothing will be "
         "generated without the image.",
     ),
+    # hc-1222: generate_video's reference audio (apexnodes_reference_audio); the hosted copy in
+    # apex-nodes says the same.
+    "reference_audio_not_list": (
+        "reference_audio 必须是列表，每一项是 {{source}}(text_to_speech 返回的 file_path)。",
+        "reference_audio must be a list of {{source}} objects (text_to_speech's file_path).",
+    ),
+    "reference_audio_source_missing": (
+        "reference_audio 第 {index} 项没有 source。",
+        "reference_audio item {index} has no source.",
+    ),
+    "reference_audio_unsupported_server": (
+        "平台还不支持参考音频，这次没有生成。可以先不带 reference_audio 生成，配音后期叠上。",
+        "The platform does not take reference audio yet; nothing was generated. Generate without "
+        "reference_audio and lay the voiceover on afterwards.",
+    ),
+    "reference_audio_missing": (
+        "找不到第 {index} 段音频({source}),这次没有生成。请用 text_to_speech 返回的 file_path。",
+        "Audio clip {index} ({source}) was not found; nothing was generated. Use the file_path "
+        "text_to_speech returned.",
+    ),
+    "reference_audio_too_large": (
+        "第 {index} 段音频超过 {mb} MB,没有上传，这次没有生成。",
+        "Audio clip {index} is over {mb} MB and was not uploaded; nothing was generated.",
+    ),
+    "reference_audio_download_failed": (
+        "第 {index} 段音频的链接下载不下来({reason}),这次没有生成。",
+        "Audio clip {index}'s link could not be downloaded ({reason}); nothing was generated.",
+    ),
+    "reference_audio_upload_failed": (
+        "第 {index} 段音频上传失败：{reason}。这次没有生成，也不会改成不带音频去生成。",
+        "Audio clip {index} could not be uploaded: {reason}. Nothing was generated, and nothing will be "
+        "generated without the audio.",
+    ),
 }

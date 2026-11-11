@@ -1,7 +1,7 @@
 {
  "contract_name": "apexnodes-plugin-tools-parity",
- "contract_version": 17,
- "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948, hc-969, hc-1011, hc-1000, hc-1054, hc-1143, hc-1136, hc-1046, hc-1189",
+ "contract_version": 18,
+ "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948, hc-969, hc-1011, hc-1000, hc-1054, hc-1143, hc-1136, hc-1046, hc-1189, hc-1222",
  "sync_policy": {
   "copies": [
    "hermes-cloud: tests/contracts/plugin_tools_contract.json (source of truth)",
@@ -727,6 +727,12 @@
        "chinaapi"
       ]
      },
+     "reference_audio": {
+      "type": "array",
+      "items": {
+       "type": "object"
+      }
+     },
      "rights_confirmed": {
       "type": "boolean"
      },
@@ -745,14 +751,16 @@
     "legacy": [
      "/media/video-generate",
      "/media/video/check",
-     "/media/reference-upload"
+     "/media/reference-upload",
+     "/media/reference-audio-upload"
     ],
     "gateway": [
      "/tools/v1/video/generate",
      "/tools/v1/video/jobs",
      "/tools/v1/video/jobs/{job_id}",
      "/tools/v1/check",
-     "/tools/v1/media/reference-upload"
+     "/tools/v1/media/reference-upload",
+     "/tools/v1/media/reference-audio-upload"
     ]
    },
    "behaviors": {
@@ -815,6 +823,27 @@
       "gateway"
      ],
      "note": "hc-1046: with apex.generation_model_choice: assistant (the Desktop hides its model picker) the saved apex.generation_video_model is the hidden default and the call's own model is sent; with user, or no key, the saved choice still wins (hc-845)."
+    },
+    "reference_audio_forwarded_as_refs": {
+     "legs": [
+      "legacy",
+      "gateway"
+     ],
+     "note": "hc-1222: an audio_ref (media:...) passes as {ref}; a local file (text_to_speech's file_path, or its MEDIA: line) is uploaded to the leg's reference-audio-upload endpoint first and passes as the returned ref. A call without reference_audio sends no reference_audio key."
+    },
+    "reference_audio_requires_server_support": {
+     "legs": [
+      "legacy",
+      "gateway"
+     ],
+     "note": "hc-1222: with reference_audio, the leg's video check must report reference_audio.supported; otherwise the tool fails before any upload or generate call (an older server drops the unknown field and renders without the voice)."
+    },
+    "reference_audio_never_dropped_on_upload_failure": {
+     "legs": [
+      "legacy",
+      "gateway"
+     ],
+     "note": "hc-1222: a clip that cannot be uploaded fails the call; the generate endpoint is never called without it."
     }
    }
   },
