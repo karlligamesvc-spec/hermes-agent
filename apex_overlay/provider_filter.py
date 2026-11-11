@@ -69,12 +69,14 @@ PR / seam-test):
    iterate-ALL-api-key-providers fallback chain, setup flows, the copilot
    catalog key). Denied → empty credentials, and its *second* direct
    ``resolve_copilot_token()`` call (base-URL resolution) never runs.
-6. ``hermes_cli.copilot_auth.resolve_copilot_token`` — the subprocess
-   itself. Belt-and-suspenders for the copilot-specific refresh paths that
-   call it directly (``run_agent`` 401 refresh, auxiliary-client refresh,
-   credential-pool seeding via any ``load_pool("copilot")``). The gate is
-   the *denylist*, not hardcoded: remove copilot from the list and this
-   wrapper is a pass-through (the seam-test proves both directions).
+6. (retired in hc-1203) ``hermes_cli.copilot_auth.resolve_copilot_token``,
+   the ``gh auth token`` subprocess itself. Upstream v0.23.0 moved GitHub
+   Copilot out of core into the ``github-copilot`` labs plugin, installed
+   only for a profile that chose Copilot as a provider
+   (``hermes_cli.left_core_migration.copilot_in_use``); core no longer has
+   a copilot provider or any ``gh auth token`` call. The seam-test pins
+   that core resolves copilot without spawning a subprocess, so a return of
+   that path turns red instead of silently reopening the storm.
 7. ``hermes_cli.models.provider_model_ids`` — the un-cached live-fetch
    fan-out. ``validate_requested_model`` / ``curated_models_for_provider``
    call it directly, bypassing the patched cached wrapper in (1).
@@ -110,8 +112,6 @@ _TARGET_AUTH_MODULE = "hermes_cli.auth"
 _TARGET_STATUS_DISPATCH_FN = "get_auth_status"
 _TARGET_APIKEY_STATUS_FN = "get_api_key_provider_status"
 _TARGET_RESOLVE_CREDS_FN = "resolve_api_key_provider_credentials"
-_TARGET_COPILOT_MODULE = "hermes_cli.copilot_auth"
-_TARGET_COPILOT_TOKEN_FN = "resolve_copilot_token"
 
 # Guard so apply() is idempotent even if called from multiple boot paths.
 _APPLIED = False
@@ -423,46 +423,14 @@ def _wrap_resolve_api_key_provider_credentials(orig: Callable) -> Callable:
     return wrapper
 
 
-def _wrap_resolve_copilot_token(orig: Callable) -> Callable:
-    """Deny gate on the ``gh auth token`` subprocess itself.
-
-    Catches the copilot-specific paths that import ``resolve_copilot_token``
-    directly instead of going through the gated resolvers: the runtime's
-    401 credential refresh (``run_agent``), the auxiliary client's provider
-    refresh, and credential-pool seeding (fired by any
-    ``load_pool("copilot")`` — picker in-loop pool checks, the web
-    ``/api/credentials/pool`` listing, aux pool selection).
-
-    The gate is the *denylist*, not the function: with copilot absent from
-    ``model.disabled_providers`` this wrapper is a byte-for-byte
-    pass-through (the seam-test proves both directions).
-    """
-
-    @functools.wraps(orig)
-    def wrapper(*args, **kwargs):
-        try:
-            if is_disabled(*_provider_aliases("copilot")):
-                logger.debug(
-                    "apex_overlay: copilot denied — skipping token "
-                    "resolution / gh subprocess (hc-621)",
-                )
-                return "", ""
-        except Exception:
-            pass
-        return orig(*args, **kwargs)
-
-    setattr(wrapper, _MARK, True)
-    return wrapper
-
-
 def _wrap_provider_model_ids(orig: Callable) -> Callable:
     """Short-circuit the *un-cached* live model-list fan-out.
 
     ``cached_provider_model_ids`` (patch 1) covers the picker, but
     ``validate_requested_model`` and ``curated_models_for_provider`` call
     ``provider_model_ids`` directly — for a denied provider that path would
-    still reach the provider's live fetcher (for copilot: an unauthenticated
-    GitHub catalog attempt even with no token). Same contract as patch 1:
+    still reach the provider's live fetcher (an unauthenticated catalog
+    attempt even with no key). Same contract as patch 1:
     denied → ``[]`` before any fetch.
     """
 
@@ -501,8 +469,6 @@ _PATCH_TABLE: tuple = (
     (_TARGET_AUTH_MODULE, _TARGET_APIKEY_STATUS_FN, _wrap_get_api_key_provider_status),
     # 5 (hc-621): refuse runtime credential resolution for denied providers.
     (_TARGET_AUTH_MODULE, _TARGET_RESOLVE_CREDS_FN, _wrap_resolve_api_key_provider_credentials),
-    # 6 (hc-621): the `gh auth token` subprocess itself (direct callers).
-    (_TARGET_COPILOT_MODULE, _TARGET_COPILOT_TOKEN_FN, _wrap_resolve_copilot_token),
     # 7 (hc-621): the un-cached live fan-out that bypasses patch 1.
     (_TARGET_MODELS_MODULE, _TARGET_PROVIDER_MODEL_IDS_FN, _wrap_provider_model_ids),
 )

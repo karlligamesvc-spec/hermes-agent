@@ -38,7 +38,7 @@ def _payload(value: Any) -> str:
 
 
 def _weixin(monkeypatch, sent: list[str]):
-    from gateway.platforms import weixin
+    from plugins.platforms.weixin import adapter as weixin
 
     async def transport(_session, *, text, **_kwargs):
         sent.append(text)
@@ -101,7 +101,7 @@ def _dingtalk(monkeypatch, sent: list[str]):
 
 
 def _qqbot(monkeypatch, sent: list[str]):
-    from gateway.platforms.qqbot import QQAdapter
+    from plugins.platforms.qqbot.adapter import QQAdapter
 
     async def api_request(_method, _path, body=None, *_args, **_kwargs):
         sent.append(_payload(body))
@@ -149,8 +149,8 @@ ids = [channel.key for channel in CHANNELS]
 
 
 def _adapter_classes() -> list[type]:
-    from gateway.platforms.qqbot import QQAdapter
-    from gateway.platforms.weixin import WeixinAdapter
+    from plugins.platforms.qqbot.adapter import QQAdapter
+    from plugins.platforms.weixin.adapter import WeixinAdapter
     from plugins.platforms.dingtalk.adapter import DingTalkAdapter
     from plugins.platforms.feishu.adapter import FeishuAdapter
     from plugins.platforms.wecom.adapter import WeComAdapter

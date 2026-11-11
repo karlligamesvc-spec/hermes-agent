@@ -42,6 +42,11 @@ DEFERRED = {
     "silk": "WeChat voice notes (pilk): uv.lock has no macOS / Python 3.14 wheel, the bundle would build a C extension",
     "stt-whisper": "local transcription (faster-whisper), upstream's default STT provider: large",
     "voice": "same faster-whisper as stt-whisper",
+    # hc-1203 (v0.23.0): the Office / PDF libraries behind upstream's microsoft-office skill, which APEX
+    # keeps active. Docker bakes them; elsewhere the skill pip-installs them into its own venv on first
+    # use, a download the Desktop bundle could spare the user (~25 MB).
+    "documents": "upstream's microsoft-office skill (python-docx, openpyxl, python-pptx, reportlab, pypdf)",
+    "documents-pdf": "upstream's microsoft-office / pdf skill (pdfplumber, pypdfium2)",
 }
 
 #: Reached only after APEX's own path failed.
@@ -58,6 +63,8 @@ NOT_APEX = {
     "modal", "neutts", "otlp", "parallel-web", "piper", "slack", "teams", "telegram", "trace-upload",
     "tts-premium", "vercel", "vertex", "wake", "wake-openwakeword", "wake-porcupine", "wake-sherpa",
     "wecom",
+    # hc-1203: v0.23.0's opt-in OS-keychain storage for the browser vault key (vault.key_storage).
+    "keychain",
 }
 
 

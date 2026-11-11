@@ -4,7 +4,7 @@ Desktop's main process mirrors the app version, the shipped engine and the updat
 ``<root>/apex/desktop-version.json`` (apps/desktop/electron/apex-version-state.ts); this seam words it
 while single-thread mode is on (``APEX_SINGLE_THREAD_ACTIVE=1``). These tests pin, in a real agent's
 prompt, the words for "downloaded, waiting", "already the newest" and "install put off"; that the
-engine's "You run on Hermes Agent" line becomes an APEX line; that a running session hears a change
+engine's "For help with Hermes Agent itself" line becomes an APEX line; that a running session hears a change
 once; who gets the section; and that with the switch off, or in a cloud container, every prompt is
 byte for byte the one built without this seam. The file's codes are pinned against the TypeScript
 writer and the update pill's own words.
@@ -29,7 +29,9 @@ from run_agent import AIAgent
 ROOT = Path(__file__).resolve().parents[2]
 DESKTOP = ROOT / "apps" / "desktop"
 PIN = {"commit": "aa8e554e3878d08d3448474290bc0eb07a1e3f78", "version": "v2026.10.27-fork.aa8e554e"}
-UPSTREAM_LINE = "You run on Hermes Agent (by Nous Research)."
+# The opening both upstream variants share (v0.23.0 reworded it from "You run on Hermes Agent (by Nous Research).";
+# hc-1203); the seam replaces the two constants by name, so only this anchor moved.
+UPSTREAM_LINE = "For help with Hermes Agent itself — configuring, setting up, using, extending, or troubleshooting it"
 
 
 @pytest.fixture(autouse=True)

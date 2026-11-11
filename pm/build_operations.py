@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 import sys
+import time
 from types import MappingProxyType
 
 from pm.filesystem import long_root, native
@@ -157,7 +158,7 @@ def verified_tools(names: Sequence[str], *, source_store: Path, target: str,
     from pm.lock import Facts
     from pm.package import StatePackage
     from pm.registry import walk
-    from pm.store import tree_digest
+    from pm.store import digest_matches
 
     if isinstance(names, str):
         raise TypeError("names must be a sequence, not a string")
@@ -185,7 +186,7 @@ def verified_tools(names: Sequence[str], *, source_store: Path, target: str,
         if (not fact or fact.get("entry") != expected
                 or not entry.is_dir() or not entry.resolve().is_relative_to(source_store)
                 or not facts.installed(package.name, version, source_store, identity)
-                or tree_digest(entry) != fact.get("digest")):
+                or not digest_matches(entry, fact.get("digest"))):
             raise InstallError(package.name, "tool source failed verification", "run preparation again")
         _copy_links(package, entry)
         binary = package.binary(entry, target)
@@ -239,8 +240,11 @@ def stage_tools(names: Sequence[str], *, source_store: Path, out: Path, target: 
                 raise InstallError(package.name, "tool copy source failed verification", "run preparation again")
         staged = Facts(out / "facts.json", strict=True)
         for package in packages:
+            started = time.monotonic()
             _install(package, lock, staged, destination, target,
                      copy_from=(facts, source), _lock_held=True, _fresh_copy=True)
+            # Copy plus re-digest of a large tree runs silently for minutes on Windows.
+            print(f"    copied {package.name} ({time.monotonic() - started:.1f}s)", flush=True)
     return out
 
 

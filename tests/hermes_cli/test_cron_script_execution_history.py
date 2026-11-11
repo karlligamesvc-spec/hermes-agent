@@ -20,6 +20,12 @@ def test_script_execution_history_survives_failure_recovery_and_profile_switch(t
     monkeypatch.setenv("HERMES_HOME", str(home))
     monkeypatch.setattr(profiles, "_get_default_hermes_home", lambda: home)
     monkeypatch.setattr(profiles, "_get_profiles_root", lambda: home / "profiles")
+    # hc-1203: v0.23.0's history browse never creates a session store ("Start this profile's gateway"
+    # 503); each profile's gateway does on start. Initialize both, as their gateways would have.
+    from hermes_state import SessionDB
+    for directory in (home, worker):
+        with SessionDB(db_path=directory / "state.db"):
+            pass
     script = worker / "scripts" / "probe.py"
     marker = worker / "executed.txt"
     script.write_text(f"from pathlib import Path\nPath({str(marker)!r}).write_text('executed')\nprint('local proof')\n")

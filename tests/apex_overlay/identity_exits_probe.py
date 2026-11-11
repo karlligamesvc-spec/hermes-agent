@@ -49,6 +49,10 @@ def _pin_machine() -> None:
     source_check.check_for_updates = lambda passive=True: {"behind": 1}
 
 
+#: The IM platforms the probes build prompts for (result_delivery_probe.py: feishu, weixin).
+IM_PLATFORM_PLUGINS = ("feishu", "weixin")
+
+
 def _load_plugin() -> None:
     from hermes_cli import plugins
     from hermes_cli.plugins import PluginContext, PluginManager, PluginManifest
@@ -56,6 +60,12 @@ def _load_plugin() -> None:
     manager = PluginManager()
     manager._discovered = True
     plugins._plugin_manager = manager
+    # hc-1203: since v0.23.0 an IM platform's system-prompt hint lives on its plugin's PlatformEntry (core's
+    # PLATFORM_HINTS no longer has Feishu or WeChat). A gateway serving them has them registered, so do that here.
+    for platform in IM_PLATFORM_PLUGINS:
+        module = importlib.import_module(f"plugins.platforms.{platform}")
+        module.register(PluginContext(PluginManifest(name=f"{platform}-platform", key=f"platforms/{platform}",
+                                                     source="bundled", kind="platform"), manager))
     spec = importlib.util.spec_from_file_location("apex_overlay_plugin", ROOT / "plugins" / "apex-overlay" / "__init__.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

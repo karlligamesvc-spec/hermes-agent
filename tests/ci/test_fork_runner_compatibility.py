@@ -40,3 +40,25 @@ def test_fork_required_workflows_only_use_available_runner_pools() -> None:
         "fork-required jobs reference unregistered large-runner labels: "
         f"{offenders}"
     )
+
+
+# hc-1203: upstream v0.23.0 moved its CI onto Blacksmith: ``blacksmith-*`` runner labels and
+# ``useblacksmith/*`` actions (checkout, cache, docker builder). The fork has no Blacksmith
+# installation, so such a job queues until GitHub cancels it and such a step cannot run. Comments
+# and READMEs may still name it; a YAML line that does is executable configuration.
+_YAML_COMMENT = re.compile(r"(?:^|\s)#.*$")
+
+
+def test_fork_ci_never_asks_for_a_blacksmith_runner_or_action() -> None:
+    github = REPO_ROOT / ".github"
+    scanned, offenders = 0, []
+    for path in sorted([*github.joinpath("workflows").glob("*.y*ml"), *github.joinpath("actions").rglob("*.y*ml")]):
+        scanned += 1
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if "blacksmith" in _YAML_COMMENT.sub("", line).lower():
+                offenders.append(f"{path.relative_to(REPO_ROOT)}:{number}: {line.strip()}")
+
+    assert scanned >= len(FORK_REQUIRED_WORKFLOWS)  # the scan found the workflows, not an empty directory
+    assert offenders == [], (
+        "fork CI references Blacksmith runners or actions that cannot run on the fork:\n" + "\n".join(offenders)
+    )

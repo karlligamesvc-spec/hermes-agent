@@ -94,8 +94,9 @@ def test_apexnodes_file_export_dependencies_are_in_all():
     """
     optional_dependencies = _load_optional_dependencies()
 
+    # hc-1203: python-docx follows upstream's [documents] pin (1.2.0); one lock serves both extras.
     assert set(optional_dependencies["file-export"]) == {
-        "python-docx==1.1.2",
+        "python-docx==1.2.0",
         "XlsxWriter==3.2.0",
         "python-pptx==1.0.2",
         "weasyprint==62.3",
@@ -156,6 +157,7 @@ def test_lazy_installable_extras_excluded_from_all():
         "telegram", "discord",
         "wake", "wake-openwakeword", "wake-sherpa", "wake-porcupine",
         "google-chat",
+        "keychain",  # keyring — vault key in the OS keychain, installed by `hermes vault key migrate`
         "mistral",  # mistralai — Voxtral STT/TTS, lazy-installed (stt.mistral / tts.mistral)
     }
     all_extra_specs = optional_dependencies["all"]

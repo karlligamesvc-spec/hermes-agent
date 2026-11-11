@@ -7,36 +7,35 @@ upstream rename/move turns a *silently disarmed guard* into a *loud CI failure*
 
 It also proves the behavior the original +34 in-place hc-392 lines provided:
 
-* With the denylist active, GitHub Copilot is skipped **before** the live
-  catalog fetch — ``fetch_github_model_catalog`` is called **zero** times and
-  no ``copilot`` row appears.
+* With the denylist active, a denied provider is skipped **before** its live
+  catalog fetch — the fetcher is called **zero** times and no row appears.
 * With an **empty** denylist (control), the exact same setup *does* fetch and
-  surface Copilot — proving the suppression is the denylist's doing, not some
-  unrelated reason.
+  surface it — proving the suppression is the denylist's doing.
 
 hc-621 adds the auth/status layer (the ``gh auth token`` storm: the desktop
 shell's ~7.5s accounts poll hit ``get_auth_status("copilot")`` →
 ``resolve_copilot_token()`` → subprocess + warning, 2684 times in 5.5h, on a
-box whose config denied copilot all along). The hc-621 tests assert on **call
-counts** (a spy on ``hermes_cli.copilot_auth.subprocess.run``), not on log
-strings:
+box whose config denied copilot all along). The hc-621 tests assert on what
+was spawned and on call counts, not on log strings.
 
-* denied + the exact storm fixture (no env token, ``gh`` present) → repeated
-  status polls, credential resolutions, direct token resolutions and pool
-  seeds run **zero** subprocesses and emit **zero** warning records;
-* copilot **removed** from the denylist (a different entry stays, proving the
-  gate is per-entry) → the same fixture resolves through ``gh`` again —
-  the guard is the *list*, not a hardcoded copilot switch.
+hc-1203 (upstream v0.23.0): GitHub Copilot left core for the ``github-copilot``
+labs plugin and core lost its ``gh auth token`` path, so the seam's wrapper on
+``hermes_cli.copilot_auth.resolve_copilot_token`` was retired. The picker and
+status tests now use providers that are still in core and that APEX denies or
+uses (openrouter, deepseek, nous), and
+``test_core_resolves_copilot_without_any_subprocess`` pins the replacement
+fact: no copilot exit spawns a subprocess, denied or not.
 
-Reverse verification (2026-07-30, hc-621) — each gate was knocked out in turn
-(``if`` → ``if False and``) and the suite re-run; every knockout turned a
-specific test red, and the restored file is fully green:
+Reverse verification (2026-07-30, hc-621; redone 2026-11-09, hc-1203) — each
+gate was knocked out in turn (``if`` → ``if False and``) and the suite re-run;
+every knockout turned a specific test red, and the restored file is fully green:
 
+* gate in ``_wrap_cached_provider_model_ids``   → ``test_cached_provider_model_ids_short_circuits_disabled_only``
+* row filter in ``_wrap_list_authenticated_providers`` → ``test_denylisted_provider_makes_no_catalog_fetch_and_no_row``
 * gate in ``_wrap_get_auth_status``            → ``test_denied_oauth_provider_status_static_no_helper_call``
-* gate in ``_wrap_get_api_key_provider_status``→ ``test_denied_copilot_all_resolution_exits_zero_subprocess``
-* gate in ``_wrap_resolve_api_key_provider_credentials`` → same test red
-* gate in ``_wrap_resolve_copilot_token``      → same test red — failing with
-  the exact production error ("Token from `gh auth token` is a classic PAT")
+* gate in ``_wrap_get_api_key_provider_status``→ ``test_denied_api_key_provider_all_resolution_exits_static``
+* gate in ``_wrap_resolve_api_key_provider_credentials`` → same test red, plus the copilot-denied case of
+  ``test_core_resolves_copilot_without_any_subprocess``
 * gate in ``_wrap_provider_model_ids``         → ``test_denied_provider_model_ids_short_circuits``
 
 Run via ``scripts/run_tests_parallel.py`` (per-file fresh interpreter), not a
@@ -109,13 +108,12 @@ def test_seam_target_auth_status_layer_exists_with_compatible_signatures():
 
     ``get_auth_status`` / ``get_api_key_provider_status`` /
     ``resolve_api_key_provider_credentials`` take the provider id as their
-    first positional param; ``resolve_copilot_token`` is the zero-arg
-    subprocess entry. If upstream renames or reshapes any of them, the deny
+    first positional param. If upstream renames or reshapes any of them, the deny
     gate silently disarms — fail loudly here instead.
     """
     import inspect as _inspect
 
-    from hermes_cli import auth, copilot_auth
+    from hermes_cli import auth
 
     for attr, first_param in (
         (provider_filter._TARGET_STATUS_DISPATCH_FN, "provider_id"),
@@ -133,12 +131,6 @@ def test_seam_target_auth_status_layer_exists_with_compatible_signatures():
             f"hermes_cli.auth.{attr} first param changed to {params!r}; the "
             f"apex_overlay wrapper forwards the provider id positionally."
         )
-
-    fn = getattr(copilot_auth, provider_filter._TARGET_COPILOT_TOKEN_FN, None)
-    assert fn is not None, (
-        "hermes_cli.copilot_auth.resolve_copilot_token is gone — the hc-621 "
-        "gate on the `gh auth token` subprocess can no longer bind."
-    )
 
     from hermes_cli import models
 
@@ -180,19 +172,18 @@ def test_apply_binds_all_targets_and_is_idempotent():
     A False return means a target was missing — which the seam asserts above
     would also catch, but apply() must surface it too so the plugin can warn.
     """
-    from hermes_cli import auth, copilot_auth, model_switch, models
+    from hermes_cli import auth, model_switch, models
 
     # Reset the module guard so this test exercises a real (re)apply even if
     # an earlier test in this file already applied.
     provider_filter._APPLIED = False
     assert provider_filter.apply() is True
-    # Patched callables carry our marker — all seven targets.
+    # Patched callables carry our marker — all six targets (hc-1203 retired the copilot token one).
     assert getattr(models.cached_provider_model_ids, provider_filter._MARK, False)
     assert getattr(model_switch.list_authenticated_providers, provider_filter._MARK, False)
     assert getattr(auth.get_auth_status, provider_filter._MARK, False)
     assert getattr(auth.get_api_key_provider_status, provider_filter._MARK, False)
     assert getattr(auth.resolve_api_key_provider_credentials, provider_filter._MARK, False)
-    assert getattr(copilot_auth.resolve_copilot_token, provider_filter._MARK, False)
     assert getattr(models.provider_model_ids, provider_filter._MARK, False)
     # Idempotent: second apply is a no-op (and must not double-wrap).
     assert provider_filter.apply() is True
@@ -226,63 +217,64 @@ def _apply_fresh():
     assert provider_filter.apply() is True
 
 
-@patch.dict(os.environ, {"GH_TOKEN": "test-key"}, clear=False)
-def test_copilot_denylisted_makes_no_github_fetch_and_no_row(_denylist):
-    """copilot in denylist → 0 calls to fetch_github_model_catalog, no row.
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-test"}, clear=False)
+def test_denylisted_provider_makes_no_catalog_fetch_and_no_row(_denylist):
+    """openrouter in the denylist → its live catalog is fetched zero times, no row.
 
-    GH_TOKEN is present so copilot *would* be credentialed and fetched without
-    the guard. We assert the live GitHub catalog call never happens (the
-    hc-392 'no startup network call' contract) and copilot is absent.
+    OPENROUTER_API_KEY is set, so openrouter *would* be credentialed and fetched
+    without the guard. OpenRouter is one of the CN-mode implicit denials, so this
+    is a provider APEX really denies. (hc-1203: the original example, GitHub
+    Copilot, left core in v0.23.0 for the ``github-copilot`` labs plugin; the
+    picker contract is the same for every provider with a live catalog.)
     """
-    from hermes_cli import model_switch
+    from hermes_cli import model_switch, models
 
-    _denylist("copilot")
+    _denylist("openrouter")
     _apply_fresh()
 
-    fetch_mock = MagicMock(return_value=[{"id": "gpt-5.4"}])
+    fetch_mock = MagicMock(return_value=["openai/gpt-5"])
     with patch("agent.models_dev.fetch_models_dev", return_value={}), \
-         patch("hermes_cli.models._resolve_copilot_catalog_api_key", return_value="gh-token"), \
-         patch("hermes_cli.models.fetch_github_model_catalog", fetch_mock):
+         patch.dict(models._PROVIDER_CATALOG_FETCHERS, {"openrouter": fetch_mock}):
         providers = model_switch.list_authenticated_providers(
-            current_provider="openrouter", max_models=50,
+            current_provider="deepseek", max_models=50,
         )
 
     assert fetch_mock.call_count == 0, (
-        "copilot is denylisted but its GitHub model catalog was still fetched "
+        "openrouter is denylisted but its live model catalog was still fetched "
         "— the apex_overlay short-circuit on cached_provider_model_ids didn't "
         "fire before the live fetch."
     )
     slugs = {p["slug"] for p in providers}
-    assert "copilot" not in slugs, f"denylisted copilot still in picker: {slugs}"
+    assert "openrouter" not in slugs, f"denylisted openrouter still in picker: {slugs}"
 
 
-@patch.dict(os.environ, {"GH_TOKEN": "test-key"}, clear=False)
-def test_empty_denylist_control_copilot_appears(_denylist):
-    """Control: empty denylist + same setup → copilot DOES surface.
+@patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-test"}, clear=False)
+def test_empty_denylist_control_provider_appears(_denylist):
+    """Control: empty denylist + same setup → openrouter DOES surface, from its live catalog.
 
     Proves the suppression in the test above is caused by the denylist (the
-    apex_overlay seam), not by an unrelated reason. Mirrors the upstream
-    test_copilot_in_model_list contract.
+    apex_overlay seam), not by an unrelated reason.
     """
-    from hermes_cli import model_switch
+    from hermes_cli import model_switch, models
 
     _denylist()  # empty denylist
     _apply_fresh()
 
-    live_models = ["gpt-5.4", "claude-sonnet-4.6"]
+    live_models = ["openai/gpt-5", "anthropic/claude-sonnet-4.5"]
+    fetch_mock = MagicMock(return_value=live_models)
     with patch("agent.models_dev.fetch_models_dev", return_value={}), \
-         patch("hermes_cli.models._resolve_copilot_catalog_api_key", return_value="gh-token"), \
-         patch("hermes_cli.models._fetch_github_models", return_value=live_models):
+         patch.dict(models._PROVIDER_CATALOG_FETCHERS, {"openrouter": fetch_mock}):
         providers = model_switch.list_authenticated_providers(
-            current_provider="openrouter", max_models=50,
+            current_provider="deepseek", max_models=50,
         )
 
-    copilot = next((p for p in providers if p["slug"] == "copilot"), None)
-    assert copilot is not None, (
-        "With an empty denylist copilot must appear (GH_TOKEN is set) — if it "
-        "doesn't, the test is no longer proving the denylist is the cause."
+    row = next((p for p in providers if p["slug"] == "openrouter"), None)
+    assert row is not None, (
+        "With an empty denylist openrouter must appear (OPENROUTER_API_KEY is "
+        "set) — if it doesn't, the test is no longer proving the denylist is the cause."
     )
-    assert copilot["models"] == live_models
+    assert row["models"] == live_models
+    assert fetch_mock.call_count >= 1
 
 
 def test_cached_provider_model_ids_short_circuits_disabled_only(_denylist):
@@ -290,13 +282,15 @@ def test_cached_provider_model_ids_short_circuits_disabled_only(_denylist):
     and otherwise delegates untouched to upstream."""
     from hermes_cli import models
 
-    _denylist("copilot")
+    _denylist("openrouter")
     _apply_fresh()
 
-    # disabled → [] without calling through (no fetch)
-    with patch("hermes_cli.models.fetch_github_model_catalog") as fetch_mock:
-        assert models.cached_provider_model_ids("copilot") == []
-        assert fetch_mock.call_count == 0
+    # disabled → [] without calling through. The live fan-out below the cache is
+    # replaced by an ungated spy, so only THIS gate can keep it from running (the
+    # provider_model_ids gate would otherwise hide a missing cached-layer gate).
+    with patch("hermes_cli.models.provider_model_ids", return_value=["openai/gpt-5"]) as live:
+        assert models.cached_provider_model_ids("openrouter") == []
+    assert live.call_count == 0
 
     # a non-disabled provider still flows through to the real implementation.
     # Patch the underlying live fetch so we assert delegation without network.
@@ -311,108 +305,95 @@ def test_cached_provider_model_ids_short_circuits_disabled_only(_denylist):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture()
-def _storm_fixture(monkeypatch):
-    """Reproduce the exact production storm environment, with a counting spy.
+def _no_subprocess(monkeypatch):
+    """Record (and refuse) every ``subprocess.run`` / ``subprocess.Popen`` call.
 
-    Kael's box (2026-07-30): no COPILOT_GITHUB_TOKEN / GH_TOKEN /
-    GITHUB_TOKEN in env, ``gh`` installed, ``gh auth token`` returning a
-    classic PAT (``ghp_*``) — so every status probe fell through to the gh
-    CLI subprocess and raised/logged. Returns the subprocess spy; assertions
-    are on ``spy.call_count`` (the number of ``gh`` invocations), never on
-    log text.
+    hc-621's storm was a ``gh auth token`` subprocess per status poll. The
+    assertions are on what was spawned, never on log text.
     """
+    import subprocess
+
+    spawned: list = []
+
+    def refuse(*args, **kwargs):
+        spawned.append(args[0] if args else kwargs.get("args"))
+        raise OSError("subprocess refused by the hc-621 seam test")
+
+    monkeypatch.setattr(subprocess, "run", refuse)
+    monkeypatch.setattr(subprocess, "Popen", refuse)
     for var in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
         monkeypatch.delenv(var, raising=False)
-
-    from hermes_cli import copilot_auth
-
-    spy = MagicMock(
-        return_value=MagicMock(returncode=0, stdout="ghp_classicpat0123456789\n")
-    )
-    monkeypatch.setattr(copilot_auth.subprocess, "run", spy)
-    # Deterministic `gh` discovery — the real CI box may not have gh.
-    monkeypatch.setattr(copilot_auth.shutil, "which", lambda _cmd, **_kw: "/fake/bin/gh")
-    return spy
+    return spawned
 
 
-def test_denied_copilot_status_poll_zero_gh_subprocess_zero_warnings(
-    _denylist, _storm_fixture, caplog
-):
-    """THE hc-621 bug, reproduced: repeated status polls of a denied copilot
-    must run **zero** ``gh`` subprocesses and emit **zero** warnings.
+@pytest.mark.parametrize("denied", [("copilot",), ()], ids=["copilot-denied", "nothing-denied"])
+def test_core_resolves_copilot_without_any_subprocess(_denylist, _no_subprocess, caplog, denied):
+    """hc-1203: the storm exit is gone from core, denied or not.
 
-    Before the fix, each ``get_auth_status("copilot")`` (the fallback the
-    polled ``GET /api/providers/oauth`` endpoint uses for catalog-derived
-    providers) reached ``resolve_copilot_token()`` → ``gh auth token`` →
-    ``ValueError`` → ``logger.warning`` — every ~7.5s, 2684 times in 5.5h,
-    despite ``disabled_providers: [copilot]`` being set the whole time.
+    v0.23.0 moved Copilot to the ``github-copilot`` labs plugin (installed only
+    for a profile that chose Copilot) and dropped core's ``gh auth token``
+    resolution, so the hc-621 wrapper on ``resolve_copilot_token`` was retired.
+    Pin the replacement fact: every status / credential / catalog exit for
+    ``copilot`` returns without a subprocess and without a warning. If a later
+    upstream puts a ``gh`` probe back into core, this turns red.
     """
     import logging
 
-    from hermes_cli import auth
+    from agent.credential_pool import _seed_from_singletons
+    from hermes_cli import auth, models
 
-    _denylist("copilot")
+    _denylist(*denied)
     _apply_fresh()
 
     with caplog.at_level(logging.WARNING):
-        for _ in range(3):  # simulate the shell's polling loop
-            status = auth.get_auth_status("copilot")
-            assert status["logged_in"] is False
-            assert status["configured"] is False
-            assert status["disabled"] is True
-            assert status["disabled_reason"]
+        for _ in range(3):  # the shell's polling loop
+            assert auth.get_auth_status("copilot")["logged_in"] is False
+        assert auth.get_api_key_provider_status("copilot")["configured"] is False
+        try:
+            creds = auth.resolve_api_key_provider_credentials("copilot")
+        except auth.AuthError:
+            assert not denied, "a denied provider must get the static empty credentials"
+        else:
+            assert denied and creds["api_key"] == "" and creds["disabled"] is True
+        entries: list = []
+        _seed_from_singletons("copilot", entries)
+        assert entries == []
+        with patch("agent.models_dev.fetch_models_dev", return_value={}):
+            models.provider_model_ids("copilot")
 
-    assert _storm_fixture.call_count == 0, (
-        f"denied copilot still spawned {_storm_fixture.call_count} gh "
-        f"subprocess call(s) from the status-poll path — the hc-621 gate on "
-        f"get_auth_status/resolve_copilot_token is not covering the storm exit."
-    )
+    assert _no_subprocess == [], f"copilot resolution spawned {_no_subprocess!r}"
     hermes_warnings = [
         r for r in caplog.records
         if r.levelno >= logging.WARNING and r.name.startswith("hermes_cli")
     ]
-    assert len(hermes_warnings) == 0, (
-        f"denied copilot status polls emitted {len(hermes_warnings)} "
-        f"warning record(s): {[r.getMessage() for r in hermes_warnings]!r}"
-    )
+    assert hermes_warnings == [], [r.getMessage() for r in hermes_warnings]
 
 
-def test_denied_copilot_all_resolution_exits_zero_subprocess(
-    _denylist, _storm_fixture
-):
-    """Every credential-resolution exit for a denied copilot: zero subprocesses.
+@patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-ds-test"}, clear=False)
+def test_denied_api_key_provider_all_resolution_exits_static(_denylist, _no_subprocess):
+    """Every credential-resolution exit for a denied API-key provider answers statically.
 
-    Exercises each patched exit directly — the api-key status snapshot, the
-    runtime credential resolver (which also owns a *second* direct
-    ``resolve_copilot_token`` call for base-URL resolution), the token
-    resolver itself (as imported by run_agent's 401-refresh, the auxiliary
-    client's refresh, and pool seeding), and the credential-pool seed that
-    every ``load_pool("copilot")`` triggers.
+    The api-key status snapshot, the runtime credential resolver and the
+    credential-pool seed every ``load_pool`` triggers: denied deepseek (key set)
+    resolves no key and seeds nothing.
     """
     from agent.credential_pool import _seed_from_singletons
-    from hermes_cli import auth, copilot_auth
+    from hermes_cli import auth
 
-    _denylist("copilot")
+    _denylist("deepseek")
     _apply_fresh()
 
-    status = auth.get_api_key_provider_status("copilot")
+    status = auth.get_api_key_provider_status("deepseek")
     assert status["configured"] is False and status["disabled"] is True
 
-    creds = auth.resolve_api_key_provider_credentials("copilot")
+    creds = auth.resolve_api_key_provider_credentials("deepseek")
     assert creds["api_key"] == ""
     assert creds["disabled"] is True
 
-    token, source = copilot_auth.resolve_copilot_token()
-    assert (token, source) == ("", "")
-
     entries: list = []
-    _seed_from_singletons("copilot", entries)
-    assert entries == [], "denied copilot must not seed pool entries"
-
-    assert _storm_fixture.call_count == 0, (
-        f"denied copilot resolution exits spawned "
-        f"{_storm_fixture.call_count} gh subprocess call(s)"
-    )
+    _seed_from_singletons("deepseek", entries)
+    assert entries == [], "denied deepseek must not seed pool entries"
+    assert _no_subprocess == []
 
 
 def test_denied_oauth_provider_status_static_no_helper_call(_denylist, monkeypatch):
@@ -442,77 +423,25 @@ def test_denied_oauth_provider_status_static_no_helper_call(_denylist, monkeypat
     )
 
 
-def test_undenied_copilot_probe_resumes_via_gh(_denylist, monkeypatch):
-    """Remove copilot from the denylist → the gh probe fires again.
-
-    The denylist is NOT empty (``nous`` stays denied), proving the gate is
-    the *list entry*, not a hardcoded copilot switch: with copilot absent
-    the exact same fixture resolves a token through the gh CLI subprocess
-    (call_count >= 1) and returns it unchanged.
-    """
-    for var in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
-        monkeypatch.delenv(var, raising=False)
-
-    from hermes_cli import copilot_auth
-
-    # v0.21 caches both successful and failed gh probes. Keep this test on the
-    # uncached boundary so earlier deny-path tests cannot seed its result.
-    monkeypatch.setattr(copilot_auth, "_gh_cli_token_cache", None)
-    spy = MagicMock(
-        return_value=MagicMock(returncode=0, stdout="gho_valid0123456789\n")
-    )
-    monkeypatch.setattr(copilot_auth.subprocess, "run", spy)
-    monkeypatch.setattr(copilot_auth.shutil, "which", lambda _cmd, **_kw: "/fake/bin/gh")
-
-    _denylist("nous")  # non-empty list WITHOUT copilot
-    _apply_fresh()
-
-    token, source = copilot_auth.resolve_copilot_token()
-    assert token == "gho_valid0123456789"
-    assert source == "gh auth token"
-    assert spy.call_count >= 1, (
-        "with copilot NOT in the denylist the gh probe must run — if it "
-        "doesn't, the wrapper is blocking unconditionally instead of "
-        "consulting the list."
-    )
-
-
-def test_undenied_provider_status_delegates_to_upstream(_denylist, monkeypatch):
+@patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-ds-test"}, clear=False)
+def test_undenied_provider_status_delegates_to_upstream(_denylist):
     """Status for a provider NOT in the denylist flows through to upstream.
 
-    ``get_auth_status("copilot")`` with only ``nous`` denied must reach the
-    real api-key status path and report the resolved token — the deny gate
-    must not blanket-disable the status layer.
+    ``get_auth_status("deepseek")`` with only ``nous`` denied must reach the
+    real api-key status path and report the configured key — the deny gate is
+    the *list entry*, not a blanket switch on the status layer.
     """
-    for var in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
-        monkeypatch.delenv(var, raising=False)
-
-    from hermes_cli import copilot_auth
     from hermes_cli import auth
-
-    monkeypatch.setattr(copilot_auth, "_gh_cli_token_cache", None)
-    spy = MagicMock(
-        return_value=MagicMock(returncode=0, stdout="gho_valid0123456789\n")
-    )
-    monkeypatch.setattr(copilot_auth.subprocess, "run", spy)
-    monkeypatch.setattr(copilot_auth.shutil, "which", lambda _cmd, **_kw: "/fake/bin/gh")
-    # Keep the copilot token exchange local — get_copilot_api_token falls
-    # back to the raw token when the exchange raises.
-    monkeypatch.setattr(
-        copilot_auth, "exchange_copilot_token",
-        MagicMock(side_effect=ValueError("offline test")),
-    )
 
     _denylist("nous")
     _apply_fresh()
 
-    status = auth.get_auth_status("copilot")
+    status = auth.get_auth_status("deepseek")
     assert status.get("disabled") is not True
     assert status["logged_in"] is True, (
-        "un-denied copilot with a resolvable gh token must report logged_in "
+        "un-denied deepseek with DEEPSEEK_API_KEY set must report logged_in "
         "via the real upstream status path"
     )
-    assert spy.call_count >= 1
 
 
 def test_denied_provider_model_ids_short_circuits(_denylist):
@@ -520,25 +449,24 @@ def test_denied_provider_model_ids_short_circuits(_denylist):
 
     ``validate_requested_model`` / ``curated_models_for_provider`` call
     ``provider_model_ids`` directly (bypassing the patched cached wrapper);
-    for a denied copilot that path would otherwise still attempt the GitHub
-    catalog (even unauthenticated). Denied → [] before any fetch; a
-    non-denied provider still delegates to upstream.
+    for a denied provider that path would otherwise still reach its live
+    fetcher. Denied → [] before any fetch; a non-denied provider still
+    delegates to upstream.
     """
     from hermes_cli import models
 
-    _denylist("copilot")
+    _denylist("openrouter")
     _apply_fresh()
 
-    with patch("hermes_cli.models._fetch_github_models") as fetch_mock, \
-         patch("hermes_cli.models._resolve_copilot_catalog_api_key") as key_mock:
-        assert models.provider_model_ids("copilot") == []
+    fetch_mock = MagicMock(return_value=["openai/gpt-5"])
+    with patch.dict(models._PROVIDER_CATALOG_FETCHERS, {"openrouter": fetch_mock}):
+        assert models.provider_model_ids("openrouter") == []
     assert fetch_mock.call_count == 0
-    assert key_mock.call_count == 0
 
     _denylist("nous")
-    with patch("hermes_cli.models._fetch_github_models", return_value=["gpt-5.4"]), \
-         patch("hermes_cli.models._resolve_copilot_catalog_api_key", return_value="tok"):
-        assert models.provider_model_ids("copilot") == ["gpt-5.4"]
+    with patch.dict(models._PROVIDER_CATALOG_FETCHERS, {"openrouter": fetch_mock}):
+        assert models.provider_model_ids("openrouter") == ["openai/gpt-5"]
+    assert fetch_mock.call_count == 1
 
 
 # ---------------------------------------------------------------------------

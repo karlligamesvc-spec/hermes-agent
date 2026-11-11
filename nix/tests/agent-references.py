@@ -20,7 +20,11 @@ for name, source in inputs["resources"].items():
     resource = repo / name
     assert resource.is_symlink(), resource
     assert resource.samefile(source), (resource, source)
-for name, key in (("tui", "HERMES_TUI_DIR"), ("web", "HERMES_WEB_DIST")):
+for name, key in (("tui", "HERMES_TUI_DIR"), ("web", "HERMES_WEB_DIST"), ("webapp", "HERMES_WEBAPP_DIST")):
+    if name == "webapp" and name not in inputs["frontends"]:
+        # ApexNodes hc-1203: no Webapp on the APEX Desktop baseline (nix/hermes-agent.nix), so none is linked.
+        assert key not in command_map["env"], command_map["env"][key]
+        continue
     resource = Path(command_map["env"][key])
     assert resource.is_symlink(), resource
     assert resource.samefile(inputs["frontends"][name])

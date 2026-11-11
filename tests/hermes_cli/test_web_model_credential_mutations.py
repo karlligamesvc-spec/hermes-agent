@@ -9,11 +9,13 @@ import httpx
 import pytest
 
 from tests.hermes_cli.test_web_model_mutations import (
-    JOURNAL, assignment, credential_anchors, credential_fixture, disk, runtimes,
+    assignment, credential_anchors, credential_fixture, disk, runtimes,
 )
 
 
-@pytest.mark.parametrize("provider,key", [("zai", "ZAI_API_KEY"), ("copilot", "COPILOT_GITHUB_TOKEN")])
+# hc-1203: v0.23.0 moved Copilot (and the token exchange this test also blocked) out of core into the
+# github-copilot plugin; Z.AI's endpoint probe is the env preparation core still does over the network.
+@pytest.mark.parametrize("provider,key", [("zai", "ZAI_API_KEY")])
 @pytest.mark.parametrize("newer", ["assignment", "fence"])
 def test_env_network_preparation_never_writes_after_new_owner(runtimes, provider, key, newer):
     home, start = runtimes
@@ -37,23 +39,21 @@ def test_env_network_preparation_never_writes_after_new_owner(runtimes, provider
                 assert response.json() == {"ok": True, "revision": 2, "target_id": target}
             assert not old.done()
             settled = {name: (home / name).read_bytes() for name in before}
-            assert not (home / ".copilot_jwt.json").exists()
         finally:
             runtime.client.post("/__fixture/release")
         stale = old.result(timeout=10)
     assert stale.status_code == 409, stale.text
     assert stale.json() == {"detail": {"code": "model_mutation_superseded"}}
     assert all((home / name).read_bytes() == content for name, content in settled.items())
-    assert not (home / ".copilot_jwt.json").exists()  # real exchange's disk save is disabled, not mocked
     if newer == "assignment":
         assert all(anchor["api_key"] == "hc903-fixture-owner-b" for anchor in credential_anchors(home))
         store = json.loads((home / "auth.json").read_text())
         entries = store["credential_pool"][provider]
-        token = ("exchanged-" if provider == "copilot" else "") + "hc903-fixture-owner-b"
+        token = "hc903-fixture-owner-b"
         selected = [entry for entry in entries if entry["source"] == "env:" + key]
         assert len(selected) == 1
         assert selected[0]["secret_fingerprint"] == "sha256:" + hashlib.sha256(token.encode()).hexdigest()[:16]
-        assert selected[0]["base_url"] == ("https://fixture.copilot.invalid" if provider == "copilot" else "https://fixture.zai.invalid/v4")
+        assert selected[0]["base_url"] == "https://fixture.zai.invalid/v4"
         assert "access_token" not in selected[0]
 
 
@@ -185,17 +185,6 @@ def test_tagged_kimi_env_uses_real_prefix_and_explicit_url_precedence(runtimes, 
     assert entry["source"] == "env:KIMI_API_KEY" and entry["base_url"] == expected
 
 
-def test_ordinary_copilot_env_discovery_keeps_existing_persistent_exchange_cache(runtimes):
-    home, start = runtimes
-    runtime = start("env-preparation")
-    response = runtime.client.put("/api/env", json={"key": "COPILOT_GITHUB_TOKEN", "value": "ghu_hc903-fixture-owner-b"})
-    assert response.status_code == 200, response.text
-    assert "model_mutation" not in response.json()
-    cached = json.loads((home / ".copilot_jwt.json").read_text())
-    assert [entry["api_token"] for entry in cached.values()] == ["exchanged-ghu_hc903-fixture-owner-b"]
-    assert not (home / JOURNAL).exists()
-
-
 @pytest.mark.parametrize("kind", ["model", "provider"])
 def test_untagged_slow_tool_selection_merges_only_its_fields_into_latest_model(runtimes, kind):
     home, start = runtimes
@@ -250,3 +239,27 @@ def test_zai_prepare_never_quarantines_bad_auth_cache_before_owner_commit(runtim
     assert auth._load_auth_store() == {"version": auth.AUTH_STORE_VERSION, "providers": {}}
     assert (home / "auth.json.corrupt").read_bytes() == corrupt
     assert (home / "auth.json").read_bytes() == corrupt
+
+
+def test_a_plugin_registered_copilot_row_is_prepared_like_any_api_key_row(request, monkeypatch):
+    """hc-1203: v0.23.0 deleted hermes_cli.copilot_auth, and the github-copilot plugin's provider joins
+    PROVIDER_REGISTRY (hermes_cli/auth_plugin_providers.py). The hc-903 preparer kept a core-exchange branch
+    that imported the deleted module: with the plugin installed, a Desktop write of COPILOT_GITHUB_TOKEN
+    raised ModuleNotFoundError. Now the row is prepared with the raw token, as upstream's load_pool seeds it,
+    and nothing is written before the owner's commit."""
+    from agent import credential_pool
+    from hermes_cli.auth import ProviderConfig
+    home, _ = request.getfixturevalue("runtimes")  # by name: a `runtimes` parameter shadows the import (F811)
+    row = ProviderConfig("copilot", "GitHub Copilot", "api_key", inference_base_url="https://fixture.copilot.invalid",
+                         api_key_env_vars=("COPILOT_GITHUB_TOKEN",))
+    monkeypatch.setitem(credential_pool.PROVIDER_REGISTRY, "copilot", row)
+    before = {path.name: path.read_bytes() for path in home.iterdir() if path.is_file()}
+
+    prepared = credential_pool.prepare_env_credential_pool_entries(
+        "COPILOT_GITHUB_TOKEN", "ghu_hc903-fixture-owner-a", ["copilot"])
+
+    assert [(p["provider"], p["source"], p["endpoint_state"]) for p in prepared] == [
+        ("copilot", "env:COPILOT_GITHUB_TOKEN", None)]
+    assert prepared[0]["payload"]["access_token"] == "ghu_hc903-fixture-owner-a"
+    assert prepared[0]["payload"]["base_url"] == "https://fixture.copilot.invalid"
+    assert {path.name: path.read_bytes() for path in home.iterdir() if path.is_file()} == before

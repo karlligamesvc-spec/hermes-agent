@@ -124,7 +124,7 @@ _TOOL_SEAMS = (
     (
         "browser_window",
         "apex-overlay: hc-1179 Desktop browser window seam did not fully apply (see "
-        "prior error). With browser.headed on, the agent-browser window gets no "
+        "prior error). With browser.headed on, the browser_exec window gets no "
         "persistent profile, so a sign-in in it is lost next turn; and the "
         "apex.browser_hide_automation switch no longer reaches the Chromium launch args.",
     ),

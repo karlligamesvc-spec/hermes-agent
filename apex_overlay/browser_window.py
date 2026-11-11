@@ -1,43 +1,39 @@
 """hc-1179 Desktop browser window: a persistent, visible Chromium the user can sign into.
 
-APEX Desktop's agent drives a Chromium through agent-browser. Two gaps separate it from a
-browser a person keeps open and stays logged in to:
+Ported to Hermes v0.23.0 in hc-1203. v0.23.0 removed agent-browser: ``browser_exec`` drives the
+Chromium that ``tools.browser_session`` launches through ``tools.browser_launcher``, and that path
+reads three settings of its own, which carry hc-1179's three asks:
 
-- **No persistent profile.** Each turn's ``--session <name>`` is a random id
-  (``browser_tool_session._session_record``), so a fresh Chromium profile is used and a
-  sign-in never survives the turn. On Linux the Bot Desktop pins one persistent
-  user-data-dir per profile (``bot_desktop/browser.py``), but Mac and Windows have no Bot
-  Desktop, so nothing pins it there and every browse starts signed out.
-- **Headless.** ``browser.headed`` defaults False, so no window shows and the user can
-  neither watch nor take over a sign-in.
+- **A window.** ``browser.headed`` (``tools.browser_session_cloud.is_headed_mode``). The Desktop
+  product seed sets it (``apex-managed.ts`` ``browser.headed: true``); cloud stays headless.
+- **Sign-ins that last.** ``browser.user_data_dir``: one persistent profile every session of this
+  assistant shares (``tools.browser_session._launch_target`` keys the Chromium by that directory, so
+  it is one window), ``""`` meaning a throwaway profile per session. This seam answers
+  ``<HERMES_HOME>/apex-browser-profile`` when nothing is pinned and the window is headed on a Mac or
+  Windows Desktop, so a sign-in in the window is still signed in next time. One directory per
+  assistant home keeps each assistant's logins its own. A profile the user pinned always wins;
+  headless (the cloud) gets nothing; Linux is left alone, where the Bot Desktop pins its own
+  profile through the same setting (``tools.bot_desktop.browser.profile_dir``).
+- **An off-by-default switch,** ``apex.browser_hide_automation``: when a human turns it on,
+  ``--disable-blink-features=AutomationControlled`` joins ``browser.chromium_args``, which
+  ``tools.browser_launcher.build_chromium_argv`` appends to every launch. It changes how
+  third-party sites see the browser, so it ships OFF and enabling it is a platform-rules / legal
+  decision, never a default. This seam only adds a launch flag; it solves no human-verification
+  challenge and inspects no site's defenses.
 
-Headed is turned on for Desktop in the product-config seed (``apex-managed.ts``
-``browser.headed: true``). This seam adds the other half: when headed is on and the caller
-has not pinned its own ``AGENT_BROWSER_PROFILE``, point agent-browser at a persistent
-per-profile directory, so a sign-in in the window is still signed in next turn. One
-Chromium user-data-dir per assistant home keeps each assistant's logins its own (matching
-the per-agent isolation elsewhere). Like any single persistent profile it serializes the
-window — two concurrent agent-browser daemons on one user-data-dir collide — which is the
-same single-window model a person works in.
-
-It also carries an **off-by-default** switch, ``apex.browser_hide_automation``: when a
-human turns it on, ``--disable-blink-features=AutomationControlled`` is appended to the
-Chromium launch args. That changes how third-party sites see the browser, so it ships OFF
-and enabling it is a platform-rules / legal decision, never a default. This seam only
-flips a launch flag; it solves no human-verification challenge and inspects no site's
-defenses.
-
-Both wraps are idempotent (``_MARK`` sentinel) and fail-safe: a missing upstream symbol
-logs and returns False (the seam-test turns that into a hard CI failure) but never raises
-into plugin discovery. The persistent profile is gated on headed mode, so cloud (headless)
-is untouched; the hide-automation arg is gated on its own switch, which is absent there.
+Both accessors are read at call time by their callers (``from tools.browser_session_cloud import …``
+inside the function), and neither is memoized, so wrapping the module attribute reaches every
+launch and a switch flipped in settings applies on the next launch without a restart. Both wraps
+are idempotent (``_MARK``) and fail-safe: a missing upstream symbol logs and returns False (the
+seam test turns that into a hard CI failure) but never raises into plugin discovery, and an error
+inside a wrapper falls back to upstream's answer.
 """
 
 from __future__ import annotations
 
 import functools
 import logging
-import os
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -46,43 +42,44 @@ _TRUE_ENV = {"1", "true", "yes", "on"}
 
 # Off-by-default config switch (apex: block in config.yaml). A human sets it to true.
 HIDE_AUTOMATION_KEY = "browser_hide_automation"
-# The Chromium launch flag agent-browser documents under --args; appended, never exclusive.
+# The Chromium launch flag; appended to browser.chromium_args, never exclusive.
 AUTOMATION_HIDE_ARG = "--disable-blink-features=AutomationControlled"
 
 # Per-assistant persistent Chromium user-data-dir, under this profile's Hermes home.
 PROFILE_DIR_NAME = "apex-browser-profile"
 
-_BUILD_ENV_MODULE = "tools.browser_tool"
-_BUILD_ENV_FN = "_build_browser_env"
-_SANDBOX_ARGS_MODULE = "tools.browser_tool_session"
-_SANDBOX_ARGS_FN = "_apply_chromium_sandbox_args"
+# APEX Desktop ships for these; Linux keeps upstream's answer (the Bot Desktop pins its own profile).
+_DESKTOP_PLATFORMS = ("darwin", "win32")
+
+_CONFIG_MODULE = "tools.browser_session_cloud"
+_USER_DATA_DIR_FN = "user_data_dir"
+_CHROMIUM_ARGS_FN = "chromium_args"
 
 _APPLIED = False
 _MARK = "_apex_overlay_browser_window"
 
 
+def _on_desktop_platform() -> bool:
+    """A Mac or Windows host: where APEX Desktop runs and no Bot Desktop pins a profile."""
+    return sys.platform in _DESKTOP_PLATFORMS
+
+
 def _headed() -> bool:
-    """True when the browser launches a window (``browser.headed`` / ``AGENT_BROWSER_HEADED``).
-
-    Fully defensive: any error resolves to False (no persistent profile), the
-    behaviour-preserving default. The Desktop product seed sets ``browser.headed: true``;
-    cloud stays headless.
-    """
+    """``browser.headed`` as the launcher reads it. Any error means False (no persistent profile)."""
     try:
-        from tools.browser_tool_cloud import _is_headed_mode
+        from tools.browser_session_cloud import is_headed_mode
 
-        return bool(_is_headed_mode())
+        return bool(is_headed_mode())
     except Exception:
-        logger.debug("apex_overlay: headed-mode probe failed; falling back to env", exc_info=True)
-        return (os.environ.get("AGENT_BROWSER_HEADED", "") or "").strip().lower() in _TRUE_ENV
+        logger.debug("apex_overlay: headed-mode probe failed", exc_info=True)
+        return False
 
 
 def _hide_automation_enabled() -> bool:
     """``apex.browser_hide_automation`` from the raw profile config. Default False, defensive.
 
-    Read fresh per command so a human flipping it in settings takes effect without a
-    restart. Never raises: any error means "off", so the window keeps Chromium's default
-    automation markers.
+    Read fresh per launch so a human flipping it in settings takes effect without a restart. Never
+    raises: any error means "off", so the window keeps Chromium's default automation markers.
     """
     try:
         from hermes_cli.config import read_raw_config_readonly
@@ -102,61 +99,38 @@ def persistent_profile_dir() -> str:
     return str(get_hermes_home() / PROFILE_DIR_NAME)
 
 
-def _merge_launch_arg(existing: str, arg: str) -> str:
-    """Append ``arg`` to a comma/newline-separated agent-browser ``--args`` list, deduped.
-
-    agent-browser accepts comma- or newline-separated launch args; this normalises to a
-    comma list and never adds a token already present (idempotent across repeated commands
-    and co-existing with the sandbox-bypass flags the wrapped function may have set).
-    """
-    parts = [p.strip() for p in (existing or "").replace("\n", ",").split(",") if p.strip()]
-    if arg not in parts:
-        parts.append(arg)
-    return ",".join(parts)
-
-
-def _wrap_build_browser_env(orig):
-    """Pin a persistent per-profile ``AGENT_BROWSER_PROFILE`` for the headed Desktop window.
-
-    Only when headed and the caller (Bot Desktop, the sandbox, or a user override) has not
-    already set one: a sign-in in the visible window is then still signed in next turn,
-    instead of a throwaway profile per random ``--session``. Headless callers are unchanged.
-    """
+def _wrap_user_data_dir(orig):
+    """Answer the persistent per-assistant profile when nothing is pinned and the Desktop window is headed."""
 
     @functools.wraps(orig)
     def wrapper(*args, **kwargs):
-        env = orig(*args, **kwargs)
+        pinned = orig(*args, **kwargs)
+        if pinned:
+            return pinned  # the user's own browser.user_data_dir (or the Bot Desktop's) always wins
         try:
-            if _headed() and isinstance(env, dict) and not env.get("AGENT_BROWSER_PROFILE"):
-                env["AGENT_BROWSER_PROFILE"] = persistent_profile_dir()
+            if _on_desktop_platform() and _headed():
+                return persistent_profile_dir()
         except Exception:
-            # Never let the pin break a browser call — fall through with upstream's env.
-            logger.debug("apex_overlay: persistent browser profile pin skipped", exc_info=True)
-        return env
+            # Never let the default break a browser launch: upstream's throwaway profile instead.
+            logger.debug("apex_overlay: persistent browser profile default skipped", exc_info=True)
+        return pinned
 
     setattr(wrapper, _MARK, True)
     return wrapper
 
 
-def _wrap_apply_chromium_sandbox_args(orig):
-    """After the sandbox-bypass decision, append the hide-automation flag when the switch is on.
-
-    Runs *after* upstream has (or has not) set the sandbox-bypass args, so the flag merges
-    with them instead of suppressing them. Off by default; a no-op unless a human enabled
-    ``apex.browser_hide_automation``.
-    """
+def _wrap_chromium_args(orig):
+    """Add the hide-automation flag to ``browser.chromium_args`` while the switch is on (once)."""
 
     @functools.wraps(orig)
-    def wrapper(browser_env, *args, **kwargs):
-        result = orig(browser_env, *args, **kwargs)
+    def wrapper(*args, **kwargs):
+        configured = orig(*args, **kwargs)
         try:
-            if _hide_automation_enabled() and isinstance(browser_env, dict):
-                browser_env["AGENT_BROWSER_ARGS"] = _merge_launch_arg(
-                    browser_env.get("AGENT_BROWSER_ARGS", ""), AUTOMATION_HIDE_ARG
-                )
+            if _hide_automation_enabled() and AUTOMATION_HIDE_ARG not in configured:
+                return [*configured, AUTOMATION_HIDE_ARG]
         except Exception:
             logger.debug("apex_overlay: hide-automation arg not applied", exc_info=True)
-        return result
+        return configured
 
     setattr(wrapper, _MARK, True)
     return wrapper
@@ -184,15 +158,15 @@ def _install(module_name: str, fn_name: str, make_wrapper) -> bool:
 def apply() -> bool:
     """Install the persistent-profile and hide-automation wraps. Idempotent, fail-safe.
 
-    Returns True when both wraps are in place (or already were), False if either upstream
-    symbol is missing (seam-test → hard CI failure). Never raises into plugin discovery.
+    Returns True when both wraps are in place (or already were), False if either upstream symbol is
+    missing (seam test → hard CI failure). Never raises into plugin discovery.
     """
     global _APPLIED
     if _APPLIED:
         return True
 
-    ok_profile = _install(_BUILD_ENV_MODULE, _BUILD_ENV_FN, _wrap_build_browser_env)
-    ok_args = _install(_SANDBOX_ARGS_MODULE, _SANDBOX_ARGS_FN, _wrap_apply_chromium_sandbox_args)
+    ok_profile = _install(_CONFIG_MODULE, _USER_DATA_DIR_FN, _wrap_user_data_dir)
+    ok_args = _install(_CONFIG_MODULE, _CHROMIUM_ARGS_FN, _wrap_chromium_args)
 
     if ok_profile and ok_args:
         _APPLIED = True

@@ -730,11 +730,9 @@ def test_room_log_pages_are_bounded_by_serialized_event_bytes(tmp_path, monkeypa
             kind="message.user",
             actor=USER,
             payload={"text": "x" * 180, "index": index},
-            # created_at is serialized into every event, and a wall-clock float's
-            # JSON width varies (13-18 chars): a later event two chars wider than
-            # the first overflows the one-event budget below. One fixed instant
-            # keeps every event the same size.
-            now=1_760_000_000.0,
+            # A fixed clock: the budget below is one event's serialized size, and a wall-clock
+            # created_at's float repr varies by a few bytes from event to event.
+            now=1_700_000_000.5,
         )
 
     one_event = rooms.read_events(db, room_id="room-1", limit=1)
