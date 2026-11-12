@@ -16,6 +16,8 @@ export const JIANYING_TOOL = 'jianying_draft'
  * version still gets its card and button (hc-1219: prompt, don't block);
  * the card only says APEX has not checked it there. Add a version only after
  * that real test: the draft format is 剪映's own and changes without notice.
+ * Windows 11.7.0.14652 took drafts in and listed them with the right length
+ * (2026-11-12), but a draft has not been opened there yet, so win32 stays empty.
  */
 export const VERIFIED_JIANYING_VERSIONS: Readonly<Record<string, readonly string[]>> = {
   darwin: ['11.7.0'],

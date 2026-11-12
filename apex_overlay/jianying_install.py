@@ -167,6 +167,8 @@ def registration(draft_dir: Path) -> Optional[dict]:
     Judge the entry by what it says: ``draft_json_file`` must exist and ``tm_duration`` (microseconds) must be above
     0. A timeline under the old file name, or a draft_meta_info.json without the duration, shows 00:00 on 剪映's
     home page; the old name also opens to nothing, with no message (report 2026-11-05 §4; measured 2026-11-11).
+    On Windows (11.7.0.14652, measured 2026-11-12) 剪映 copies ``draft_info.json`` to ``draft_content.json`` at
+    intake and lists the copy, so the file to check is whichever the entry names.
     """
     for entry in _entries(draft_dir.parent):
         if _same_path(str(entry.get("draft_fold_path") or ""), draft_dir):

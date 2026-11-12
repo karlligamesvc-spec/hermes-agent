@@ -163,15 +163,18 @@ describe('「在剪映中打开」', () => {
 
     const winDraft = 'C:\\Users\\u\\AppData\\Local\\JianyingPro\\User Data\\Projects\\com.lveditor.draft\\成片'
 
+    // As 剪映 11.7.0.14652 lists a draft on Windows (measured 2026-11-12): forward slashes in the folder, and the
+    // timeline is its own copy, draft_content.json, made from the engine's draft_info.json at intake.
     const winEntry = {
       draft_fold_path: 'C:/Users/u/AppData/Local/JianyingPro/User Data/Projects/com.lveditor.draft/成片',
-      draft_json_file: 'x/draft_info.json',
-      tm_duration: 1
+      draft_json_file:
+        'C:/Users/u/AppData/Local/JianyingPro/User Data/Projects/com.lveditor.draft/成片\\draft_content.json',
+      tm_duration: 14_000_000
     }
 
     assert.equal(
       draftListed(winDraft, {
-        exists,
+        exists: target => target.endsWith('\\draft_content.json'),
         platform: 'win32',
         readText: () => JSON.stringify({ all_draft_store: [winEntry] })
       }),

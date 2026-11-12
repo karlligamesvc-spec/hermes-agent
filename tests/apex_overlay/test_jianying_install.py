@@ -18,6 +18,10 @@ from apex_overlay import jianying_install as install
         ("[General]\ncacheDate=30\ncurrentCustomDraftPath=/Users/u/Movies/JianyingPro/User Data/Projects/"
          "com.lveditor.draft\ncustomMaterialPath=/x\n",
          "/Users/u/Movies/JianyingPro/User Data/Projects/com.lveditor.draft"),
+        # The line as 剪映 11.7.0.14652 writes it on Windows (measured 2026-11-12): backslashes doubled.
+        ("currentCustomDraftPath=C:\\\\Users\\\\u\\\\AppData\\\\Local\\\\JianyingPro\\\\User Data\\\\Projects\\\\"
+         "com.lveditor.draft\n",
+         "C:\\Users\\u\\AppData\\Local\\JianyingPro\\User Data\\Projects\\com.lveditor.draft"),
         # Qt quotes a value it cannot write bare, and escapes characters outside ASCII as \xHHHH.
         ('currentCustomDraftPath="D:/\\x526a\\x6620/\\x8349\\x7a3f"\n', "D:/剪映/草稿"),
         ("currentCustomDraftPath=C:\\\\Users\\\\u\\\\drafts\n", "C:\\Users\\u\\drafts"),
