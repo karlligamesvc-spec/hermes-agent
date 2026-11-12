@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import json
@@ -24,11 +25,34 @@ import tools.cronjob_job_args as job_args
 from apex_overlay import cron_desktop_delivery as seam
 from hermes_state import SessionDB
 from tools import cronjob_tools
+from tools.registry import get_cached_check_fn_result, invalidate_check_fn_cache
 
 CHAT = "20261108_101500_desk01"
 RESULT = "国家统计局公布 10 月 CPI 同比上涨 0.8%（来源：国家统计局，官方）"
 CREATE_ARGS = {"action": "create", "prompt": "联网搜一条今天的财经新闻，一句话说标题和来源。", "schedule": "in 30m",
                "name": "今日财经新闻一条"}
+# Any one of these makes check_cronjob_requirements say yes; a test without them gets no cronjob tool.
+SERVE_ENV = ("HERMES_INTERACTIVE", "HERMES_GATEWAY_SESSION", "HERMES_EXEC_ASK", "HERMES_CRON_SESSION")
+
+
+@contextmanager
+def _tool_checks_from_scratch():
+    """The registry keeps each tool's availability check for 30 s per process (hc-1227). An earlier test in the same
+    run that built tools without the Desktop serve env leaves the cronjob check's False there, and the chat's first
+    turn then goes out with no cronjob tool. Drop the cache on the way in, and again on the way out so the True this
+    test caches does not reach the next one."""
+    invalidate_check_fn_cache()
+    try:
+        yield
+    finally:
+        invalidate_check_fn_cache()
+
+
+def _cronjob_tool_offered() -> bool:
+    """What the agent of a test without our engine gets. The tool may sit in tool_search's deferred catalog."""
+    import model_tools
+
+    return "cronjob_manage" in json.dumps(model_tools.get_tool_definitions(enabled_toolsets=["cronjob"], quiet_mode=True))
 
 
 def _chunk(delta: dict, finish_reason=None) -> bytes:
@@ -120,7 +144,8 @@ def engine(tmp_path, monkeypatch):
     assert seam._install_args(job_args) and seam._install_tool(cronjob_tools) and seam._install_scheduler(scheduler)
     assert getattr(scheduler._deliver_result, seam._MARK, False)
     model = FakeModel()
-    yield home, model
+    with _tool_checks_from_scratch():
+        yield home, model
     model.close()
 
 
@@ -143,6 +168,40 @@ def _desktop_turn(agent, text: str, history=None):
         return agent.run_conversation(text, conversation_history=history)
     finally:
         clear_session_vars(tokens)
+
+
+def test_a_cronjob_check_cached_by_an_earlier_test_does_not_hide_the_tool(monkeypatch, request):
+    """hc-1227: what an earlier test in the same process leaves behind. It built tool definitions without the Desktop
+    serve env, so the cronjob check said False and the registry kept that for 30 s. The engine set up right after
+    must still offer the tool on the chat's first turn."""
+    invalidate_check_fn_cache()  # start from a known cache, whatever ran before
+    for name in SERVE_ENV:
+        monkeypatch.delenv(name, raising=False)
+    assert not _cronjob_tool_offered()
+    assert get_cached_check_fn_result(cronjob_tools.check_cronjob_requirements) is False  # the stale verdict is in
+
+    home, model = request.getfixturevalue("engine")  # set up only now, after the stale verdict
+    db = SessionDB(db_path=home / "state.db")
+    first = _desktop_turn(_desktop_agent(model, db), "帮我建一个定时任务：30 分钟后搜一条今天的财经新闻。")
+    # The tool may sit in the deferred catalog that tool_search's description lists, so look at the whole field.
+    offered = json.dumps([r.get("tools") for r in model.requests], ensure_ascii=False)
+    assert "cronjob_manage" in offered, f"the first turn offered {offered[:200]}"
+    assert first["final_response"].startswith("建好了")
+    db.close()
+
+
+def test_the_cronjob_check_a_chat_cached_does_not_reach_the_next_test(monkeypatch):
+    """hc-1227, the other direction: the engine's True stays with it. A test after it, run without the Desktop serve
+    env within the 30 s, gets no cronjob tool."""
+    with monkeypatch.context() as serve, _tool_checks_from_scratch():
+        serve.setenv("HERMES_GATEWAY_SESSION", "1")
+        assert _cronjob_tool_offered()  # what the chat's agent got, now cached
+    for name in SERVE_ENV:
+        monkeypatch.delenv(name, raising=False)
+    try:
+        assert not _cronjob_tool_offered()
+    finally:
+        invalidate_check_fn_cache()  # nor does the False this test just cached
 
 
 def test_a_job_made_in_a_desktop_chat_brings_its_result_back_into_that_chat(engine, monkeypatch):
