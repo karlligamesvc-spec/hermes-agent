@@ -65,7 +65,8 @@ server-side covers already use) by size and SHA-256 at an immutable COS key unde
 `media-tools/fonts/`. The font file is not committed.
 
 `python -m apex_overlay.media_tools font` (the Agent runs it with `$APEX_PYTHON`) downloads the
-file once into `HERMES_HOME/tool-cache/fonts/<sha256>/`, refuses anything but APEX COS, verifies
+file once into the Hermes root's `tool-cache/fonts/<sha256>/` (one copy for every assistant, hc-1230),
+refuses anything but APEX COS, verifies
 size and SHA-256, reuses a verified copy and replaces a tampered one, then prints the path; on
 failure it prints one line instead of a traceback. ffmpeg's libass loads it with
 `subtitles=<file>:fontsdir=<that folder>` and the ASS style `Fontname: Smiley Sans Oblique`
