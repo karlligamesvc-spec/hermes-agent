@@ -34,6 +34,7 @@ import pytest
 from apex_overlay import (
     cn_im_banners,
     cn_im_messages,
+    desktop_quiet_quit,
     feishu_supervisor,
     first_turn_ack,
     gateway_bootstrap,
@@ -94,6 +95,13 @@ _FAKE_MODULES = {
             def create_adapter(self, name, config):
                 return None
     """,
+    "drain_control": """
+        from PKG import _gate
+        _gate.enter("drain_control")
+
+        def drain_notification_suppressed(*, home=None):
+            return False
+    """,
 }
 
 _GATE = """
@@ -151,6 +159,13 @@ _SEAMS = {
         [("platform_registry", "PlatformRegistry.create_adapter", feishu_supervisor._MARK)],
         ["_APPLIED"],
     ),
+    # hc-1217: armed only in Desktop's messaging gateway (the env mark is set for every case below).
+    "desktop_quiet_quit": (
+        desktop_quiet_quit,
+        {"_TARGET_MODULE": "drain_control"},
+        [("drain_control", "drain_notification_suppressed", desktop_quiet_quit._MARK)],
+        [],
+    ),
 }
 
 _CASES = [
@@ -206,6 +221,7 @@ def test_seam_apply_returns_while_its_target_import_waits_for_discovery(
     seam_name, held, fake_gateway, monkeypatch
 ):
     seam, targets, marks, flags = _SEAMS[seam_name]
+    monkeypatch.setenv(desktop_quiet_quit.ENV_NAME, "1")
     for constant, fake in targets.items():
         monkeypatch.setattr(seam, constant, f"{fake_gateway}.{fake}")
     for flag in flags:
