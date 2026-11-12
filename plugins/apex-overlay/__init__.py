@@ -141,6 +141,12 @@ _TOOL_SEAMS = (
         "that is outside the chat's working directory reaches the agent only as "
         "\"path is outside the allowed workspace\".",
     ),
+    (
+        "segment_summary",
+        "apex-overlay: hc-1218 segment summary seam did not apply (see prior error). "
+        "In Desktop's one thread, the summary carried into a new day or after 「从头来」 "
+        "keeps the earlier task's approach, and a new task of the same kind may copy it.",
+    ),
 )
 
 

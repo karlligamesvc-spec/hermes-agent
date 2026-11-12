@@ -20,6 +20,8 @@ import {
   $pendingThreadClaim,
   claimCreatedThread,
   type RequestGateway,
+  SEGMENT_FOCUS,
+  SEGMENT_SUMMARY_MARKER,
   type SendPlace,
   sendPlace,
   singleThreadSend,
@@ -246,7 +248,38 @@ describe('hc-1014 composer middleware: segments of the thread', () => {
     const { calls, request } = gateway()
 
     expect(await send('早，接着昨天的', request)).toEqual(draft('早，接着昨天的'))
-    expect(compressCalls(calls)).toEqual([{ method: 'session.compress', params: { session_id: 'rt-1' } }])
+    expect(compressCalls(calls)).toEqual([
+      { method: 'session.compress', params: { focus_topic: SEGMENT_FOCUS.day, session_id: 'rt-1' } }
+    ])
+  })
+
+  // hc-1218: the engine reads the marker as "segment boundary" (apex_overlay/segment_summary.py) and
+  // asks for results and what is pending, not the old task's approach; without it the summary is the
+  // mid-task checkpoint that carried 「静态图推拉、不配音」 into the next video.
+  it.each([
+    ['a new day', 'day', () => [message('m1', now() - 26 * 3600)], '早'],
+    ['six idle hours', 'idle', () => [message('m1', now() - 7 * 3600)], '在吗'],
+    ['「从头来」', 'restart', () => [message('m1', now() - 60)], '从头来，帮我写个新脚本'],
+    ['/new', 'restart', () => [message('m1', now() - 60)], '/new']
+  ] as const)('%s asks for the segment summary, marked as a boundary', async (_label, reason, history, text) => {
+    $messages.set(history())
+    const { calls, request } = gateway()
+
+    await send(text, request)
+
+    expect(compressCalls(calls)).toEqual([
+      { method: 'session.compress', params: { focus_topic: SEGMENT_FOCUS[reason], session_id: 'rt-1' } }
+    ])
+    expect(SEGMENT_FOCUS[reason].startsWith(SEGMENT_SUMMARY_MARKER)).toBe(true)
+  })
+
+  it('the marker the engine looks for is the one every segment focus starts with', () => {
+    expect(SEGMENT_SUMMARY_MARKER).toBe('【新的一段】')
+
+    for (const focus of Object.values(SEGMENT_FOCUS)) {
+      expect(focus.startsWith(SEGMENT_SUMMARY_MARKER)).toBe(true)
+      expect(focus).toContain('不记做法')
+    }
   })
 
   it('「从头来」 opens a segment that keeps only what lasts, and still sends the message', async () => {

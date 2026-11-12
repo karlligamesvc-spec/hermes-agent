@@ -56,8 +56,21 @@ import {
 
 export type RequestGateway = <T>(method: string, params?: Record<string, unknown>, timeoutMs?: number) => Promise<T>
 
-/** Asked the summarizer when the user starts over: keep who they are and what is unfinished. */
-const RESTART_FOCUS = '用户要从头开始一个新话题：只留下关于用户的长期信息和还没做完的事，不必复述刚才的细节。'
+/**
+ * hc-1218: every new segment's summary is asked for with a focus that starts with this marker. The
+ * engine's segment-summary seam (apex_overlay/segment_summary.py `MARKER`, pinned by a test there)
+ * reads it as "this compression is a segment boundary": the summary then records what was done and
+ * what is still pending, not how, and opens with a line saying it is not this request's requirements.
+ * A compression without it (the context window filling mid-task) stays the runtime's own.
+ */
+export const SEGMENT_SUMMARY_MARKER = '【新的一段】'
+
+/** The focus each kind of new segment asks the summarizer for; the text after the marker is what an engine without the seam reads. */
+export const SEGMENT_FOCUS: Readonly<Record<SegmentReason, string>> = {
+  day: `${SEGMENT_SUMMARY_MARKER}只记以前做成了什么、还差什么，不记做法；用户自己说过的偏好照记。`,
+  idle: `${SEGMENT_SUMMARY_MARKER}只记以前做成了什么、还差什么，不记做法；用户自己说过的偏好照记。`,
+  restart: `${SEGMENT_SUMMARY_MARKER}用户要从头开始一个新话题：只留下关于用户的长期信息和还没做完的事，不记做法。`
+}
 
 /** How long a send waits for the rotation a new segment causes before it goes out anyway. */
 const ROTATION_WAIT_MS = 3_000
@@ -101,7 +114,7 @@ export async function startThreadSegment(request: RequestGateway, reason: Segmen
   try {
     const result = await request<CompressResult>(
       'session.compress',
-      { session_id: runtimeId, ...(reason === 'restart' ? { focus_topic: RESTART_FOCUS } : {}) },
+      { session_id: runtimeId, focus_topic: SEGMENT_FOCUS[reason] },
       SESSION_COMPRESS_TIMEOUT_MS
     )
 
