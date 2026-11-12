@@ -118,6 +118,43 @@ def test_motion_runs_om_with_the_agent_browser_and_bundled_tools(toolkit, monkey
     assert kw['env']['OM_CHROME'] == str(toolkit['chromium']) and kw['timeout'] == media_tools.MOTION_TIMEOUT
 
 
+def _node_on_path(tmp_path, monkeypatch) -> None:
+    """A Node on the user's PATH that `motion` must never pick."""
+    folder = tmp_path / 'user-bin'
+    folder.mkdir()
+    for name in ('node', 'node.exe'):
+        (folder / name).write_text('#!/bin/sh\n', encoding='utf-8')
+        (folder / name).chmod(0o755)
+    monkeypatch.setenv('PATH', str(folder))
+
+
+@pytest.mark.parametrize('system, bundled', [('Darwin', '.runtime/node/bin/node'), ('Windows', '.runtime/node/node.exe')])
+def test_motion_runs_the_engines_own_node(tmp_path, monkeypatch, system, bundled):
+    import hermes_constants
+    _node_on_path(tmp_path, monkeypatch)
+    monkeypatch.setattr(media_tools, 'ROOT', tmp_path)
+    monkeypatch.setattr(media_tools.platform, 'system', lambda: system)
+    monkeypatch.setattr(hermes_constants, 'find_node_executable', lambda command: pytest.fail('the bundled Node is there'))
+    (tmp_path / bundled).parent.mkdir(parents=True)
+    (tmp_path / bundled).write_text('', encoding='utf-8')
+    assert media_tools.motion_node() == str(tmp_path / bundled)
+
+
+@pytest.mark.parametrize('pm_node', ['/pm/node/bin/node', None])
+def test_without_a_bundled_node_motion_takes_pms_never_the_users(tmp_path, monkeypatch, pm_node):
+    import hermes_constants
+    _node_on_path(tmp_path, monkeypatch)
+    monkeypatch.setattr(media_tools, 'ROOT', tmp_path / 'checkout')
+    asked = []
+    monkeypatch.setattr(hermes_constants, 'find_node_executable', lambda command: asked.append(command) or pm_node)
+    if pm_node:
+        assert media_tools.motion_node() == pm_node
+    else:
+        with pytest.raises(ValueError, match='no Node runtime found'):
+            media_tools.motion_node()
+    assert asked == ['node']
+
+
 @pytest.mark.parametrize('command', sorted(media_tools.MOTION_NOT_CARRIED))
 def test_commands_the_toolkit_does_not_carry_say_what_to_use(toolkit, monkeypatch, capsys, command):
     monkeypatch.setattr(media_tools, 'ensure_motion', lambda: pytest.fail('nothing is installed for a refused command'))

@@ -340,12 +340,13 @@ MOTION_TIMEOUT = 1800
 
 
 def motion_node() -> str:
-    """The engine's bundled Node (huashu-motion needs 22+), else the one on PATH."""
-    for folder in (ROOT / '.runtime/node/bin', ROOT / '.runtime/node'):
-        found = shutil.which('node', path=str(folder))
-        if found:
-            return found
-    found = shutil.which('node')
+    """The engine's bundled Node (huashu-motion needs 22+); PM's Node in a developer checkout. Never the user's
+    PATH copy: an older system Node would fail the render, and a user's tool must not run APEX's renders."""
+    bundled = ROOT / '.runtime/node' / ('node.exe' if platform.system() == 'Windows' else 'bin/node')
+    if bundled.is_file():
+        return str(bundled)
+    from hermes_constants import find_node_executable
+    found = find_node_executable('node')
     if not found:
         raise ValueError('no Node runtime found for the motion toolkit')
     return found
