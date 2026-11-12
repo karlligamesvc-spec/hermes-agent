@@ -59,11 +59,22 @@ export interface ComposerDraft {
  */
 export const COMPOSER_SEND_TAKEN: unique symbol = Symbol('composer-send-taken')
 
-export type ComposerMiddlewareResult = ComposerDraft | null | typeof COMPOSER_SEND_TAKEN
+/**
+ * hc-1226: a middleware's answer for a send it carried out itself (a command it
+ * handles in place, such as the one thread's `/new`): nothing is left to send.
+ * The composer clears as for a sent message and a queued entry leaves the
+ * queue; the rest of the chain and the app's submit do not run. Unlike
+ * {@link COMPOSER_SEND_TAKEN} it stands for a `bound` draft too: nobody sends
+ * it later, so nothing its options carry is lost. A command that could not be
+ * carried out is a cancel (null), which keeps its words where they were.
+ */
+export const COMPOSER_SEND_DONE: unique symbol = Symbol('composer-send-done')
+
+export type ComposerMiddlewareResult = ComposerDraft | null | typeof COMPOSER_SEND_DONE | typeof COMPOSER_SEND_TAKEN
 
 /** Payload of a `composer.middleware` data contribution. */
 export interface ComposerMiddleware {
-  /** Rewrite (return a draft), pass through (same draft), cancel (null), or take it over. */
+  /** Rewrite (return a draft), pass through (same draft), cancel (null), take it over, or carry it out. */
   handler: (draft: ComposerDraft) => ComposerMiddlewareResult | Promise<ComposerMiddlewareResult>
 }
 
@@ -117,8 +128,9 @@ export interface ComposerAttachmentProvider {
  * Run the ordered middleware chain over a draft. Contributions execute in
  * registry order (`order`, then registration order); the first `null` wins
  * and cancels the send, the first {@link COMPOSER_SEND_TAKEN} takes it over
- * (for a `bound` draft that is a cancel). A throwing handler is treated as
- * pass-through so a broken plugin can't eat messages.
+ * (for a `bound` draft that is a cancel), the first {@link COMPOSER_SEND_DONE}
+ * ends it as carried out. A throwing handler is treated as pass-through so a
+ * broken plugin can't eat messages.
  */
 export async function runComposerMiddleware(draft: ComposerDraft): Promise<ComposerMiddlewareResult> {
   let current = draft
@@ -132,6 +144,10 @@ export async function runComposerMiddleware(draft: ComposerDraft): Promise<Compo
 
     try {
       const next = await middleware.handler(current)
+
+      if (next === COMPOSER_SEND_DONE) {
+        return next
+      }
 
       if (next === COMPOSER_SEND_TAKEN) {
         return current.bound ? null : next
@@ -153,7 +169,8 @@ export async function runComposerMiddleware(draft: ComposerDraft): Promise<Compo
 /**
  * A send through the chain, then the app's submit with the draft the chain
  * left: false when a middleware cancelled it; true, without submitting, when
- * one took it over (it sends it later itself, so the composer clears).
+ * one took it over (it sends it later itself) or carried it out, so the
+ * composer clears.
  */
 export async function submitThroughComposerMiddleware<Options extends { attachments?: ComposerAttachment[] }>(
   text: string,
@@ -162,7 +179,7 @@ export async function submitThroughComposerMiddleware<Options extends { attachme
 ): Promise<boolean> {
   const draft = await runComposerMiddleware(composerDraftFor(text, options))
 
-  if (draft === COMPOSER_SEND_TAKEN) {
+  if (draft === COMPOSER_SEND_TAKEN || draft === COMPOSER_SEND_DONE) {
     return true
   }
 

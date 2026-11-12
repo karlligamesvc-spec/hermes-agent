@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { COMPOSER_SEND_TAKEN, type ComposerMiddlewareResult } from '@/app/chat/composer/contrib'
+import { COMPOSER_SEND_DONE, COMPOSER_SEND_TAKEN, type ComposerMiddlewareResult } from '@/app/chat/composer/contrib'
 import { setRuntimeI18nLocale } from '@/i18n'
 import type { ChatMessage } from '@/lib/chat-messages'
 import { $heldSends, resetHeldSendsForTest } from '@/store/held-sends'
@@ -291,13 +291,55 @@ describe('hc-1014 composer middleware: segments of the thread', () => {
     expect(String(compressCalls(calls)[0].params?.focus_topic)).toContain('从头开始')
   })
 
-  it('/new opens a segment and sends nothing: the thread never forks', async () => {
+  // hc-1226: carried out, so the composer clears; it used to answer null (a cancel), which put `/new` back
+  // into the composer a few seconds later, and sending that again folded the thread a second time.
+  it.each(['/new', '/reset', ' /NEW '])(
+    '%s opens a segment and sends nothing: the thread never forks, and the composer clears',
+    async text => {
+      $messages.set([message('m1', now() - 60)])
+      const { calls, request } = gateway()
+
+      expect(await send(text, request)).toBe(COMPOSER_SEND_DONE)
+      expect(compressCalls(calls)).toHaveLength(1)
+      expect(notices).toEqual(['正在接上之前的内容…', '好，前面的我记着，从这儿重新来。'])
+    }
+  )
+
+  it('/new that rotates the thread is carried out once the rotation lands', async () => {
     $messages.set([message('m1', now() - 60)])
-    const { calls, request } = gateway()
+    const { calls, request } = gateway({ removed: 12, status: 'compressed' })
+
+    const sending = send('/new', request)
+
+    await vi.waitFor(() => expect(notices).toContain('正在接上之前的内容…'))
+    $selectedStoredSessionId.set('thread-tip-2')
+
+    await expect(sending).resolves.toBe(COMPOSER_SEND_DONE)
+    expect(compressCalls(calls)).toHaveLength(1)
+  })
+
+  // hc-1226: nothing was carried out, so `/new` stays in the composer to send again, and the notice says so.
+  it.each([
+    ['while a reply is still running', () => $busy.set(true), [] as string[], 0],
+    ['when the summary fails', () => {}, ['session.compress'], 1]
+  ])('/new %s is a cancel: no segment, and the words stay', async (_label, arrange, fail, compresses) => {
+    $messages.set([message('m1', now() - 60)])
+    arrange()
+    const { calls, request } = gateway(undefined, fail)
 
     expect(await send('/new', request)).toBeNull()
+    expect(compressCalls(calls)).toHaveLength(compresses)
+    expect(notices).not.toContain('好，前面的我记着，从这儿重新来。')
+    expect(notices.at(-1)).toBe('这会儿还没法从头来，稍后再发一次。')
+    expect($threadSegmentStarts.get()).toEqual([])
+  })
+
+  it('「从头来」 is a message, not a command: it goes out even when the summary fails', async () => {
+    $messages.set([message('m1', now() - 60)])
+    const { calls, request } = gateway(undefined, ['session.compress'])
+
+    expect(await send('从头来，帮我写个新脚本', request)).toEqual(draft('从头来，帮我写个新脚本'))
     expect(compressCalls(calls)).toHaveLength(1)
-    expect(notices).toContain('好，前面的我记着，从这儿重新来。')
   })
 
   it('/branch is refused: the one thread has no second conversation to branch into', async () => {
@@ -339,6 +381,16 @@ describe('hc-1014 composer middleware: segments of the thread', () => {
 
     expect(await startThreadSegment(request, 'idle')).toBe(false)
     expect(calls).toEqual([])
+  })
+
+  it.each([
+    ['nothing to fold yet', true, { summary: { noop: true } }],
+    ['the summary failed', false, null]
+  ] as const)('resolves whether a segment opened: %s → %s', async (_label, opened, answer) => {
+    const { request } = gateway(answer ?? undefined, answer ? [] : ['session.compress'])
+
+    expect(await startThreadSegment(request, 'restart')).toBe(opened)
+    expect($threadSegmentStarts.get()).toHaveLength(opened ? 1 : 0)
   })
 })
 
