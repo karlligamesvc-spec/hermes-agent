@@ -35,13 +35,15 @@ def _home(monkeypatch, tmp_path):
 @pytest.mark.parametrize(("answer", "listed"), [
     ({"ok": True, "music_library": {"enabled": True, "tracks": 39}}, True),
     ({"ok": True, "music_library": {"enabled": False, "tracks": 0}}, False),
-    (gateway.GatewayError("down", status=503, code="vendor_unavailable"), False),
+    ("gateway down", False),
 ])
 def test_the_tool_is_listed_only_while_the_library_is_open(monkeypatch, answer, listed):
     def request_json(method, path, payload=None, **_kwargs):
         assert (method, path) == ("GET", "/tools/v1/music/check")
-        if isinstance(answer, BaseException):
-            raise answer
+        if answer == "gateway down":
+            # Raised from the gateway module's class as it is now: other tests reload that module, and an
+            # instance built at collection would no longer match the plugin's except clause.
+            raise gateway.GatewayError("down", status=503, code="vendor_unavailable")
         return answer
 
     monkeypatch.setattr(gateway, "request_json", request_json)
