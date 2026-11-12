@@ -294,3 +294,23 @@ def test_our_own_check_catches_a_broken_draft(media, tmp_path, damage, problem):
     _, written, _, _ = _write(media, tmp_path)
     damage(written.folder)
     assert build.check_written(written.folder) == problem
+
+
+def test_ffprobe_is_the_named_one_then_the_engines_own_then_the_platform_resolvers(tmp_path, monkeypatch):
+    bundled = tmp_path / "ffprobe"
+    bundled.write_bytes(b"")
+    monkeypatch.setattr(_apex_probe, "_BUNDLED", bundled)
+    asked = []
+    monkeypatch.setattr("hermes_platform.resolver.locate_command",
+                        lambda name: asked.append(name) or SimpleNamespace(command=("/somewhere/ffprobe",)))
+
+    monkeypatch.setenv(_apex_probe.FFPROBE_ENV, "/named/ffprobe")
+    assert _apex_probe._ffprobe() == "/named/ffprobe"
+    monkeypatch.delenv(_apex_probe.FFPROBE_ENV)
+    assert _apex_probe._ffprobe() == str(bundled)
+    bundled.unlink()
+    assert _apex_probe._ffprobe() == "/somewhere/ffprobe"
+    assert asked == ["ffprobe"]
+    monkeypatch.setattr("hermes_platform.resolver.locate_command", lambda name: SimpleNamespace(command=()))
+    assert _apex_probe._ffprobe() is None
+    assert _apex_probe.MediaInfo.can_parse() is False

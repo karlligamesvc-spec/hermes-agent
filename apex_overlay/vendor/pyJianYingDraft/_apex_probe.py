@@ -10,21 +10,32 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, List, Optional
 
-#: Set by tests or a caller that knows the bundled binary; otherwise ffprobe from PATH (Desktop puts its own first).
+#: Set by tests or a caller that knows the binary to use.
 FFPROBE_ENV = "APEX_FFPROBE"
+#: The packaged engine's own copy, where hypit_profile also takes it (<engine>/.runtime/bin).
+_BUNDLED = Path(__file__).resolve().parents[3] / ".runtime" / "bin" / ("ffprobe.exe" if sys.platform == "win32" else "ffprobe")
 PROBE_TIMEOUT_SECONDS = 30
 #: ffprobe's demuxers for still images: MediaInfo reports these as an Image track, not a Video track.
 _IMAGE_FORMATS = ("image2", "png_pipe", "jpeg_pipe", "webp_pipe", "bmp_pipe", "tiff_pipe", "gif")
 
 
 def _ffprobe() -> Optional[str]:
-    return os.environ.get(FFPROBE_ENV) or shutil.which("ffprobe")
+    """``APEX_FFPROBE``, else the engine's own ffprobe, else the platform resolver's (a source checkout)."""
+    explicit = os.environ.get(FFPROBE_ENV)
+    if explicit:
+        return explicit
+    if _BUNDLED.is_file():
+        return str(_BUNDLED)
+    from hermes_platform.resolver import locate_command
+
+    found = locate_command("ffprobe").command
+    return found[0] if found else None
 
 
 def _milliseconds(*values: Any) -> Optional[float]:
