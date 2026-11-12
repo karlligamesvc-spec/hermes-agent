@@ -38,6 +38,7 @@ from apex_overlay import (
     first_turn_ack,
     gateway_bootstrap,
     im_passthrough,
+    im_question_reply_only,
     post_import,
 )
 
@@ -54,6 +55,17 @@ _FAKE_MODULES = {
 
         def _prepare_gateway_status_message(*args, **kwargs):
             return None
+
+        def _sanitize_gateway_final_response(platform, text):
+            return text
+
+        def _load_gateway_config(config_path=None):
+            return {}
+
+        def _looks_like_gateway_provider_error(text):
+            return False
+
+        _GATEWAY_RATE_LIMIT_RE = None
 
         class GatewayRunner:
             def _create_adapter(self, platform, config):
@@ -143,6 +155,13 @@ _SEAMS = {
         im_passthrough,
         {"_TARGET_RUN_MODULE": "run"},
         [("run", "GatewayRunner._handle_message", im_passthrough._MARK)],
+        ["_APPLIED"],
+    ),
+    "im_question_reply_only": (
+        im_question_reply_only,
+        {"_TARGET_RUN_MODULE": "run"},
+        [("run", "_prepare_gateway_status_message", im_question_reply_only._MARK),
+         ("run", "_sanitize_gateway_final_response", im_question_reply_only._MARK)],
         ["_APPLIED"],
     ),
     "feishu_supervisor": (
@@ -293,7 +312,7 @@ _MARK_CHECK = """
         import gateway.platforms.base as base
         import gateway.run as run
         from apex_overlay import (cn_im_banners, cn_im_messages, feishu_supervisor, first_turn_ack,
-                                  gateway_bootstrap, im_passthrough)
+                                  gateway_bootstrap, im_passthrough, im_question_reply_only)
         runner = run.GatewayRunner
         return {
             "gateway_bootstrap": wrapped_by(runner._create_adapter, gateway_bootstrap._MARK),
@@ -306,6 +325,10 @@ _MARK_CHECK = """
             "cn_im_messages.send": wrapped_by(base.BasePlatformAdapter._send_with_retry, cn_im_messages._MARK),
             "cn_im_banners": wrapped_by(base.BasePlatformAdapter.__init__, cn_im_banners._MARK),
             "im_passthrough": wrapped_by(runner._handle_message, im_passthrough._MARK),
+            "im_question_reply_only.prepare": wrapped_by(run._prepare_gateway_status_message,
+                                                         im_question_reply_only._MARK),
+            "im_question_reply_only.final": wrapped_by(run._sanitize_gateway_final_response,
+                                                       im_question_reply_only._MARK),
             "feishu_supervisor": wrapped_by(platform_registry.PlatformRegistry.create_adapter,
                                             feishu_supervisor._MARK),
         }

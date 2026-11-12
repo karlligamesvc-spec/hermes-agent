@@ -50,6 +50,13 @@ _CN_IM_SEAMS = (
         "model/provider/context lines will reach weixin/wecom/dingtalk/"
         "qqbot/feishu users.",
     ),
+    (
+        "im_question_reply_only",
+        "apex-overlay: hc-1018 cloud IM question-and-reply-only seam did not "
+        "apply (see prior error). With apex.im_question_reply_only on, "
+        "status lines and the runtime's English failure replies (provider, "
+        "model, /model) still reach weixin/wecom/dingtalk/qqbot/feishu users.",
+    ),
 )
 
 
