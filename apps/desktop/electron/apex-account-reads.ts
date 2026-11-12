@@ -7,8 +7,8 @@
  * ledger (read and edited) and the hc-1061 plan usage line. Each handler's
  * request and ok:false shapes live in its own module;
  * this file only registers them, so main.ts holds one call instead of one
- * handler per read. hc-1131's developer-mode marker registers here too: it
- * needs no account, but main.ts may not grow.
+ * handler per read. hc-1131's developer-mode marker and hc-1219's 「在剪映中打开」
+ * (jianying.ts) register here too: they need no account, but main.ts may not grow.
  */
 
 import { fetchAnnouncements, markAnnouncementRead } from './apex-announcements'
@@ -19,6 +19,7 @@ import { syncDeveloperModeMarker } from './apex-developer-mode'
 import { memoryLedgerRequest } from './apex-memory-ledger'
 import { fetchPlanUsage } from './apex-plan-usage'
 import { fetchMyTeam } from './apex-team'
+import { jianyingDeps, openDraftInJianying } from './jianying'
 
 export interface IpcHandleRegistry {
   handle: (channel: string, listener: (event: unknown, ...args: any[]) => unknown) => void
@@ -51,4 +52,5 @@ export function registerApexAccountReads(
   ipcMain.handle('hermes:apex:developerMode', async (_event, on) =>
     syncDeveloperModeMarker(hermesHome, on === true, reads.log)
   )
+  ipcMain.handle('hermes:jianying:open', async (_event, folder) => openDraftInJianying(folder, jianyingDeps(reads.log)))
 }

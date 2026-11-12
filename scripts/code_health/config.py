@@ -38,7 +38,8 @@ METRIC_FIX = {
     " judged); fix the syntax, or report the measurer bug",
 }
 
-PY_EXCLUDE = ("website/*", "*/node_modules/*", "node_modules/*")
+# apex_overlay/vendor: third-party code kept as upstream wrote it (apex_overlay/vendor/README.md), like node_modules.
+PY_EXCLUDE = ("website/*", "*/node_modules/*", "node_modules/*", "apex_overlay/vendor/*")
 TS_EXCLUDE = PY_EXCLUDE + ("*.d.ts", "*/dist/*", "*/build/*", "*/generated/*", "*.generated.ts")
 TESTS = ("tests/*", "*/tests/*", "tests-js/*", "*/conftest.py")
 # One-shot processes that serve a single profile (CI/release scripts, skill scripts run as a

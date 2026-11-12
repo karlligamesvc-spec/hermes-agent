@@ -191,3 +191,53 @@ describe('gen_ladder tool part', () => {
     expect(container.querySelector('[data-tool-row]')).toBeNull()
   })
 })
+
+// hc-1219: a 剪映 draft the engine wrote is a card with 「在剪映中打开」, both
+// live (the part names jianying_draft) and reloaded (the `tool_call` bridge the
+// model called). An error keeps the generic row, which says what went wrong.
+function jianyingMessage(toolName: string, args: Record<string, unknown>, result: unknown): ThreadMessage {
+  const message = toolMessage(toolName, result)
+  const [part] = message.content as unknown as [Record<string, unknown>]
+
+  Object.assign(part, { args, argsText: JSON.stringify(args) })
+
+  return message
+}
+
+function JianyingHarness({ message }: { message: ThreadMessage }) {
+  const runtime = useExternalStoreRuntime<ThreadMessage>({ messages: [message], isRunning: false, onNew: async () => {} })
+
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <Thread />
+    </AssistantRuntimeProvider>
+  )
+}
+
+const JIANYING_RESULT = JSON.stringify({
+  status: 'written',
+  draft: { name: '夏日 vlog', folder: '/Users/u/drafts/夏日 vlog', seconds: 14, shots: 4, subtitles: 4 },
+  jianying: { version: '11.7.0', platform: 'darwin', registered: true },
+  problem: null
+})
+
+describe('jianying_draft tool part', () => {
+  it.each([
+    ['live', 'jianying_draft', { timeline: '/t.json' }],
+    ['reloaded through the bridge', 'tool_call', { name: 'jianying_draft', arguments: { timeline: '/t.json' } }]
+  ])('draws the draft card, %s', async (_label, toolName, args) => {
+    const { container } = render(<JianyingHarness message={jianyingMessage(toolName, args, JIANYING_RESULT)} />)
+
+    await waitFor(() => expect(container.querySelector('[data-slot="aui_jianying-draft"]')).not.toBeNull())
+    expect(container.querySelector('[data-slot="aui_jianying-draft-title"]')?.textContent).toContain('夏日 vlog')
+    expect(container.textContent).not.toContain('/Users/u/drafts')
+  })
+
+  it('an error is the generic row, not a card', async () => {
+    const error = JSON.stringify({ error: '找不到第 2 个镜头的素材：b.mp4' })
+    const { container } = render(<JianyingHarness message={jianyingMessage('jianying_draft', {}, error)} />)
+
+    await waitFor(() => expect(container.querySelector('[data-slot="aui_thread-viewport"]')).not.toBeNull())
+    expect(container.querySelector('[data-slot="aui_jianying-draft"]')).toBeNull()
+  })
+})
