@@ -448,7 +448,11 @@ def caplog_at_debug(caplog):
 
     @contextmanager
     def capture():
+        """What the block logs, and only that (hc-1227). caplog keeps the whole test's records, so once an earlier
+        test leaves the root logger at INFO (the first import of hermes_cli.main runs setup_logging), a delivery
+        logged before the block would count too."""
         with caplog.at_level(logging.DEBUG):
+            caplog.clear()
             yield caplog
 
     return capture
