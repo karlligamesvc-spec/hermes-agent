@@ -58,8 +58,8 @@ EXPECTED_TOOLS = {
         "social_api",
     },
     # hc-1054: long-video analysis registers from the same plugin (plugins/apexnodes_video_analysis.py);
-    # hc-1136: video_breakdown (the remake card) too.
-    "apexnodes-video-tools": {"generate_video", "video_highlights", "video_moment_search", "video_breakdown"},
+    # hc-1136: video_breakdown (the remake card) too; hc-1220: find_music (the music library).
+    "apexnodes-video-tools": {"generate_video", "video_highlights", "video_moment_search", "video_breakdown", "find_music"},
 }
 
 # 桌面机器上不存在的 vendor/master 侧 env——冒烟前必须全空。

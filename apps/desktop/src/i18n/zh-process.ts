@@ -148,6 +148,7 @@ export const zhProcess: ProcessCopy = {
       facts.count ? `找到 ${facts.count} 处画面` : facts.empty ? '没找到' : '已交给平台'
     ),
     video_breakdown: step('正在逐镜看视频', '逐镜拆视频', said('复刻卡做好了')),
+    find_music: step('正在找配乐', '找配乐', said('配乐选好了')),
     live_record_start: step('正在开始录直播', '开始录直播', said('开始录了')),
     live_record_status: step('正在查看录制进度', '查看录制进度', said('看过了')),
     live_record_stop: step('正在结束录制', '结束录制', said('录好了')),

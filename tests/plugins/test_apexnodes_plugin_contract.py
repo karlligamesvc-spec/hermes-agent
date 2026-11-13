@@ -64,8 +64,10 @@ CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 # 与同一次调用的 .docx、.segments.json 同名只差扩展名(transcript_readback_file,两条腿)。
 # v18(hc-1222):generate_video 接参考音频(reference_audio,只有 MiniMax H3 收),两条腿的端点族各加一个
 # 参考音频上传端点;三条新行为：带音频转成 ref、服务端不声明支持就不发、上传失败绝不改成不带音频。
-EXPECTED_CONTRACT_SHA256 = "2576fcbe68efbc2cd0c456e6106adb7a643d7cf55ab8d24b2f35c4f48015ce60"
-EXPECTED_CONTRACT_VERSION = 18
+# v19(hc-1220):apexnodes-video-tools 加 find_music(内置配乐曲库),两条腿都走 /tools/v1/music/{pick,check};
+# 新行为 music_verified_cache:按 SHA-256 存进 tool-cache/music,字节对不上就报错、不留文件，签名链接不进结果。
+EXPECTED_CONTRACT_SHA256 = "85b9bd1a849f9f88cc2cbf628ea016e7f494eafa2f14871508bfe6e42eaad5d6"
+EXPECTED_CONTRACT_VERSION = 19
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -102,6 +104,7 @@ PROBES: dict[str, dict] = {
     "video_highlights": {"source": "media:" + "b" * 32 + "/long.mp4"},
     "video_moment_search": {"source": "media:" + "b" * 32 + "/long.mp4", "query": "a red suitcase"},
     "video_breakdown": {"video_path": "/probe/原片.mp4"},
+    "find_music": {"platform": "douyin", "mood": "light", "scene": "food"},
 }
 ANALYSIS_TOOLS = ("video_highlights", "video_moment_search")
 
@@ -480,7 +483,7 @@ def test_contract_covers_exactly_the_shared_tool_surface():
     assert contract_tools == {t for tools in CONTRACT["plugins"].values() for t in tools}
     # hc-563 冻结在 14;hc-600 有意加入四个洞察工具(contract_version 3)。这个数字是
     # 漂移绊线,只能与 contract_version 一起动 —— 与 cloud 侧同一断言保持一致。
-    assert len(contract_tools) == 22  # hc-1143 adds social_api (v14), hc-1136 video_breakdown (v15)
+    assert len(contract_tools) == 23  # hc-1143 social_api (v14), hc-1136 video_breakdown (v15), hc-1220 find_music (v19)
     assert set(PROBES) == contract_tools
 
 
@@ -1147,6 +1150,68 @@ def _check_hidden_picker_lets_the_assistant_pick(h, tool_name, _spec):
         assert _sent_model(calls) == sent, choice
 
 
+class _MusicBody:
+    def __init__(self, data: bytes):
+        self._data, self._sent = data, False
+
+    def read(self, _size=-1):
+        if self._sent:
+            return b""
+        self._sent = True
+        return self._data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _check_music_verified_cache(h, tool_name, _spec):
+    """hc-1220: the picked track lands in tool-cache/music/<sha256>.<ext> only when its bytes match."""
+    import hashlib as _hashlib
+    import urllib.request as _request
+
+    audio = b"apex-library-track" * 64
+    sha = _hashlib.sha256(audio).hexdigest()
+    link = "https://cos.test/music-library/audio/" + sha + ".m4a?sign=SECRET"
+    answer = {"ok": True, "download": {"url": link, "sha256": sha, "bytes": len(audio), "ext": "m4a"},
+              "credit": "音乐：x", "credit_required": True, "provenance": {"source_type": "apex_library"}}
+    served = {"body": audio}
+    downloads: list[str] = []
+    home = h.tmp_path / "music-home"
+    home.mkdir(exist_ok=True)
+    h.monkeypatch.setenv("HERMES_HOME", str(home))
+    harness_urlopen = _request.urlopen
+
+    def _urlopen(request, timeout=None):
+        url = request if isinstance(request, str) else request.full_url
+        if url.startswith("https://cos.test/"):
+            downloads.append(url)
+            return _MusicBody(served["body"])
+        if url.endswith("/tools/v1/music/pick"):  # the legacy leg's pick
+            h.calls.append(RecordedCall(method="POST", path="/tools/v1/music/pick", body=json.loads(request.data)))
+            return _MusicBody(json.dumps(answer).encode("utf-8"))
+        return harness_urlopen(request, timeout=timeout)
+
+    h.monkeypatch.setattr("urllib.request.urlopen", _urlopen)
+    if h.leg == "gateway":
+        h._canned = lambda path: answer if path == "/tools/v1/music/pick" else GatewayHarness._canned(path)
+    cached = home / "tool-cache" / "music" / f"{sha}.m4a"
+    raw, calls = h.invoke_raw(tool_name, h.probe_args(tool_name))
+    assert "SECRET" not in raw and "cos.test" not in raw, "the signed link never reaches the result"
+    result = json.loads(raw)
+    assert result["file"] == str(cached) and cached.read_bytes() == audio and len(downloads) == 1
+    assert [(c.method, c.path) for c in calls] == [("POST", "/tools/v1/music/pick")]
+    assert calls[0].body["platform"] == "douyin" and calls[0].body["scene"] == "food"
+    result, _calls = h.invoke(tool_name, h.probe_args(tool_name))
+    assert result["file"] == str(cached) and len(downloads) == 1, "bytes already there are not downloaded again"
+    cached.unlink()
+    served["body"] = audio[:-1] + b"!"
+    result, _calls = h.invoke(tool_name, h.probe_args(tool_name))
+    assert "error" in result and not list(cached.parent.iterdir()), "other bytes: an error and no file left"
+
+
 # name → callable;跑腿集合 = 契约行为声明的 legs(fork 双腿都在场)。
 BEHAVIOR_CHECKS = {
     "routed_intent_passthrough": _check_routed_intent_passthrough,
@@ -1183,6 +1248,8 @@ BEHAVIOR_CHECKS = {
     # hc-1046: the served model catalog and who picks the model.
     "model_checked_against_served_catalog": _check_model_checked_against_served_catalog,
     "hidden_picker_lets_the_assistant_pick": _check_hidden_picker_lets_the_assistant_pick,
+    # hc-1220: the background-music library.
+    "music_verified_cache": _check_music_verified_cache,
 }
 
 BEHAVIOR_CASES = [
