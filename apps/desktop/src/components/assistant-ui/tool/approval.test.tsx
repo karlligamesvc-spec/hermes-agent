@@ -2,8 +2,9 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { HermesGateway } from '@/hermes'
+import { I18nProvider, type Locale } from '@/i18n'
 import { $gateway } from '@/store/gateway'
-import { $approvalRequest, clearAllPrompts, setApprovalRequest } from '@/store/prompts'
+import { $approvalRequest, clearAllPrompts, replayPendingApproval, setApprovalRequest } from '@/store/prompts'
 import { hasOpenServerRequest, rememberServerRequest, resetServerRequestsForTests } from '@/store/server-requests'
 import { $activeSessionId } from '@/store/session'
 
@@ -34,7 +35,13 @@ function part(toolName: string): ToolPart {
 function setRequest(
   command = 'rm -rf /tmp/x',
   allowPermanent?: boolean,
-  extra: { choices?: string[]; requestId?: string; serverRequestId?: string; smartDenied?: boolean } = {}
+  extra: {
+    allowTask?: boolean
+    choices?: string[]
+    requestId?: string
+    serverRequestId?: string
+    smartDenied?: boolean
+  } = {}
 ) {
   $activeSessionId.set('sess-1')
   setApprovalRequest({ allowPermanent, command, description: 'dangerous command', sessionId: 'sess-1', ...extra })
@@ -224,5 +231,76 @@ describe('PendingToolApproval', () => {
       expect(container.querySelector('[data-slot="tool-approval-inline"]')).not.toBeNull()
       expect(container.querySelector('[data-slot="tool-approval-fallback"]')).toBeNull()
     })
+  })
+})
+
+// hc-1223: 「本任务都允许」 answers this card and every later approval of the same task.
+describe('Allow for this task', () => {
+  const OFFERED = ['once', 'session', 'always', 'task', 'deny']
+
+  it('answers the live approval request with {choice: "task"} and clears the request', async () => {
+    const request = mockGateway()
+    const respond = liveApproval()
+    setRequest('rm -rf /tmp/x', undefined, { choices: OFFERED, requestId: 'apr-1', serverRequestId: 'srq-approval' })
+    render(<PendingToolApproval part={part('terminal')} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Allow for this task' }))
+
+    await waitFor(() => {
+      expect(respond).toHaveBeenCalledWith({ choice: 'task' })
+    })
+    expect(request).not.toHaveBeenCalledWith('approval.respond', expect.anything())
+    expect($approvalRequest.get()).toBeNull()
+  })
+
+  it('answers a prompt restored from approval.pending through approval.respond', async () => {
+    // `approval.pending` hands back the queued request as the engine built it: `allow_task`, no `choices`.
+    const request = vi.fn(async (method: string) =>
+      method === 'approval.pending'
+        ? { approvals: [{ allow_task: true, command: 'rm -rf /tmp/x', description: 'd', request_id: 'apr-1' }] }
+        : { resolved: 1 }
+    )
+
+    $gateway.set({ request } as unknown as HermesGateway)
+    $activeSessionId.set('sess-1')
+    await replayPendingApproval($gateway.get(), 'sess-1')
+    render(<PendingApprovalFallback />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Allow for this task' }))
+
+    await waitFor(() => {
+      expect(request).toHaveBeenCalledWith('approval.respond', {
+        choice: 'task',
+        request_id: 'apr-1',
+        session_id: 'sess-1'
+      })
+    })
+  })
+
+  it.each([
+    ['the gateway lists choices without it', { choices: ['once', 'session', 'always', 'deny'] }],
+    ['an older engine sends neither choices nor the flag', {}],
+    ['a smart-deny override', { smartDenied: true }]
+  ])('is not offered when %s', (_case, extra) => {
+    setRequest('rm -rf /tmp/x', true, extra)
+    render(<PendingToolApproval part={part('terminal')} />)
+
+    expect(screen.getByRole('button', { name: /Run/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Allow for this task' })).toBeNull()
+  })
+
+  it.each<[Locale, string]>([
+    ['zh', '本任务都允许'],
+    ['zh-hant', '本任務都允許'],
+    ['en', 'Allow for this task']
+  ])('reads %s as %s', (locale, label) => {
+    setRequest('rm -rf /tmp/x', undefined, { choices: OFFERED })
+    render(
+      <I18nProvider configClient={null} initialLocale={locale}>
+        <PendingToolApproval part={part('terminal')} />
+      </I18nProvider>
+    )
+
+    expect(screen.getByRole('button', { name: label })).toBeTruthy()
   })
 })

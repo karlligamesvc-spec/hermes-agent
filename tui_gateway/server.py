@@ -657,7 +657,7 @@ def _approval_request_payload(data: dict | None) -> dict:
             choices.append("session")
             if payload.get("allow_permanent") is not False:
                 choices.append("always")
-        payload["choices"] = choices + ["deny"]
+        payload["choices"] = choices + ["task"] * bool(payload.get("allow_task")) + ["deny"]  # hc-1223
     from gateway.run import _redact_approval_command  # description too: consent prompts carry MCP/vault text
     payload.update({k: _redact_approval_command(payload[k]) for k in ("command", "description") if k in payload})
     return payload

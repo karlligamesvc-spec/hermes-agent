@@ -33,6 +33,9 @@ _SCOPE_PHRASES = {
     # Both a 'session' and an 'always' answer session-approve their keys, so a session-only grant may
     # be what is left of an 'always' answer whose command_allowlist entry the operator removed.
     "session": "an approval the user gave earlier in this session",
+    # ApexNodes hc-1223 (tools.approval_turn_grant, tools.approval_task_folder).
+    "task": "the user's answer earlier in this task to allow every step of it that needs approval",
+    "task_folder": "the rule that deleting inside this session's working folder needs no approval",
 }
 
 
