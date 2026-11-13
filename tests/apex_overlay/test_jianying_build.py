@@ -314,3 +314,125 @@ def test_ffprobe_is_the_named_one_then_the_engines_own_then_the_platform_resolve
     monkeypatch.setattr("hermes_platform.resolver.locate_command", lambda name: SimpleNamespace(command=()))
     assert _apex_probe._ffprobe() is None
     assert _apex_probe.MediaInfo.can_parse() is False
+
+
+# hc-1232: the narration in the draft is as loud as in the finished cut. ``assemble`` raises it to -16 LUFS and writes
+# how many dB in ``<cut>.assembly.json`` (apex-nodes short-video-studio footage_assemble.py); the draft reads that.
+
+#: The shots of ``_timeline`` as assemble's report lists them (file name, in point, length).
+ASSEMBLED_SHOTS = [{"file": "tall.mp4", "in": 0.5, "dur": 3.0}, {"file": "wide.mp4", "in": 1.0, "dur": 4.5},
+                   {"file": "card.png", "in": 0, "dur": 3.0}]
+
+
+def _report(folder: Path, name: str, gain_db=7.43, *, age: float = 0.0, **overrides) -> None:
+    """A report as assemble writes it beside ``<name>.mp4``; ``age`` seconds older than now."""
+    report = {
+        "output": str(folder / f"{name}.mp4"), "fps": 30, "narration": str(folder / "voice.m4a"),
+        "narration_level": {"measured_lufs": -16.0 - gain_db, "target_lufs": -16.0, "offset_db": 0.0,
+                            "gain_db": gain_db},
+        "shots": [{**shot, "start": 0.0, "gain_db": 0.0, "has_audio": True, "zoom": 1.0} for shot in ASSEMBLED_SHOTS],
+        **overrides,
+    }
+    path = folder / f"{name}.assembly.json"
+    path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+    stamp = path.stat().st_mtime - age
+    os.utime(path, (stamp, stamp))
+
+
+def _without_level(folder: Path, name: str, **kwargs) -> None:
+    _report(folder, name, **kwargs)
+    path = folder / f"{name}.assembly.json"
+    report = json.loads(path.read_text(encoding="utf-8"))
+    del report["narration_level"]  # what assemble wrote before hc-1232
+    stamp = path.stat().st_mtime
+    path.write_text(json.dumps(report), encoding="utf-8")
+    os.utime(path, (stamp, stamp))
+
+
+def _other_shots(folder: Path, name: str) -> None:
+    shots = [dict(ASSEMBLED_SHOTS[0]), {**ASSEMBLED_SHOTS[1], "dur": 4.0}, dict(ASSEMBLED_SHOTS[2])]
+    _report(folder, name, 7.43, shots=shots)
+
+
+def _broken(folder: Path, name: str) -> None:
+    (folder / f"{name}.assembly.json").write_text("{", encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("reports", "volume"),
+    [
+        pytest.param([], 1.0, id="no cut yet"),
+        pytest.param([lambda f: _report(f, "成片", 7.43)], 10 ** (7.43 / 20), id="raised in the cut"),
+        pytest.param([lambda f: _report(f, "成片", -4.5)], 10 ** (-4.5 / 20), id="lowered in the cut"),
+        pytest.param([lambda f: _without_level(f, "成片")], 1.0, id="cut before hc-1232"),
+        pytest.param([lambda f: _report(f, "成片", narration=None, narration_level=None)], 1.0,
+                     id="cut without narration"),
+        pytest.param([lambda f: _report(f, "成片", narration=str(f / "music.m4a"))], 1.0, id="other narration"),
+        pytest.param([lambda f: _other_shots(f, "成片")], 1.0, id="other cut"),
+        pytest.param([lambda f: _report(f, "成片", narration=str(f / ".." / f.name / "voice.m4a"))],
+                     10 ** (7.43 / 20), id="same narration spelled otherwise"),
+        pytest.param([lambda f: _report(f, "旧", 3.0, age=60), lambda f: _report(f, "成片", 7.43)],
+                     10 ** (7.43 / 20), id="newest cut"),
+        pytest.param([lambda f: _report(f, "成片", 7.43, age=60), lambda f: _without_level(f, "重拼")], 1.0,
+                     id="newest cut is from before hc-1232"),
+        pytest.param([lambda f: _report(f, "成片", 7.43, age=60), lambda f: _broken(f, "坏")], 10 ** (7.43 / 20),
+                     id="unreadable report skipped"),
+        pytest.param([lambda f: _report(f, "成片", 7.43, age=60), lambda f: _other_shots(f, "别的")],
+                     10 ** (7.43 / 20), id="newer report of another cut skipped"),
+    ],
+)
+def test_the_narration_is_as_loud_as_in_the_cut(media, tmp_path, reports, volume):
+    (media / "字幕.srt").write_text(SRT, encoding="utf-8")
+    for add in reports:
+        add(media)
+    _, written, timeline, _ = _write(media, tmp_path)
+    tracks = {t["name"]: t for t in timeline["tracks"]}
+    assert [s["volume"] for s in tracks["旁白"]["segments"]] == [pytest.approx(volume, abs=1e-4)]
+    # The footage's own sound and the music are not the narration: they stay where they were.
+    assert {s["volume"] for s in tracks["画面"]["segments"]} == {build.CLIP_VOLUME["under_narration"]}
+    assert [s["volume"] for s in tracks["配乐"]["segments"]] == [0.3]
+    assert written.notes == []
+
+
+def test_a_report_beside_a_timeline_without_narration_changes_nothing(media, tmp_path):
+    _report(media, "成片", 7.43)
+    plan = build.load_plan(_timeline(media))
+    assert (plan.narration, plan.narration_gain_db) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("gain_db", "volume", "note"),
+    [
+        (None, 1.0, None),
+        (0.0, 1.0, None),
+        (7.43, 2.3523, None),
+        (-6.0, 0.5012, None),
+        (-30.0, 0.0316, None),
+        (20.0, 10.0, None),
+        (20.04, 10.0, None),  # 0.04 dB short is not worth a word
+        (20.06, 10.0, "成片里旁白拉响了 20.1 dB,剪映最多拉响 20 dB,草稿里的旁白比成片轻 0.1 dB"),
+        (23.43, 10.0, "成片里旁白拉响了 23.4 dB,剪映最多拉响 20 dB,草稿里的旁白比成片轻 3.4 dB"),
+        (30.0, 10.0, "成片里旁白拉响了 30.0 dB,剪映最多拉响 20 dB,草稿里的旁白比成片轻 10.0 dB"),
+    ],
+    ids=lambda value: "note" if isinstance(value, str) else None,
+)
+def test_the_narration_volume_is_the_cuts_gain_up_to_jianyings_ceiling(gain_db, volume, note):
+    assert build.narration_volume(gain_db) == (volume, note)
+
+
+def test_a_narration_above_jianyings_ceiling_is_capped_and_said_in_the_result(media, tmp_path, monkeypatch):
+    from apex_overlay import jianying_draft
+
+    monkeypatch.setenv(jianying_draft.SWITCH_ENV, "1")
+    root = tmp_path / "Projects" / "com.lveditor.draft"
+    root.mkdir(parents=True)
+    found = jianying_install.Installation(app=tmp_path / "app", version="11.7.0", user_data=tmp_path, draft_root=root)
+    monkeypatch.setattr(jianying_install, "find", lambda *a, **k: found)
+    monkeypatch.setattr(jianying_install, "running", lambda *a, **k: False)
+    _report(media, "成片", 23.43)
+
+    result = jianying_draft.write_draft({"timeline": _timeline(media, narration="voice.m4a"), "name": "响"})
+    assert result["changes"] == ["成片里旁白拉响了 23.4 dB,剪映最多拉响 20 dB,草稿里的旁白比成片轻 3.4 dB"]
+    timeline = json.loads((root / "响" / "draft_info.json").read_text(encoding="utf-8"))
+    [narration] = [t for t in timeline["tracks"] if t["name"] == "旁白"]
+    assert [s["volume"] for s in narration["segments"]] == [build.VOLUME_MAX]
