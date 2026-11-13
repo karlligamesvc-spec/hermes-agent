@@ -81,7 +81,8 @@ const en: Record<string, StepCopy> = {
     done: said('Done')
   },
   chatcut_upload_files: { running: 'Sending the files to ChatCut', title: 'Send files to ChatCut', done: said('Sent') },
-  chatcut_save_export: { running: 'Saving the video', title: 'Save the video', done: said('Saved') }
+  chatcut_save_export: { running: 'Saving the video', title: 'Save the video', done: said('Saved') },
+  jianying_draft: { running: 'Writing the JianyingPro draft', title: 'Write a JianyingPro draft', done: said('Written') }
 }
 
 const zh: Record<string, StepCopy> = {
@@ -95,7 +96,8 @@ const zh: Record<string, StepCopy> = {
   [CHATCUT_EXPORT_STEP]: { running: '正在导出视频', title: '导出视频', done: said('好了') },
   [CHATCUT_READ_STEP]: { running: '正在看工程内容', title: '看工程内容', done: said('看好了') },
   chatcut_upload_files: { running: '正在把文件传到 ChatCut', title: '把文件传到 ChatCut', done: said('传好了') },
-  chatcut_save_export: { running: '正在保存成片', title: '保存成片', done: said('存好了') }
+  chatcut_save_export: { running: '正在保存成片', title: '保存成片', done: said('存好了') },
+  jianying_draft: { running: '正在写剪映草稿', title: '写剪映草稿', done: said('写好了') }
 }
 
 const zhHant: Record<string, StepCopy> = {
@@ -109,7 +111,8 @@ const zhHant: Record<string, StepCopy> = {
   [CHATCUT_EXPORT_STEP]: { running: '正在匯出影片', title: '匯出影片', done: said('好了') },
   [CHATCUT_READ_STEP]: { running: '正在看工程內容', title: '看工程內容', done: said('看好了') },
   chatcut_upload_files: { running: '正在把檔案傳到 ChatCut', title: '把檔案傳到 ChatCut', done: said('傳好了') },
-  chatcut_save_export: { running: '正在儲存成片', title: '儲存成片', done: said('存好了') }
+  chatcut_save_export: { running: '正在儲存成片', title: '儲存成片', done: said('存好了') },
+  jianying_draft: { running: '正在寫剪映草稿', title: '寫剪映草稿', done: said('寫好了') }
 }
 
 export const DESKTOP_ONLY_STEPS: Readonly<Record<Locale, Readonly<Record<string, StepCopy>>>> = {

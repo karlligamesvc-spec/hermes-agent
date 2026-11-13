@@ -173,6 +173,24 @@
       "upstream": "https://github.com/atelier-anchor/smiley-sans/releases/download/v2.0.1/smiley-sans-v2.0.1.zip",
       "upstreamMember": "SmileySans-Oblique.otf",
       "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/fonts/smiley-sans/2.0.1/139b5dcbe70d6d52de85a62d148784c6af4bd161e38fdb62ba0c1e7e5065fca6/SmileySans-Oblique.otf"
+    },
+    "title": {
+      "family": "Noto Sans SC Black",
+      "file": "NotoSansSC-Black.otf",
+      "version": "2.004",
+      "license": "OFL-1.1",
+      "bytes": 8855916,
+      "sha256": "ccb496022356b7dd14d117538a472ae40feff8f6e8f3fe8bffc5616785d2f3f9",
+      "upstream": "https://github.com/notofonts/noto-cjk/releases/download/Sans2.004/18_NotoSansSC.zip",
+      "upstreamMember": "NotoSansSC-Black.otf",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/fonts/noto-sans-sc/2.004/ccb496022356b7dd14d117538a472ae40feff8f6e8f3fe8bffc5616785d2f3f9/NotoSansSC-Black.otf",
+      "licenseFile": {
+        "file": "OFL.txt",
+        "upstreamMember": "LICENSE",
+        "bytes": 4301,
+        "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
+        "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/fonts/noto-sans-sc/2.004/ccb496022356b7dd14d117538a472ae40feff8f6e8f3fe8bffc5616785d2f3f9/OFL.txt"
+      }
     }
   },
   "openfilm": {
@@ -192,5 +210,13 @@
     "bytes": 41612524,
     "sha256": "5254c8a04a735240ab10ec0a23aedc524cc0b49c37ca0990052f14d8c8a95571",
     "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/openfilm/0.3.0/5254c8a04a735240ab10ec0a23aedc524cc0b49c37ca0990052f14d8c8a95571/openfilm-toolkit.tgz"
+  },
+  "motion": {
+    "version": "0.4.0",
+    "integrity": "sha512-E1r5+mbmIsObyow1MtglFiMTyYQwDeLYMUH1pIxNFWDd3uveHj+m8vt/HS1C5GxLg3nKGRDceHpwPcHksv0vtg==",
+    "license": "MIT (huashu-motion 0.4.0, trimmed: no GSAP, no 豆子花叔 character, no model downloads); OFL-1.1 (Noto Sans SC)",
+    "bytes": 4409973,
+    "sha256": "8ef8cc4a9976d5128f7894a2f687796495c0613e457b882caf0c994c60d4bec7",
+    "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/motion/0.4.0/8ef8cc4a9976d5128f7894a2f687796495c0613e457b882caf0c994c60d4bec7/motion-toolkit.tgz"
   }
 }

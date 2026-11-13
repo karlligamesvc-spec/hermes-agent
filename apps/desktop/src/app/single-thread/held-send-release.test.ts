@@ -20,6 +20,7 @@ import {
   setMultiBotFlagForTest
 } from '@/store/single-thread-bots'
 
+import { type RequestGateway, singleThreadSend } from './composer-middleware'
 import { type HeldSendSubmit, releaseNextHeldSend, useHeldSendRelease, withdrawHeldSend } from './held-send-release'
 
 const { notices, requestComposerInsert } = vi.hoisted(() => ({
@@ -245,6 +246,56 @@ describe('hc-1146 a held message goes out once its thread can take it', () => {
 
     expect(sent).toEqual([])
     expect(requestComposerInsert).toHaveBeenCalledWith('/branch', { mode: 'block', target: 'main' })
+  })
+
+  // hc-1226: the single-thread middleware itself, with an engine that answers or fails the summary.
+  it.each([
+    ['carried out: it went out, and does not come back', [] as string[], true, []],
+    ['not carried out (the summary failed): back into the composer', ['session.compress'], false, ['/new']]
+  ])('a held /new %s', async (_label, fail, released, returned) => {
+    const compresses: unknown[] = []
+
+    const request = (async (method: string, params?: unknown) => {
+      if (method === 'session.compress') {
+        compresses.push(params)
+
+        if (fail.includes(method)) {
+          throw new Error('compress failed')
+        }
+
+        return { summary: { noop: true } }
+      }
+
+      return {}
+    }) as RequestGateway
+
+    const unregister = registry.register({
+      area: COMPOSER_AREAS.middleware,
+      data: {
+        handler: (draft: ComposerDraft) =>
+          singleThreadSend(
+            draft,
+            () => request,
+            () => 'default'
+          )
+      },
+      id: 'test-single-thread'
+    })
+
+    threadOpen()
+    holdSend('default', { text: '/new' })
+    const { sent, submit } = appSubmit()
+
+    try {
+      expect(await releaseNextHeldSend(submit)).toBe(released)
+    } finally {
+      unregister()
+    }
+
+    expect(compresses).toHaveLength(1)
+    expect(sent).toEqual([])
+    expect($heldSends.get()).toEqual([])
+    expect(requestComposerInsert.mock.calls.map(([text]) => text)).toEqual(returned)
   })
 
   it('withdrawn, it is not sent and its words go back into the composer', async () => {

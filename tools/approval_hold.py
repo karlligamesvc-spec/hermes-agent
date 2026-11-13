@@ -35,7 +35,7 @@ import os
 import threading
 from dataclasses import dataclass
 
-from tools import approval_context
+from tools import approval_context, approval_turn_grant
 
 PATTERN_KEY = "approval_hold:code"
 DESCRIPTION = "runs code or a script after a declined approval in this turn, so asking again"
@@ -118,6 +118,8 @@ def observe(session_key: str, result: dict, *, noun: str, target: str) -> None:
     if result.get("user_consent") is not False or not outcome:
         return  # pending, smart-guardian or unattended results are not a human's answer
     kind = "denied" if outcome == "denied" else "unanswered"
+    if kind == "denied":
+        approval_turn_grant.revoke(session_key)  # hc-1223: a refusal also ends 「本任务都允许」
     if kind == "unanswered" and outcome not in _UNANSWERED_OUTCOMES and not outcome.startswith("transport_"):
         return
     turn = None if _in_child() else approval_context._approval_turn_id.get()

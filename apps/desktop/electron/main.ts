@@ -111,7 +111,7 @@ import {
   normalizeStoredFeishu,
   parseFeishuCredentialsResponse
 } from './apex-feishu'
-import { buildGatewayRunArgs, imEntryStoreHasBinding, MESSAGING_GATEWAY_PROFILE } from './apex-gateway'
+import { buildGatewayRunArgs, GATEWAY_RUN_ENV, imEntryStoreHasBinding, MESSAGING_GATEWAY_PROFILE } from './apex-gateway'
 import { checkLocalVideoReadiness, probeLocalVideoTool } from './apex-hypit-readiness'
 import {
   buildImEntrySpawnEnv,
@@ -21587,11 +21587,11 @@ async function startMessagingGateway(profile) {
           // guarantee as the dashboard spawn.
           ...desktopFeishuSpawnEnv(),
           ...desktopImEntrySpawnEnv(),
-          // hc-604: an IM message handled here runs the SAME tools as the
-          // dashboard, so it needs the same platform credential — a fragment
-          // injected in only one of the two spawns is exactly how a capability
-          // ends up "works in the app, silently broken from 飞书".
+          // hc-604: an IM message handled here runs the SAME tools as the dashboard, so it needs the
+          // same platform credential — a fragment injected in only one of the two spawns is exactly
+          // how a capability ends up "works in the app, silently broken from 飞书".
           ...desktopPlatformToolSpawnEnv(),
+          ...GATEWAY_RUN_ENV, // hc-1217: its stops never broadcast to the home channel (apex-gateway.ts)
           TERMINAL_CWD: hermesCwd
         },
         shell: backend.shell,

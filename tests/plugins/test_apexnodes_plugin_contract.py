@@ -62,10 +62,12 @@ CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 # model_checked_against_served_catalog、hidden_picker_lets_the_assistant_pick(两条腿)。
 # v17(hc-1189):media_transcribe 有人声时另写一份原文读回文件 transcript_text_path(<stem>.txt),
 # 与同一次调用的 .docx、.segments.json 同名只差扩展名(transcript_readback_file,两条腿)。
-# v18(hc-1220):apexnodes-video-tools 加 find_music(内置配乐曲库),两条腿都走 /tools/v1/music/{pick,check};
+# v18(hc-1222):generate_video 接参考音频(reference_audio,只有 MiniMax H3 收),两条腿的端点族各加一个
+# 参考音频上传端点;三条新行为：带音频转成 ref、服务端不声明支持就不发、上传失败绝不改成不带音频。
+# v19(hc-1220):apexnodes-video-tools 加 find_music(内置配乐曲库),两条腿都走 /tools/v1/music/{pick,check};
 # 新行为 music_verified_cache:按 SHA-256 存进 tool-cache/music,字节对不上就报错、不留文件，签名链接不进结果。
-EXPECTED_CONTRACT_SHA256 = "5c717c388ecdf2483e973f90adcc040d4f145a7f8ceeec98c4fa0a48017f9c29"
-EXPECTED_CONTRACT_VERSION = 18
+EXPECTED_CONTRACT_SHA256 = "85b9bd1a849f9f88cc2cbf628ea016e7f494eafa2f14871508bfe6e42eaad5d6"
+EXPECTED_CONTRACT_VERSION = 19
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -481,7 +483,7 @@ def test_contract_covers_exactly_the_shared_tool_surface():
     assert contract_tools == {t for tools in CONTRACT["plugins"].values() for t in tools}
     # hc-563 冻结在 14;hc-600 有意加入四个洞察工具(contract_version 3)。这个数字是
     # 漂移绊线,只能与 contract_version 一起动 —— 与 cloud 侧同一断言保持一致。
-    assert len(contract_tools) == 23  # hc-1143 social_api (v14), hc-1136 video_breakdown (v15), hc-1220 find_music (v18)
+    assert len(contract_tools) == 23  # hc-1143 social_api (v14), hc-1136 video_breakdown (v15), hc-1220 find_music (v19)
     assert set(PROBES) == contract_tools
 
 
@@ -893,6 +895,81 @@ def _check_images_never_dropped_on_upload_failure(h, tool_name, _spec):
     assert not [c for c in calls if c.path == _GENERATE_PATHS[h.leg]], "never generated without the image"
 
 
+_AUDIO_REF = "media:" + "b" * 32 + "/ref_audio_1.mp3"
+_AUDIO_UPLOADED = "media:" + "e" * 32 + "/ref_audio_1.mp3"
+_AUDIO_UPLOAD_PATHS = {"legacy": "/media/reference-audio-upload", "gateway": "/tools/v1/media/reference-audio-upload"}
+
+
+def _audio_answers(h, *, supported: bool = True, upload: object = None):
+    """hc-1222: canned answers for a call with reference audio on this leg: the check (with
+    or without ``reference_audio.supported``) and the reference-audio upload."""
+
+    def canned(path: str):
+        if path.endswith("/check"):
+            section = {"configured": True, "serving": True, "legs": {}}
+            if supported:
+                section["reference_audio"] = {"supported": True}
+            return {"ok": True, "video": section} if h.leg == "gateway" else {"ok": True, **section}
+        if path == _AUDIO_UPLOAD_PATHS[h.leg]:
+            if upload is not None:
+                return upload
+            ref = {"audio_ref": _AUDIO_UPLOADED}
+            return {"ok": True, "data": ref} if h.leg == "gateway" else {"ok": True, **ref}
+        return type(h)._canned(path)
+
+    return canned
+
+
+def _audio_upload_error(h, status: int, message: str) -> Exception:
+    body = {"detail": {"code": "x", "message": message}}
+    path = _AUDIO_UPLOAD_PATHS[h.leg]
+    if h.leg == "legacy":
+        raw = io.BytesIO(json.dumps(body, ensure_ascii=False).encode("utf-8"))
+        return urllib.error.HTTPError(LEGACY_BASE + path, status, "error", {}, raw)
+    return _gateway_module()._error_from_response(_GatewayHttpResponse(status, body), path=path)
+
+
+def _local_voice(h) -> Path:
+    """text_to_speech's file on this computer: it goes up as bytes."""
+    clip = h.tmp_path / "audio_cache" / "tts_1.mp3"
+    clip.parent.mkdir(parents=True, exist_ok=True)
+    clip.write_bytes(b"ID3-local-voice")
+    return clip
+
+
+def _check_reference_audio_forwarded_as_refs(h, tool_name, _spec):
+    h._canned = _audio_answers(h)  # type: ignore[method-assign]
+    clip = _local_voice(h)
+    args = {"prompt": "x", "model": "MiniMax-H3", "reference_audio": [{"source": _AUDIO_REF}, {"source": f"MEDIA:{clip}"}]}
+    _result, calls = h.invoke(tool_name, args)
+    uploads = [c for c in calls if c.path == _AUDIO_UPLOAD_PATHS[h.leg]]
+    assert len(uploads) == 1 and b"ID3-local-voice" in _uploaded_bytes(uploads[0]), "the local clip goes up as bytes"
+    generate = [c for c in calls if c.path == _GENERATE_PATHS[h.leg]]
+    assert len(generate) == 1
+    assert generate[0].body["reference_audio"] == [{"ref": _AUDIO_REF}, {"ref": _AUDIO_UPLOADED}]
+    h._canned = type(h)._canned  # type: ignore[method-assign]
+    _result, plain_calls = h.invoke(tool_name, h.probe_args(tool_name))
+    plain = next(c for c in plain_calls if c.path == _GENERATE_PATHS[h.leg])
+    assert "reference_audio" not in plain.body
+
+
+def _check_reference_audio_requires_server_support(h, tool_name, _spec):
+    h._canned = _audio_answers(h, supported=False)  # type: ignore[method-assign]
+    result, calls = h.invoke(tool_name, {"prompt": "x", "reference_audio": [{"source": _AUDIO_REF}]})
+    h._canned = type(h)._canned  # type: ignore[method-assign]
+    assert "error" in result
+    assert all(c.method == "GET" for c in calls), "no upload and no generate call without confirmed support"
+
+
+def _check_reference_audio_never_dropped_on_upload_failure(h, tool_name, _spec):
+    h._canned = _audio_answers(h, upload=_audio_upload_error(h, 503, "上传通道不可用"))  # type: ignore[method-assign]
+    clip = _local_voice(h)
+    result, calls = h.invoke(tool_name, {"prompt": "x", "reference_audio": [{"source": str(clip)}]})
+    h._canned = type(h)._canned  # type: ignore[method-assign]
+    assert "error" in result and "上传通道不可用" in result["error"]
+    assert not [c for c in calls if c.path == _GENERATE_PATHS[h.leg]], "never generated without the voice"
+
+
 _VH_DIR = "media:" + "c" * 32
 _VH_JOB_PATHS = ("/tools/v1/video/highlights/", "/tools/v1/video/moments/", "/tools/v1/video/analysis/")
 
@@ -1157,6 +1234,10 @@ BEHAVIOR_CHECKS = {
     "images_forwarded_as_refs": _check_images_forwarded_as_refs,
     "images_require_server_support": _check_images_require_server_support,
     "images_never_dropped_on_upload_failure": _check_images_never_dropped_on_upload_failure,
+    # hc-1222: reference audio (both legs).
+    "reference_audio_forwarded_as_refs": _check_reference_audio_forwarded_as_refs,
+    "reference_audio_requires_server_support": _check_reference_audio_requires_server_support,
+    "reference_audio_never_dropped_on_upload_failure": _check_reference_audio_never_dropped_on_upload_failure,
     "submit_then_poll": _check_submit_then_poll,
     # hc-1054: long-video analysis.
     "source_or_job_id_required": _required_args_check({}),

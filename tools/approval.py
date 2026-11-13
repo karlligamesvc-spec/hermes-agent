@@ -21,7 +21,7 @@ from typing import Optional
 
 from utils import env_var_enabled, is_truthy_value
 from agent.i18n import t
-from tools import approval_context, approval_hold
+from tools import approval_context, approval_hold, approval_task_folder, approval_turn_grant
 from tools.approval_context import (
     _get_session_platform, _is_cron_approval_context,
     _is_gateway_approval_context, _is_interactive_cli, _is_single_query_approval_context,
@@ -39,6 +39,7 @@ from tools.approval_floors import (
 from tools.approval_gateway_wait import _await_gateway_decision
 from tools.approval_probe import is_probe_script
 from tools.approval_provenance import allowlisted_result, preapproved_result
+from tools.approval_readonly import is_readonly_script
 from tools.approval_prompt import _present_with_selected_transport, _transport_choice, prompt_dangerous_approval
 from tools.approval_smart import _smart_verdict
 
@@ -320,6 +321,7 @@ def clear_session(session_key: str) -> None:
         _launch_yolo_applied.discard(session_key)
         _pending.pop(session_key, None)
         approval_hold.clear(session_key)
+        approval_turn_grant.revoke(session_key)
         for entry in _gateway_queues.pop(session_key, []):
             # Cancel blocked waits now so the old run unwinds instead of idling until timeout;
             # the prompt was withdrawn, nobody denied it.
@@ -960,6 +962,8 @@ def _ask_human(spec: _GateSpec, *, command: str, description: str,
                 "pattern_keys": pattern_keys, "description": display_description,
                 "allow_permanent": not smart_denied,
                 "allow_session": not smart_denied,
+                # hc-1223: 「本任务都允许」, answered in tools.approval_gateway_wait (tools.approval_turn_grant).
+                **approval_turn_grant.offer(smart_denied=smart_denied),
             }
             if smart_denied:
                 data["smart_denied"] = True
@@ -1089,7 +1093,7 @@ def _run_approval_gate(
         return _approved()
     session_key = get_current_session_key()
     hold = approval_hold.active(session_key)
-    if hold is None and is_approved(session_key, pattern_key):
+    if (hold is None and is_approved(session_key, pattern_key)) or approval_turn_grant.active(session_key):
         return _approved()
     if hold is not None and hold.unanswered:
         return _hold_block(hold, pattern_key=pattern_key, description=description, noun="action")
@@ -1254,12 +1258,28 @@ def request_tool_approval(tool_name: str, reason: str, *, rule_key: str = "", ap
 
 # --- Combined pre-exec guard (floors + dangerous command detection) ------------------------------------------------
 
+def _task_folder_findings(command: str, findings: list[tuple[str, str]], *, env_type: str,
+                          cwd: str | None) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """``(findings left to ask about, findings set aside)`` once every delete inside the session's task
+    folder is set aside (hc-1223, :mod:`tools.approval_task_folder`): the rest of the command is
+    detected again on its own. Set-aside findings are returned only when nothing is left."""
+    if not findings or cwd is None:
+        return findings, []
+    residual = approval_task_folder.residual_command(command, start_dir=cwd, env_type=env_type)
+    if residual is None:
+        return findings, []
+    remaining = _command_findings(residual)
+    return remaining, ([] if remaining else findings)
+
+
 def check_all_command_guards(command: str, env_type: str,
                              approval_callback=None,
-                             has_host_access: bool = False) -> dict:
+                             has_host_access: bool = False, cwd: str | None = None) -> dict:
     """Run all pre-exec security checks and return a single approval decision. Plugins that
     want to veto or escalate a command do it from ``pre_tool_call``.
-    ``has_host_access``: a Docker sandbox with bind-mounted host paths takes the normal flow."""
+    ``has_host_access``: a Docker sandbox with bind-mounted host paths takes the normal flow.
+    ``cwd``: the folder the command starts in (the terminal tool's), which lets a delete inside the
+    session's task folder run without a prompt; without it every delete keeps the normal flow."""
     if _should_skip_container_guards(env_type, has_host_access=has_host_access):
         return _user_deny_block(command) or _approved()
 
@@ -1289,7 +1309,10 @@ def check_all_command_guards(command: str, env_type: str,
         return _approved()
 
     session_key = get_current_session_key()
-    findings = _command_findings(command)
+    findings, set_aside = _task_folder_findings(command, _command_findings(command), env_type=env_type, cwd=cwd)
+    # ApexNodes hc-1223: after 「本任务都允许」 the rest of the task runs without asking (tools.approval_turn_grant).
+    if approval_turn_grant.active(session_key):
+        return preapproved_result(findings, lambda _key: "task") if findings else _approved()
     # ApexNodes hc-1034: after a denied or unanswered approval this turn, dangerous commands and code
     # runs are held (tools.approval_hold). Unanswered: blocked at once. Denied: asked again, ignoring
     # session/permanent approvals and the smart guardian; a held code run that normally needs no
@@ -1300,6 +1323,8 @@ def check_all_command_guards(command: str, env_type: str,
     if hold is None:
         scopes = {key: _approval_scope(session_key, key) for key, _ in findings}
         pending = _pending_findings(findings, lambda key: scopes[key] is not None)
+        if pending is None and set_aside:
+            return preapproved_result(set_aside, lambda _key: "task_folder")
         if pending is None:
             return _approved_with_provenance(findings, scopes)
         keys, description = pending
@@ -1383,11 +1408,15 @@ def check_execute_code_guard(code: str, env_type: str, has_host_access: bool = F
     # on every execute_code call. Ask-mode still takes this path even with INTERACTIVE set (how gateway/smart tests
     # and messaging ask-mode drive whole-script approval); when that leaks into a CLI with no notify callback, the
     # engine falls through to the CLI Dangerous Command panel instead of a silent pending_approval.
-    # A read-only probe script (imports, prints, shutil.which; tools.approval_probe) needs no human (hc-1034).
-    # After a denied or unanswered approval this turn every other script is held, CLI included (tools.approval_hold).
-    if is_probe_script(code):
+    # A read-only probe script (imports, prints, shutil.which; tools.approval_probe) needs no human (hc-1034),
+    # nor does one that only reads files and computes (tools.approval_readonly, hc-1223); nor any script after
+    # 「本任务都允许」 in this task (tools.approval_turn_grant). After a denied or unanswered approval this turn
+    # every other script is held, CLI included (tools.approval_hold).
+    if is_probe_script(code) or is_readonly_script(code):
         return _approved()
     session_key = get_current_session_key()
+    if approval_turn_grant.active(session_key):
+        return _approved()
     hold = approval_hold.active(session_key)
     if hold is not None and (hold.unanswered or not (is_cli or is_gateway or is_ask)):
         return _hold_block(hold, pattern_key=pattern_key, description=description, noun="code")
@@ -1426,7 +1455,7 @@ def held_tool_call_error(tool_name: str, args: dict) -> str | None:
         target = approval_hold.code_tool_target(tool_name, args)
         session_key = get_current_session_key()
         hold = approval_hold.active(session_key) if target is not None else None
-        if hold is None:
+        if hold is None or approval_turn_grant.active(session_key):
             return None
         description = f"{tool_name} {approval_hold.DESCRIPTION}"
         approval_callback, is_cli, is_gateway, is_ask = _presence()

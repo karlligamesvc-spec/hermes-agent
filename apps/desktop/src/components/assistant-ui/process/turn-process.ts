@@ -10,6 +10,7 @@ import { runtimeTranslations, translateNow } from '@/i18n'
 import { chatcutStepKey, desktopOnlyStepCopy, memoryStepKey } from '@/i18n/desktop-only-steps'
 import type { StepCopy, StepFacts } from '@/i18n/types-process'
 import { connectorCalls } from '@/lib/connector-tools'
+import { isJianyingDraftCall } from '@/lib/jianying-draft'
 import { isOnboardingEnabled } from '@/lib/onboarding-enabled'
 import { skillDisplayName } from '@/lib/skill-display-name'
 import { firstStringField } from '@/lib/text'
@@ -182,7 +183,12 @@ export function processKind(part: TurnPart): 'activity' | 'card' | 'silent' {
     return 'card'
   }
 
-  if (isCardTool(toolName) || CONVERSATION_CARDS.has(toolName) || isAgentDelivery(part)) {
+  if (
+    isCardTool(toolName) ||
+    CONVERSATION_CARDS.has(toolName) ||
+    isAgentDelivery(part) ||
+    isJianyingDraftCall(toolName, part.args)
+  ) {
     return 'card'
   }
 
@@ -200,7 +206,10 @@ function isStepPart(part: TurnPart): boolean {
   const toolName = part.toolName ?? ''
 
   if (kind === 'card') {
-    return isCardTool(toolName) && !CONVERSATION_CARDS.has(toolName) && !connectorCalls(toolName, part.args).length
+    return (
+      isJianyingDraftCall(toolName, part.args) ||
+      (isCardTool(toolName) && !CONVERSATION_CARDS.has(toolName) && !connectorCalls(toolName, part.args).length)
+    )
   }
 
   return kind === 'activity'

@@ -8,7 +8,9 @@
  * - In the thread: a new local day, 6 idle hours or 「从头来」 first opens a new
  *   segment (session.compress: the runtime's own summary-and-rotate), then the
  *   message goes out. `/new` alone opens a segment and sends nothing — the
- *   thread never forks (the same guard Bot Mode puts on its canonical chat).
+ *   thread never forks (the same guard Bot Mode puts on its canonical chat);
+ *   the composer clears as for a sent message (hc-1226), and keeps `/new`
+ *   only when no segment could open.
  * - On the empty thread (no thread yet): the message goes out and the session
  *   it creates is claimed as the thread (titled {@link MAIN_THREAD_TITLE}).
  * - Anywhere else (an earlier conversation; the thread still being looked up,
@@ -27,7 +29,12 @@
 
 import { atom, computed } from 'nanostores'
 
-import { COMPOSER_SEND_TAKEN, type ComposerDraft, type ComposerMiddlewareResult } from '@/app/chat/composer/contrib'
+import {
+  COMPOSER_SEND_DONE,
+  COMPOSER_SEND_TAKEN,
+  type ComposerDraft,
+  type ComposerMiddlewareResult
+} from '@/app/chat/composer/contrib'
 import { SESSION_COMPRESS_TIMEOUT_MS } from '@/app/session/hooks/use-prompt-actions/slash'
 import { singleThreadChatCopyNow } from '@/i18n/single-thread-chat'
 import { holdSend } from '@/store/held-sends'
@@ -56,8 +63,21 @@ import {
 
 export type RequestGateway = <T>(method: string, params?: Record<string, unknown>, timeoutMs?: number) => Promise<T>
 
-/** Asked the summarizer when the user starts over: keep who they are and what is unfinished. */
-const RESTART_FOCUS = '用户要从头开始一个新话题：只留下关于用户的长期信息和还没做完的事，不必复述刚才的细节。'
+/**
+ * hc-1218: every new segment's summary is asked for with a focus that starts with this marker. The
+ * engine's segment-summary seam (apex_overlay/segment_summary.py `MARKER`, pinned by a test there)
+ * reads it as "this compression is a segment boundary": the summary then records what was done and
+ * what is still pending, not how, and opens with a line saying it is not this request's requirements.
+ * A compression without it (the context window filling mid-task) stays the runtime's own.
+ */
+export const SEGMENT_SUMMARY_MARKER = '【新的一段】'
+
+/** The focus each kind of new segment asks the summarizer for; the text after the marker is what an engine without the seam reads. */
+export const SEGMENT_FOCUS: Readonly<Record<SegmentReason, string>> = {
+  day: `${SEGMENT_SUMMARY_MARKER}只记以前做成了什么、还差什么，不记做法；用户自己说过的偏好照记。`,
+  idle: `${SEGMENT_SUMMARY_MARKER}只记以前做成了什么、还差什么，不记做法；用户自己说过的偏好照记。`,
+  restart: `${SEGMENT_SUMMARY_MARKER}用户要从头开始一个新话题：只留下关于用户的长期信息和还没做完的事，不记做法。`
+}
 
 /** How long a send waits for the rotation a new segment causes before it goes out anyway. */
 const ROTATION_WAIT_MS = 3_000
@@ -86,7 +106,11 @@ function waitForRotation(fromStoredId: string, timeoutMs: number): Promise<void>
   })
 }
 
-/** Open a new segment of the thread on screen. Resolves to whether the runtime compressed it. */
+/**
+ * Open a new segment of the thread on screen. Resolves to whether one opened (its line is drawn, whether or
+ * not the runtime had anything to fold yet); false when none did: a turn running, the thread not bound, or
+ * the summary failed.
+ */
 export async function startThreadSegment(request: RequestGateway, reason: SegmentReason): Promise<boolean> {
   const runtimeId = $activeSessionId.get()
   const storedId = $selectedStoredSessionId.get()
@@ -101,7 +125,7 @@ export async function startThreadSegment(request: RequestGateway, reason: Segmen
   try {
     const result = await request<CompressResult>(
       'session.compress',
-      { session_id: runtimeId, ...(reason === 'restart' ? { focus_topic: RESTART_FOCUS } : {}) },
+      { session_id: runtimeId, focus_topic: SEGMENT_FOCUS[reason] },
       SESSION_COMPRESS_TIMEOUT_MS
     )
 
@@ -113,7 +137,7 @@ export async function startThreadSegment(request: RequestGateway, reason: Segmen
       await waitForRotation(storedId, ROTATION_WAIT_MS)
     }
 
-    return rotated
+    return true
   } catch {
     // A failed summary must not cost the user their message: it goes out in the current segment.
     return false
@@ -283,10 +307,15 @@ export async function singleThreadSend(
   }
 
   if (isSlashNew(draft.text)) {
-    await startThreadSegment(gateway, 'restart')
+    // hc-1226: carried out, `/new` must not come back into the composer (sent again, it would fold the
+    // thread a second time); not carried out, it stays there to send again.
+    if (!(await startThreadSegment(gateway, 'restart'))) {
+      return refuse(copy.restartNotNow)
+    }
+
     notify({ kind: 'info', message: copy.restarted })
 
-    return null
+    return COMPOSER_SEND_DONE
   }
 
   const reason: null | SegmentReason = isRestartRequest(draft.text)

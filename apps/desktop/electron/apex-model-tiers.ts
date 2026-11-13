@@ -14,6 +14,7 @@
 
 import { applyChatcutSwitch, CHATCUT_ACTIVE_ENV } from './apex-chatcut'
 import { applyHypihubApexSwitch, HYPIHUB_APEX_ACTIVE_ENV } from './apex-hypihub'
+import { applyJianyingSwitch, JIANYING_ACTIVE_ENV } from './apex-jianying'
 import { applyMultiBotSwitch } from './apex-multi-bot'
 import { applyMultiBotHandoffSwitch, MULTI_BOT_HANDOFF_ACTIVE_ENV } from './apex-multi-bot-handoff'
 import { isMultiBotActive, MULTI_BOT_ACTIVE_ENV, SINGLE_ENGINE_ACTIVE_ENV } from './apex-profile-homes'
@@ -166,8 +167,8 @@ export function applyModelTierSwitches(
  *  tier switches above, hc-1015 single-thread (apex-single-thread.ts),
  *  APEX-hosted Hypit generation (apex-hypihub.ts), hc-1077 several
  *  assistants (apex-multi-bot.ts), hc-1166 one engine for them
- *  (apex-single-engine.ts), hc-1086 relay (apex-multi-bot-handoff.ts) and
- *  hc-1122 ChatCut (apex-chatcut.ts). */
+ *  (apex-single-engine.ts), hc-1086 relay (apex-multi-bot-handoff.ts),
+ *  hc-1122 ChatCut (apex-chatcut.ts) and hc-1219 剪映 drafts (apex-jianying.ts). */
 export function applyDesktopFeatureSwitches(
   env: Record<string, string | undefined>,
   clientConfigPayload: unknown,
@@ -180,8 +181,9 @@ export function applyDesktopFeatureSwitches(
   const singleEngine = applySingleEngineSwitch(env, clientConfigPayload, log) ? [SINGLE_ENGINE_ACTIVE_ENV] : []
   const handoff = applyMultiBotHandoffSwitch(env, clientConfigPayload, log) ? [MULTI_BOT_HANDOFF_ACTIVE_ENV] : []
   const chatcut = applyChatcutSwitch(env, clientConfigPayload, log) ? [CHATCUT_ACTIVE_ENV] : []
+  const jianying = applyJianyingSwitch(env, clientConfigPayload, log) ? [JIANYING_ACTIVE_ENV] : []
 
-  return [...set, ...singleThread, ...hosted, ...multiBot, ...singleEngine, ...handoff, ...chatcut]
+  return [...set, ...singleThread, ...hosted, ...multiBot, ...singleEngine, ...handoff, ...chatcut, ...jianying]
 }
 
 function trimTrailingSlash(value: string): string {

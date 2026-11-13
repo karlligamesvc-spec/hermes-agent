@@ -10,7 +10,8 @@
  * same for hc-1077's several assistants, APEXNODES_MULTI_BOT_SINGLE_ENGINE for
  * hc-1166's one engine for all of them, APEXNODES_MULTI_BOT_HANDOFF for
  * hc-1086's relay, APEXNODES_CAPABILITY_INTRO for hc-1108's first-open
- * capability intro, APEXNODES_CHATCUT for hc-1122's ChatCut). The payload itself stays as the
+ * capability intro, APEXNODES_CHATCUT for hc-1122's ChatCut, APEXNODES_JIANYING for hc-1219's
+ * 剪映 drafts). The payload itself stays as the
  * platform sent it; the switches ride beside it, so every other reader of
  * `desktop_features` is unaffected.
  */
@@ -22,7 +23,8 @@ export const DESKTOP_FEATURE_ENV: Readonly<Record<string, string>> = {
   multi_bot_single_engine: 'APEXNODES_MULTI_BOT_SINGLE_ENGINE',
   multi_bot_handoff: 'APEXNODES_MULTI_BOT_HANDOFF',
   capability_intro: 'APEXNODES_CAPABILITY_INTRO',
-  chatcut: 'APEXNODES_CHATCUT'
+  chatcut: 'APEXNODES_CHATCUT',
+  jianying: 'APEXNODES_JIANYING'
 }
 
 export interface ClientConfigStateLike {

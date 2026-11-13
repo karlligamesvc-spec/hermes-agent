@@ -4,6 +4,7 @@ import { registry } from '@/contrib/registry'
 
 import {
   COMPOSER_AREAS,
+  COMPOSER_SEND_DONE,
   COMPOSER_SEND_TAKEN,
   composerDraftFor,
   type ComposerMiddleware,
@@ -141,6 +142,43 @@ describe('hc-1146 the composer’s send through the chain (ChatBar onSubmit)', (
     expect(
       await submitThroughComposerMiddleware('hi', { fromQueue: true, storedSessionId: 'root' } as never, submit)
     ).toBe(false)
+    expect(calls).toEqual([])
+  })
+})
+
+// hc-1226: `/new` in the one thread used to cancel its send (null) after carrying it out, and a cancelled
+// send's words come back into the composer, so `/new` reappeared and a second send folded the thread again.
+describe('hc-1226 a middleware that carried a send out itself', () => {
+  const appSubmit = () => {
+    const calls: string[] = []
+
+    return { calls, submit: async (text: string) => (calls.push(text), true) }
+  }
+
+  it('stops the chain: nothing after it runs', async () => {
+    const later: string[] = []
+
+    addMiddleware('done', () => COMPOSER_SEND_DONE, 10)
+    addMiddleware('later', d => (later.push(d.text), d), 99)
+
+    expect(await runComposerMiddleware({ text: '/new' })).toBe(COMPOSER_SEND_DONE)
+    expect(later).toEqual([])
+  })
+
+  it('holds for a bound send too: nobody sends it later, so nothing its options carry is lost', async () => {
+    addMiddleware('done', () => COMPOSER_SEND_DONE)
+
+    expect(await runComposerMiddleware({ bound: true, text: '/new' })).toBe(COMPOSER_SEND_DONE)
+  })
+
+  it.each([
+    ['typed', { attachments: [], composerScope: 'root' }],
+    ['a queued entry (it leaves the queue)', { fromQueue: true, sessionId: 'rt', storedSessionId: 'root' }]
+  ] as const)('%s is accepted, so the composer clears, without the app’s submit', async (_label, options) => {
+    addMiddleware('done', () => COMPOSER_SEND_DONE)
+    const { calls, submit } = appSubmit()
+
+    expect(await submitThroughComposerMiddleware('/new', options as never, submit)).toBe(true)
     expect(calls).toEqual([])
   })
 })

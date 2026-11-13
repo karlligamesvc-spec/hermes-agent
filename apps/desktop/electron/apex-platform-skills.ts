@@ -37,6 +37,8 @@
  *     the line that asks for it (a build sending only `next-steps` gets it without).
  *     hc-1122: `chatcut` is added only while that switch is on: the server keeps the
  *     ChatCut skill out of every other manifest, so with it off the skill never arrives.
+ *     hc-1221: `motion` says the engine carries the motion toolkit; only such builds get the
+ *     explainer-video skill.
  *   401 → expired/absent JWT; treated as "nothing to sync" (installed set stands),
  *     and main's apex-cloud-login.ts asks the user to sign in again (hc-1073).
  *
@@ -68,7 +70,9 @@ function trimTrailingSlash(value) {
 // on and left out otherwise; a build without it gets the section minus that one rule line.
 // `openfilm` (hc-1178): this build can host the OpenFilm editor (openfilm-studio.ts). The server
 // sends the film-edit skill only to an account the editor is opened to (`openfilm_editor`).
-const PLATFORM_SKILLS_CAPS = 'next-steps,next-steps-handoff,openfilm'
+// `motion` (hc-1221): this build's engine carries the motion toolkit (`media_tools motion`), so the
+// server sends the explainer-video skill, whose renders run on it.
+const PLATFORM_SKILLS_CAPS = 'next-steps,next-steps-handoff,openfilm,motion'
 const CHATCUT_ACTIVE_ENV = 'APEX_CHATCUT_ACTIVE'
 
 /**

@@ -2,10 +2,10 @@
 
 The platform picks the track (``/tools/v1/music/pick`` in apex-nodes: the 制作设置 card's mood and the video's
 scene, the publish platform's test result, what this user already had) and signs a short-lived link to its
-loudness-normalised copy. This module downloads it once into ``HERMES_HOME/tool-cache/music/<sha256>.<ext>``,
-keeps it only when size and SHA-256 match, and answers the local file, the caption credit and the provenance
+loudness-normalised copy. This module downloads it once into ``tool_cache('music')/<sha256>.<ext>`` (the Hermes
+root's ``tool-cache``, hc-1230), keeps it only when size and SHA-256 match, and answers the local file, the caption credit and the provenance
 for ``music-provenance.json``. The link itself never reaches the result; a file that does not match is deleted.
-The cache is shared by every project on this computer: a track is downloaded once.
+The cache is shared by every project and every assistant on this computer: a track is downloaded once.
 
 Gateway leg (the Desktop default) through ``apexnodes_gateway``; legacy leg (``TOOLS_GATEWAY_DISABLED=1``) the
 ``/api/v1`` base, as the hosted copy (apex-nodes ``app/runtime_plugins/apexnodes-video-tools/music_tools.py``).
@@ -24,9 +24,9 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from hermes_constants import get_hermes_home
 from tools.registry import tool_error, tool_result
 
+from apex_overlay import media_tools
 from plugins import apexnodes_gateway as _gateway
 
 CHECK_PATH = "/tools/v1/music/check"
@@ -71,7 +71,8 @@ def _say(key: str, **fields: Any) -> str:
 
 
 def cache_dir() -> Path:
-    return Path(get_hermes_home()) / "tool-cache" / "music"
+    """One copy per computer: the root's, not the calling assistant's home (hc-1230)."""
+    return media_tools.tool_cache("music")
 
 
 # ── the two legs ───────────────────────────────────────────────────────────────

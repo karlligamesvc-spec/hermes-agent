@@ -163,11 +163,26 @@ def _docker_has_host_access(config: dict[str, Any]) -> bool:
 
 
 def _check_all_guards(command: str, env_type: str,
-                      has_host_access: bool = False) -> dict:
-    """Delegate to the consolidated command guard with the CLI callback."""
+                      has_host_access: bool = False, cwd: Optional[str] = None) -> dict:
+    """Delegate to the consolidated command guard with the CLI callback. ``cwd`` is the folder the
+    command starts in, for the task-folder delete rule (hc-1223); None keeps every delete gated."""
     return _check_all_guards_impl(command, env_type,
                                   approval_callback=_get_approval_callback(),
-                                  has_host_access=has_host_access)
+                                  has_host_access=has_host_access, cwd=cwd)
+
+
+def _prepared_guard_cwd(args: dict[str, Any], task_id: Optional[str], config: dict[str, Any]) -> Optional[str]:
+    """Where a batched command will most likely start, for the approval prepared ahead of it (hc-1223).
+
+    Earlier commands of the batch have not run yet, so this is the command's ``workdir`` or the
+    session's folder now. A delete that looks inside the task folder from here is not asked about
+    ahead of time; the run itself checks again from the folder it really starts in, because a
+    prepared approval that no person gave is never reused (``consume_prepared_guard``)."""
+    if config.get("env_type") != "local":
+        return None
+    from tools.approval import get_current_session_key
+    session_key = get_current_session_key(default="") or (task_id or "")
+    return args.get("workdir") or get_session_cwd(session_key) or config.get("cwd")
 
 
 from tools.environments.base import EnvironmentConnectionError
@@ -1111,13 +1126,14 @@ class _ApprovalVerdict:
     approved_run: bool = False
 
 
-def _run_approval_guards(command: str, env_type: str, config: dict[str, Any], *, force: bool) -> _ApprovalVerdict:
-    """Run the command guards; ``force`` skips them entirely.
+def _run_approval_guards(command: str, env_type: str, config: dict[str, Any], *, force: bool,
+                         cwd: Optional[str] = None) -> _ApprovalVerdict:
+    """Run the command guards; ``force`` skips them entirely. ``cwd``: where the command starts.
     Raises :class:`_Rejected` when the command may not run (denied, or pending
     gateway approval)."""
     if force:
         return _ApprovalVerdict(approved_run=True)
-    approval = _check_all_guards(command, env_type, has_host_access=_docker_has_host_access(config))
+    approval = _check_all_guards(command, env_type, has_host_access=_docker_has_host_access(config), cwd=cwd)
     if not approval["approved"]:
         if approval.get("status") == "pending_approval":  # gateway ask mode
             raise _Rejected(_error_json(
@@ -1561,8 +1577,12 @@ def terminal_tool(
                     status="error",
                 ))
             # Pre-exec security checks (floors + dangerous command detection);
-            # force=True means the user already confirmed.
-            verdict = _run_approval_guards(command, env_type, plan.config, force=force)
+            # force=True means the user already confirmed. The start folder lets a
+            # delete inside the session's task folder run without a prompt (hc-1223).
+            start_dir = _resolve_command_cwd(
+                workdir=workdir, default_cwd=cwd, session_key=session_key, env_type=env_type, env=env,
+            ) if env_type == "local" else None
+            verdict = _run_approval_guards(command, env_type, plan.config, force=force, cwd=start_dir)
 
             pty_disabled = pty and _command_requires_pipe_stdin(command)
             if plan.promoted_from_foreground_timeout is not None:

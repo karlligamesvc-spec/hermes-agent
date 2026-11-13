@@ -467,6 +467,8 @@ select = [
 
 [lint.per-file-ignores]
 "apps/desktop/electron/fixtures/**" = ["TID251"]
+# Third-party code kept as upstream wrote it (apex_overlay/vendor/README.md); a lint fix would be an unrecorded change.
+"apex_overlay/vendor/**" = ["ALL"]
 "pm/**" = ["TID251"]
 "tests/pm/**" = ["TID251"]
 

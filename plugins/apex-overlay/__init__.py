@@ -114,6 +114,12 @@ _TOOL_SEAMS = (
         "that chat; the chat then says so instead of promising it.",
     ),
     (
+        "desktop_quiet_quit",
+        "apex-overlay: hc-1217 Desktop quiet quit seam did not apply (see prior error). "
+        "Each time APEX Desktop quits, the owner's own Feishu chat (the home channel) is "
+        "told APEX is shutting down, also when nothing was running.",
+    ),
+    (
         "session_title",
         "apex-overlay: hc-1192 session title seam did not fully apply (see prior "
         "error). Session titles follow the language of the user's first message "
@@ -134,6 +140,12 @@ _TOOL_SEAMS = (
         "error). A folder handed over in Desktop (添加文件夹, a Finder drop or paste) "
         "that is outside the chat's working directory reaches the agent only as "
         "\"path is outside the allowed workspace\".",
+    ),
+    (
+        "segment_summary",
+        "apex-overlay: hc-1218 segment summary seam did not apply (see prior error). "
+        "In Desktop's one thread, the summary carried into a new day or after 「从头来」 "
+        "keeps the earlier task's approach, and a new task of the same kind may copy it.",
     ),
 )
 
@@ -240,6 +252,12 @@ _CONTEXT_SEAMS = (
         "prior warning). Asked which version it is, APEX may look up the "
         "open-source engine's releases, say it runs on Hermes Agent and offer "
         "to upgrade it, instead of naming the APEX version and how to update.",
+    ),
+    (
+        "jianying_draft",
+        "apex-overlay: hc-1219 剪映 draft seam did not register (see prior warning). "
+        "With desktop_features.jianying on, the agent cannot write the finished cut as a "
+        "剪映 draft, and never offers 「在剪映里接着剪」.",
     ),
     (
         "browser_login_prompt",

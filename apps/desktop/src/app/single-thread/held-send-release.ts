@@ -23,7 +23,7 @@
 
 import { type MutableRefObject, useEffect } from 'react'
 
-import { COMPOSER_SEND_TAKEN, runComposerMiddleware } from '@/app/chat/composer/contrib'
+import { COMPOSER_SEND_DONE, COMPOSER_SEND_TAKEN, runComposerMiddleware } from '@/app/chat/composer/contrib'
 import { requestComposerInsert } from '@/app/chat/composer/focus'
 import { singleThreadChatCopyNow } from '@/i18n/single-thread-chat'
 import { type ComposerAttachment, mainComposerScope } from '@/store/composer'
@@ -114,6 +114,11 @@ export async function releaseNextHeldSend(submit: HeldSendSubmit): Promise<boole
 
   try {
     const draft = await runComposerMiddleware({ text: next.text, attachments: [...next.attachments] })
+
+    // hc-1226: a command the middleware carried out (`/new`) went out; it does not come back.
+    if (draft === COMPOSER_SEND_DONE) {
+      return true
+    }
 
     // The thread started opening again in between: the middleware has held it once more.
     if (draft === COMPOSER_SEND_TAKEN) {

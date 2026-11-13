@@ -112,3 +112,31 @@ def test_the_pick_carries_only_what_the_caller_gave(monkeypatch):
     monkeypatch.setattr("urllib.request.urlopen", lambda *_a, **_k: _Body(AUDIO))
     music.run({"platform": " TikTok ", "mood": "light", "scene": "beat", "exclude": ["T36", " "], "duration_seconds": 0})
     assert sent == [{"platform": "tiktok", "mood": "light", "scene": "beat", "exclude": ["T36"]}]
+
+
+@pytest.mark.parametrize("scope", ["engine of its own", "scoped on one engine"])
+def test_every_assistant_on_this_computer_shares_one_downloaded_track(monkeypatch, tmp_path, scope):
+    """hc-1230: the track lands in the root's tool cache, not the calling assistant's home; the next assistant
+    reuses those bytes without a download."""
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+
+    root = tmp_path / "apexnodes"
+    monkeypatch.setattr(gateway, "request_json", lambda *_a, **_k: ANSWER)
+    downloads = []
+    monkeypatch.setattr("urllib.request.urlopen", lambda url, timeout=None: downloads.append(url) or _Body(AUDIO))
+    for name in ("apex-bot-2", "apex-bot-3"):
+        home = root / "profiles" / name
+        home.mkdir(parents=True)
+        if scope == "engine of its own":  # or a process the engine started for this assistant
+            monkeypatch.setenv("HERMES_HOME", str(home))
+            result = json.loads(music.run({"platform": "douyin", "mood": "warm"}))
+        else:  # the engine started as APEX runs this assistant's call in its scope
+            monkeypatch.setenv("HERMES_HOME", str(root))
+            token = set_hermes_home_override(str(home))
+            try:
+                result = json.loads(music.run({"platform": "douyin", "mood": "warm"}))
+            finally:
+                reset_hermes_home_override(token)
+        assert result["file"] == str(root / "tool-cache" / "music" / f"{SHA}.m4a")
+        assert not (home / "tool-cache").exists()
+    assert len(downloads) == 1

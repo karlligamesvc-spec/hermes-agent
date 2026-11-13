@@ -112,7 +112,8 @@ from the server environment. Ask before publishing.
 an agent works on a video.
 
 1. It downloads the locked archive from APEX COS, checks it, and unpacks it into
-   `HERMES_HOME/tool-cache/openfilm/<sha256>/`.
+   `tool-cache/openfilm/<sha256>/` under the Hermes root (`media_tools.tool_cache`): one install for APEX and
+   every assistant, which Desktop reads under its own home, the root (hc-1230).
 2. It makes sure the agent browser's Chromium is there.
 3. It writes `tool-cache/openfilm/ready.json`, which names both and the `sha256` it installed.
 
