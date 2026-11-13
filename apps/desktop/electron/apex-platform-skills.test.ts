@@ -52,7 +52,7 @@ const DOUYIN = {
 // ── URL building ────────────────────────────────────────────────────────────
 
 test('platformSkillsUrl: asks for the ChatCut skill only while that switch is on', () => {
-  const base = `https://x${PLATFORM_SKILLS_PATH}?caps=next-steps,next-steps-handoff,openfilm`
+  const base = `https://x${PLATFORM_SKILLS_PATH}?caps=next-steps,next-steps-handoff,openfilm,motion`
 
   assert.equal(platformSkillsUrl('https://x', undefined, {}), base)
   assert.equal(platformSkillsUrl('https://x', undefined, { APEX_CHATCUT_ACTIVE: '0' }), base)
@@ -62,7 +62,7 @@ test('platformSkillsUrl: asks for the ChatCut skill only while that switch is on
 test('platformSkillsUrl: always advertises caps, adds known_hash when held, trims slash + encodes', () => {
   // caps=next-steps: this build renders the 「下一步」 block, so the server includes the skill
   // section that asks for it (an older build without it never gets that section).
-  const caps = '?caps=next-steps,next-steps-handoff,openfilm'
+  const caps = '?caps=next-steps,next-steps-handoff,openfilm,motion'
   assert.equal(platformSkillsUrl('https://api.apex-nodes.com'), `https://api.apex-nodes.com${PLATFORM_SKILLS_PATH}${caps}`)
   assert.equal(platformSkillsUrl('https://api.apex-nodes.com/'), `https://api.apex-nodes.com${PLATFORM_SKILLS_PATH}${caps}`)
   assert.equal(
@@ -363,7 +363,7 @@ test('fetchPlatformSkills: success → parsed, forwards bearer + known_hash', as
 
   assert.equal(parsed.manifestHash, 'm1')
   assert.equal(seen.options.bearer, 'jwt-123')
-  assert.match(seen.url, /\?caps=next-steps,next-steps-handoff,openfilm&known_hash=prev$/)
+  assert.match(seen.url, /\?caps=next-steps,next-steps-handoff,openfilm,motion&known_hash=prev$/)
 })
 
 test('fetchPlatformSkills: fetch throws (e.g. 401) → null, fail-soft', async () => {

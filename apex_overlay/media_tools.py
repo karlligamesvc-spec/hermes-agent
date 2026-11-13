@@ -5,6 +5,8 @@ hc-1025: the same cache holds the one subtitle font Agents burn captions with
 YaHei are not cleared for commercial use, so subtitles never rely on them:
 ``python -m apex_overlay.media_tools font`` prints the verified font file, and
 ffmpeg loads it through ``subtitles=…:fontsdir=<its folder>`` or ``fontfile=``.
+hc-1224: ``font title`` gives the heavy face for titles and 花字, 思源黑体 Black (Noto Sans SC Black, OFL-1.1),
+with its OFL text beside it.
 """
 from __future__ import annotations
 
@@ -36,6 +38,24 @@ def _progress(step: str, done: int, total: int) -> None:
         print(f'{PROGRESS_MARK}{json.dumps({"step": step, "done": done, "total": total})}', flush=True)
 
 
+def tool_cache(kind: str) -> Path:
+    """Where APEX keeps the ``kind`` of tool it downloads from COS: ``<Hermes root>/tool-cache/<kind>`` (hc-1230).
+
+    One copy per computer, shared by every assistant. Desktop's assistants are profiles under the root
+    (``<root>/profiles/apex-bot-N``); the engine that hosts them scopes HERMES_HOME to the assistant of each call and
+    passes it to every process it starts. A cache under HERMES_HOME was therefore a new, empty one for each assistant
+    an account adds, and its first browser task, video or caption downloaded the browser, the toolkits and the font
+    again (about 430 MB). What is kept here is read-only once installed and named by its SHA-256, and each kind's
+    install lock and ready.json sit in its folder, so one install serves the root profile, every assistant and
+    Desktop (which reads ready.json under the root). The root is the one upstream's pm keeps its tools under
+    (``pm.environments.dependency_home_root``): the root of the call's scoped home, else the process's.
+    """
+    from hermes_constants import get_default_hermes_root, get_hermes_home_override
+    override = get_hermes_home_override()
+    root = get_default_hermes_root(home=override) if override else get_default_hermes_root()
+    return Path(root) / 'tool-cache' / kind
+
+
 def native_target() -> str:
     if os.name == 'nt':
         # Python 3.11's platform.machine() depends on inherited PROCESSOR_*
@@ -50,14 +70,13 @@ def native_target() -> str:
 
 def ensure_browser(*, render=False) -> Path:
     from filelock import FileLock
-    from hermes_constants import get_hermes_home
     target = native_target()
     spec = json.loads(LOCK.read_text())['browser'][f'render-{target}' if render and os.name == 'nt' else target]
     from urllib.parse import urlsplit
     url = urlsplit(spec['url'])
     if url.scheme != 'https' or url.hostname != COS_HOST:
         raise ValueError('Browser download must use APEX COS')
-    cache = Path(get_hermes_home()) / 'tool-cache' / 'chrome'
+    cache = tool_cache('chrome')
     cache.mkdir(parents=True, exist_ok=True)
     destination = cache / spec['sha256']
     executable = destination / spec['executable']
@@ -104,36 +123,47 @@ def ensure_browser(*, render=False) -> Path:
     return executable
 
 
+#: What ``font`` prints when it cannot give a font, one line the platform skill names (never a traceback).
+FONT_UNAVAILABLE = {'subtitle': 'APEX subtitle font unavailable', 'title': 'APEX title font unavailable'}
+
+
 def ensure_font(name: str = 'subtitle') -> Path:
-    """The licensed font ``name`` from desktop-lock, downloaded once from APEX COS and hash verified."""
+    """The licensed font ``name`` from desktop-lock, downloaded once from APEX COS and hash verified.
+
+    ``subtitle`` is 得意黑 (hc-1025); ``title`` is 思源黑体 Black (hc-1224). A font pinned with a ``licenseFile``
+    (its OFL text) gets that file in the same folder, installed first: the font is never there without it.
+    """
     from filelock import FileLock
-    from hermes_constants import get_hermes_home
     from urllib.parse import urlsplit
     spec = json.loads(LOCK.read_text(encoding='utf-8-sig'))['fonts'][name]
-    url = urlsplit(spec['url'])
-    if url.scheme != 'https' or url.hostname != COS_HOST:
-        raise ValueError('Font download must use APEX COS')
-    cache = Path(get_hermes_home()) / 'tool-cache' / 'fonts'
+    items = [spec['licenseFile'], spec] if 'licenseFile' in spec else [spec]
+    for item in items:
+        url = urlsplit(item['url'])
+        if url.scheme != 'https' or url.hostname != COS_HOST:
+            raise ValueError('Font download must use APEX COS')
+    cache = tool_cache('fonts')
     cache.mkdir(parents=True, exist_ok=True)
-    destination = cache / spec['sha256'] / spec['file']
+    folder = cache / spec['sha256']
     with FileLock(str(cache / 'install.lock'), timeout=600):
-        if destination.is_file():
-            with destination.open('rb') as cached:
-                if hashlib.file_digest(cached, 'sha256').hexdigest() == spec['sha256']:
-                    return destination
-        with tempfile.TemporaryDirectory(prefix='install-', dir=cache) as temporary:
-            download = Path(temporary) / spec['file']
-            digest, size = hashlib.sha256(), 0
-            with urllib.request.urlopen(spec['url'], timeout=120) as response, download.open('wb') as output:
-                while chunk := response.read(1024 * 1024):
-                    output.write(chunk)
-                    digest.update(chunk)
-                    size += len(chunk)
-            if size != spec['bytes'] or digest.hexdigest() != spec['sha256']:
-                raise ValueError('COS font checksum mismatch')
-            destination.parent.mkdir(exist_ok=True)
-            os.replace(download, destination)
-    return destination
+        for item in items:
+            destination = folder / item['file']
+            if destination.is_file():
+                with destination.open('rb') as cached:
+                    if hashlib.file_digest(cached, 'sha256').hexdigest() == item['sha256']:
+                        continue
+            with tempfile.TemporaryDirectory(prefix='install-', dir=cache) as temporary:
+                download = Path(temporary) / item['file']
+                digest, size = hashlib.sha256(), 0
+                with urllib.request.urlopen(item['url'], timeout=120) as response, download.open('wb') as output:
+                    while chunk := response.read(1024 * 1024):
+                        output.write(chunk)
+                        digest.update(chunk)
+                        size += len(chunk)
+                if size != item['bytes'] or digest.hexdigest() != item['sha256']:
+                    raise ValueError('COS font checksum mismatch')
+                folder.mkdir(exist_ok=True)
+                os.replace(download, destination)
+    return folder / spec['file']
 
 
 def openfilm_pin() -> dict:
@@ -150,20 +180,19 @@ def ensure_openfilm() -> Path:
     """APEX's OpenFilm toolkit (hc-1176), for the editor Desktop opens an Agent's film.html in.
 
     The toolkit (desktop-lock ``openfilm``: the pinned openfilm package with APEX's patches, and its dependencies) is
-    downloaded once from APEX COS, size and SHA-256 checked, and unpacked into HERMES_HOME/tool-cache/openfilm/<sha256>/.
+    downloaded once from APEX COS, size and SHA-256 checked, and unpacked into ``tool_cache('openfilm')/<sha256>/``.
     It draws in the Agent browser's Chromium (``ensure_browser(render=True)``), never in one it downloads itself.
     ``tool-cache/openfilm/ready.json`` is written last and names both: Desktop reads only that file, so it never sees
     a half-done install. Returns its path.
     """
     from filelock import FileLock
-    from hermes_constants import get_hermes_home
     from urllib.parse import urlsplit
     spec = openfilm_pin()
     url = urlsplit(spec['url'])
     if url.scheme != 'https' or url.hostname != COS_HOST:
         raise ValueError('OpenFilm toolkit download must use APEX COS')
     chromium = ensure_browser(render=True)
-    cache = Path(get_hermes_home()) / 'tool-cache' / 'openfilm'
+    cache = tool_cache('openfilm')
     cache.mkdir(parents=True, exist_ok=True)
     destination = cache / spec['sha256']
 
@@ -221,26 +250,24 @@ def openfilm_check() -> dict:
     """What the editor still needs on this computer, for Desktop's first-run check of the titlebar's 剪辑 (hc-1201).
 
     The browser Studio draws in and the toolkit this engine pins: whether each is installed, and its download's size;
-    and the free space where APEX keeps its data against what installing the missing ones takes. Reads only: it
+    and the free space where the tool cache is against what installing the missing ones takes. Reads only: it
     installs nothing (``ensure_openfilm`` does). The toolkit counts as installed only while ready.json names the
     pinned one and its files are there, as every reader of ready.json takes it.
     """
-    from hermes_constants import get_hermes_home
     lock = json.loads(LOCK.read_text(encoding='utf-8-sig'))
     target = native_target()
     browser = lock['browser'][f'render-{target}' if os.name == 'nt' else target]
     toolkit = openfilm_pin()
-    home = Path(get_hermes_home())
-    browser_ready = (home / 'tool-cache' / 'chrome' / browser['sha256'] / browser['executable']).is_file()
+    browser_ready = (tool_cache('chrome') / browser['sha256'] / browser['executable']).is_file()
     try:
-        said = json.loads((home / 'tool-cache' / 'openfilm' / 'ready.json').read_text(encoding='utf-8-sig'))
+        said = json.loads((tool_cache('openfilm') / 'ready.json').read_text(encoding='utf-8-sig'))
     except (OSError, ValueError):
         said = None
     toolkit_ready = (isinstance(said, dict) and said.get('sha256') == toolkit['sha256']
                      and (Path(str(said.get('toolkit', ''))) / 'node_modules/openfilm/studio/server/server.mjs').is_file()
                      and Path(str(said.get('chromium', ''))).is_file())
     missing = [part['bytes'] for part, ready in ((browser, browser_ready), (toolkit, toolkit_ready)) if not ready]
-    existing = home
+    existing = tool_cache('openfilm')
     while not existing.exists() and existing != existing.parent:
         existing = existing.parent
     return {
@@ -251,6 +278,122 @@ def openfilm_check() -> dict:
             'needed': sum(missing) * INSTALL_ROOM_FACTOR + (INSTALL_ROOM_MARGIN if missing else 0),
         },
     }
+
+
+def motion_pin() -> dict:
+    """desktop-lock's ``motion``: the huashu-motion toolkit this engine pins (hc-1221)."""
+    return json.loads(LOCK.read_text(encoding='utf-8-sig'))['motion']
+
+
+def ensure_motion() -> Path:
+    """APEX's motion toolkit (hc-1221): huashu-motion's renderer, trimmed (no GSAP, no model downloads), for the
+    explainer templates the ``explainer-video`` skill ships.
+
+    Downloaded once from APEX COS, size and SHA-256 checked, and unpacked whole into
+    ``tool_cache('motion')/<sha256>/`` (one copy for APEX and every assistant, hc-1230). It renders in the Agent browser's Chromium (``ensure_browser(render=True)``),
+    never in a browser of the user's. ``tool-cache/motion/ready.json`` is written last and names the toolkit, the
+    Chromium and the pin. Returns its path.
+    """
+    from filelock import FileLock
+    from urllib.parse import urlsplit
+    spec = motion_pin()
+    url = urlsplit(spec['url'])
+    if url.scheme != 'https' or url.hostname != COS_HOST:
+        raise ValueError('Motion toolkit download must use APEX COS')
+    chromium = ensure_browser(render=True)
+    cache = tool_cache('motion')
+    cache.mkdir(parents=True, exist_ok=True)
+    destination = cache / spec['sha256']
+
+    def installed(folder: Path) -> bool:
+        try:
+            manifest = json.loads((folder / 'apex-toolkit.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return False
+        return (manifest.get('package') == 'huashu-motion' and manifest.get('version') == spec['version']
+                and manifest.get('integrity') == spec['integrity'] and (folder / 'cli/om.js').is_file())
+
+    with FileLock(str(cache / 'install.lock'), timeout=1800):
+        if not installed(destination):
+            with tempfile.TemporaryDirectory(prefix='install-', dir=cache) as temporary:
+                temporary = Path(temporary)
+                archive = temporary / 'motion-toolkit.tgz'
+                digest, size = hashlib.sha256(), 0
+                with urllib.request.urlopen(spec['url'], timeout=120) as response, archive.open('wb') as output:
+                    while chunk := response.read(1024 * 1024):
+                        output.write(chunk)
+                        digest.update(chunk)
+                        size += len(chunk)
+                        _progress('motion', size, spec['bytes'])
+                if size != spec['bytes'] or digest.hexdigest() != spec['sha256']:
+                    raise ValueError('COS motion toolkit checksum mismatch')
+                unpacked = temporary / 'unpacked'
+                unpacked.mkdir()
+                tar = str(Path(os.environ.get('SystemRoot', 'C:/Windows')) / 'System32/tar.exe') if os.name == 'nt' else '/usr/bin/tar'
+                subprocess.run([tar, '-xzf', str(archive), '-C', str(unpacked)], stdin=subprocess.DEVNULL, check=True, timeout=300)
+                if not installed(unpacked):
+                    raise ValueError('COS motion toolkit archive is not the locked toolkit')
+                # A previous interrupted installation cannot leave a half-valid tree.
+                if destination.exists():
+                    shutil.rmtree(destination)
+                unpacked.rename(destination)
+        ready = cache / 'ready.json'
+        staged = cache / 'ready.json.tmp'
+        staged.write_text(json.dumps({
+            'schema': 1, 'version': spec['version'], 'sha256': spec['sha256'],
+            'toolkit': str(destination), 'chromium': str(chromium),
+        }, indent=2), encoding='utf-8')
+        os.replace(staged, ready)
+    return ready
+
+
+#: ``om`` commands the motion toolkit does not carry (hc-1221), and what an Agent uses instead.
+MOTION_NOT_CARRIED = {
+    'voice': 'APEX voices with text_to_speech and times captions with media_transcribe',
+    'samples': 'APEX has its own music library',
+    'learn': 'keep notes in the project folder',
+    'share': 'deliver the rendered film and the publish package',
+    'grab': 'use the browser tools to capture pages',
+    'new': "start from the explainer-video skill's template",
+    'templates': "start from the explainer-video skill's template",
+    'demo': "start from the explainer-video skill's template",
+    'studio': 'look at frames with `still` and the film with `qa --sheet`; the user watches the rendered film',
+    'inbox': 'look at frames with `still` and the film with `qa --sheet`; the user watches the rendered film',
+}
+
+#: One `om` run, render included (a 30-second 1080x1920 film renders in about 20 s on a laptop).
+MOTION_TIMEOUT = 1800
+
+
+def motion_node() -> str:
+    """The engine's bundled Node (huashu-motion needs 22+); PM's Node in a developer checkout. Never the user's
+    PATH copy: an older system Node would fail the render, and a user's tool must not run APEX's renders."""
+    bundled = ROOT / '.runtime/node' / ('node.exe' if platform.system() == 'Windows' else 'bin/node')
+    if bundled.is_file():
+        return str(bundled)
+    from hermes_constants import find_node_executable
+    found = find_node_executable('node')
+    if not found:
+        raise ValueError('no Node runtime found for the motion toolkit')
+    return found
+
+
+def run_motion(args: list[str]) -> int:
+    """``motion <om command> …``: run the pinned toolkit's ``om`` in the Agent browser's Chromium."""
+    if args and args[0] in MOTION_NOT_CARRIED:
+        print(f'APEX motion: `{args[0]}` is not part of APEX\'s motion toolkit; {MOTION_NOT_CARRIED[args[0]]}.', flush=True)
+        return 2
+    ready = json.loads(ensure_motion().read_text(encoding='utf-8'))
+    env = dict(os.environ, OM_CHROME=ready['chromium'])
+    bundled = ROOT / '.runtime/bin'
+    if bundled.is_dir():  # the bundled ffmpeg/ffprobe render and mix
+        env['PATH'] = os.pathsep.join([str(bundled), env.get('PATH', '')])
+    try:
+        return subprocess.run([motion_node(), str(Path(ready['toolkit']) / 'cli/om.js'), *args], env=env,
+                              stdin=subprocess.DEVNULL, timeout=MOTION_TIMEOUT, check=False).returncode
+    except subprocess.TimeoutExpired:
+        print(f'APEX motion: `{" ".join(args[:1])}` did not finish within {MOTION_TIMEOUT // 60} minutes.', flush=True)
+        return 124
 
 
 def _bundled_hypit_version() -> str:
@@ -348,12 +491,21 @@ def apply() -> bool:
 
 
 if __name__ == '__main__':
+    import sys
+    if sys.argv[1:2] == ['motion']:  # hc-1221: everything after `motion` belongs to `om`
+        try:
+            raise SystemExit(run_motion(sys.argv[2:]))
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:  # the Agent relays this line
+            raise SystemExit(f'APEX motion toolkit unavailable: {type(exc).__name__}: {exc}') from None
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['browser', 'prepare-hypit', 'enable-hosted-hypit', 'font', 'openfilm',
-                                            'openfilm-check'])
+                                            'openfilm-check', 'motion'])
     parser.add_argument('--workspace', '--project', type=Path, default=Path.cwd())
     parser.add_argument('--hypit-version')
+    parser.add_argument('name', nargs='?', help='font: which pinned font, subtitle (the default) or title (hc-1224)')
     args = parser.parse_args()
+    if args.name is not None and args.command != 'font':  # only `font` takes a name
+        parser.error(f'unrecognized arguments: {args.name}')
     if args.command == 'openfilm-check':  # hc-1201: Desktop's first-run check of the editor; reads only
         try:
             print(json.dumps(openfilm_check()))
@@ -366,10 +518,12 @@ if __name__ == '__main__':
         except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:  # Desktop retries later; one line, no traceback
             raise SystemExit(f'APEX OpenFilm toolkit unavailable: {type(exc).__name__}: {exc}') from None
     elif args.command == 'font':
+        name = args.name or 'subtitle'
         try:
-            print(ensure_font())
+            print(ensure_font(name))
         except (OSError, ValueError, KeyError) as exc:  # the Agent relays this line instead of a traceback
-            raise SystemExit(f'APEX subtitle font unavailable: {type(exc).__name__}: {exc}') from None
+            unavailable = FONT_UNAVAILABLE.get(name, f'APEX font {name!r} unavailable')
+            raise SystemExit(f'{unavailable}: {type(exc).__name__}: {exc}') from None
     elif args.command == 'enable-hosted-hypit':
         try:
             print(enable_hosted_hypit(args.workspace, args.hypit_version))
