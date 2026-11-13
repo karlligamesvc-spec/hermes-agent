@@ -223,13 +223,15 @@ def test_the_pinned_toolkit_is_used_as_installed(tmp_path, monkeypatch, capsys, 
 
 
 def test_a_pin_that_does_not_read_counts_no_toolkit(tmp_path, monkeypatch):
+    monkeypatch.setenv('HERMES_HOME', str(tmp_path))
     _ready(tmp_path)
+    assert film_project.ready_toolkit() is not None, 'read with the engine lock, the toolkit is there'
     from apex_overlay import media_tools
     missing = tmp_path / 'no-lock.json'
     monkeypatch.setattr(media_tools, 'LOCK', missing)
-    assert film_project.ready_toolkit(tmp_path) is None
+    assert film_project.ready_toolkit() is None
     missing.write_text(json.dumps({'browser': {}}))
-    assert film_project.ready_toolkit(tmp_path) is None
+    assert film_project.ready_toolkit() is None
 
 
 def test_desktop_reads_the_same_pin_and_compares_the_same_field():

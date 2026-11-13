@@ -36,6 +36,24 @@ def _progress(step: str, done: int, total: int) -> None:
         print(f'{PROGRESS_MARK}{json.dumps({"step": step, "done": done, "total": total})}', flush=True)
 
 
+def tool_cache(kind: str) -> Path:
+    """Where APEX keeps the ``kind`` of tool it downloads from COS: ``<Hermes root>/tool-cache/<kind>`` (hc-1230).
+
+    One copy per computer, shared by every assistant. Desktop's assistants are profiles under the root
+    (``<root>/profiles/apex-bot-N``); the engine that hosts them scopes HERMES_HOME to the assistant of each call and
+    passes it to every process it starts. A cache under HERMES_HOME was therefore a new, empty one for each assistant
+    an account adds, and its first browser task, video or caption downloaded the browser, the toolkits and the font
+    again (about 430 MB). What is kept here is read-only once installed and named by its SHA-256, and each kind's
+    install lock and ready.json sit in its folder, so one install serves the root profile, every assistant and
+    Desktop (which reads ready.json under the root). The root is the one upstream's pm keeps its tools under
+    (``pm.environments.dependency_home_root``): the root of the call's scoped home, else the process's.
+    """
+    from hermes_constants import get_default_hermes_root, get_hermes_home_override
+    override = get_hermes_home_override()
+    root = get_default_hermes_root(home=override) if override else get_default_hermes_root()
+    return Path(root) / 'tool-cache' / kind
+
+
 def native_target() -> str:
     if os.name == 'nt':
         # Python 3.11's platform.machine() depends on inherited PROCESSOR_*
@@ -50,14 +68,13 @@ def native_target() -> str:
 
 def ensure_browser(*, render=False) -> Path:
     from filelock import FileLock
-    from hermes_constants import get_hermes_home
     target = native_target()
     spec = json.loads(LOCK.read_text())['browser'][f'render-{target}' if render and os.name == 'nt' else target]
     from urllib.parse import urlsplit
     url = urlsplit(spec['url'])
     if url.scheme != 'https' or url.hostname != COS_HOST:
         raise ValueError('Browser download must use APEX COS')
-    cache = Path(get_hermes_home()) / 'tool-cache' / 'chrome'
+    cache = tool_cache('chrome')
     cache.mkdir(parents=True, exist_ok=True)
     destination = cache / spec['sha256']
     executable = destination / spec['executable']
@@ -107,13 +124,12 @@ def ensure_browser(*, render=False) -> Path:
 def ensure_font(name: str = 'subtitle') -> Path:
     """The licensed font ``name`` from desktop-lock, downloaded once from APEX COS and hash verified."""
     from filelock import FileLock
-    from hermes_constants import get_hermes_home
     from urllib.parse import urlsplit
     spec = json.loads(LOCK.read_text(encoding='utf-8-sig'))['fonts'][name]
     url = urlsplit(spec['url'])
     if url.scheme != 'https' or url.hostname != COS_HOST:
         raise ValueError('Font download must use APEX COS')
-    cache = Path(get_hermes_home()) / 'tool-cache' / 'fonts'
+    cache = tool_cache('fonts')
     cache.mkdir(parents=True, exist_ok=True)
     destination = cache / spec['sha256'] / spec['file']
     with FileLock(str(cache / 'install.lock'), timeout=600):
@@ -150,20 +166,19 @@ def ensure_openfilm() -> Path:
     """APEX's OpenFilm toolkit (hc-1176), for the editor Desktop opens an Agent's film.html in.
 
     The toolkit (desktop-lock ``openfilm``: the pinned openfilm package with APEX's patches, and its dependencies) is
-    downloaded once from APEX COS, size and SHA-256 checked, and unpacked into HERMES_HOME/tool-cache/openfilm/<sha256>/.
+    downloaded once from APEX COS, size and SHA-256 checked, and unpacked into ``tool_cache('openfilm')/<sha256>/``.
     It draws in the Agent browser's Chromium (``ensure_browser(render=True)``), never in one it downloads itself.
     ``tool-cache/openfilm/ready.json`` is written last and names both: Desktop reads only that file, so it never sees
     a half-done install. Returns its path.
     """
     from filelock import FileLock
-    from hermes_constants import get_hermes_home
     from urllib.parse import urlsplit
     spec = openfilm_pin()
     url = urlsplit(spec['url'])
     if url.scheme != 'https' or url.hostname != COS_HOST:
         raise ValueError('OpenFilm toolkit download must use APEX COS')
     chromium = ensure_browser(render=True)
-    cache = Path(get_hermes_home()) / 'tool-cache' / 'openfilm'
+    cache = tool_cache('openfilm')
     cache.mkdir(parents=True, exist_ok=True)
     destination = cache / spec['sha256']
 
@@ -221,26 +236,24 @@ def openfilm_check() -> dict:
     """What the editor still needs on this computer, for Desktop's first-run check of the titlebar's 剪辑 (hc-1201).
 
     The browser Studio draws in and the toolkit this engine pins: whether each is installed, and its download's size;
-    and the free space where APEX keeps its data against what installing the missing ones takes. Reads only: it
+    and the free space where the tool cache is against what installing the missing ones takes. Reads only: it
     installs nothing (``ensure_openfilm`` does). The toolkit counts as installed only while ready.json names the
     pinned one and its files are there, as every reader of ready.json takes it.
     """
-    from hermes_constants import get_hermes_home
     lock = json.loads(LOCK.read_text(encoding='utf-8-sig'))
     target = native_target()
     browser = lock['browser'][f'render-{target}' if os.name == 'nt' else target]
     toolkit = openfilm_pin()
-    home = Path(get_hermes_home())
-    browser_ready = (home / 'tool-cache' / 'chrome' / browser['sha256'] / browser['executable']).is_file()
+    browser_ready = (tool_cache('chrome') / browser['sha256'] / browser['executable']).is_file()
     try:
-        said = json.loads((home / 'tool-cache' / 'openfilm' / 'ready.json').read_text(encoding='utf-8-sig'))
+        said = json.loads((tool_cache('openfilm') / 'ready.json').read_text(encoding='utf-8-sig'))
     except (OSError, ValueError):
         said = None
     toolkit_ready = (isinstance(said, dict) and said.get('sha256') == toolkit['sha256']
                      and (Path(str(said.get('toolkit', ''))) / 'node_modules/openfilm/studio/server/server.mjs').is_file()
                      and Path(str(said.get('chromium', ''))).is_file())
     missing = [part['bytes'] for part, ready in ((browser, browser_ready), (toolkit, toolkit_ready)) if not ready]
-    existing = home
+    existing = tool_cache('openfilm')
     while not existing.exists() and existing != existing.parent:
         existing = existing.parent
     return {

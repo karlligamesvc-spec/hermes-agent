@@ -80,14 +80,15 @@ def _hermes_home() -> Path:
     return Path(get_hermes_home())
 
 
-def ready_toolkit(home: Path) -> dict | None:
+def ready_toolkit() -> dict | None:
     """The toolkit the engine installed, as its ready.json names it, while its files are there and it is the toolkit
     this engine pins (hc-1199: after an APEX update that moves the pin, ready.json still names the old one until
-    ``ensure_openfilm`` installs the new one)."""
+    ``ensure_openfilm`` installs the new one). The one in the shared tool cache, whichever assistant installed it
+    (hc-1230)."""
     from apex_overlay import media_tools
 
     try:
-        said = json.loads((home / 'tool-cache' / 'openfilm' / 'ready.json').read_text(encoding='utf-8-sig'))
+        said = json.loads((media_tools.tool_cache('openfilm') / 'ready.json').read_text(encoding='utf-8-sig'))
         pinned = media_tools.openfilm_pin()['sha256']
     except (OSError, ValueError, KeyError, TypeError):
         return None
@@ -363,7 +364,7 @@ def main(argv=None) -> int:
 
     if args.command in {'status', 'env'}:
         home = _hermes_home()
-        ready = ready_toolkit(home)
+        ready = ready_toolkit()
         on = editor_on()
         if args.command == 'status':
             print(json.dumps({'on': on, 'ready': ready is not None}))
@@ -378,7 +379,7 @@ def main(argv=None) -> int:
             except (OSError, ValueError, KeyError) as exc:  # one line for the Agent, no traceback
                 print(f'APEX OpenFilm toolkit unavailable: {type(exc).__name__}: {exc}', file=sys.stderr)
                 return 1
-            ready = ready_toolkit(home)
+            ready = ready_toolkit()
             if ready is None:
                 print('APEX OpenFilm toolkit unavailable: its install names no usable toolkit', file=sys.stderr)
                 return 1
