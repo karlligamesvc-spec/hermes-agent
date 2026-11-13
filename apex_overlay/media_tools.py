@@ -276,19 +276,18 @@ def ensure_motion() -> Path:
     explainer templates the ``explainer-video`` skill ships.
 
     Downloaded once from APEX COS, size and SHA-256 checked, and unpacked whole into
-    HERMES_HOME/tool-cache/motion/<sha256>/. It renders in the Agent browser's Chromium (``ensure_browser(render=True)``),
+    ``tool_cache('motion')/<sha256>/`` (one copy for APEX and every assistant, hc-1230). It renders in the Agent browser's Chromium (``ensure_browser(render=True)``),
     never in a browser of the user's. ``tool-cache/motion/ready.json`` is written last and names the toolkit, the
     Chromium and the pin. Returns its path.
     """
     from filelock import FileLock
-    from hermes_constants import get_hermes_home
     from urllib.parse import urlsplit
     spec = motion_pin()
     url = urlsplit(spec['url'])
     if url.scheme != 'https' or url.hostname != COS_HOST:
         raise ValueError('Motion toolkit download must use APEX COS')
     chromium = ensure_browser(render=True)
-    cache = Path(get_hermes_home()) / 'tool-cache' / 'motion'
+    cache = tool_cache('motion')
     cache.mkdir(parents=True, exist_ok=True)
     destination = cache / spec['sha256']
 
