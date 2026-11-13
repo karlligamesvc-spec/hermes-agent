@@ -43,6 +43,11 @@ try:  # hc-1054: long-video analysis (video_highlights, video_moment_search); ne
 except ImportError:  # pragma: no cover - a bare copy without it keeps generate_video
     _analysis = None  # type: ignore[assignment]
 
+try:  # hc-1222: the voice clip MiniMax H3 speaks (reference_audio); needs the gateway client.
+    from plugins import apexnodes_reference_audio as _reference_audio
+except ImportError:  # pragma: no cover - a bare copy without it refuses reference_audio
+    _reference_audio = None  # type: ignore[assignment]
+
 
 def _use_gateway() -> bool:
     return _gateway is not None and _gateway.use_gateway()
@@ -183,7 +188,8 @@ def _leg_health() -> dict[str, Any] | None:
 GENERATE_VIDEO_SCHEMA = {
     "name": "generate_video",
     "description": (
-        "Generate a short video from a text prompt (and optional input images) through the platform video service. "
+        "Generate a short video from a text prompt (optional input images; on MiniMax-H3 also a voice clip the "
+        "person speaks) through the platform video service. "
         "Use only when the user explicitly asks to 生成视频/做个视频/做条短视频/文生视频/把这段文案做成视频. "
         "Rendering takes a while; tell the user it is being generated and wait for the result. "
         "Returns video_url/video_path/media_tag and last_frame_ref (the clip's last frame, to start the "
@@ -267,6 +273,21 @@ GENERATE_VIDEO_SCHEMA = {
                     "required": ["source", "role"],
                 },
             },
+            # hc-1222: the voice clip (apexnodes_reference_audio); the hosted schema says the same.
+            "reference_audio": {
+                "type": "array",
+                "maxItems": 3,
+                "description": (
+                    "Optional voice for the person in the clip (MiniMax-H3 only): pass text_to_speech's audio "
+                    "and they speak exactly that voiceover, lip-synced, at its pace. source: text_to_speech's "
+                    "file_path (or an audio_ref, a local MP3/WAV, an audio link). MP3 or WAV, 2-15 s a clip, at "
+                    "most 3 clips and 15 s in all: one sentence group per clip, one call per line of up to 15 s; "
+                    "a longer script is several calls. Use with model=\"MiniMax-H3\"; the person's photo goes in "
+                    "images with role=reference (never first_frame/last_frame beside audio). Leave seconds empty: "
+                    "the clip runs as long as the audio. Quote the same words in the prompt as what they say."
+                ),
+                "items": {"type": "object", "properties": {"source": {"type": "string"}}, "required": ["source"]},
+            },
             "rights_confirmed": {
                 "type": "boolean",
                 "description": (
@@ -299,6 +320,22 @@ def _input_images(args: dict, *, with_roles: bool) -> list[dict[str, str]]:
         takes_images=lambda: _gateway.takes_input_images(_leg_health()),
         upload=upload,
         server_paths=not _use_gateway(),
+    )
+
+
+def _reference_audio_clips(args: dict, section: dict[str, Any] | None) -> list[dict[str, str]]:
+    """hc-1222: the call's reference audio, on this leg (apexnodes_reference_audio); ``[]`` without any."""
+    if _reference_audio is None:
+        if args.get("reference_audio"):
+            raise RuntimeError("这个客户端缺少平台网关模块，不能带参考音频生成，请更新客户端。")
+        return []
+    if _use_gateway():
+        upload = _reference_audio.upload_reference_audio
+    else:
+        def upload(data: bytes, filename: str, index: int) -> str:
+            return _reference_audio.legacy_upload_reference_audio(_api_base(), data, filename, index)
+    return _reference_audio.reference_audio(
+        args.get("reference_audio"), section=section, upload=upload, server_paths=not _use_gateway()
     )
 
 
@@ -404,6 +441,7 @@ def _handle_generate_video(args: dict, **_kwargs) -> str:
         return tool_error(unavailable)
     try:
         images = _input_images(args, with_roles=True)
+        audio = _reference_audio_clips(args, section)
     except RuntimeError as exc:
         return tool_error(_say("media_failed", "视频生成失败: {reason}", reason=exc))
     payload = {
@@ -420,10 +458,14 @@ def _handle_generate_video(args: dict, **_kwargs) -> str:
         # A text-only call sends exactly what it did before input images existed.
         payload["images"] = images
         payload["rights_confirmed"] = args.get("rights_confirmed") is True
+    if audio:
+        payload["reference_audio"] = audio
     if _use_gateway():
-        # The call as the agent made it (before input images are uploaded): an identical
+        # The call as the agent made it (before input images and audio are uploaded): an identical
         # call after one whose end never arrived gets that job's clip back.
         call_args = {**payload, "images": args.get("images"), "rights_confirmed": args.get("rights_confirmed") is True}
+        if audio:
+            call_args["reference_audio"] = args.get("reference_audio")
         try:
             response = _gateway.generate_video(payload, call_args=call_args, timeout=_VIDEO_REQUEST_TIMEOUT)
         except _gateway.GatewayError as exc:
