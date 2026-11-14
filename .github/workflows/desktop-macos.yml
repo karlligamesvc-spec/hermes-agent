@@ -307,6 +307,26 @@ jobs:
           test -n "$APP"
           node scripts/assert-macos-package-arch.mjs "$APP" "$EXPECTED_ARCH"
 
+      # hc-1233: Node 24 and later need macOS 13.5, and the engine runs Node 26 from 0.18.0 on, while the app
+      # still declared Electron's default of 12.0: an older Mac would have updated into an engine that cannot
+      # start. The app's floor (package.json build.mac.minimumSystemVersion, written to Info.plist) must cover
+      # every Mach-O the installer carries, the engine archive included.
+      - name: Assert every bundled binary runs on the declared minimum macOS
+        working-directory: apps/desktop
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          APP="$(find release/mac* -maxdepth 1 -name '*.app' | head -1)"
+          test -n "$APP"
+          ARCHIVE="$(find "$APP/Contents/Resources/bundled-runtime" -maxdepth 1 -name 'runtime-bundle-*.tar.gz' | head -1)"
+          test -n "$ARCHIVE"
+          ENGINE="$RUNNER_TEMP/minimum-macos-engine"
+          rm -rf "$ENGINE" && mkdir -p "$ENGINE"
+          tar -xzf "$ARCHIVE" -C "$ENGINE"
+          node scripts/macos-minimum-system.mjs assert --arch "$EXPECTED_ARCH" "$APP" "$ENGINE"
+          rm -rf "$ENGINE"
+
       - name: Gatekeeper assessment (fails if not notarized)
         working-directory: apps/desktop
         run: |
@@ -314,6 +334,14 @@ jobs:
           APP="$(find release/mac* -maxdepth 1 -name '*.app' | head -1)"
           codesign -dv --verbose=2 "$APP" 2>&1 | grep -E "Authority=Developer ID|TeamIdentifier"
           spctl --assess --type execute -v "$APP"
+
+      # hc-1233: electron-builder writes the floor into Info.plist only. The installed shell's electron-updater
+      # skips a feed whose minimumSystemVersion (a Darwin version, compared with os.release()) is above its Mac,
+      # so an older Mac keeps its version instead of downloading one it cannot run. Stamped before the artifact
+      # upload, because a promotion publishes the candidate's feed as it is.
+      - name: Stamp the updater feed with the minimum macOS
+        working-directory: apps/desktop
+        run: node scripts/macos-minimum-system.mjs stamp release/latest-mac.yml
 
       - name: List build output
         if: always()

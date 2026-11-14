@@ -121,6 +121,9 @@ CASES = {
         _lanes(python=True, scan=True, deps=True, uv_lock=True, desktop_updater=True, docker=True, nix=True, e2e_upgrade=True),
     ),
     "uv.lock → python": (["uv.lock"], _lanes(python=True, uv_lock=True, docker=True, nix=True, e2e_upgrade=True)),
+    # The Desktop bundle stages the Node pm/lock.json pins; the JS release gates check
+    # it against the root engines and the app's minimum macOS (hc-1233).
+    "engine pins → frontend": (["pm/lock.json"], _lanes(python=True, frontend=True, e2e_upgrade=True, docker=True)),
     "ts package → frontend": (["apps/desktop/src/app.tsx"], _lanes(frontend=True)),
     "ui-tui → frontend": (["ui-tui/src/entry.ts"], _lanes(frontend=True)),
     # Lockfile bump shifts every TS package's tree, but not the Python suite.
