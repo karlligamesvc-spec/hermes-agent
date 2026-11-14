@@ -105,6 +105,9 @@ _FRONTEND_FILES = {
     "scripts/build-runtime-bundle.mjs",
     "scripts/mac-runtime-payload.mjs",
     "scripts/runtime-bundle-offline-smoke.mjs",
+    # The engine's pins: a Desktop bundle stages exactly its Node, which the release
+    # gates hold to the root engines and to the app's minimum macOS (hc-1233).
+    "pm/lock.json",
 }
 # The WhatsApp bridge's ``node --test`` suites run in the JS & TS job, so a
 # change to the bridge or to the Python adapter that speaks its protocol

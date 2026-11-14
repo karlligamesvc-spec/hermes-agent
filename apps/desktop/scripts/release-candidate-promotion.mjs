@@ -4,6 +4,8 @@ import { appendFileSync, createReadStream, lstatSync, readdirSync, readFileSync 
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { feedMinimumSystemVersion } from './macos-minimum-system.mjs'
+
 // hc-1204: a release publishes the bytes that were accepted, not a rebuild of them.
 //
 // desktop-release.yml dispatched with candidate_run_id skips both builds, and each
@@ -15,7 +17,8 @@ import { pathToFileURL } from 'node:url'
 //              is still kept (3 days).
 //   bundle     the downloaded directory holds exactly the files the updater feed
 //              names, their blockmaps and the feed, and every named file matches the
-//              feed's size and sha512.
+//              feed's size and sha512. A Mac feed carries the app's minimum macOS
+//              (hc-1233), so an older Mac is not offered a release it cannot run.
 // Node built-ins only: the publish jobs run it without npm ci.
 
 export const RELEASE_WORKFLOW_PATH = '.github/workflows/desktop-release.yml'
@@ -31,6 +34,7 @@ export const PLATFORMS = Object.freeze({
     feed: 'latest-mac.yml',
     feedFiles: version => [`APEX-${version}-mac-arm64.zip`, `APEX-${version}-mac-arm64.dmg`],
     primary: version => `APEX-${version}-mac-arm64.zip`,
+    minimumSystemVersion: () => feedMinimumSystemVersion(),
     unpublished: () => []
   }),
   'win-x64': Object.freeze({
@@ -40,6 +44,7 @@ export const PLATFORMS = Object.freeze({
     feed: 'latest.yml',
     feedFiles: version => [`APEX-${version}-win-x64.exe`],
     primary: version => `APEX-${version}-win-x64.exe`,
+    minimumSystemVersion: () => null,
     // Built and kept in the artifact for diagnosis; the publish job never uploads it.
     unpublished: version => [`APEX-${version}-win-x64.msi`]
   })
@@ -158,6 +163,7 @@ export function parseUpdaterFeed(text) {
     version: top.get('version'),
     path: top.get('path'),
     sha512: top.get('sha512'),
+    minimumSystemVersion: top.get('minimumSystemVersion') ?? null,
     files: files.map(file => {
       assert.ok(file.url && !/[\\/]/.test(file.url) && file.url !== '..', `unsafe updater file url: ${file.url}`)
       assert.ok(file.sha512, `updater feed file ${file.url} has no sha512`)
@@ -178,6 +184,9 @@ export async function verifyReleaseBundle({ dir, platform, expectedVersion }) {
   assert.match(expectedVersion, VERSION, `invalid expected version: ${expectedVersion}`)
   const feed = parseUpdaterFeed(readFileSync(path.join(dir, spec.feed), 'utf8'))
   assert.equal(feed.version, expectedVersion, `${spec.feed} is ${feed.version}, expected ${expectedVersion}`)
+  const floor = spec.minimumSystemVersion()
+  assert.equal(feed.minimumSystemVersion, floor,
+    `${spec.feed} minimumSystemVersion is ${feed.minimumSystemVersion ?? 'missing'}, expected ${floor ?? 'none'}`)
   const named = feed.files.map(file => file.url)
   assert.deepEqual([...named].sort(), [...spec.feedFiles(expectedVersion)].sort(), `${spec.feed} names ${named.join(', ')}`)
   assert.equal(feed.path, spec.primary(expectedVersion), `${spec.feed} points the updater at ${feed.path}`)
