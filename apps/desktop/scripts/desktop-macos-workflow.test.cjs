@@ -587,3 +587,66 @@ test('every release workflow sets up one Node major, inside the root engines ran
   // and change this number in the same commit.
   assert.equal(majors[0], '26')
 })
+
+// hc-1233: Node 26 (the engine's from 0.18.0 on) needs macOS 13.5. The build proves every bundled binary runs on the
+// app's declared floor, then stamps that floor into the feed before the artifact a promotion publishes as it is.
+const SCAN_STEP = 'Assert every bundled binary runs on the declared minimum macOS'
+const STAMP_STEP = 'Stamp the updater feed with the minimum macOS'
+
+test('the Mac build checks the minimum macOS and stamps it into the feed before the artifact upload (hc-1233)', () => {
+  const jobs = releaseJobs(workflowSource())
+  const steps = stepNames(jobs.build)
+  const at = step => {
+    assert.ok(steps.includes(step), `the Mac build has no step "${step}"`)
+    return steps.indexOf(step)
+  }
+  assert.ok(at('Build, sign and notarize (${{ matrix.arch }})') < at(SCAN_STEP))
+  assert.ok(at('Build, sign and notarize (${{ matrix.arch }})') < at(STAMP_STEP))
+  assert.ok(at(STAMP_STEP) < at('Upload installer artifact'))
+  for (const step of [SCAN_STEP, STAMP_STEP]) {
+    assert.doesNotMatch(namedStep(jobs.build, step), /^ {8}(?:if|continue-on-error):/m, `${step} must run on every build`)
+  }
+  assert.equal(namedStep(jobs.build, STAMP_STEP).match(/^ {8}run: (.*)$/m)?.[1], 'node scripts/macos-minimum-system.mjs stamp release/latest-mac.yml')
+  assert.match(namedStep(jobs.build, SCAN_STEP), /^ {10}EXPECTED_ARCH: \$\{\{ matrix\.arch \}\}$/m)
+})
+
+test('the minimum-macOS step unpacks the engine archive inside the app and fails on a binary above the floor', () => {
+  const machO = minos => {
+    const bytes = Buffer.alloc(32 + 24 + 64)
+    const [major, minor] = minos.split('.').map(Number)
+    bytes.writeUInt32LE(0xfeedfacf, 0)
+    bytes.writeUInt32LE(0x0100000c, 4)
+    bytes.writeUInt32LE(2, 12)
+    bytes.writeUInt32LE(1, 16)
+    bytes.writeUInt32LE(24, 20)
+    bytes.writeUInt32LE(0x32, 32)
+    bytes.writeUInt32LE(24, 36)
+    bytes.writeUInt32LE(1, 40)
+    bytes.writeUInt32LE((major << 16) | (minor << 8), 44)
+    return bytes
+  }
+  const floor = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8')).build.mac.minimumSystemVersion
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-minimum-macos-'))
+  try {
+    // The step runs in apps/desktop: a release/ the build made, and this checkout's scripts.
+    fs.symlinkSync(__dirname, path.join(root, 'scripts'))
+    const app = path.join(root, 'release', 'mac-arm64', 'APEX.app')
+    const resources = path.join(app, 'Contents', 'Resources', 'bundled-runtime')
+    fs.mkdirSync(resources, { recursive: true })
+    fs.mkdirSync(path.join(app, 'Contents', 'MacOS'))
+    fs.writeFileSync(path.join(app, 'Contents', 'Info.plist'),
+      `<plist version="1.0"><dict><key>LSMinimumSystemVersion</key><string>${floor}</string></dict></plist>\n`)
+    fs.writeFileSync(path.join(app, 'Contents', 'MacOS', 'APEX'), machO('12.0'))
+    const engine = path.join(root, 'engine-src')
+    fs.mkdirSync(path.join(engine, '.runtime', 'node', 'bin'), { recursive: true })
+    for (const [node, status] of [[floor, 0], ['14.0', 1]]) {
+      fs.writeFileSync(path.join(engine, '.runtime', 'node', 'bin', 'node'), machO(node))
+      const tar = spawnSync('tar', ['-czf', path.join(resources, 'runtime-bundle-0123456789ab-mac-arm64.tar.gz'), '-C', engine, '.'], { encoding: 'utf8' })
+      assert.equal(tar.status, 0, tar.stderr)
+      const run = runStep(workflowSource(), SCAN_STEP, { cwd: root, env: { EXPECTED_ARCH: 'arm64', RUNNER_TEMP: path.join(root, 'tmp') } })
+      assert.equal(run.status, status, `engine node at macOS ${node}: ${run.stdout}${run.stderr}`)
+      if (status === 0) assert.match(run.stdout, /engine: 1 Mach-O, highest minimum macOS/)
+      else assert.match(run.stderr, /need a newer macOS than the declared [\d.]+:\n14\.0\.0 {2}\.runtime\/node\/bin\/node/)
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }) }
+})
