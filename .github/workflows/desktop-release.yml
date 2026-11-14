@@ -74,7 +74,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
-          node-version: 22
+          node-version: 26  # one Node major across the release jobs (hc-1233)
 
       - name: Assert the candidate built this commit for every platform this run publishes
         working-directory: apps/desktop
@@ -125,7 +125,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
-          node-version: 22
+          node-version: 26  # one Node major across the release jobs (hc-1233)
 
       - name: Assert the run built exactly the platforms it was asked for
         env:

@@ -548,3 +548,42 @@ test('the release gate checks the candidate for every platform before either pla
     }
   } finally { fs.rmSync(bin, { recursive: true, force: true }) }
 })
+
+// hc-1233: the Node each `actions/setup-node` step pins, in file order (null when a step pins none). Release
+// builds run the root `npm ci` with engine-strict (.npmrc, and scripts/build/node-deps.mjs checks the same range),
+// so a release workflow on a Node outside the root engines range stops at its first install.
+function setupNodePins(source) {
+  const lines = source.split('\n')
+  const indent = line => line.length - line.trimStart().length
+  const pins = []
+  lines.forEach((line, i) => {
+    if (!/^\s*(?:- )?uses: actions\/setup-node@/.test(line)) return
+    let pin = null
+    for (const next of lines.slice(i + 1)) {
+      if (/^\s*- /.test(next) || (next.trim() && indent(next) < indent(line))) break
+      const m = next.match(/^\s+node-version:\s*['"]?([^'"\s#]+)/)
+      if (m) { pin = m[1]; break }
+    }
+    pins.push(pin)
+  })
+  return pins
+}
+
+test('every release workflow sets up one Node major, inside the root engines range (hc-1233)', () => {
+  const semver = require('semver')
+  const engines = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../package.json'), 'utf8')).engines.node
+  const pins = []
+  for (const file of [workflowPath, windowsWorkflowPath, synchronizedWorkflowPath]) {
+    const found = setupNodePins(fs.readFileSync(file, 'utf8'))
+    assert.ok(found.length > 0, `${path.basename(file)} sets up no Node`)
+    assert.ok(found.every(Boolean), `${path.basename(file)} has a setup-node step without node-version: ${found}`)
+    pins.push(...found)
+  }
+  const majors = [...new Set(pins.map(pin => pin.split('.')[0]))]
+  assert.equal(majors.length, 1, `the release workflows mix Node majors: ${pins.join(', ')}`)
+  assert.ok(semver.intersects(`${majors[0]}.x`, engines),
+    `the release workflows set up Node ${majors[0]}, outside the root engines "${engines}": the build's npm ci stops`)
+  // The engine bundle's gzip bytes follow the Node major (hc-1058): move it only with a minor Desktop version,
+  // and change this number in the same commit.
+  assert.equal(majors[0], '26')
+})
