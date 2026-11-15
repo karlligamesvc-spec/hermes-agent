@@ -15,6 +15,7 @@
  * return box); Desktop never pastes it into a message.
  */
 
+import { mediaPathFromMarkdownHref } from '@/lib/media'
 import { stripNextStepBlocks } from '@/lib/next-steps'
 
 export const HANDOFF_PROTOCOL = 'apex-handoff/1'
@@ -292,7 +293,8 @@ const MEDIA_TAG_RE = /[`"']?MEDIA:\s*(`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|\S+)[`"']?/g
 // hc-1189: a standalone tag owns its whole line, as in the chat (chat-messages/parts.ts):
 // a document named after its title has spaces (「27高考报名早准备! 陕西…_逐字稿_….docx」).
 const MEDIA_LINE_RE = /^[\t ]*[`"']?MEDIA:[\t ]*(`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|(?:(?!MEDIA:).)+?)[`"']?[\t ]*$/
-const INLINE_LINK_RE = /\[[^\]\n]*\]\(([^)\s]+)\)/g
+// Link text may hold escaped brackets: a stored `MEDIA:` tag reads `[Image: 封面\[终版\].png](#media:…)`.
+const INLINE_LINK_RE = /\[(?:\\.|[^\\\]\n])*\]\(([^)\s]+)\)/g
 const BARE_URL_RE = /\bhttps?:\/\/[^\s<>()\]`"']+/g
 
 function isLocalFile(href: string): boolean {
@@ -305,7 +307,13 @@ function mediaTagValues(line: string): string[] {
   return standalone ? [standalone[1]] : [...line.matchAll(MEDIA_TAG_RE)].map(match => match[1])
 }
 
-/** The files (`MEDIA:` tags, links to local paths) and web links a reply names, each once, in order. */
+/**
+ * The files (`MEDIA:` tags, links to local paths) and web links a reply names, each once, in order.
+ *
+ * hc-1247: a reply Desktop stored has no `MEDIA:` tag left. The stream and the transcript store it
+ * after renderMediaTags (chat-messages/parts.ts), each tag a `#media:` link to its file by then, so
+ * such a link names the file its result card plays or saves.
+ */
 export function replyAttachments(reply: string): { files: string[]; links: string[] } {
   const files = new Set<string>()
   const links = new Set<string>()
@@ -315,7 +323,11 @@ export function replyAttachments(reply: string): { files: string[]; links: strin
   }
 
   for (const match of reply.matchAll(INLINE_LINK_RE)) {
-    if (/^https?:\/\//i.test(match[1])) {
+    const media = mediaPathFromMarkdownHref(match[1])
+
+    if (media !== null) {
+      files.add(media)
+    } else if (/^https?:\/\//i.test(match[1])) {
       links.add(match[1])
     } else if (isLocalFile(match[1])) {
       files.add(match[1])
