@@ -35,7 +35,8 @@ import {
   type SingleThreadHandoffCopy,
   useSingleThreadHandoffCopy
 } from '@/i18n/single-thread-handoff'
-import { mediaMarkdownHref } from '@/lib/media'
+import { type ResultCopy, useResultCopy } from '@/i18n/single-thread-results'
+import { mediaKind, mediaMarkdownHref, mediaSaveName, mediaShortTitle } from '@/lib/media'
 import { cn } from '@/lib/utils'
 import { $authState } from '@/store/auth'
 import { $botRoster, type ApexBot, openBot } from '@/store/single-thread-bots'
@@ -108,9 +109,11 @@ function useBot(profile: string): ApexBot | null {
   return useStore($botRoster).find(bot => bot.profile === profile) ?? null
 }
 
+const isWebLink = (item: string) => /^https?:\/\//i.test(item)
+
 /** A file's name, a link's host: what one carried item reads as. */
 export function itemLabel(item: string): string {
-  if (/^https?:\/\//i.test(item)) {
+  if (isWebLink(item)) {
     try {
       return new URL(item).host || item
     } catch {
@@ -121,9 +124,26 @@ export function itemLabel(item: string): string {
   return item.split(/[\\/]/).filter(Boolean).at(-1) ?? item
 }
 
+/**
+ * hc-1246: a carried file is called what its result card calls it (hc-1130): a
+ * video, image or audio clip its short title, else its kind; a document its short
+ * name with the extension. A link keeps its host.
+ */
+function carriedLabel(item: string, kinds: ResultCopy['kinds']): string {
+  if (isWebLink(item)) {
+    return itemLabel(item)
+  }
+
+  const kind = mediaKind(item)
+
+  return kind === 'file' ? mediaSaveName(item, kinds.file) : mediaShortTitle(item) || kinds[kind]
+}
+
 const ITEMS_SHOWN = 4
 
 function CarriedItems({ copy, items }: { copy: SingleThreadHandoffCopy; items: readonly string[] }) {
+  const { kinds } = useResultCopy()
+
   if (!items.length) {
     return null
   }
@@ -132,15 +152,20 @@ function CarriedItems({ copy, items }: { copy: SingleThreadHandoffCopy; items: r
 
   return (
     <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0" data-handoff-items="">
-      {shown.map(item => (
-        <li
-          className="max-w-full truncate rounded-md bg-(--ui-bg-tertiary) px-2 py-0.5 text-xs text-(--ui-text-secondary)"
-          key={item}
-          title={item}
-        >
-          {itemLabel(item)}
-        </li>
-      ))}
+      {shown.map(item => {
+        const label = carriedLabel(item, kinds)
+
+        return (
+          <li
+            className="max-w-full truncate rounded-md bg-(--ui-bg-tertiary) px-2 py-0.5 text-xs text-(--ui-text-secondary)"
+            key={item}
+            // The path never shows (hc-1131): a file's hover repeats its name, a link's gives the address.
+            title={isWebLink(item) ? item : label}
+          >
+            {label}
+          </li>
+        )
+      })}
       {items.length > ITEMS_SHOWN && (
         <li className="px-1 py-0.5 text-xs text-(--ui-text-tertiary)">{copy.moreItems(items.length - ITEMS_SHOWN)}</li>
       )}
