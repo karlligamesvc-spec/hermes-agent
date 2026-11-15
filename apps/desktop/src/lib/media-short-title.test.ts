@@ -27,7 +27,22 @@ describe('mediaShortTitle: what a result is called', () => {
     [`${CACHE}/deadbeef.mp4`, 'deadbeef'],
     // Names nobody chose: no title.
     [`${CACHE}/media_4a2ea035.mp4`, ''],
-    [`${CACHE}/generated_video_4a2ea035.mp4`, '']
+    [`${CACHE}/generated_video_4a2ea035.mp4`, ''],
+    // hc-1243: the generic image stem keeps its index; a chosen name keeps its number.
+    [`${CACHE}/image_1_c4195ff1.png`, ''],
+    [`${CACHE}/一张浅米色墙前的空木椅_1_c4195ff1.png`, '一张浅米色墙前的空木椅 1'],
+    [`${CACHE}/成片_2.mp4`, '成片 2'],
+    // hc-1243: what older engines saved from a prompt's own layout is no title either.
+    [`${CACHE}/subject_definitions_d5cc1a2e.mp4`, ''],
+    [`${CACHE}/integrated_multimoda_4a2ea035.mp4`, ''],
+    [`${CACHE}/For_the_target_video_4a2ea035.mp4`, ''],
+    [`${CACHE}/图片1_和图片2_是同一位女士_1_a13fa341.png`, ''],
+    [`${CACHE}/图片1_图片2_图片3_是同一个人_1_a13fa341.png`, ''],
+    // A sentence that says what the picture shows stays a title, references and all.
+    [`${CACHE}/图片1_的女生穿图片2_的外套_1_a13fa341.png`, '图片1 的女生穿图片2 的外套 1'],
+    // What the engine names them now (plugins/apexnodes_media_names.py).
+    [`${CACHE}/这杯子我天天用_d5cc1a2e.mp4`, '这杯子我天天用'],
+    [`${CACHE}/young_East_Asian_woman_4a2ea035.mp4`, 'young East Asian woman']
   ])('%s', (path, title) => {
     expect(mediaShortTitle(path)).toBe(title)
   })
@@ -47,6 +62,8 @@ describe('mediaSaveName: what a save dialog starts from', () => {
       '一条 15 秒的竖屏短视频 分三个镜头.mp4'
     ],
     [`${CACHE}/media_4a2ea035.mp4`, '视频', '视频.mp4'],
+    [`${CACHE}/subject_definitions_d5cc1a2e.mp4`, '视频', '视频.mp4'],
+    [`${CACHE}/image_1_c4195ff1.png`, '图片', '图片.png'],
     ['/Users/me/APEX/拆解报告.docx', '文件', '拆解报告.docx'],
     ['/Users/me/APEX/no-extension', '文件', 'no-extension']
   ])('%s', (path, fallback, name) => {

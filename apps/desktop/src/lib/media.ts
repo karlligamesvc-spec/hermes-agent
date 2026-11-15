@@ -88,6 +88,14 @@ const FILE_EXTENSION_RE = /\.[^.\s]{1,8}$/
 const UNIQUE_TAIL_RE = /[_-][0-9a-f]{8}$/i
 const UNSAFE_NAME_RE = /[<>:"/\\|?*]+/g
 const NAMELESS_TITLES = new Set(['audio', 'download', 'file', 'generated video', 'image', 'media', 'output', 'video'])
+// A generic stem keeps the index the image generator gives it (`image_1_…`).
+const NAMELESS_INDEX_RE = / \d+$/
+
+// hc-1243: names engines before it took from a prompt's own layout (MiniMax H3's section
+// labels and first-frame line, 「图片1 和图片2 是同一位女士」). Files in earlier conversations
+// keep them; plugins/apexnodes_media_names.py no longer makes them.
+const PROMPT_LAYOUT_TITLE_RE =
+  /^(?:subject definitions|integrated multimoda|for the target video)|^图片\d+(?: ?[和与跟及、]? ?图片\d+)* ?(?:是|为|都是|均为|就是)/i
 
 export function mediaShortTitle(path: string): string {
   const stem = decodedMediaName(path).replace(FILE_EXTENSION_RE, '').replace(UNIQUE_TAIL_RE, '')
@@ -105,7 +113,9 @@ export function mediaShortTitle(path: string): string {
 
   const short = (title || [...stem].slice(0, MEDIA_TITLE_MAX).join('')).replace(UNSAFE_NAME_RE, ' ').trim()
 
-  return NAMELESS_TITLES.has(short.toLowerCase()) ? '' : short
+  const nameless = NAMELESS_TITLES.has(short.toLowerCase().replace(NAMELESS_INDEX_RE, ''))
+
+  return nameless || PROMPT_LAYOUT_TITLE_RE.test(short) ? '' : short
 }
 
 /** The name a save dialog starts from: the short title, keeping the extension. */

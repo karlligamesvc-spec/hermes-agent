@@ -666,6 +666,27 @@ describe('the words read in the interface language', () => {
 
     expect(await within(await card(en.container, 'video')).findByText('Video')).toBeTruthy()
   })
+
+  it('clips saved before hc-1243 under an H3 prompt header title themselves by kind', async () => {
+    // The note the next-steps plugin adds for paid clips the reply never showed (hc-1066).
+    const cache = '/Users/me/.apexnodes/cache/media'
+
+    const note = [
+      '这一轮还生成了下面这些素材(都已计费)，上面没给你看：',
+      `MEDIA:${cache}/subject_definitions_d5cc1a2e.mp4`,
+      `MEDIA:${cache}/subject_definitions_4c8fe53a.mp4`,
+      `MEDIA:${cache}/图片1_和图片2_是同一位女士_1_a13fa341.png`
+    ].join('\n\n')
+
+    const { container } = renderIn(resultTurn(note))
+
+    await card(container, 'image')
+
+    const cards = [...container.querySelectorAll<HTMLElement>('[data-slot="aui_result-media"]')]
+
+    expect(cards.map(found => found.querySelector('span')?.textContent)).toEqual(['视频', '视频', '图片'])
+    expect(mainLine(container)).not.toMatch(/subject|definitions|图片1/)
+  })
 })
 
 describe('the files the process area lists are real paths', () => {
