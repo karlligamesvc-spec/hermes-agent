@@ -148,6 +148,48 @@ export function resultDelegateTurn(): ThreadMessage[] {
   ]
 }
 
+/**
+ * hc-1244: a voiceover made with no output_path. text_to_speech names the file by the clock
+ * (tools/tts_tool.py `tts_<date>_<time>_<µs>`) and returns it as a MEDIA: line, which the
+ * reply hands over the way the result-delivery prompt asks.
+ */
+export const RESULT_VOICEOVER = '/Users/me/.apexnodes/cache/audio/tts_20261114_223344_123456.mp3'
+
+export function resultVoiceoverTurn(): ThreadMessage[] {
+  return [
+    ask('voiceover-ask', '把这句文案配个音'),
+    bubble(
+      'voiceover-work',
+      [
+        remixTool(
+          'voiceover-tts',
+          'text_to_speech',
+          { text: '先别买柜子，乱的根，是东西只能往里堆。' },
+          {
+            result: {
+              success: true,
+              file_path: RESULT_VOICEOVER,
+              file_paths: [RESULT_VOICEOVER],
+              media_tag: `MEDIA:${RESULT_VOICEOVER}`,
+              provider: 'doubao',
+              voice_compatible: false,
+              chunk_count: 1,
+              delivery_file_count: 1,
+              combined_chunks: false
+            },
+            span: span(1, 6)
+          }
+        )
+      ],
+      { type: 'complete', reason: 'tool-calls' }
+    ),
+    bubble('voiceover-answer', [said(renderMediaTags(`配音做好了，你先听听：\n\nMEDIA:${RESULT_VOICEOVER}`))], {
+      type: 'complete',
+      reason: 'stop'
+    })
+  ]
+}
+
 /** `image_generate` draws its own card, not a MEDIA: paragraph. */
 export function resultImageCardTurn(): ThreadMessage[] {
   return [
