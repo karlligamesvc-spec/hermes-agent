@@ -86,11 +86,21 @@ function decodedMediaName(path: string): string {
 const MEDIA_TITLE_MAX = 24
 const FILE_EXTENSION_RE = /\.[^.\s]{1,8}$/
 const UNIQUE_TAIL_RE = /[_-][0-9a-f]{8}$/i
+// hc-1244: a voiceover nobody named is named by the clock: text_to_speech's
+// `tts_<date>_<time>_<µs>` (tools/tts_tool.py), voice mode's `tts_<date>_<time>`, a voice
+// reply's `tts_reply_<hex>` (gateway/platforms/base.py), `.partNN` when a long text is
+// delivered in parts. Its card read 「tts 20261114 223344」.
+const CLOCK_VOICEOVER_RE = /^tts_(?:\d{8}_\d{6}(?:_\d+)?|reply_[0-9a-f]+)(?:\.part\d+)?$/i
 const UNSAFE_NAME_RE = /[<>:"/\\|?*]+/g
 const NAMELESS_TITLES = new Set(['audio', 'download', 'file', 'generated video', 'image', 'media', 'output', 'video'])
 
 export function mediaShortTitle(path: string): string {
   const stem = decodedMediaName(path).replace(FILE_EXTENSION_RE, '').replace(UNIQUE_TAIL_RE, '')
+
+  if (CLOCK_VOICEOVER_RE.test(stem)) {
+    return ''
+  }
+
   let title = ''
 
   for (const word of stem.split(/[_\s]+/).filter(Boolean)) {

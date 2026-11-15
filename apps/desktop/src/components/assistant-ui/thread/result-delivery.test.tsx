@@ -25,9 +25,11 @@ import {
   RESULT_IMAGE,
   RESULT_SCRIPT,
   RESULT_VIDEO,
+  RESULT_VOICEOVER,
   resultDelegateTurn,
   resultImageCardTurn,
   resultTurn,
+  resultVoiceoverTurn,
   resultWritingTurn,
   writeScript
 } from '@/test/result-turn'
@@ -638,6 +640,48 @@ describe('every result card has a way to take the file away', () => {
     await waitFor(() =>
       expect($notifications.get().at(-1)?.message).toBe('这个文件已经不在原来的位置了，可能被移走或清理了。')
     )
+  })
+})
+
+describe('a voiceover the engine named by the clock (hc-1244)', () => {
+  it('reads 音频, saves as 音频.mp3, and shows no clock in the chat or its process', async () => {
+    const { container } = renderIn(resultVoiceoverTurn())
+    const found = await card(container, 'audio')
+
+    expect(await within(found).findByText('音频')).toBeTruthy()
+
+    for (const clock of ['tts', '20261114', '223344', '123456']) {
+      expect(mainLine(container)).not.toContain(clock)
+    }
+
+    fireEvent.click(within(found).getByRole('button', { name: '下载' }))
+    await waitFor(() =>
+      expect(saveGatewayFile).toHaveBeenCalledWith(
+        expect.objectContaining({ path: RESULT_VOICEOVER, suggestedName: '音频.mp3' })
+      )
+    )
+
+    fireEvent.click(within(found).getByRole('button', { name: REVEAL }))
+    await waitFor(() => expect(revealPath).toHaveBeenCalledWith(RESULT_VOICEOVER))
+
+    // The step that made it names what it did, not the file.
+    fireEvent.click(await screen.findByRole('button', { name: '看过程' }))
+
+    const process = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>('[data-single-thread-process]')
+
+      expect(found?.textContent).toContain('配音')
+
+      return found as HTMLElement
+    })
+
+    expect(process.textContent).not.toMatch(/tts|20261114/)
+  })
+
+  it('reads Audio in English', async () => {
+    const { container } = renderIn(resultVoiceoverTurn(), 'en')
+
+    expect(await within(await card(container, 'audio')).findByText('Audio')).toBeTruthy()
   })
 })
 

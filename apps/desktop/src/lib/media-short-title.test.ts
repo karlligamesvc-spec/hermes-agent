@@ -39,6 +39,35 @@ describe('mediaShortTitle: what a result is called', () => {
   })
 })
 
+describe('mediaShortTitle: a voiceover the engine named by the clock (hc-1244)', () => {
+  const AUDIO = '/Users/me/.apexnodes/cache/audio'
+  const VOICE_TMP = '/var/folders/x1/T/hermes_voice'
+
+  it.each([
+    // text_to_speech with no output_path (tools/tts_tool.py): its card read 「tts 20261114 223344」.
+    [`${AUDIO}/tts_20261114_223344_123456.mp3`, ''],
+    ['/Users/me/.apexnodes/audio_cache/tts_20261114_223344_123456.mp3', ''],
+    ['C:\\Users\\me\\.apexnodes\\cache\\audio\\tts_20261114_223344_123456.mp3', ''],
+    [`file://${AUDIO}/tts_20261114_223344_123456.mp3`, ''],
+    // A long text delivered in parts.
+    [`${AUDIO}/tts_20261114_223344_123456.part02.mp3`, ''],
+    // Voice mode's reply (hermes_cli/voice.py) and a gateway voice reply (gateway/platforms/base.py).
+    [`${VOICE_TMP}/tts_20261114_223344.mp3`, ''],
+    [`${VOICE_TMP}/tts_reply_0123456789ab.ogg`, ''],
+    // A voiceover the assistant named keeps its name, with 「tts」 in it or not.
+    [`${AUDIO}/narration.mp3`, 'narration'],
+    [`${AUDIO}/tts_口播_第二版.mp3`, 'tts 口播 第二版'],
+    [`${AUDIO}/tts_reply_开场白.mp3`, 'tts reply 开场白']
+  ])('%s', (path, title) => {
+    expect(mediaShortTitle(path)).toBe(title)
+  })
+
+  it('is saved under its kind', () => {
+    expect(mediaSaveName(`${AUDIO}/tts_20261114_223344_123456.mp3`, '音频')).toBe('音频.mp3')
+    expect(mediaSaveName(`${AUDIO}/tts_20261114_223344_123456.part02.mp3`, 'Audio')).toBe('Audio.mp3')
+  })
+})
+
 describe('mediaSaveName: what a save dialog starts from', () => {
   it.each([
     [
