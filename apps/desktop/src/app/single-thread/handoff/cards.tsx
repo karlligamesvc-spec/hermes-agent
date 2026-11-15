@@ -36,6 +36,7 @@ import {
   useSingleThreadHandoffCopy
 } from '@/i18n/single-thread-handoff'
 import { type ResultCopy, useResultCopy } from '@/i18n/single-thread-results'
+import { handoffQuoteText } from '@/lib/handoff-text'
 import { mediaKind, mediaMarkdownHref, mediaSaveName, mediaShortTitle } from '@/lib/media'
 import { cn } from '@/lib/utils'
 import { $authState } from '@/store/auth'
@@ -173,9 +174,10 @@ function CarriedItems({ copy, items }: { copy: SingleThreadHandoffCopy; items: r
   )
 }
 
+/** hc-1253: the result counts as the user reads it in the quote, its files and links on their own. */
 export function carryCount(carry: HandoffCarry): HandoffCarryCount {
   return {
-    chars: [...carry.text].length,
+    chars: [...handoffQuoteText(carry.text)].length,
     files: carry.files.length,
     links: carry.links.length,
     truncated: carry.truncated
@@ -351,6 +353,9 @@ function relayStatus(
         record.startedAt && record.finishedAt ? record.finishedAt - record.startedAt : null
       )
 
+      // hc-1253: with no 交回摘要 block it is the reply's opening, `MEDIA:` tags and all; the files are the cards under it.
+      const summary = handoffQuoteText(record.result?.summary)
+
       return {
         actions: (
           <Actions>
@@ -362,7 +367,7 @@ function relayStatus(
         ),
         body: (
           <>
-            {record.result?.summary && <p className={QUOTE_CLASS}>{record.result.summary}</p>}
+            {summary && <p className={QUOTE_CLASS}>{summary}</p>}
             <ReturnedItems files={record.result?.files ?? []} links={record.result?.links ?? []} />
           </>
         ),
@@ -510,6 +515,7 @@ export function HandoffReceivedCard({ fromProfile, view }: { fromProfile: string
   const copy = useSingleThreadHandoffCopy()
   const sender = useBot(fromProfile)
   const fromName = sender?.name ?? view.fromName
+  const previous = handoffQuoteText(view.previous)
 
   return (
     <section aria-label={copy.receivedTitle(fromName)} className={CARD_CLASS} data-handoff-card="received">
@@ -526,10 +532,10 @@ export function HandoffReceivedCard({ fromProfile, view }: { fromProfile: string
         )}
       </CardHead>
       <p className="m-0 whitespace-pre-line wrap-anywhere">{view.ask}</p>
-      {view.previous && (
+      {previous && (
         <div className="grid gap-1">
           <span className={META_CLASS}>{copy.previousLabel(fromName)}</span>
-          <p className={cn(QUOTE_CLASS, 'line-clamp-6')}>{view.previous}</p>
+          <p className={cn(QUOTE_CLASS, 'line-clamp-6')}>{previous}</p>
         </div>
       )}
       <CarriedItems copy={copy} items={view.items} />

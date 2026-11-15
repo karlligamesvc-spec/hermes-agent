@@ -38,7 +38,7 @@ import {
   useSingleThreadHandoffCopy
 } from '@/i18n/single-thread-handoff'
 import { type HandoffPlanBlock, parseHandoffPlan } from '@/lib/handoff-plan'
-import { replyAttachments } from '@/lib/handoff-text'
+import { handoffQuoteText, replyAttachments } from '@/lib/handoff-text'
 import { visibleReplyText } from '@/lib/reply-markers'
 import { cn } from '@/lib/utils'
 import { $authState } from '@/store/auth'
@@ -686,6 +686,8 @@ function PlanRunCard({ plan }: { plan: HandoffPlanRecord }) {
   const [held, setHeld] = useState<null | string>(null)
   const props = { copy, handoffCopy, state }
   const result = state.lastResult
+  // hc-1253: the 交回摘要 is the receiver's own text; its files are the cards under it.
+  const summary = handoffQuoteText(result?.summary)
 
   // 「再试一次」 reads the usage line first (store/handoff-plan.ts); used up, it says why and stays.
   const retry = () => void retryHandoffPlan(plan.id).then(setHeld)
@@ -705,12 +707,12 @@ function PlanRunCard({ plan }: { plan: HandoffPlanRecord }) {
       {runBody(props)}
       {plan.status === 'done' && result && (
         <>
-          {result.summary && <p className={QUOTE_CLASS}>{result.summary}</p>}
+          {summary && <p className={QUOTE_CLASS}>{summary}</p>}
           <ReturnedItems files={result.files} links={result.links} />
           <p className={META_CLASS}>{copy.doneNote(state.relays.length)}</p>
         </>
       )}
-      {plan.status === 'ended' && result?.summary && <p className={QUOTE_CLASS}>{result.summary}</p>}
+      {plan.status === 'ended' && summary && <p className={QUOTE_CLASS}>{summary}</p>}
       {held && (
         <p className={ALERT_CLASS} role="alert">
           {held}

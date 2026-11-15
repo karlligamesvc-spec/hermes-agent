@@ -17,6 +17,7 @@ import { restoreRecordingTimeZone } from '@/__identity__/single-thread-shell/tim
 import { onComposerInsertRequest } from '@/app/chat/composer/focus'
 import { stubThreadEnvironment, stubThreadViewportSize } from '@/components/assistant-ui/test-utils'
 import { setRuntimeI18nLocale } from '@/i18n'
+import { handbackResult } from '@/lib/handoff-text'
 import { $authState } from '@/store/auth'
 import {
   $handoffPlans,
@@ -558,5 +559,48 @@ describe('only in the assistant’s own thread with relay on', () => {
     turnOff()
 
     expect(planCard(await renderTranscript(PLAN_TRANSCRIPT))).toBeNull()
+  })
+})
+
+describe('the last result’s quote is its prose (hc-1253)', () => {
+  // 剪辑助手 wrote no 交回摘要 block: the summary is its reply's opening as the engine wrote it, tag and all.
+  const BACK =
+    '成片剪好了：30 秒竖屏。\n\nMEDIA:/Users/me/.apexnodes/cache/media/样片_竖屏_1a2b3c4d.mp4\n\n封面要换跟我说。'
+
+  const back = () => ({ ...handbackResult(BACK), at: STARTED_AT + 370_000 })
+
+  it.each([
+    [
+      'done',
+      [
+        baton('b1', { result: returnedResult('3 个标题'), status: 'returned' }),
+        baton('b2', { result: back(), status: 'returned', to: 'cutter' })
+      ],
+      plan({ batons: ['b1', 'b2'], finishedAt: STARTED_AT + 370_000, status: 'done' }),
+      1
+    ],
+    [
+      'stopped after a baton came back',
+      [baton('b1', { result: back(), status: 'returned' }), baton('b2', { status: 'stopped', to: 'cutter' })],
+      plan({ batons: ['b1', 'b2'], end: 'stopped', finishedAt: STARTED_AT + 1000, status: 'ended' }),
+      // An ended plan quotes the last result and shows no files.
+      0
+    ]
+  ])('%s', async (_label, records, record, cards) => {
+    expect(back().summary).toContain('MEDIA:/Users/')
+
+    relayOn()
+    resetHandoffsForTest(records)
+    resetHandoffPlansForTest([record])
+
+    const card = planCard(await renderTranscript(PLAN_TRANSCRIPT))!
+
+    expect([...card.querySelectorAll('p')].map(line => line.textContent)).toContain(
+      '成片剪好了：30 秒竖屏。\n\n封面要换跟我说。'
+    )
+    // A finished plan's clip is the result card under the quote (its player reads the file).
+    expect(card.querySelectorAll('[data-handoff-returned-items] [data-slot="aui_result-media"]')).toHaveLength(cards)
+    expect(card.textContent).not.toContain('MEDIA:')
+    expect(card.textContent).not.toContain('/Users/')
   })
 })
