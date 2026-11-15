@@ -30,19 +30,19 @@ describe('mediaShortTitle: what a result is called', () => {
     [`${CACHE}/generated_video_4a2ea035.mp4`, ''],
     // hc-1243: the generic image stem keeps its index; a chosen name keeps its number.
     [`${CACHE}/image_1_c4195ff1.png`, ''],
-    [`${CACHE}/一张浅米色墙前的空木椅_1_c4195ff1.png`, '一张浅米色墙前的空木椅 1'],
+    [`${CACHE}/一只趴在窗台上的橘猫_1_c4195ff1.png`, '一只趴在窗台上的橘猫 1'],
     [`${CACHE}/成片_2.mp4`, '成片 2'],
     // hc-1243: what older engines saved from a prompt's own layout is no title either.
     [`${CACHE}/subject_definitions_d5cc1a2e.mp4`, ''],
     [`${CACHE}/integrated_multimoda_4a2ea035.mp4`, ''],
     [`${CACHE}/For_the_target_video_4a2ea035.mp4`, ''],
-    [`${CACHE}/图片1_和图片2_是同一位女士_1_a13fa341.png`, ''],
+    [`${CACHE}/图片1_和图片2_是同一只猫_1_a13fa341.png`, ''],
     [`${CACHE}/图片1_图片2_图片3_是同一个人_1_a13fa341.png`, ''],
     // A sentence that says what the picture shows stays a title, references and all.
-    [`${CACHE}/图片1_的女生穿图片2_的外套_1_a13fa341.png`, '图片1 的女生穿图片2 的外套 1'],
+    [`${CACHE}/图片1_的男生背着图片2_的书包_1_a13fa341.png`, '图片1 的男生背着图片2 的书包 1'],
     // What the engine names them now (plugins/apexnodes_media_names.py).
-    [`${CACHE}/这杯子我天天用_d5cc1a2e.mp4`, '这杯子我天天用'],
-    [`${CACHE}/young_East_Asian_woman_4a2ea035.mp4`, 'young East Asian woman']
+    [`${CACHE}/面包要等凉了再切_d5cc1a2e.mp4`, '面包要等凉了再切'],
+    [`${CACHE}/baker_with_round_glasses_4a2ea035.mp4`, 'baker with round glasses']
   ])('%s', (path, title) => {
     expect(mediaShortTitle(path)).toBe(title)
   })

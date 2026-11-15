@@ -675,7 +675,7 @@ describe('the words read in the interface language', () => {
       '这一轮还生成了下面这些素材(都已计费)，上面没给你看：',
       `MEDIA:${cache}/subject_definitions_d5cc1a2e.mp4`,
       `MEDIA:${cache}/subject_definitions_4c8fe53a.mp4`,
-      `MEDIA:${cache}/图片1_和图片2_是同一位女士_1_a13fa341.png`
+      `MEDIA:${cache}/图片1_和图片2_是同一只猫_1_a13fa341.png`
     ].join('\n\n')
 
     const { container } = renderIn(resultTurn(note))

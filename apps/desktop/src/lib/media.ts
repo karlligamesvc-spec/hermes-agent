@@ -92,7 +92,7 @@ const NAMELESS_TITLES = new Set(['audio', 'download', 'file', 'generated video',
 const NAMELESS_INDEX_RE = / \d+$/
 
 // hc-1243: names engines before it took from a prompt's own layout (MiniMax H3's section
-// labels and first-frame line, 「图片1 和图片2 是同一位女士」). Files in earlier conversations
+// labels and first-frame line, 「图片1 和图片2 是同一只猫」). Files in earlier conversations
 // keep them; plugins/apexnodes_media_names.py no longer makes them.
 const PROMPT_LAYOUT_TITLE_RE =
   /^(?:subject definitions|integrated multimoda|for the target video)|^图片\d+(?: ?[和与跟及、]? ?图片\d+)* ?(?:是|为|都是|均为|就是)/i

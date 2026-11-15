@@ -1,8 +1,8 @@
 """hc-1243: the name a generated image or video gets from the prompt that made it.
 
 hc-1130 names a generated file after the start of its prompt's first sentence: the
-gateway leg saves it as ``<hint>_<8 hex>.<ext>`` (``apexnodes_gateway.download_media``)
-and the Desktop result card titles it from that name (``mediaShortTitle`` in
+gateway leg saves it as ``<hint>_<8 hex>.<ext>`` (``download_media`` in the gateway
+client) and the Desktop result card titles it from that name (``mediaShortTitle`` in
 ``apps/desktop/src/lib/media.ts``).
 
 A prompt laid out for the model opens with its own layout, not with what the result
@@ -12,20 +12,24 @@ call what they reference by tag (``<Subject 1>``, ``<Picture 1>``, ``[Shot 1]``)
 H3 clip was saved as ``subject_definitions_<hash>.mp4`` and listed as
 「subject definitions」. Our skills have Chinese prompts call the input images
 「图片1」「图片2」, and a prompt that opens by saying which pictures show whom
-(「图片1 和图片2 是同一位女士」) describes the inputs, not the result.
+(「图片1 和图片2 是同一只猫」) describes the inputs, not the result.
 
 None of that is a name. The name is, in order:
 
-1. the first spoken line (H3 writes ``<d>[Chinese] 早上就靠它了，一口下去人就醒了。</d>``):
+1. the first spoken line (``<d>[Chinese] 面包要等凉了再切。</d>`` → ``面包要等凉了再切``):
    the clip's own first words, in the language the user writes in;
-2. what the first subject is (``<Subject 1> is the frosted white glass dropper serum
-   bottle in <Picture 1>: …`` → ``frosted white glass``);
+2. what the first subject is (``<Subject 1> is the red enamel teapot in <Picture 1>: …``
+   → ``red enamel teapot``);
 3. otherwise the first sentence, as in hc-1130, with section labels (``summary:``,
    「镜头1：」), H3's first-frame line and every reference tag taken out.
 
 A first sentence that only says what the reference pictures are gives no name: the
 caller's generic stem stays (``generated_video``, ``image``), and the result card says
 「视频」 or 「图片」. The prompt itself is never changed: it is written for the model.
+
+This module never reaches the platform, and its text does not name the gateway module:
+the Desktop credential audit (``apps/desktop/electron/apex-platform-tools.test.ts``)
+reads every ``plugins/apexnodes_*.py`` that does as a module that authenticates.
 """
 
 from __future__ import annotations
@@ -59,15 +63,15 @@ _ARTICLE = re.compile(r"^(?:the|an?)\s+", re.IGNORECASE)
 
 _PICTURE = r"(?:<\s*(?:Picture|Image)\s*\d+\s*>|图片\s*\d+)"
 
-# 「图片1 和图片2 是同一位女士」, 「图片1、2 都是她」, "<Picture 1> and <Picture 2> show the same woman".
+# 「图片1 和图片2 是同一只猫」, 「图片1、2 都是它」, "<Picture 1> and <Picture 2> show the same cat".
 _PICTURES_BINDING = re.compile(
     rf"^\s*{_PICTURE}(?:\s*(?:,|、|和|与|跟|及|and|&)?\s*(?:{_PICTURE}|\d+))*\s*"
     r"(?:是|为|都是|均为|就是|(?:is|are|shows?)(?![A-Za-z]))",
     re.IGNORECASE,
 )
 
-# A picture reference with the words that tie it into the sentence: "the woman in
-# <Picture 1>", "the same outfit as in <Picture 1>", "<Picture 2>'s coat", 「图片1 的女生」.
+# A picture reference with the words that tie it into the sentence: "the man in
+# <Picture 1>", "the same hat as in <Picture 1>", "<Picture 2>'s coat", 「图片1 的男生」.
 _PICTURE_PHRASE = re.compile(
     r"\s*\b(?:as in|shown in|in|from|of|like)\s+<\s*(?:Picture|Image)\s*\d+\s*>"
     r"|<\s*(?:Picture|Image)\s*\d+\s*>'s"
@@ -98,7 +102,7 @@ def _first_clause(text: str) -> str:
 
 def _cut(name: str, limit: int) -> str:
     """About ``limit`` characters. A cut inside a space-separated word finishes the word
-    when it ends within four more letters ("young East Asian woman"), else drops it."""
+    when it ends within four more letters ("baker with round glasses"), else drops it."""
     name = " ".join(name.split())
     if len(name) <= limit:
         return name

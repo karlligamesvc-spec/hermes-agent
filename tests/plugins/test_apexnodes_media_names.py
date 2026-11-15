@@ -3,9 +3,9 @@
 hc-1243: 写给模型看的格式不算名字。MiniMax H3 的提示词以 ``subject_definitions:`` 开头,
 每条 H3 出的视频都存成 ``subject_definitions_<hash>.mp4``,交付区叫「subject definitions」。
 名字依次取台词、第一个主体是什么、去掉段名和标签后的第一句;只说参考图是谁的第一句不给名字。
-The prompts below follow MiniMax's published layout; the platform skill's own examples
-(apex-nodes ``video-shot-prompts/references/minimax-h3.md``) are checked against this code
-from the apex-nodes side, which reads fork main.
+The prompts below follow MiniMax's published layout with made-up content; the platform
+skill's own examples (apex-nodes ``video-shot-prompts/references/minimax-h3.md``) are
+checked against this code from the apex-nodes side, which reads fork main.
 """
 
 from __future__ import annotations
@@ -119,62 +119,61 @@ def test_both_generators_name_their_files_by_the_hint(plugin: str, line: str) ->
 
 # Reference generation (六段): a person who speaks.
 H3_SPOKEN = """subject_definitions:
-<Subject 1> is the young woman in <Picture 1>: short black hair, light grey crew-neck sweater.
+<Subject 1> is the baker in <Picture 1>: grey beard, round glasses, brown apron.
 
 summary:
-[reference generation] A 10-second vertical clip in two hard-cut shots: <Subject 1> holds a plain white mug and speaks to the camera.
+[reference generation] An 8-second clip in two shots: <Subject 1> slices a loaf at the counter and talks about it.
 
 retention_analysis:
-<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - her face, hair and grey sweater from <Picture 1> stay identical.
+<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - his beard, glasses and apron from <Picture 1>.
 
 detailed_description:
-The target video looks like real smartphone footage, not an advertisement.
-[Shot 1] A medium static shot frames <Subject 1> at a wooden desk. <Subject 1>, a young woman with a bright voice (S1), says: <d>[Chinese] 这杯子我天天用，保温一整天。</d> She closes her lips.
-[Shot 2] At 00:05.000, the camera cuts to a close-up of the mug on the desk.
+[Shot 1] <Subject 1> stands behind a flour-dusted counter. <Subject 1>, a man in his sixties with a low voice (S1), says: <d>[Chinese] 面包要等凉了再切。</d>
+[Shot 2] At 00:04.000, the camera cuts to the knife going through the crust.
 
 overall_soundscape:
-Quiet room tone and a soft knock of the mug on the desk.
+An oven fan and the crackle of the crust.
 
 non_diegetic_music:
 N/A"""
 
-# Reference generation: a product and a hand, nobody speaks.
+# Reference generation: a product, nobody speaks.
 H3_PRODUCT = """subject_definitions:
-<Subject 1> is the matte green insulated bottle in <Picture 1>: straight sides, push-button lid, completely blank surface with no text or logo.
+<Subject 1> is the red enamel teapot in <Picture 1>: round body, black knob on the lid.
 
 summary:
-[reference generation] A 10-second vertical clip: a hand picks up <Subject 1> and presses its lid open.
+[reference generation] A 6-second clip: <Subject 1> on a stove as the water comes to the boil.
 
 retention_analysis:
-<Subject 1> (appears in [Shot 1]): fully_preserved - the bottle's shape, colour and blank surface from <Picture 1> stay identical.
+<Subject 1> (appears in [Shot 1]): fully_preserved - the teapot's shape and colour from <Picture 1>.
 
 detailed_description:
-[Shot 1] A close-up static shot. A hand reaches in, lifts <Subject 1> and presses the lid; a thin wisp of steam rises.
+[Shot 1] A side shot of <Subject 1> on a gas ring; steam starts to curl from the spout.
 
 overall_soundscape:
-The click of the lid.
+A rising whistle.
 
 non_diegetic_music:
 N/A"""
 
 H3_SILENT_PERSON = H3_SPOKEN.replace(
-    "<Subject 1> is the young woman in <Picture 1>", "<Subject 1> is the young East Asian woman in <Picture 1>"
-).replace(" (S1), says: <d>[Chinese] 这杯子我天天用，保温一整天。</d>", " smiles.")
+    "<Subject 1> is the baker in <Picture 1>", "<Subject 1> is the baker with round glasses in <Picture 1>"
+).replace(" (S1), says: <d>[Chinese] 面包要等凉了再切。</d>", " nods.")
 
 # Text to video (三段) with a spoken line.
 H3_TEXT_ONLY = (
-    "integrated_multimodal_description: A 10-second vertical food-review clip at a night market. "
-    "[Shot 1] A medium handheld shot follows her at a grill stall. A young woman with a lively voice (S1) says: "
-    "<d>[Chinese] 这家排队排了半小时！</d> [Shot 2] At 00:05.000, the camera cuts to a close-up of the skewer.\n\n"
-    "overall_soundscape: Night-market ambience and sizzling oil.\n\n"
-    "non_diegetic_music: A light lo-fi beat kept low under the voice."
+    "integrated_multimodal_description: A 6-second clip on a rainy street. "
+    "[Shot 1] A wide shot of a boy running for a bus with a newspaper over his head. The boy (S1) shouts: "
+    "<d>[Chinese] 等等我！</d> [Shot 2] At 00:03.000, the camera cuts to the bus doors closing.\n\n"
+    "overall_soundscape: Rain on the pavement and a bus engine.\n\n"
+    "non_diegetic_music: N/A"
 )
 
-# First-frame mode: one binding line, then the three sections; nobody speaks.
+# First-frame mode: one line that binds <Picture 1> to the first frame, then the three sections; nobody speaks.
 H3_FIRST_FRAME = (
-    "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\n"
-    "integrated_multimodal_description: [Shot 1] A white mug on a wooden desk, steam rising, the camera pushes in slowly.\n\n"
-    "overall_soundscape: Quiet room tone.\n\n"
+    "For the target video, <Picture 1> is the opening frame.\n\n"
+    "integrated_multimodal_description: [Shot 1] A paper boat drifts along a gutter after the rain, the camera follows it low.\n\n"
+    "overall_soundscape: Dripping water.\n\n"
     "non_diegetic_music: N/A"
 )
 
@@ -184,11 +183,11 @@ LAYOUT_WORDS = re.compile(r"subject|definition|integrated|multimodal|summary|ret
 @pytest.mark.parametrize(
     ("prompt", "hint"),
     [
-        pytest.param(H3_SPOKEN, "这杯子我天天用", id="h3-reference-spoken-line"),
-        pytest.param(H3_PRODUCT, "matte green insulated", id="h3-reference-what-subject-1-is"),
-        pytest.param(H3_SILENT_PERSON, "young East Asian woman", id="h3-reference-a-word-is-finished-not-halved"),
-        pytest.param(H3_TEXT_ONLY, "这家排队排了半小时", id="h3-text-only-spoken-line"),
-        pytest.param(H3_FIRST_FRAME, "A white mug on a wooden", id="h3-first-frame-line-and-tags-dropped"),
+        pytest.param(H3_SPOKEN, "面包要等凉了再切", id="h3-reference-spoken-line"),
+        pytest.param(H3_PRODUCT, "red enamel teapot", id="h3-reference-what-subject-1-is"),
+        pytest.param(H3_SILENT_PERSON, "baker with round glasses", id="h3-reference-a-word-is-finished-not-halved"),
+        pytest.param(H3_TEXT_ONLY, "等等我", id="h3-text-only-spoken-line"),
+        pytest.param(H3_FIRST_FRAME, "A paper boat drifts", id="h3-first-frame-line-and-tags-dropped"),
     ],
 )
 def test_an_h3_prompt_is_named_by_what_it_shows(prompt: str, hint: str) -> None:
@@ -202,15 +201,15 @@ def test_an_h3_prompt_is_named_by_what_it_shows(prompt: str, hint: str) -> None:
     ("prompt", "hint"),
     [
         # 参考图编号和它的「的」不进名字 (image-generation 技能的写法)
-        pytest.param("图片1 的女生穿图片2 的外套，站在咖啡店门口，半身，暖色自然光", "女生穿外套", id="zh-picture-possessive"),
-        pytest.param("<Picture 1> wearing the coat from <Picture 2>, at a cafe door", "wearing the coat", id="en-picture-phrase"),
-        pytest.param("<Subject 1> 是图片1里的女生：圆脸，齐肩短发", "女生", id="zh-subject-definition"),
+        pytest.param("图片1 的男生背着图片2 的书包，站在公交站旁，全身，阴天", "男生背着书包", id="zh-picture-possessive"),
+        pytest.param("<Picture 1> with the umbrella from <Picture 2>, at a bus stop", "with the umbrella", id="en-picture-phrase"),
+        pytest.param("<Subject 1> 是图片1里的男生：圆脸，寸头", "男生", id="zh-subject-definition"),
         # 只说参考图是谁：不给名字，交给调用方的通用名(结果卡片显示「图片」「视频」)
-        pytest.param("图片1 和图片2 是同一位女士，请保留她的长相、发型和妆容", "", id="zh-pictures-binding"),
-        pytest.param("图片1、2 都是她，保留脸型", "", id="zh-pictures-binding-short-list"),
-        pytest.param("<Picture 1> and <Picture 2> show the same woman. Keep her face.", "", id="en-pictures-binding"),
+        pytest.param("图片1 和图片2 是同一只猫，按这两张画它", "", id="zh-pictures-binding"),
+        pytest.param("图片1、2 都是它，保留花色", "", id="zh-pictures-binding-short-list"),
+        pytest.param("<Picture 1> and <Picture 2> show the same cat. Keep its markings.", "", id="en-pictures-binding"),
         # 行首的小标题不算名字
-        pytest.param("人物：二十多岁的东亚女生，鹅蛋脸", "二十多岁的东亚女生", id="zh-label"),
+        pytest.param("人物：三十岁左右的男店主，圆脸", "三十岁左右的男店主", id="zh-label"),
         pytest.param("Scene: a quiet kitchen at dawn", "a quiet kitchen at dawn", id="en-label"),
     ],
 )
@@ -249,9 +248,9 @@ def hermes_home(tmp_path, monkeypatch) -> Path:
 @pytest.mark.parametrize(
     ("prompt", "stem"),
     [
-        pytest.param(H3_SPOKEN, "这杯子我天天用", id="spoken-line"),
-        pytest.param(H3_PRODUCT, "matte_green_insulated", id="subject"),
-        pytest.param("图片1 和图片2 是同一位女士，保留她的长相", "generated_video", id="binding-keeps-the-generic-stem"),
+        pytest.param(H3_SPOKEN, "面包要等凉了再切", id="spoken-line"),
+        pytest.param(H3_PRODUCT, "red_enamel_teapot", id="subject"),
+        pytest.param("图片1 和图片2 是同一只猫，按这两张画它", "generated_video", id="binding-keeps-the-generic-stem"),
     ],
 )
 def test_the_video_generator_saves_the_clip_under_that_name(monkeypatch, hermes_home, prompt: str, stem: str) -> None:
@@ -269,8 +268,8 @@ def test_the_video_generator_saves_the_clip_under_that_name(monkeypatch, hermes_
 @pytest.mark.parametrize(
     ("prompt", "stem"),
     [
-        pytest.param("图片1 的女生穿图片2 的外套，站在咖啡店门口", "女生穿外套_1", id="picture-tags-dropped"),
-        pytest.param("图片1 和图片2 是同一位女士，保留她的长相", "image_1", id="binding-keeps-the-generic-stem"),
+        pytest.param("图片1 的男生背着图片2 的书包，站在公交站旁", "男生背着书包_1", id="picture-tags-dropped"),
+        pytest.param("图片1 和图片2 是同一只猫，按这两张画它", "image_1", id="binding-keeps-the-generic-stem"),
     ],
 )
 def test_the_image_generator_saves_each_image_under_that_name(monkeypatch, hermes_home, prompt: str, stem: str) -> None:
