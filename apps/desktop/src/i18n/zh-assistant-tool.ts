@@ -166,6 +166,7 @@ export const zhAssistantTool: AssistantToolOverrides = {
     live_record_status: { done: '已查看直播录制进度', pending: '正在查看直播录制进度', pendingAction: '正在查看' },
     live_record_stop: { done: '已结束直播录制', pending: '正在结束直播录制', pendingAction: '正在结束' },
     honesty_verify: { done: '已检查文案说法', pending: '正在检查文案说法', pendingAction: '正在检查' },
+    write_draft: { done: '已写好稿子', pending: '正在写稿', pendingAction: '正在写' },
     doc_file_write: { done: '已生成文档', pending: '正在生成文档', pendingAction: '正在生成' },
     xlsx_file_write: { done: '已生成表格', pending: '正在生成表格', pendingAction: '正在生成' },
     pptx_file_write: { done: '已生成演示文稿', pending: '正在生成演示文稿', pendingAction: '正在生成' },
