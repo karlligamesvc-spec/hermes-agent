@@ -25,9 +25,11 @@ import {
   RESULT_IMAGE,
   RESULT_SCRIPT,
   RESULT_VIDEO,
+  RESULT_VOICEOVER,
   resultDelegateTurn,
   resultImageCardTurn,
   resultTurn,
+  resultVoiceoverTurn,
   resultWritingTurn,
   writeScript
 } from '@/test/result-turn'
@@ -641,6 +643,48 @@ describe('every result card has a way to take the file away', () => {
   })
 })
 
+describe('a voiceover the engine named by the clock (hc-1244)', () => {
+  it('reads 音频, saves as 音频.mp3, and shows no clock in the chat or its process', async () => {
+    const { container } = renderIn(resultVoiceoverTurn())
+    const found = await card(container, 'audio')
+
+    expect(await within(found).findByText('音频')).toBeTruthy()
+
+    for (const clock of ['tts', '20261114', '223344', '123456']) {
+      expect(mainLine(container)).not.toContain(clock)
+    }
+
+    fireEvent.click(within(found).getByRole('button', { name: '下载' }))
+    await waitFor(() =>
+      expect(saveGatewayFile).toHaveBeenCalledWith(
+        expect.objectContaining({ path: RESULT_VOICEOVER, suggestedName: '音频.mp3' })
+      )
+    )
+
+    fireEvent.click(within(found).getByRole('button', { name: REVEAL }))
+    await waitFor(() => expect(revealPath).toHaveBeenCalledWith(RESULT_VOICEOVER))
+
+    // The step that made it names what it did, not the file.
+    fireEvent.click(await screen.findByRole('button', { name: '看过程' }))
+
+    const process = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>('[data-single-thread-process]')
+
+      expect(found?.textContent).toContain('配音')
+
+      return found as HTMLElement
+    })
+
+    expect(process.textContent).not.toMatch(/tts|20261114/)
+  })
+
+  it('reads Audio in English', async () => {
+    const { container } = renderIn(resultVoiceoverTurn(), 'en')
+
+    expect(await within(await card(container, 'audio')).findByText('Audio')).toBeTruthy()
+  })
+})
+
 describe('the words read in the interface language', () => {
   it('English: cards and contents toggle', async () => {
     const { container } = renderIn(resultTurn(), 'en')
@@ -665,6 +709,27 @@ describe('the words read in the interface language', () => {
     const en = renderIn(resultTurn(`MEDIA:${nameless}`), 'en')
 
     expect(await within(await card(en.container, 'video')).findByText('Video')).toBeTruthy()
+  })
+
+  it('clips saved before hc-1243 under an H3 prompt header title themselves by kind', async () => {
+    // The note the next-steps plugin adds for paid clips the reply never showed (hc-1066).
+    const cache = '/Users/me/.apexnodes/cache/media'
+
+    const note = [
+      '这一轮还生成了下面这些素材(都已计费)，上面没给你看：',
+      `MEDIA:${cache}/subject_definitions_d5cc1a2e.mp4`,
+      `MEDIA:${cache}/subject_definitions_4c8fe53a.mp4`,
+      `MEDIA:${cache}/图片1_和图片2_是同一只猫_1_a13fa341.png`
+    ].join('\n\n')
+
+    const { container } = renderIn(resultTurn(note))
+
+    await card(container, 'image')
+
+    const cards = [...container.querySelectorAll<HTMLElement>('[data-slot="aui_result-media"]')]
+
+    expect(cards.map(found => found.querySelector('span')?.textContent)).toEqual(['视频', '视频', '图片'])
+    expect(mainLine(container)).not.toMatch(/subject|definitions|图片1/)
   })
 })
 

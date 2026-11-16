@@ -27,7 +27,22 @@ describe('mediaShortTitle: what a result is called', () => {
     [`${CACHE}/deadbeef.mp4`, 'deadbeef'],
     // Names nobody chose: no title.
     [`${CACHE}/media_4a2ea035.mp4`, ''],
-    [`${CACHE}/generated_video_4a2ea035.mp4`, '']
+    [`${CACHE}/generated_video_4a2ea035.mp4`, ''],
+    // hc-1243: the generic image stem keeps its index; a chosen name keeps its number.
+    [`${CACHE}/image_1_c4195ff1.png`, ''],
+    [`${CACHE}/一只趴在窗台上的橘猫_1_c4195ff1.png`, '一只趴在窗台上的橘猫 1'],
+    [`${CACHE}/成片_2.mp4`, '成片 2'],
+    // hc-1243: what older engines saved from a prompt's own layout is no title either.
+    [`${CACHE}/subject_definitions_d5cc1a2e.mp4`, ''],
+    [`${CACHE}/integrated_multimoda_4a2ea035.mp4`, ''],
+    [`${CACHE}/For_the_target_video_4a2ea035.mp4`, ''],
+    [`${CACHE}/图片1_和图片2_是同一只猫_1_a13fa341.png`, ''],
+    [`${CACHE}/图片1_图片2_图片3_是同一个人_1_a13fa341.png`, ''],
+    // A sentence that says what the picture shows stays a title, references and all.
+    [`${CACHE}/图片1_的男生背着图片2_的书包_1_a13fa341.png`, '图片1 的男生背着图片2 的书包 1'],
+    // What the engine names them now (plugins/apexnodes_media_names.py).
+    [`${CACHE}/面包要等凉了再切_d5cc1a2e.mp4`, '面包要等凉了再切'],
+    [`${CACHE}/baker_with_round_glasses_4a2ea035.mp4`, 'baker with round glasses']
   ])('%s', (path, title) => {
     expect(mediaShortTitle(path)).toBe(title)
   })
@@ -39,6 +54,35 @@ describe('mediaShortTitle: what a result is called', () => {
   })
 })
 
+describe('mediaShortTitle: a voiceover the engine named by the clock (hc-1244)', () => {
+  const AUDIO = '/Users/me/.apexnodes/cache/audio'
+  const VOICE_TMP = '/var/folders/x1/T/hermes_voice'
+
+  it.each([
+    // text_to_speech with no output_path (tools/tts_tool.py): its card read 「tts 20261114 223344」.
+    [`${AUDIO}/tts_20261114_223344_123456.mp3`, ''],
+    ['/Users/me/.apexnodes/audio_cache/tts_20261114_223344_123456.mp3', ''],
+    ['C:\\Users\\me\\.apexnodes\\cache\\audio\\tts_20261114_223344_123456.mp3', ''],
+    [`file://${AUDIO}/tts_20261114_223344_123456.mp3`, ''],
+    // A long text delivered in parts.
+    [`${AUDIO}/tts_20261114_223344_123456.part02.mp3`, ''],
+    // Voice mode's reply (hermes_cli/voice.py) and a gateway voice reply (gateway/platforms/base.py).
+    [`${VOICE_TMP}/tts_20261114_223344.mp3`, ''],
+    [`${VOICE_TMP}/tts_reply_0123456789ab.ogg`, ''],
+    // A voiceover the assistant named keeps its name, with 「tts」 in it or not.
+    [`${AUDIO}/narration.mp3`, 'narration'],
+    [`${AUDIO}/tts_口播_第二版.mp3`, 'tts 口播 第二版'],
+    [`${AUDIO}/tts_reply_开场白.mp3`, 'tts reply 开场白']
+  ])('%s', (path, title) => {
+    expect(mediaShortTitle(path)).toBe(title)
+  })
+
+  it('is saved under its kind', () => {
+    expect(mediaSaveName(`${AUDIO}/tts_20261114_223344_123456.mp3`, '音频')).toBe('音频.mp3')
+    expect(mediaSaveName(`${AUDIO}/tts_20261114_223344_123456.part02.mp3`, 'Audio')).toBe('Audio.mp3')
+  })
+})
+
 describe('mediaSaveName: what a save dialog starts from', () => {
   it.each([
     [
@@ -47,6 +91,8 @@ describe('mediaSaveName: what a save dialog starts from', () => {
       '一条 15 秒的竖屏短视频 分三个镜头.mp4'
     ],
     [`${CACHE}/media_4a2ea035.mp4`, '视频', '视频.mp4'],
+    [`${CACHE}/subject_definitions_d5cc1a2e.mp4`, '视频', '视频.mp4'],
+    [`${CACHE}/image_1_c4195ff1.png`, '图片', '图片.png'],
     ['/Users/me/APEX/拆解报告.docx', '文件', '拆解报告.docx'],
     ['/Users/me/APEX/no-extension', '文件', 'no-extension']
   ])('%s', (path, fallback, name) => {

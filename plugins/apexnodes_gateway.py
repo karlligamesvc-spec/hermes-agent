@@ -115,6 +115,7 @@ import httpx
 
 from plugins import apexnodes_media_catalog as _media_catalog
 from plugins.apexnodes_gateway_copy import COPY as _COPY
+from plugins.apexnodes_media_names import media_title_hint  # hc-1243: what a generated file is called
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +144,7 @@ __all__ = [
     "guess_media_content_type",
     "media_cache_dir",
     "media_error_message",
+    "media_title_hint",
     "media_unavailable_reason",
     "missing_credential_error",
     "request_json",
@@ -1464,12 +1466,6 @@ def _guess_extension(url: str, content_type: str | None) -> str:
         if guessed:
             return guessed
     return ".mp4"
-
-
-def media_title_hint(prompt: str, limit: int = 20) -> str:
-    """生成文件的名字取提示词第一句的开头(hc-1130),不是整段提示词。"""
-    first = re.split(r"[，。！？；：\n]|[,.;:!?](?:\s|$)", (prompt or "").strip(), maxsplit=1)[0]
-    return first.strip()[:limit]
 
 
 def download_media(

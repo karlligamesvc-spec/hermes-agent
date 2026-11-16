@@ -323,7 +323,11 @@ const MANAGED_PLUGIN_NAMES = [
   // ApexNodes honesty_verify (hc-1023): the deterministic ad-compliance check. Its rules are
   // the copy-compliance-check skill's lexicon, which arrives with the platform skills after
   // login; byte-identical to the apex-nodes cloud copy.
-  'apexnodes-honesty-tools'
+  'apexnodes-honesty-tools',
+  // ApexNodes write_draft (hc-1248): scripts, voiceovers, storyboard tables and platform copy written by
+  // the platform's writing model through the tools gateway (/tools/v1/writing/draft); the
+  // writing rules stay on the server. Byte-identical to the apex-nodes cloud copy.
+  'apexnodes-writing-tools'
 ]
 
 // Skills physically present in ~/.hermes/skills/ but kept INACTIVE by default

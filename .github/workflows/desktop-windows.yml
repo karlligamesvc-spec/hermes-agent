@@ -77,7 +77,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
-          node-version: 22
+          node-version: 26  # one Node major across the release jobs (hc-1233)
       - name: Assert shell↔engine release contract
         working-directory: apps/desktop
         run: node scripts/assert-release-preflight.cjs
@@ -105,7 +105,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
-          node-version: 22
+          node-version: 26  # the engine bundle's gzip bytes follow the Node major (hc-1058): change it only in a minor release; 26 since 0.18.0 (hc-1233)
           cache: npm
 
       - name: Record release identity
@@ -303,7 +303,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
-          node-version: 22
+          node-version: 26  # one Node major across the release jobs (hc-1233)
 
       - name: Record release identity
         id: release-identity

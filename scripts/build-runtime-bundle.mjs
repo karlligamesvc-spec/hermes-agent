@@ -68,7 +68,9 @@ const FRAMEWORK = 'hermes-agent'
 // (pm/lock.json), so a bundle is built on exactly that CPython and uv. Older runtime refs
 // carry no pm/lock.json and were locked for 3.11 (the pre-v0.22 installers' PYTHON_VERSION).
 const LEGACY_PYTHON_VERSION = '3.11'
-const NODE_SERIES = 'v22.'   // lockstep: scripts/install.ps1 $NodeVersion = "22"
+// hc-1233: a bundle ships the Node its runtime pins (pm/lock.json packages.node; Node 26 since v0.23.0, whose
+// root engines and TUI build need >=26). Older runtime refs carry no pm/lock.json and keep the newest Node 22.
+const LEGACY_NODE_SERIES = 'v22.'
 const MINGIT_VERSION = '2.54.0' // lockstep: install.ps1 $gitVer + publish-runtime-tarball.sh GIT_VERSION
 const RIPGREP_VERSION = '14.1.1'
 // Lockstep with scripts/install.{ps1,sh} agent-browser install (npm -g --prefix
@@ -112,13 +114,23 @@ function pmLockPins(sourceRoot) {
   try {
     lock = JSON.parse(fs.readFileSync(path.join(sourceRoot, 'pm', 'lock.json'), 'utf8'))
   } catch {
-    return { python: null, uv: null }
+    return { python: null, uv: null, node: null }
   }
   const packages = lock.packages || {}
   return {
     python: String(packages.python?.version || '').split('+')[0] || null,
     uv: String(packages.uv?.version || '') || null,
+    node: String(packages.node?.version || '') || null,
   }
+}
+
+// hc-1233: the portable Node a bundle stages, as a dist version ("v26.12.1"): exactly the runtime's pm/lock.json
+// pin, else (a runtime ref without pm/lock.json) the newest LEGACY_NODE_SERIES release in the dist index.
+export function bundleNodeVersion(pinnedNode, distIndex = []) {
+  if (pinnedNode) return `v${String(pinnedNode).replace(/^v/, '')}`
+  const entry = distIndex.find((e) => String(e.version).startsWith(LEGACY_NODE_SERIES))
+  if (!entry) throw new Error(`no ${LEGACY_NODE_SERIES}x release in the Node dist index`)
+  return entry.version
 }
 
 // "3.14" from a bundled interpreter dir name such as "cpython-3.14.7-macos-aarch64-none".
@@ -383,7 +395,7 @@ async function cmdBuild(args) {
   rmrf(path.join(stage, 'dist', 'cos-runtime'))
 
   const pins = pmLockPins(stage)
-  if (pins.python) log(`runtime pins (pm/lock.json): python ${pins.python}, uv ${pins.uv}`)
+  if (pins.python) log(`runtime pins (pm/lock.json): python ${pins.python}, uv ${pins.uv}, node ${pins.node}`)
 
   // ── 2. uv (host tool + bundled binary; native build ⇒ same triple) ────────
   let uvVersion = args['uv-version'] || pins.uv || ''
@@ -486,14 +498,17 @@ async function cmdBuild(args) {
   }
   syncBundleVenv(run, uvHost, { cwd: stage, env: syncEnv, devUnlocked })
 
-  // ── 6. portable Node 22 (dist layout == today's HERMES_HOME/node).
+  // ── 6. portable Node, the runtime's pin (dist layout == today's HERMES_HOME/node).
   //       HERMES_NODE_DIST_BASE: same override env install.ps1's Install-Node
   //       honors (CN mirror = npmmirror binary mirror). ──────────────────────
   const nodeDistBase = (process.env.HERMES_NODE_DIST_BASE || 'https://nodejs.org/dist').replace(/\/+$/, '')
-  const nodeIndex = await fetchJson(`${nodeDistBase}/index.json`)
-  const nodeEntry = nodeIndex.find((e) => e.version.startsWith(NODE_SERIES))
-  if (!nodeEntry) die(`no ${NODE_SERIES}x release in ${nodeDistBase}/index.json`)
-  const nodeVersion = nodeEntry.version
+  let nodeVersion
+  try {
+    nodeVersion = bundleNodeVersion(pins.node, pins.node ? [] : await fetchJson(`${nodeDistBase}/index.json`))
+  } catch (err) {
+    die(`${err.message} (${nodeDistBase}/index.json)`)
+  }
+  log(`portable node ${nodeVersion}${pins.node ? ' (pm/lock.json pin)' : ` (newest ${LEGACY_NODE_SERIES}x: no pm/lock.json)`}`)
   const nodeBase = `node-${nodeVersion}-${target.nodePlat}`
   const nodeArchive = path.join(tools, `${nodeBase}.${target.nodeExt}`)
   await download(`${nodeDistBase}/${nodeVersion}/${nodeBase}.${target.nodeExt}`, nodeArchive)
@@ -1111,7 +1126,8 @@ async function cmdSmoke(args) {
 
     // bundled tool binaries
     const nv = run(bundledNode(root), ['--version'], { capture: true, env: probeEnv }).stdout.trim()
-    if (!nv.startsWith(NODE_SERIES)) die(`bundled node is ${nv}, expected ${NODE_SERIES}x`)
+    const wantNode = manifest.components?.node?.version
+    if (!wantNode || nv !== wantNode) die(`bundled node is ${nv}, the manifest records ${wantNode || 'none'}`)
     log(`node-ok ${nv}`)
     const exe = manifest.os === 'win' ? '.exe' : ''
     run(path.join(root, '.runtime', 'bin', `rg${exe}`), ['--version'], { capture: true, env: probeEnv })

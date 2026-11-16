@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LocalFilePreview } from '@/app/chat/right-rail/preview-file'
 import { ReturnedItems } from '@/app/single-thread/handoff/cards'
 import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
+import { renderMediaTags } from '@/lib/chat-messages/parts'
 import { replyAttachments } from '@/lib/handoff-text'
 import { mediaMarkdownHref, mediaPathFromMarkdownHref } from '@/lib/media'
 import { previewMarkdownHref, previewTargetFromMarkdownHref } from '@/lib/preview-targets'
@@ -158,6 +159,20 @@ describe('every hash href a file travels in', () => {
     const reply = `逐字稿已生成：\nMEDIA:${INCIDENT_B}\n音频：MEDIA:/tmp/voice.mp3 和 MEDIA:/tmp/b.mp3\n`
 
     expect(replyAttachments(reply).files).toEqual([INCIDENT_B, '/tmp/voice.mp3', '/tmp/b.mp3'])
+  })
+
+  // hc-1247: a relay reads the reply as Desktop stores it, its MEDIA: tags already #media: links.
+  it('and the same files from that reply as it is stored', () => {
+    const reply = renderMediaTags(
+      `逐字稿已生成：\nMEDIA:${INCIDENT_B}\n音频：MEDIA:/tmp/voice.mp3 和 MEDIA:/tmp/b.mp3\n`
+    )
+
+    expect(reply).not.toContain('MEDIA:')
+    expect(replyAttachments(reply).files).toEqual([INCIDENT_B, '/tmp/voice.mp3', '/tmp/b.mp3'])
+  })
+
+  it.each(NAMES)('a relay carries the whole path of %s from a stored reply', (_label, name) => {
+    expect(replyAttachments(renderMediaTags(`逐字稿已生成：\nMEDIA:${name}\n`)).files).toEqual([name])
   })
 
   it('a file a relay hands back gets its card', async () => {

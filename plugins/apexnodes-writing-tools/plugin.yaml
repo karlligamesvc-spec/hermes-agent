@@ -1,0 +1,11 @@
+name: apexnodes-writing-tools
+version: "0.1.0"
+description: >-
+  write_draft (hc-1248): short-video scripts, voiceovers, storyboard tables and platform copy written by
+  the platform's strong writing model (POST /tools/v1/writing/draft; APEX Desktop through the
+  tools gateway, cloud containers through the Scheduler's /api/v1 mount). The writing rules
+  live on the server (app/services/draft_writer_rules.py); when the model does not write, the
+  answer carries the reason and the same rules, and the assistant writes the draft itself.
+  Byte-identical to hermes-agent fork plugins/apexnodes-writing-tools/.
+provides_tools:
+  - write_draft

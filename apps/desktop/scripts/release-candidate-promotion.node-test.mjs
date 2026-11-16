@@ -150,12 +150,15 @@ test('parseUpdaterFeed reads the feeds electron-builder actually published', () 
     version: '0.17.75',
     path: 'APEX-0.17.75-mac-arm64.zip',
     sha512: 'zq5LCW73IHtedGTRzqRTX8AF20Z4b2yKKoFJu1Y+yN2XJOPrOE5UOYyOi+F3SnvzvfPtXaTpLsJFGrqsvkS7jA==',
+    minimumSystemVersion: null,
     files: [
       { url: 'APEX-0.17.75-mac-arm64.zip', sha512: 'zq5LCW73IHtedGTRzqRTX8AF20Z4b2yKKoFJu1Y+yN2XJOPrOE5UOYyOi+F3SnvzvfPtXaTpLsJFGrqsvkS7jA==', size: 516468330 },
       { url: 'APEX-0.17.75-mac-arm64.dmg', sha512: 'IEHQoFJMjoMUWBVdlP+ERl3Hx/Dukqwj6dQWhNLXSHfZbrE4rVlzQiF5EqBYRQIpsUlG8bwmv5ERfzNjmHE+tw==', size: 518633778 }
     ]
   })
   assert.equal(parseUpdaterFeed(WIN_FEED_0_17_73.replaceAll('\n', '\r\n')).files[0].size, 634228268)
+  // hc-1233: the release build stamps the Mac feed with the app's minimum macOS, as a Darwin version.
+  assert.equal(parseUpdaterFeed(`${MAC_FEED_0_17_75}minimumSystemVersion: '22.6.0'\n`).minimumSystemVersion, '22.6.0')
 })
 
 test('parseUpdaterFeed refuses a feed it cannot read exactly', () => {
@@ -193,7 +196,10 @@ function writeBundle(platform, version, { feedFiles, extra = [] } = {}) {
   const primary = entries.find(entry => entry.name === spec.primary(version)) ?? entries[0]
   const feed = [`version: ${version}`, 'files:']
   for (const entry of entries) feed.push(`  - url: ${entry.name}`, `    sha512: ${entry.sha512}`, `    size: ${entry.size}`)
-  feed.push(`path: ${primary.name}`, `sha512: ${primary.sha512}`, "releaseDate: '2026-11-09T11:32:47.240Z'", '')
+  feed.push(`path: ${primary.name}`, `sha512: ${primary.sha512}`, "releaseDate: '2026-11-09T11:32:47.240Z'")
+  // hc-1233: macOS 13.5, the floor of the Node 26 the engine bundles, as os.release() reports it.
+  if (platform === 'mac-arm64') feed.push("minimumSystemVersion: '22.6.0'")
+  feed.push('')
   fs.writeFileSync(path.join(dir, spec.feed), feed.join('\n'))
   for (const name of extra) fs.writeFileSync(path.join(dir, name), 'diagnostic copy')
   return dir
@@ -255,7 +261,12 @@ test('a bundle that differs from its feed in any way is refused before upload', 
     ['a top-level sha512 of another file', dir => {
       const text = fs.readFileSync(feedPath(dir), 'utf8')
       fs.writeFileSync(feedPath(dir), text.replace(/^sha512: .*$/m, 'sha512: AAAA'))
-    }, /top-level sha512 is not/]
+    }, /top-level sha512 is not/],
+    // hc-1233: either would offer 0.18.0's Node 26 engine to a Mac older than 13.5, where it cannot start.
+    ['a Mac feed without the minimum macOS, as 0.17.76 shipped', dir => rewriteFeed(dir, "minimumSystemVersion: '22.6.0'\n", ''),
+      /latest-mac.yml minimumSystemVersion is missing, expected 22.6.0/],
+    ['a Mac feed that macOS 13.4 (Darwin 22.5.0) would accept', dir => rewriteFeed(dir, "'22.6.0'", "'22.5.0'"),
+      /latest-mac.yml minimumSystemVersion is 22.5.0, expected 22.6.0/]
   ]) {
     const dir = writeBundle('mac-arm64', '0.17.76')
     try {
@@ -277,6 +288,13 @@ test('a bundle that differs from its feed in any way is refused before upload', 
     fs.rmSync(path.join(winWithoutBlockmap, 'APEX-0.17.76-win-x64.exe.blockmap'))
     await assert.rejects(verifyReleaseBundle({ dir: winWithoutBlockmap, platform: 'win-x64', expectedVersion: '0.17.76' }), /missing APEX-0.17.76-win-x64.exe.blockmap/)
   } finally { fs.rmSync(winWithoutBlockmap, { recursive: true, force: true }) }
+
+  // Windows needs no floor of its own: Node 22 and 26 both run on Windows 10, as Electron does.
+  const winWithFloor = writeBundle('win-x64', '0.17.76')
+  try {
+    fs.appendFileSync(path.join(winWithFloor, 'latest.yml'), "minimumSystemVersion: '22.6.0'\n")
+    await assert.rejects(verifyReleaseBundle({ dir: winWithFloor, platform: 'win-x64', expectedVersion: '0.17.76' }), /latest.yml minimumSystemVersion is 22.6.0, expected none/)
+  } finally { fs.rmSync(winWithFloor, { recursive: true, force: true }) }
 })
 
 test('parseArgs is strict about commands, flags and platforms', () => {
