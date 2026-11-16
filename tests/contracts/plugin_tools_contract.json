@@ -1,7 +1,7 @@
 {
  "contract_name": "apexnodes-plugin-tools-parity",
- "contract_version": 18,
- "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948, hc-969, hc-1011, hc-1000, hc-1054, hc-1143, hc-1136, hc-1046, hc-1189, hc-1222",
+ "contract_version": 19,
+ "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845, hc-926, hc-929, hc-948, hc-969, hc-1011, hc-1000, hc-1054, hc-1143, hc-1136, hc-1046, hc-1189, hc-1222, hc-1248",
  "sync_policy": {
   "copies": [
    "hermes-cloud: tests/contracts/plugin_tools_contract.json (source of truth)",
@@ -56,6 +56,9 @@
    "video_highlights",
    "video_moment_search",
    "video_breakdown"
+  ],
+  "apexnodes-writing-tools": [
+   "write_draft"
   ]
  },
  "tools": {
@@ -1224,6 +1227,82 @@
     ]
    },
    "behaviors": {}
+  },
+  "write_draft": {
+   "schema": {
+    "params": {
+     "benchmark": {
+      "type": "string"
+     },
+     "brief": {
+      "type": "string"
+     },
+     "draft": {
+      "type": "string"
+     },
+     "duration_seconds": {
+      "type": "integer"
+     },
+     "facts": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "video_script",
+       "voiceover",
+       "storyboard",
+       "post_copy"
+      ]
+     },
+     "language": {
+      "type": "string",
+      "enum": [
+       "zh",
+       "en"
+      ]
+     },
+     "length_chars": {
+      "type": "integer"
+     },
+     "persona": {
+      "type": "string"
+     },
+     "platform": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "brief",
+     "kind"
+    ]
+   },
+   "endpoints": {
+    "legacy": [
+     "/tools/v1/writing/draft"
+    ],
+    "gateway": [
+     "/tools/v1/writing/draft"
+    ]
+   },
+   "behaviors": {
+    "kind_and_brief_required": {
+     "legs": [
+      "legacy",
+      "gateway"
+     ]
+    },
+    "not_written_passes_reason_and_rules": {
+     "legs": [
+      "legacy",
+      "gateway"
+     ],
+     "note": "hc-1248 write_draft: a draft the server did not write (written false: switched off, today's drafts used up, the model failed) reaches the assistant with the server's code, message and rules unchanged, as a tool result, not an error: the assistant tells the user the reason and writes the draft itself by those rules (one copy of the rules, on the server). A server that cannot be reached is a tool error that says to write it yourself."
+    }
+   }
   }
  }
 }

@@ -47,6 +47,8 @@ NETWORK_PLUGINS = (
     "apexnodes-social-tools",
     "apexnodes-video-tools",
     "apexnodes-image-tools",
+    # hc-1248: write_draft waits up to 330 s for one draft, under the shared default: no budget of its own.
+    "apexnodes-writing-tools",
 )
 EXTRA_PROBES = {"generate_image": {"prompt": "一只猫在弹钢琴"}}
 

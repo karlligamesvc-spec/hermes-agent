@@ -146,6 +146,11 @@ export const PLATFORM_TOOL_PLUGINS: readonly PlatformToolPlugin[] = Object.freez
       'creator_top_posts',
       'social_api'
     ])
+  }),
+  Object.freeze({
+    id: 'apexnodes-writing-tools',
+    capability: '写稿',
+    tools: Object.freeze(['write_draft'])
   })
 ]) as readonly PlatformToolPlugin[]
 

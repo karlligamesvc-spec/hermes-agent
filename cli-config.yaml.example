@@ -107,6 +107,10 @@ plugins:
     # 技能的分级词库(登录后随平台技能下发到 HERMES_HOME/skills/apexnodes/);没有词库时工具
     # 报错说明，不判通过。与 apex-nodes app/runtime_plugins/apexnodes-honesty-tools 逐字节相同。
     - apexnodes-honesty-tools
+    # ApexNodes write_draft(hc-1248):短视频脚本、口播稿、分镜脚本表和平台文案交给平台的写稿模型写(经平台工具
+    # 网关 /tools/v1/writing/draft);写作规则只在服务端。与 apex-nodes
+    # app/runtime_plugins/apexnodes-writing-tools 逐字节相同。
+    - apexnodes-writing-tools
   # Deadline for each Git clone, fetch or checkout during plugin install. Default: 300
   # seconds. Subdirectory installs download only that folder.
   # Raise this for large repositories or slow connections. Maximum: 3600.

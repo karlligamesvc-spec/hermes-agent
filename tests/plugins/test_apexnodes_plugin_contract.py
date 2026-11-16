@@ -64,8 +64,11 @@ CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 # 与同一次调用的 .docx、.segments.json 同名只差扩展名(transcript_readback_file,两条腿)。
 # v18(hc-1222):generate_video 接参考音频(reference_audio,只有 MiniMax H3 收),两条腿的端点族各加一个
 # 参考音频上传端点;三条新行为：带音频转成 ref、服务端不声明支持就不发、上传失败绝不改成不带音频。
-EXPECTED_CONTRACT_SHA256 = "2576fcbe68efbc2cd0c456e6106adb7a643d7cf55ab8d24b2f35c4f48015ce60"
-EXPECTED_CONTRACT_VERSION = 18
+# v19(hc-1248):新插件 apexnodes-writing-tools 的 write_draft(脚本、口播稿、分镜脚本表、平台文案交给
+# 平台的写稿模型),两条腿都走 /tools/v1/writing/draft;两条行为:kind 和 brief 必填、没写成时把服务端的
+# 原因和写作规则原样交给助手(not_written_passes_reason_and_rules)。
+EXPECTED_CONTRACT_SHA256 = "5a2732eda3590afbbe86d4d06610164865d413fd7e01818468947658e93611e7"
+EXPECTED_CONTRACT_VERSION = 19
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -102,6 +105,7 @@ PROBES: dict[str, dict] = {
     "video_highlights": {"source": "media:" + "b" * 32 + "/long.mp4"},
     "video_moment_search": {"source": "media:" + "b" * 32 + "/long.mp4", "query": "a red suitcase"},
     "video_breakdown": {"video_path": "/probe/原片.mp4"},
+    "write_draft": {"kind": "voiceover", "brief": "30 秒介绍一款保温杯", "facts": ["容量 500ml"]},
 }
 ANALYSIS_TOOLS = ("video_highlights", "video_moment_search")
 
@@ -480,7 +484,7 @@ def test_contract_covers_exactly_the_shared_tool_surface():
     assert contract_tools == {t for tools in CONTRACT["plugins"].values() for t in tools}
     # hc-563 冻结在 14;hc-600 有意加入四个洞察工具(contract_version 3)。这个数字是
     # 漂移绊线,只能与 contract_version 一起动 —— 与 cloud 侧同一断言保持一致。
-    assert len(contract_tools) == 22  # hc-1143 adds social_api (v14), hc-1136 video_breakdown (v15)
+    assert len(contract_tools) == 23  # hc-1143 social_api (v14), hc-1136 video_breakdown (v15), write_draft (v19)
     assert set(PROBES) == contract_tools
 
 
@@ -1147,8 +1151,36 @@ def _check_hidden_picker_lets_the_assistant_pick(h, tool_name, _spec):
         assert _sent_model(calls) == sent, choice
 
 
+_NOT_WRITTEN = {
+    "written": False,
+    "kind": "voiceover",
+    "code": "daily_limit_reached",
+    "message": "今天的写稿次数用完了(10/10),北京时间明天 0 点恢复。这次请你按下面 rules 里的规则自己接着写。",
+    "rules": "(the server's writing rules for this kind)",
+    "remaining_today": 0,
+}
+
+
+def _check_not_written_passes_reason_and_rules(h, tool_name, _spec):
+    h._canned = lambda path: {"ok": True, "data": dict(_NOT_WRITTEN), "cost_cents": 0}  # type: ignore[method-assign]
+    result, calls = h.invoke(tool_name, h.probe_args(tool_name))
+    assert [c.path for c in calls] == ["/tools/v1/writing/draft"] and calls[0].method == "POST"
+    assert "error" not in result, "a draft the server did not write is a result the assistant acts on"
+    assert {key: result.get(key) for key in _NOT_WRITTEN} == _NOT_WRITTEN
+    if h.leg == "gateway":
+        failure = _gateway_module().GatewayError("连不上平台工具网关(test)")
+    else:
+        failure = urllib.error.URLError("connection refused")
+    h._canned = lambda path: failure  # type: ignore[method-assign]
+    result, _calls = h.invoke(tool_name, h.probe_args(tool_name))
+    assert "error" in result and "自己接着写" in result["error"], result
+
+
 # name → callable;跑腿集合 = 契约行为声明的 legs(fork 双腿都在场)。
 BEHAVIOR_CHECKS = {
+    # hc-1248 write_draft (v19).
+    "kind_and_brief_required": _required_args_check({}),
+    "not_written_passes_reason_and_rules": _check_not_written_passes_reason_and_rules,
     "routed_intent_passthrough": _check_routed_intent_passthrough,
     "delivery_format_normalized_passthrough": _check_delivery_format_normalized_passthrough,
     "force_refresh_passthrough": _check_force_refresh_passthrough,
