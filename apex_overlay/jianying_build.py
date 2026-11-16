@@ -9,6 +9,13 @@ What goes in: local media only, plus 叠化 (free) at the cuts the agent names. 
 online fonts or VIP material (hc-1219). Subtitles are white with a black stroke, so they stay
 readable on a bright frame (report 2026-11-05 §3).
 
+The narration plays as loud as in the finished cut (hc-1232). ``assemble`` measures it and raises it to -16 LUFS,
+and writes how many dB it added in the report beside the cut, ``<cut>.assembly.json`` ``narration_level.gain_db``.
+The draft takes that number from the report in the timeline's folder that names the same narration and the same
+shots, and does not measure anything itself. 剪映 takes a volume of at most 10 times (+20 dB). Without such a report
+(no cut yet, or one from an ``assemble`` before hc-1232, which left the narration as recorded) the narration stays
+as recorded.
+
 剪映 takes in any new folder under its draft folder within about two seconds while it runs (a hidden one too) and
 keeps the duration it read then, so the draft is put together in a hidden folder beside the draft folder, on the same
 disk, and renamed into place whole, its draft_meta_info.json already filled in. The library is the pinned copy in
@@ -19,6 +26,7 @@ media into the draft's ``materials/``.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -45,6 +53,12 @@ SUBTITLE_TRACK = "字幕"
 SUBTITLE_SIZE = 7.0
 SUBTITLE_Y = {"bottom": -0.25, "middle": 0.0}
 CLIP_VOLUME = {"plain": 1.0, "under_narration": 0.3}
+#: The loudest a clip can be in a draft, as a multiple of its own level (1 = as recorded). 剪映 11.7.0's own draft
+#: tool takes volume 0 to 10 (its creator-cli schema), and its timeline docs give the slider as 0 to 1000 %.
+VOLUME_MAX = 10.0
+VOLUME_MAX_DB = 20 * math.log10(VOLUME_MAX)
+#: What ``assemble`` writes beside the cut: ``成片.mp4`` -> ``成片.assembly.json``.
+ASSEMBLY_REPORT_SUFFIX = ".assembly.json"
 DEFAULT_CANVAS = (1080, 1920)
 _UNSAFE_NAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')
 _SRT_TIME = re.compile(r"(\d+):(\d{2}):(\d{2})[,.](\d{1,3})")
@@ -72,6 +86,8 @@ class Plan:
     shots: list[Shot]
     subtitles: Optional[str] = None
     narration: Optional[str] = None
+    #: dB ``assemble`` added to this narration in the finished cut; None when no report of the cut says so.
+    narration_gain_db: Optional[float] = None
     notes: list[str] = field(default_factory=list)
 
 
@@ -128,9 +144,75 @@ def load_plan(timeline: str, subtitles: Optional[str] = None, narration: Optiona
     shots = [_shot(entry, base, number) for number, entry in enumerate(entries, 1)]
     width = int(settings.get("width") or DEFAULT_CANVAS[0])
     height = int(settings.get("height") or DEFAULT_CANVAS[1])
+    voice = _beside(folder, narration or settings.get("narration"))
     return Plan(width=width - width % 2, height=height - height % 2, fps=int(settings.get("fps") or 30), shots=shots,
-                subtitles=_beside(folder, subtitles or settings.get("subtitles")),
-                narration=_beside(folder, narration or settings.get("narration")))
+                subtitles=_beside(folder, subtitles or settings.get("subtitles")), narration=voice,
+                narration_gain_db=assembled_narration_gain(folder, voice, shots) if voice else None)
+
+
+def _same_file(listed, path: str) -> bool:
+    if not isinstance(listed, str) or not listed:
+        return False
+    try:
+        return os.path.samefile(listed, path)
+    except OSError:
+        return False
+
+
+def _same_shots(listed, shots: list[Shot]) -> bool:
+    """The report's shots are this timeline's: same files, in points and lengths, in the same order."""
+    if not isinstance(listed, list) or len(listed) != len(shots):
+        return False
+    for entry, shot in zip(listed, shots):
+        try:
+            same = (entry["file"] == os.path.basename(shot.path)
+                    and abs(max(0.0, float(entry["in"])) - shot.start) < 1e-3
+                    and abs(float(entry["dur"]) - shot.dur) < 1e-3)
+        except (KeyError, TypeError, ValueError):
+            return False
+        if not same:
+            return False
+    return True
+
+
+def _modified(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def assembled_narration_gain(folder: str, narration: str, shots: list[Shot]) -> Optional[float]:
+    """How many dB ``assemble`` added to this narration in the finished cut (hc-1232), from its report in the
+    timeline's folder that names the same narration file and the same shots; of several, the newest, which is the
+    cut the user has last. None when there is none, or when that report has no number: an ``assemble`` before
+    hc-1232 left the narration as recorded."""
+    for report in sorted(Path(folder).glob("*" + ASSEMBLY_REPORT_SUFFIX), key=_modified, reverse=True):
+        try:
+            data = json.loads(report.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict) or not _same_file(data.get("narration"), narration) \
+                or not _same_shots(data.get("shots"), shots):
+            continue
+        level = data.get("narration_level")
+        gain = level.get("gain_db") if isinstance(level, dict) else None
+        if isinstance(gain, (int, float)) and not isinstance(gain, bool) and math.isfinite(gain):
+            return float(gain)
+        return None
+    return None
+
+
+def narration_volume(gain_db: Optional[float]) -> tuple[float, Optional[str]]:
+    """The narration's volume in the draft for ``gain_db`` added in the cut, at most 剪映's VOLUME_MAX, and a note
+    for the result when the draft's narration ends up quieter than the cut's."""
+    if gain_db is None:
+        return 1.0, None
+    short = gain_db - VOLUME_MAX_DB
+    if round(short, 1) <= 0:
+        return min(VOLUME_MAX, round(10 ** (gain_db / 20), 4)), None
+    return VOLUME_MAX, (f"成片里旁白拉响了 {gain_db:.1f} dB,剪映最多拉响 {VOLUME_MAX_DB:.0f} dB,"
+                        f"草稿里的旁白比成片轻 {short:.1f} dB")
 
 
 def _seconds(stamp: tuple[str, str, str, str]) -> float:
@@ -343,7 +425,9 @@ def write(plan: Plan, root: Path, name: str, *, music: Optional[str] = None, mus
         script.append_track(draft.TrackSpec(draft.TrackType.video, "画面"))
         total, notes = _video_track(script, plan, set(dissolve_after))
         if plan.narration:
-            _audio(script, plan.narration, "旁白", total, 1.0, fade=False)
+            volume, quieter = narration_volume(plan.narration_gain_db)
+            _audio(script, plan.narration, "旁白", total, volume, fade=False)
+            notes += [quieter] if quieter else []
         if music:
             _audio(script, music, "配乐", total, max(0.05, min(1.0, music_volume)), fade=True)
         placed = _subtitles(script, read_cues(plan.subtitles), total, subtitle_position) if plan.subtitles else 0

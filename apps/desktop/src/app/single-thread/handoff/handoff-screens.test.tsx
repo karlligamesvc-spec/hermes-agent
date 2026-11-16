@@ -16,9 +16,12 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { renderSidebar, renderTranscript, seedShellState } from '@/__identity__/single-thread-shell/render'
 import { restoreRecordingTimeZone } from '@/__identity__/single-thread-shell/time-zone'
 import { COMPOSER_AREAS } from '@/app/chat/composer/contrib'
-import { stubThreadEnvironment, stubThreadViewportSize } from '@/components/assistant-ui/test-utils'
+import { stubThreadEnvironment, stubThreadViewportSize, ThreadRuntime } from '@/components/assistant-ui/test-utils'
+import { Thread } from '@/components/assistant-ui/thread'
 import { registry } from '@/contrib/registry'
-import { I18nProvider, setRuntimeI18nLocale } from '@/i18n'
+import { I18nProvider, type Locale, setRuntimeI18nLocale } from '@/i18n'
+import { renderMediaTags } from '@/lib/chat-messages/parts'
+import { handoffRequestText } from '@/lib/handoff-text'
 import { $authState } from '@/store/auth'
 import { $mainThread, noteMainThreadClaimed, resetMainThreadForTest } from '@/store/main-thread'
 import { $planUsage } from '@/store/plan-usage'
@@ -499,6 +502,141 @@ describe('the receiver’s side (⑪)', () => {
       /^【APEX 交来的活】/
     )
     expect(container.textContent).not.toContain('apex:')
+  })
+})
+
+describe('what goes along is called what its result card calls it (hc-1246)', () => {
+  const CACHE = '/Users/me/.apexnodes/cache'
+  // text_to_speech names a voiceover by the clock (tools/tts_tool.py); a clip nobody named is `generated_video`.
+  const VOICEOVER = `${CACHE}/audio/tts_20261114_223344_123456.mp3`
+  const VIDEO = `${CACHE}/media/generated_video_4a2ea035.mp4`
+  const SCRIPT = '/Users/me/APEX/成片/口播稿_第二版_4a2ea035.docx'
+  const COVER = `${CACHE}/media/收纳架封面_带字_9a8b7c6d.png`
+  const NOTE = 'https://www.xiaohongshu.com/explore/a'
+
+  /** APEX's reply hands the files over as MEDIA: paragraphs; each becomes a result card. */
+  const resultThread = (...files: string[]) => [
+    user('t1-ask', 20, '把这条做成视频，配个音，再写个口播稿'),
+    assistant('t1-answer', 21, renderMediaTags(['做好了：', ...files.map(file => `MEDIA:${file}`)].join('\n\n')))
+  ]
+
+  function proposeWith(files: string[], links: string[]): void {
+    proposeHandoff({
+      ask: '按这几个文件剪一条 15 秒的',
+      from: { messageId: 't1-answer', profile: 'default', storedSessionId: 'chat-a' },
+      previous: { files, links, text: '做好了。' },
+      to: 'writer'
+    })
+  }
+
+  async function renderIn(locale: Locale, messages: ThreadMessage[]): Promise<HTMLElement> {
+    setRuntimeI18nLocale(locale)
+
+    const view = render(
+      <I18nProvider configClient={null} initialLocale={locale}>
+        <ThreadRuntime messages={messages}>
+          <Thread />
+        </ThreadRuntime>
+      </I18nProvider>
+    )
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 30))
+    })
+
+    return view.container
+  }
+
+  const chips = (card: HTMLElement) =>
+    [...card.querySelectorAll('[data-handoff-items] li')].map(chip => ({
+      label: chip.textContent,
+      title: chip.getAttribute('title')
+    }))
+
+  const reply = (container: HTMLElement) => container.querySelector<HTMLElement>('[data-message-id="t1-answer"]')!
+
+  /** The title the reply's own card shows for its one audio clip or video. */
+  const cardTitle = (container: HTMLElement, kind: 'audio' | 'video') =>
+    reply(container).querySelector(`[data-slot="aui_result-media"][data-kind="${kind}"] > span`)?.textContent ?? ''
+
+  it('zh: the confirm card names a voiceover, a video, a document and a link as the reply’s cards do, never by path', async () => {
+    relayOn()
+    proposeWith([VOICEOVER, VIDEO, SCRIPT], [NOTE])
+
+    const container = await renderIn('zh', resultThread(VOICEOVER, VIDEO, SCRIPT))
+    const shown = container.querySelector<HTMLElement>('[data-handoff-card="confirm"]')!
+    const voiceover = cardTitle(container, 'audio')
+
+    expect(voiceover).not.toBe('')
+    expect(cardTitle(container, 'video')).toBe('视频')
+    expect(within(reply(container)).getByText('口播稿 第二版.docx')).toBeTruthy()
+    expect(chips(shown)).toEqual([
+      { label: voiceover, title: voiceover },
+      { label: '视频', title: '视频' },
+      { label: '口播稿 第二版.docx', title: '口播稿 第二版.docx' },
+      { label: 'www.xiaohongshu.com', title: NOTE }
+    ])
+    expect(shown.outerHTML).not.toContain('/Users/')
+    expect(shown.outerHTML).not.toContain('tts_20261114')
+  })
+
+  it('en: the same card in English, its kinds in English', async () => {
+    const narration = `${CACHE}/audio/narration_take_2_9f8e7d6c.mp3`
+    // MiniMax H3 clips were named after their prompt's first line before hc-1243.
+    const h3 = `${CACHE}/media/subject_definitions_d5cc1a2e.mp4`
+    const unnamed = '/Users/me/APEX/output_4a2ea035.pdf'
+    const brief = 'https://example.com/brief'
+
+    relayOn()
+    proposeWith([narration, h3, unnamed], [brief])
+
+    const container = await renderIn('en', resultThread(narration, h3, unnamed))
+    const shown = container.querySelector<HTMLElement>('[data-handoff-card="confirm"]')!
+    const clip = cardTitle(container, 'video')
+
+    expect(shown.getAttribute('aria-label')).toBe('Hand this to 小红书文案?')
+    expect(cardTitle(container, 'audio')).toBe('narration take 2')
+    expect(clip).not.toBe('')
+    expect(within(reply(container)).getByText('File.pdf')).toBeTruthy()
+    expect(chips(shown)).toEqual([
+      { label: 'narration take 2', title: 'narration take 2' },
+      { label: clip, title: clip },
+      { label: 'File.pdf', title: 'File.pdf' },
+      { label: 'example.com', title: brief }
+    ])
+    expect(shown.outerHTML).not.toContain('/Users/')
+  })
+
+  it.each([
+    ['this install’s record of the relay', true],
+    ['the hand-over message alone (the record trimmed)', false]
+  ])('the receiver’s 「APEX 交来的活」 lists them the same way, read from %s', async (_from, withRecord) => {
+    const files = [VIDEO, SCRIPT, COVER]
+    const carry = { text: '做好了。', truncated: false }
+
+    const handover = handoffRequestText({
+      ask: '按这几个文件剪一条 15 秒的',
+      carry,
+      files,
+      from: 'default',
+      fromName: 'APEX',
+      id: 'ho_1',
+      links: [NOTE]
+    })
+
+    relayOn('writer', 'writer-root')
+    resetHandoffsForTest(withRecord ? [record('ho_1', { carry: { ...carry, files, links: [NOTE] } })] : [])
+
+    const container = await renderTranscript([user('w1', 30, handover)])
+    const received = container.querySelector<HTMLElement>('[data-handoff-card="received"]')!
+
+    expect(chips(received)).toEqual([
+      { label: '视频', title: '视频' },
+      { label: '口播稿 第二版.docx', title: '口播稿 第二版.docx' },
+      { label: '收纳架封面 带字', title: '收纳架封面 带字' },
+      { label: 'www.xiaohongshu.com', title: NOTE }
+    ])
+    expect(received.outerHTML).not.toContain('/Users/')
   })
 })
 
