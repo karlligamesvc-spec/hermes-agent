@@ -15,7 +15,7 @@
  * return box); Desktop never pastes it into a message.
  */
 
-import { mediaPathFromMarkdownHref } from '@/lib/media'
+import { filePathFromMediaPath, mediaPathFromMarkdownHref } from '@/lib/media'
 import { stripNextStepBlocks } from '@/lib/next-steps'
 
 export const HANDOFF_PROTOCOL = 'apex-handoff/1'
@@ -55,11 +55,75 @@ function oneLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
 
-/** The previous result as it goes along: blocks taken out, cleaned, its first {@link HANDOFF_RESULT_MAX_CHARS} code points. */
+/**
+ * The previous result as it goes along: blocks taken out, cleaned, each file it delivered written as
+ * {@link carriedFile} in its place, its first {@link HANDOFF_RESULT_MAX_CHARS} code points.
+ */
 export function handoffCarryText(result: null | string | undefined): { text: string; truncated: boolean } {
-  const chars = codePoints(cleaned(parseHandback(stripNextStepBlocks(String(result ?? ''))).visible))
+  const visible = parseHandback(stripNextStepBlocks(String(result ?? ''))).visible
+  const chars = codePoints(withCarriedFiles(cleaned(visible)))
 
   return { text: chars.slice(0, HANDOFF_RESULT_MAX_CHARS).join(''), truncated: chars.length > HANDOFF_RESULT_MAX_CHARS }
+}
+
+/**
+ * hc-1253: how a file the result delivered reads in the carried result, 〔文件：<its file name>〕.
+ * Its path goes in 里面的文件和链接 below, so the receiver still knows which paragraph each
+ * file came with (「B 版配上字幕」), and nothing in the quote is a path, a `#media:` href it
+ * could copy into its 交回摘要, or a `MEDIA:` tag it could deliver the file again with.
+ */
+export function carriedFile(path: string): string {
+  const plain = filePathFromMediaPath(path)
+
+  return `〔文件：${plain.split(/[\\/]/).filter(Boolean).at(-1) ?? plain}〕`
+}
+
+const CARRIED_FILE_RE = /〔文件：[^〕\n]*〕/g
+
+/**
+ * The files a result delivered, each as {@link carriedFile}: a `#media:` link the way Desktop stores
+ * a reply (renderMediaTags turned each `MEDIA:` tag into one), a `MEDIA:` tag the way the engine
+ * wrote it (a relay plan's next baton carries what the last one handed back).
+ */
+function withCarriedFiles(text: string): string {
+  return text
+    .split('\n')
+    .map(line => {
+      const standalone = MEDIA_LINE_RE.exec(line)
+
+      return standalone
+        ? carriedFile(unwrapItem(standalone[1]))
+        : line.replace(MEDIA_TAG_RE, (_tag, value: string) => carriedFile(unwrapItem(value)))
+    })
+    .join('\n')
+    .replace(MEDIA_LINK_RE, (link, href: string) => {
+      const path = mediaPathFromMarkdownHref(href)
+
+      return path === null ? link : carriedFile(path)
+    })
+}
+
+// Image syntax included: `![封面](/Users/me/a.png)` reads 封面.
+const MARKDOWN_LINK_TEXT_RE = /!?\[((?:\\.|[^\\\]\n])*)\]\([^)\s]+\)/g
+
+/**
+ * hc-1253: what a relay card quotes from a carried result or a 交回摘要, a plain-text quote: the
+ * prose only. Files are the chips and cards beside the quote (hc-1246), so a carried file
+ * ({@link carriedFile}), a `#media:` link (a hand-over sent before hc-1253) and a `MEDIA:` tag (a
+ * reply as the engine wrote it) go, and a Markdown link keeps its text: none shows a path (hc-1131)
+ * or an address the link chip already gives. The confirm card counts this, what the user reads.
+ */
+export function handoffQuoteText(text: null | string | undefined): string {
+  return String(text ?? '')
+    .split('\n')
+    .map(line => (MEDIA_LINE_RE.test(line) ? '' : line.replace(MEDIA_TAG_RE, '')))
+    .join('\n')
+    .replace(CARRIED_FILE_RE, '')
+    .replace(MEDIA_LINK_RE, '')
+    .replace(MARKDOWN_LINK_TEXT_RE, (_link, label: string) => label.replace(/\\([[\]\\])/g, '$1'))
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 export interface HandoffRequestParts {
@@ -295,6 +359,8 @@ const MEDIA_TAG_RE = /[`"']?MEDIA:\s*(`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|\S+)[`"']?/g
 const MEDIA_LINE_RE = /^[\t ]*[`"']?MEDIA:[\t ]*(`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|(?:(?!MEDIA:).)+?)[`"']?[\t ]*$/
 // Link text may hold escaped brackets: a stored `MEDIA:` tag reads `[Image: 封面\[终版\].png](#media:…)`.
 const INLINE_LINK_RE = /\[(?:\\.|[^\\\]\n])*\]\(([^)\s]+)\)/g
+// The same link when it is one renderMediaTags wrote.
+const MEDIA_LINK_RE = /\[(?:\\.|[^\\\]\n])*\]\((#media:[^)\s]+)\)/g
 const BARE_URL_RE = /\bhttps?:\/\/[^\s<>()\]`"']+/g
 
 function isLocalFile(href: string): boolean {

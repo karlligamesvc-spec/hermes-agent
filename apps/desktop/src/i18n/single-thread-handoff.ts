@@ -22,7 +22,7 @@ import type { Locale } from './types'
 
 /** What goes along with a relay, counted for one line. */
 export interface HandoffCarryCount {
-  /** Code points of the previous result carried; 0 when none. */
+  /** Code points of the previous result as the card quotes it (handoffQuoteText, hc-1253); 0 when none. */
   chars: number
   truncated: boolean
   files: number

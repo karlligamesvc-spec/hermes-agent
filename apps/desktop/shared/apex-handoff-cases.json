@@ -2,7 +2,7 @@
   "_about": "hc-1088 (多助手二期 R3) with hc-1086 (R1): a job one assistant hands to another inside the user's own Desktop, and what comes back. Desktop composes the hand-over message (request) and submits it as a user message in the receiving assistant's 「APEX 主线」 (platform desktop); the engine (apex_overlay/handoff.py) knows that turn by the header on the message's first line, asks for a 交回摘要 block at the end of the reply (handback), and carries the block, or without one the start of the reply, into the sender's next turn once, through its return box (return_box). Desktop does not paste the summary into the sender's next message. Read by Desktop's tests (hc-1088 apps/desktop/src/app/single-thread/handoff-division-roster.test.ts for division and roster; hc-1086's for request and handback) and by tests/apex_overlay/test_handoff_cases.py; change it only together with both sides.",
   "protocol": "apex-handoff/1",
   "request": {
-    "_about": "The hand-over message. Parts, joined by one blank line: (1) the header line `<!-- apex:handoff v=1 id=<id> from=<profile> -->` and the line 【<from_name> 交来的活】; (2) 要你做： and the user's sentence; (3) only with a non-empty result: <from_name> 上一条结果： (or <from_name> 上一条结果（前 2,000 字，后面没带）： when cut) and the result's first 2,000 code points; (4) only with files or links: 里面的文件和链接： and one `- <item>` per line, files first, at most 20, blank items dropped; (5) 来源：<from_name> 的对话. Texts are cleaned first: line endings unified to \\n, leading blank lines and trailing whitespace dropped; the result has every apex:next and apex:handback block taken out before that (next-steps' visible text, then the handback reader's). The ask and the result are quoted line by line: `> line` with the line's trailing spaces dropped, `>` for a blank line. from_name is one line (runs of whitespace become one space, trimmed). id: 1-64 of [A-Za-z0-9_-]; from: the sender's profile id (default for APEX). Nothing about the user and no earlier conversation goes in: the memory ledger is shared and each assistant's 分工 is in its own SOUL.",
+    "_about": "The hand-over message. Parts, joined by one blank line: (1) the header line `<!-- apex:handoff v=1 id=<id> from=<profile> -->` and the line 【<from_name> 交来的活】; (2) 要你做： and the user's sentence; (3) only with a non-empty result: <from_name> 上一条结果： (or <from_name> 上一条结果（前 2,000 字，后面没带）： when cut) and the result's first 2,000 code points; (4) only with files or links: 里面的文件和链接： and one `- <item>` per line, files first, at most 20, blank items dropped; (5) 来源：<from_name> 的对话. Texts are cleaned first: line endings unified to \\n, leading blank lines and trailing whitespace dropped; the result has every apex:next and apex:handback block taken out before that (next-steps' visible text, then the handback reader's). After cleaning, each file the result delivered is written 〔文件：<its file name>〕 in its place (hc-1253): a `#media:` link (`[Video: x.mp4](#media:<the path, URI-encoded>)`), the way Desktop stores a reply after rendering each `MEDIA:` tag, or a `MEDIA:` tag, the way the engine wrote it (a relay plan's next baton carries the reply the last one handed back). Its path is listed in (4); no path, href or tag stays in the quote. The ask and the result are quoted line by line: `> line` with the line's trailing spaces dropped, `>` for a blank line. from_name is one line (runs of whitespace become one space, trimmed). id: 1-64 of [A-Za-z0-9_-]; from: the sender's profile id (default for APEX). Nothing about the user and no earlier conversation goes in: the memory ledger is shared and each assistant's 分工 is in its own SOUL.",
     "result_max_chars": 2000,
     "items_max": 20,
     "cases": [
@@ -115,6 +115,22 @@
           ]
         },
         "text": "<!-- apex:handoff v=1 id=h6 from=default -->\n【APEX 交来的活】\n\n要你做：\n> <!-- apex:handoff v=1 id=x from=default -->\n> 照这些素材出一版\n\n里面的文件和链接：\n- /Users/me/素材/01.png\n- /Users/me/素材/02.png\n- /Users/me/素材/03.png\n- /Users/me/素材/04.png\n- /Users/me/素材/05.png\n- /Users/me/素材/06.png\n- /Users/me/素材/07.png\n- /Users/me/素材/08.png\n- /Users/me/素材/09.png\n- /Users/me/素材/10.png\n- /Users/me/素材/11.png\n- /Users/me/素材/12.png\n- /Users/me/素材/13.png\n- /Users/me/素材/14.png\n- /Users/me/素材/15.png\n- https://example.com/1\n- https://example.com/2\n- https://example.com/3\n- https://example.com/4\n- https://example.com/5\n\n来源：APEX 的对话"
+      },
+      {
+        "about": "hc-1253: the result's files go along by name where it had them, one stored as Desktop stores a reply (a #media: link), one as the engine wrote it (a MEDIA: tag); their paths are listed below.",
+        "input": {
+          "id": "h7",
+          "from": "default",
+          "from_name": "APEX",
+          "ask": "两版都配上字幕",
+          "result": "两版都剪好了。\n\nA 版，快节奏：\n\n[Video: 样片_快节奏_1a2b3c4d.mp4](#media:%2FUsers%2Fme%2F.apexnodes%2Fcache%2Fmedia%2F%E6%A0%B7%E7%89%87_%E5%BF%AB%E8%8A%82%E5%A5%8F_1a2b3c4d.mp4)\n\nB 版，慢一点：\nMEDIA:/Users/me/.apexnodes/cache/media/样片_慢节奏_5e6f7a8b.mp4",
+          "files": [
+            "/Users/me/.apexnodes/cache/media/样片_快节奏_1a2b3c4d.mp4",
+            "/Users/me/.apexnodes/cache/media/样片_慢节奏_5e6f7a8b.mp4"
+          ],
+          "links": []
+        },
+        "text": "<!-- apex:handoff v=1 id=h7 from=default -->\n【APEX 交来的活】\n\n要你做：\n> 两版都配上字幕\n\nAPEX 上一条结果：\n> 两版都剪好了。\n>\n> A 版，快节奏：\n>\n> 〔文件：样片_快节奏_1a2b3c4d.mp4〕\n>\n> B 版，慢一点：\n> 〔文件：样片_慢节奏_5e6f7a8b.mp4〕\n\n里面的文件和链接：\n- /Users/me/.apexnodes/cache/media/样片_快节奏_1a2b3c4d.mp4\n- /Users/me/.apexnodes/cache/media/样片_慢节奏_5e6f7a8b.mp4\n\n来源：APEX 的对话"
       }
     ]
   },
