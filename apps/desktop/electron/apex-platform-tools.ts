@@ -113,8 +113,8 @@ export const PLATFORM_TOOL_PLUGINS: readonly PlatformToolPlugin[] = Object.freez
   }),
   Object.freeze({
     id: 'apexnodes-video-tools',
-    capability: '视频生成 / 长视频分析 / 复刻卡',
-    tools: Object.freeze(['generate_video', 'video_highlights', 'video_moment_search', 'video_breakdown'])
+    capability: '视频生成 / 长视频分析 / 复刻卡 / 配乐',
+    tools: Object.freeze(['generate_video', 'video_highlights', 'video_moment_search', 'video_breakdown', 'find_music'])
   }),
   Object.freeze({
     id: 'apexnodes-live-tools',
