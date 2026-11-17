@@ -25,6 +25,11 @@ MEDIA = {
     "card.png": ("image", 0.0, 1080, 1920),
     "voice.m4a": ("audio", 14.0, 0, 0),
     "music.m4a": ("audio", 30.0, 0, 0),
+    # hc-1258: the sound effects assemble synthesizes beside a cut
+    "pop-lo.wav": ("audio", 0.14, 0, 0),
+    "ding.wav": ("audio", 1.1, 0, 0),
+    "riser.wav": ("audio", 1.3, 0, 0),
+    "outro-chime.wav": ("audio", 1.47, 0, 0),
 }
 
 
@@ -436,3 +441,192 @@ def test_a_narration_above_jianyings_ceiling_is_capped_and_said_in_the_result(me
     timeline = json.loads((root / "响" / "draft_info.json").read_text(encoding="utf-8"))
     [narration] = [t for t in timeline["tracks"] if t["name"] == "旁白"]
     assert [s["volume"] for s in narration["segments"]] == [build.VOLUME_MAX]
+
+
+# hc-1258: the sound effects of the finished cut come along. ``assemble --sfx`` lists them in the cut's report
+# (apex-nodes short-video-studio footage_sfx.py ``summary``); the draft puts them on 音效 tracks.
+
+
+def _cue(folder: Path, name: str, start: float, gain_db: float = -2.0, *, skip: float = 0.0, cut: str = "成片") -> dict:
+    """One entry of the report's ``sfx.cues``, as assemble writes it for a built-in effect."""
+    return {"name": name, "label": name, "file": str(folder / f"{cut}.sfx" / f"{name}.wav"), "at": start + skip,
+            "anchor": skip, "start": start, "skip": skip, "seconds": MEDIA[f"{name}.wav"][1], "level": -20.0 + gain_db,
+            "gain_db": gain_db}
+
+
+def _sfx(cues: list[dict], voice: bool = True) -> dict:
+    return {"style": "few", "voice": voice, "gain": 0.0, "limit": 6, "level": -22.0 if voice else -15.0,
+            "bed_trim_db": 0.0, "note": None, "cues": cues}
+
+
+def _effect_files(folder: Path, cut: str = "成片") -> Path:
+    beside = folder / f"{cut}.sfx"
+    beside.mkdir(exist_ok=True)
+    for name in ("pop-lo.wav", "ding.wav", "riser.wav", "outro-chime.wav"):
+        (beside / name).write_bytes((folder / name).read_bytes())
+    return beside
+
+
+def _tracks(timeline: dict) -> dict:
+    return {track["name"]: track["segments"] for track in timeline["tracks"]}
+
+
+def _spans(segments: list[dict]) -> list[tuple[int, int]]:
+    return [(s["target_timerange"]["start"], s["target_timerange"]["duration"]) for s in segments]
+
+
+def test_the_cuts_sound_effects_get_tracks_of_their_own_at_the_cuts_times_and_levels(media, tmp_path):
+    (media / "字幕.srt").write_text(SRT, encoding="utf-8")
+    _effect_files(media)
+    _report(media, "成片", 7.43, sfx=_sfx([
+        _cue(media, "ding", 3.0), _cue(media, "pop-lo", 0.05), _cue(media, "riser", 6.2, -5.0),
+        _cue(media, "outro-chime", 7.0, -3.0),  # starts while the riser still sounds: a second track
+        _cue(media, "ding", 9.9, -2.0),  # the cut ends at 10.5 s: only its first 0.6 s
+    ]))
+    _, written, timeline, _ = _write(media, tmp_path)
+    tracks = _tracks(timeline)
+    assert [t["type"] for t in timeline["tracks"]] == ["video", "audio", "audio", "audio", "audio", "text"]
+    assert list(tracks) == ["画面", "旁白", "配乐", "音效", "音效 2", build.SUBTITLE_TRACK]
+    assert _spans(tracks["音效"]) == [(50_000, 140_000), (3 * SEC, 1_100_000), (6_200_000, 1_300_000),
+                                      (9_900_000, 600_000)]
+    assert _spans(tracks["音效 2"]) == [(7 * SEC, 1_470_000)]
+    assert [s["volume"] for s in tracks["音效"]] == pytest.approx(
+        [10 ** (-2 / 20), 10 ** (-2 / 20), 10 ** (-5 / 20), 10 ** (-2 / 20)], abs=1e-4)
+    assert [s["volume"] for s in tracks["音效 2"]] == pytest.approx([10 ** (-3 / 20)], abs=1e-4)
+    assert {s["source_timerange"]["start"] for s in tracks["音效"] + tracks["音效 2"]} == {0}
+    assert all(s["source_timerange"]["duration"] == s["target_timerange"]["duration"] and s["speed"] == 1.0
+               for s in tracks["音效"] + tracks["音效 2"])
+    # The effect files are copied into the draft like the other media, each once.
+    copies = sorted(p.name for p in (written.folder / "materials").iterdir())
+    assert copies == sorted(["tall.mp4", "wide.mp4", "card.png", "voice.m4a", "music.m4a", "pop-lo.wav", "ding.wav",
+                             "riser.wav", "outro-chime.wav"])
+    assert build.check_written(written.folder) is None
+    assert (written.effects, written.notes) == (5, [])
+    # The narration and the music are where they were without effects.
+    assert [s["volume"] for s in tracks["旁白"]] == [pytest.approx(10 ** (7.43 / 20), abs=1e-4)]
+    assert [s["volume"] for s in tracks["配乐"]] == [0.3]
+
+
+def test_an_effect_whose_head_was_cut_off_starts_inside_its_file(media, tmp_path):
+    (media / "字幕.srt").write_text(SRT, encoding="utf-8")
+    _effect_files(media)
+    _report(media, "成片", 7.43, sfx=_sfx([_cue(media, "riser", 0.0, -5.0, skip=0.77)]))
+    _, _, timeline, _ = _write(media, tmp_path)
+    [riser] = _tracks(timeline)["音效"]
+    assert (riser["source_timerange"]["start"], riser["source_timerange"]["duration"]) == (770_000, 530_000)
+    assert _spans([riser]) == [(0, 530_000)]
+
+
+@pytest.mark.parametrize(
+    ("cues", "placed"),
+    [
+        pytest.param(lambda f: [_cue(f, "ding", 10.5)], 0, id="starts where the cut ends"),
+        pytest.param(lambda f: [_cue(f, "ding", 12.0)], 0, id="starts after the cut"),
+        pytest.param(lambda f: [_cue(f, "ding", 10.49)], 0, id="a hundredth of a second left"),
+        pytest.param(lambda f: [_cue(f, "ding", 10.4)], 1, id="a tenth of a second left"),
+        pytest.param(lambda f: ["ding", {"file": 3}, {**_cue(f, "ding", 1.0), "start": "1"},
+                                {**_cue(f, "ding", 1.0), "gain_db": None}, {**_cue(f, "ding", 1.0), "start": -1},
+                                {**_cue(f, "ding", 1.0), "skip": -0.5}, {**_cue(f, "ding", 1.0), "gain_db": True}],
+                     0, id="entries that are not cues"),
+    ],
+)
+def test_what_cannot_be_placed_is_left_out(media, tmp_path, cues, placed):
+    (media / "字幕.srt").write_text(SRT, encoding="utf-8")
+    _effect_files(media)
+    _report(media, "成片", 7.43, sfx=_sfx(cues(media)))
+    _, written, timeline, _ = _write(media, tmp_path)
+    assert written.effects == placed
+    assert ("音效" in _tracks(timeline)) is bool(placed)
+
+
+def test_with_nobody_speaking_the_effects_come_down_with_the_rest_and_the_result_says_so(media, tmp_path):
+    """The cut's loudness step lifted the live sound and the music to the target; the draft leaves them as recorded."""
+    _effect_files(media)
+    _report(media, "成片", narration=None, narration_level=None,
+            sfx=_sfx([_cue(media, "ding", 3.0, 5.0), _cue(media, "pop-lo", 6.0, 4.95)], voice=False))
+    root = tmp_path / "drafts"
+    root.mkdir()
+    written = build.write(build.load_plan(_timeline(media)), root, "没人说话")
+    timeline = json.loads((written.folder / "draft_info.json").read_text(encoding="utf-8"))
+    assert [s["volume"] for s in _tracks(timeline)["音效"]] == pytest.approx(
+        [10 ** ((5.0 + build.UNNORMALISED_EFFECT_DB) / 20), 10 ** ((4.95 + build.UNNORMALISED_EFFECT_DB) / 20)], abs=1e-4)
+    assert build.UNNORMALISED_EFFECT_DB == -10.0
+    assert written.notes == ["这条片没有人说话：草稿不做整条的响度归一，音效按和现场声、配乐的比例放轻了，觉得轻就在剪映里把音效轨拉高"]
+    assert {s["volume"] for s in _tracks(timeline)["画面"]} == {build.CLIP_VOLUME["plain"]}
+
+
+@pytest.mark.parametrize(
+    ("gain_db", "under_voice", "volume"),
+    [(0.0, True, 1.0), (-2.0, True, 0.7943), (-3.0, True, 0.7079), (8.0, False, 0.7943), (5.0, False, 0.5623),
+     (25.0, True, 10.0), (40.0, False, 10.0)],
+)
+def test_an_effects_volume_is_the_cuts_gain_under_a_voice_and_ten_db_less_without(gain_db, under_voice, volume):
+    assert build.effect_volume(gain_db, under_voice) == volume
+
+
+def test_a_moved_work_folder_still_finds_the_effects_beside_the_report_and_a_lost_one_is_said(media, tmp_path):
+    (media / "字幕.srt").write_text(SRT, encoding="utf-8")
+    beside = _effect_files(media)
+    elsewhere = tmp_path / "以前的位置"  # the report still names the folder the cut was made in
+    _report(media, "成片", 7.43, sfx=_sfx([_cue(elsewhere, "ding", 3.0), _cue(elsewhere, "pop-lo", 6.0)]))
+    (beside / "pop-lo.wav").unlink()
+    _, written, timeline, _ = _write(media, tmp_path)
+    [ding] = _tracks(timeline)["音效"]
+    assert _spans([ding]) == [(3 * SEC, 1_100_000)]
+    assert (written.effects, written.notes) == (1, ["成片里有 1 个音效的文件找不到了，草稿里没放这几个"])
+
+
+@pytest.mark.parametrize(
+    ("reports", "narrated", "placed"),
+    [
+        pytest.param([], True, 0, id="no cut yet"),
+        pytest.param([lambda f: _report(f, "成片", 7.43)], True, 0, id="cut without effects"),
+        pytest.param([lambda f: _report(f, "成片", 7.43, sfx=None)], True, 0, id="cut whose sheet was empty"),
+        pytest.param([lambda f: _report(f, "成片", 7.43, sfx=_sfx([_cue(f, "ding", 3.0)]))], True, 1, id="cut with one"),
+        pytest.param([lambda f: _report(f, "带音效", 7.43, age=60, sfx=_sfx([_cue(f, "ding", 3.0, cut="成片")])),
+                      lambda f: _report(f, "重拼", 7.43)], True, 0, id="newest cut has none"),
+        pytest.param([lambda f: _report(f, "旧", 7.43, age=60),
+                      lambda f: _report(f, "成片", 7.43, sfx=_sfx([_cue(f, "ding", 3.0)]))], True, 1, id="newest cut"),
+        pytest.param([lambda f: _report(f, "成片", 7.43, shots=[dict(ASSEMBLED_SHOTS[0])],
+                                        sfx=_sfx([_cue(f, "ding", 3.0)]))], True, 0, id="other cut"),
+        pytest.param([lambda f: _report(f, "成片", 7.43, sfx=_sfx([_cue(f, "ding", 3.0)]))], False, 0,
+                     id="narrated cut, timeline without narration"),
+        pytest.param([lambda f: _report(f, "成片", narration=None, narration_level=None,
+                                        sfx=_sfx([_cue(f, "ding", 3.0)]))], True, 0,
+                     id="cut without narration, timeline with one"),
+        pytest.param([lambda f: _report(f, "成片", narration=None, narration_level=None,
+                                        sfx=_sfx([_cue(f, "ding", 3.0)]))], False, 1, id="neither has narration"),
+        pytest.param([lambda f: _report(f, "成片", 7.43, age=60, sfx=_sfx([_cue(f, "ding", 3.0)])),
+                      lambda f: _broken(f, "坏")], True, 1, id="unreadable report skipped"),
+    ],
+)
+def test_the_effects_are_those_of_the_cut_the_user_has_last(media, tmp_path, reports, narrated, placed):
+    _effect_files(media)
+    for add in reports:
+        add(media)
+    root = tmp_path / "drafts"
+    root.mkdir()
+    plan = build.load_plan(_timeline(media, **({"narration": "voice.m4a"} if narrated else {})))
+    written = build.write(plan, root, "成片")
+    timeline = json.loads((written.folder / "draft_info.json").read_text(encoding="utf-8"))
+    assert written.effects == placed == len(_tracks(timeline).get("音效", []))
+
+
+def test_the_tool_result_names_the_effects_only_when_the_draft_has_them(media, tmp_path, monkeypatch):
+    from apex_overlay import jianying_draft
+
+    monkeypatch.setenv(jianying_draft.SWITCH_ENV, "1")
+    root = tmp_path / "Projects" / "com.lveditor.draft"
+    root.mkdir(parents=True)
+    found = jianying_install.Installation(app=tmp_path / "app", version="11.7.0", user_data=tmp_path, draft_root=root)
+    monkeypatch.setattr(jianying_install, "find", lambda *a, **k: found)
+    monkeypatch.setattr(jianying_install, "running", lambda *a, **k: False)
+    _effect_files(media)
+    timeline = _timeline(media, narration="voice.m4a")
+
+    _report(media, "成片", 7.43)
+    assert "sfx" not in jianying_draft.write_draft({"timeline": timeline, "name": "没有音效"})["draft"]
+    _report(media, "成片", 7.43, sfx=_sfx([_cue(media, "ding", 3.0), _cue(media, "pop-lo", 6.0)]))
+    result = jianying_draft.write_draft({"timeline": timeline, "name": "有音效"})
+    assert result["draft"]["sfx"] == 2 and result["changes"] == []
+    assert json.loads(jianying_draft.handle({"timeline": timeline, "name": "再来"}))["draft"]["sfx"] == 2

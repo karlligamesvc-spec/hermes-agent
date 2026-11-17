@@ -16,6 +16,14 @@ shots, and does not measure anything itself. 剪映 takes a volume of at most 10
 (no cut yet, or one from an ``assemble`` before hc-1232, which left the narration as recorded) the narration stays
 as recorded.
 
+The sound effects of the cut come along (hc-1258). ``assemble --sfx`` lays APEX's own synthesized effects over the
+cut and lists them in the same report, ``sfx.cues``: the file, where it starts, how much of its head was cut off and
+the dB set on it. The draft puts each on a track named 音效 (a second one where two overlap) at that start and that
+level, from the newest report of a cut made from this timeline; a cut without effects, or no cut, means no such
+track. With somebody speaking the level is the cut's, because the narration is as loud in the draft as in the cut.
+With nobody speaking the cut's loudness step raised everything else to the target and the effects were set against
+that; a draft keeps the rest where it was recorded, so the effects come down by ``UNNORMALISED_EFFECT_DB``.
+
 剪映 takes in any new folder under its draft folder within about two seconds while it runs (a hidden one too) and
 keeps the duration it read then, so the draft is put together in a hidden folder beside the draft folder, on the same
 disk, and renamed into place whole, its draft_meta_info.json already filled in. The library is the pinned copy in
@@ -59,6 +67,16 @@ VOLUME_MAX = 10.0
 VOLUME_MAX_DB = 20 * math.log10(VOLUME_MAX)
 #: What ``assemble`` writes beside the cut: ``成片.mp4`` -> ``成片.assembly.json``.
 ASSEMBLY_REPORT_SUFFIX = ".assembly.json"
+#: The effects ``assemble`` synthesized for a cut sit beside it: ``成片.mp4`` -> ``成片.sfx/ding.wav``.
+EFFECT_FOLDER_SUFFIX = ".sfx"
+EFFECT_TRACK = "音效"
+#: With nobody speaking, the cut's loudness step lifts the footage's sound and the -10 dB music back up to the
+#: target, by about 7 to 10 dB (measured +7 on a cut of live sound and music, 2026-11-16), and the effects were set
+#: against that. A draft keeps them where they were, so the effects come down by as much: a little quiet rather than
+#: blaring, and the user can raise the track in 剪映.
+UNNORMALISED_EFFECT_DB = -10.0
+#: Shorter than this, what is left of an effect at the end of the cut is not worth a segment.
+EFFECT_MIN = SEC // 50
 DEFAULT_CANVAS = (1080, 1920)
 _UNSAFE_NAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')
 _SRT_TIME = re.compile(r"(\d+):(\d{2}):(\d{2})[,.](\d{1,3})")
@@ -79,6 +97,15 @@ class Shot:
 
 
 @dataclass
+class Effect:
+    """One sound effect of the finished cut, as ``assemble`` placed it."""
+    path: str
+    start: float  # where it starts in the cut, seconds
+    skip: float  # how much of its head was cut off, seconds
+    gain_db: float  # dB set on the file in the cut
+
+
+@dataclass
 class Plan:
     width: int
     height: int
@@ -88,6 +115,9 @@ class Plan:
     narration: Optional[str] = None
     #: dB ``assemble`` added to this narration in the finished cut; None when no report of the cut says so.
     narration_gain_db: Optional[float] = None
+    #: The sound effects of the finished cut (hc-1258), and whether somebody speaks in it (the effects' level).
+    effects: list[Effect] = field(default_factory=list)
+    effects_under_voice: bool = True
     notes: list[str] = field(default_factory=list)
 
 
@@ -145,9 +175,11 @@ def load_plan(timeline: str, subtitles: Optional[str] = None, narration: Optiona
     width = int(settings.get("width") or DEFAULT_CANVAS[0])
     height = int(settings.get("height") or DEFAULT_CANVAS[1])
     voice = _beside(folder, narration or settings.get("narration"))
+    effects, under_voice, notes = assembled_effects(folder, voice, shots)
     return Plan(width=width - width % 2, height=height - height % 2, fps=int(settings.get("fps") or 30), shots=shots,
                 subtitles=_beside(folder, subtitles or settings.get("subtitles")), narration=voice,
-                narration_gain_db=assembled_narration_gain(folder, voice, shots) if voice else None)
+                narration_gain_db=assembled_narration_gain(folder, voice, shots) if voice else None,
+                effects=effects, effects_under_voice=under_voice, notes=notes)
 
 
 def _same_file(listed, path: str) -> bool:
@@ -182,25 +214,70 @@ def _modified(path: Path) -> float:
         return 0.0
 
 
-def assembled_narration_gain(folder: str, narration: str, shots: list[Shot]) -> Optional[float]:
-    """How many dB ``assemble`` added to this narration in the finished cut (hc-1232), from its report in the
-    timeline's folder that names the same narration file and the same shots; of several, the newest, which is the
-    cut the user has last. None when there is none, or when that report has no number: an ``assemble`` before
-    hc-1232 left the narration as recorded."""
+def _number(value) -> Optional[float]:
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+        return float(value)
+    return None
+
+
+def _newest_report(folder: str, narration: Optional[str], shots: list[Shot]) -> tuple[Optional[Path], dict]:
+    """The report of the cut the user has last from this timeline: in the timeline's folder, of the same shots and
+    the same narration (none on both sides counts as the same); of several, the newest. (None, {}) when there is
+    none."""
     for report in sorted(Path(folder).glob("*" + ASSEMBLY_REPORT_SUFFIX), key=_modified, reverse=True):
         try:
             data = json.loads(report.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if not isinstance(data, dict) or not _same_file(data.get("narration"), narration) \
-                or not _same_shots(data.get("shots"), shots):
+        if not isinstance(data, dict) or not _same_shots(data.get("shots"), shots):
             continue
-        level = data.get("narration_level")
-        gain = level.get("gain_db") if isinstance(level, dict) else None
-        if isinstance(gain, (int, float)) and not isinstance(gain, bool) and math.isfinite(gain):
-            return float(gain)
-        return None
-    return None
+        listed = data.get("narration")
+        if _same_file(listed, narration) if narration else not listed:
+            return report, data
+    return None, {}
+
+
+def assembled_narration_gain(folder: str, narration: str, shots: list[Shot]) -> Optional[float]:
+    """How many dB ``assemble`` added to this narration in the finished cut (hc-1232), from its report in the
+    timeline's folder that names the same narration file and the same shots; of several, the newest, which is the
+    cut the user has last. None when there is none, or when that report has no number: an ``assemble`` before
+    hc-1232 left the narration as recorded."""
+    level = _newest_report(folder, narration, shots)[1].get("narration_level")
+    return _number(level.get("gain_db")) if isinstance(level, dict) else None
+
+
+def assembled_effects(folder: str, narration: Optional[str], shots: list[Shot]) -> tuple[list[Effect], bool, list[str]]:
+    """The sound effects ``assemble`` laid into the finished cut (hc-1258), from the same report as the narration's
+    level: (effects, whether somebody speaks in the cut, notes for the result). A file the report names is taken
+    where it is, or from the cut's ``.sfx`` folder beside the report when the work folder was moved; one that is
+    in neither place is left out and counted in a note."""
+    report, data = _newest_report(folder, narration, shots)
+    listed = data.get("sfx")
+    cues = listed.get("cues") if isinstance(listed, dict) else None
+    if report is None or not isinstance(cues, list):
+        return [], True, []
+    beside = report.with_name(report.name[: -len(ASSEMBLY_REPORT_SUFFIX)] + EFFECT_FOLDER_SUFFIX)
+    effects, missing = [], 0
+    for cue in cues:
+        if not isinstance(cue, dict) or not isinstance(cue.get("file"), str):
+            continue
+        start, gain, skip = _number(cue.get("start")), _number(cue.get("gain_db")), _number(cue.get("skip") or 0.0)
+        if start is None or gain is None or skip is None or start < 0 or skip < 0:
+            continue
+        path = next((p for p in (cue["file"], str(beside / os.path.basename(cue["file"]))) if os.path.isfile(p)), None)
+        if path is None:
+            missing += 1
+            continue
+        effects.append(Effect(path=path, start=start, skip=skip, gain_db=gain))
+    notes = [f"成片里有 {missing} 个音效的文件找不到了，草稿里没放这几个"] if missing else []
+    return effects, listed.get("voice") is not False, notes
+
+
+def effect_volume(gain_db: float, under_voice: bool) -> float:
+    """An effect's volume in the draft: the cut's own level under a voice, ``UNNORMALISED_EFFECT_DB`` below it when
+    nobody speaks (see the constant), at most 剪映's VOLUME_MAX."""
+    shift = 0.0 if under_voice else UNNORMALISED_EFFECT_DB
+    return min(VOLUME_MAX, round(10 ** ((gain_db + shift) / 20), 4))
 
 
 def narration_volume(gain_db: Optional[float]) -> tuple[float, Optional[str]]:
@@ -380,6 +457,38 @@ def _audio(script, path: str, track: str, total: int, volume: float, fade: bool)
     script.add_segment(segment, track)
 
 
+def effect_track(lane: int) -> str:
+    return EFFECT_TRACK if lane == 0 else f"{EFFECT_TRACK} {lane + 1}"
+
+
+def _effects(script, plan: Plan, total: int) -> int:
+    """Each effect at its place in the cut. Segments may not overlap on one track, so one that starts before the
+    last on every track has ended opens another."""
+    materials: dict[str, object] = {}
+    ends: list[int] = []  # where the last segment of each effect track ends
+    placed = 0
+    for effect in sorted(plan.effects, key=lambda item: item.start):
+        begin, skip = round(effect.start * SEC), round(effect.skip * SEC)
+        if begin >= total:
+            continue
+        material = materials.get(effect.path) or draft.AudioMaterial(effect.path)
+        materials[effect.path] = material
+        length = min(material.duration - skip, total - begin)
+        if length < EFFECT_MIN:
+            continue
+        lane = next((at for at, end in enumerate(ends) if end <= begin), len(ends))
+        if lane == len(ends):
+            ends.append(0)
+            script.append_track(draft.TrackSpec(draft.TrackType.audio, effect_track(lane)))
+        script.add_segment(draft.AudioSegment(material, draft.Timerange(begin, length),
+                                              source_timerange=draft.Timerange(skip, length),
+                                              volume=effect_volume(effect.gain_db, plan.effects_under_voice)),
+                           effect_track(lane))
+        ends[lane] = begin + length
+        placed += 1
+    return placed
+
+
 def _subtitles(script, cues, total: int, position: str) -> int:
     style = draft.TextStyle(size=SUBTITLE_SIZE, bold=True, color=(1.0, 1.0, 1.0), align=1,
                             auto_wrapping=True, max_line_width=0.73)
@@ -409,6 +518,7 @@ class Written:
     shots: int
     subtitles: int
     notes: list[str]
+    effects: int = 0  # sound effects of the cut placed in the draft (hc-1258)
 
 
 def write(plan: Plan, root: Path, name: str, *, music: Optional[str] = None, music_volume: float = 0.3,
@@ -430,6 +540,9 @@ def write(plan: Plan, root: Path, name: str, *, music: Optional[str] = None, mus
             notes += [quieter] if quieter else []
         if music:
             _audio(script, music, "配乐", total, max(0.05, min(1.0, music_volume)), fade=True)
+        effects = _effects(script, plan, total)
+        if effects and not plan.effects_under_voice:
+            notes.append("这条片没有人说话：草稿不做整条的响度归一，音效按和现场声、配乐的比例放轻了，觉得轻就在剪映里把音效轨拉高")
         placed = _subtitles(script, read_cues(plan.subtitles), total, subtitle_position) if plan.subtitles else 0
         script.save_path = str(staging / DRAFT_FILE_NAME)
         script.save(inline_materials=True)  # copies the media into materials/ (PR #198)
@@ -441,7 +554,8 @@ def write(plan: Plan, root: Path, name: str, *, music: Optional[str] = None, mus
         _move_in(staging, final)
     finally:
         shutil.rmtree(holder, ignore_errors=True)
-    return Written(folder=final, duration_us=total, shots=len(plan.shots), subtitles=placed, notes=plan.notes + notes)
+    return Written(folder=final, duration_us=total, shots=len(plan.shots), subtitles=placed, notes=plan.notes + notes,
+                   effects=effects)
 
 
 def check_written(folder: Path) -> Optional[str]:
