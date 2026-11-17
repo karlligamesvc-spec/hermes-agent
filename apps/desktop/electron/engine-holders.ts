@@ -312,6 +312,16 @@ export function summarizeEngineHolders(error: unknown): EngineHolderSummary[] | 
   }))
 }
 
+/**
+ * hc-1255: the gate named its holders and every one is this Desktop's own running work
+ * (`apex_running`): a probe, a git call, a tool it started. Such work ends by itself.
+ */
+export function heldOnlyByOwnWork(error: unknown): boolean {
+  const holders = summarizeEngineHolders(error)
+
+  return Boolean(holders?.length) && holders!.every(holder => holder.kind === 'apex_running')
+}
+
 /** Identities from the renderer: only whole PID + start-time pairs count. */
 export function engineHolderIdentities(value: unknown): EngineHolderIdentity[] {
   if (!Array.isArray(value)) {

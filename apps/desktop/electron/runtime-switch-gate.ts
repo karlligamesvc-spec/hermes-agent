@@ -1,8 +1,20 @@
 import { type BackendOwnershipEntry, parseBackendOwnershipDetailed } from './backend-ownership'
-import { type ClassifiedHolder, endableTargets, type EngineHolderIdentity } from './engine-holders'
+import {
+  type ClassifiedHolder,
+  describeRuntimeUpdateBusy,
+  endableTargets,
+  type EngineHolderIdentity,
+  heldOnlyByOwnWork
+} from './engine-holders'
 import { assertPackagedRuntimeIdle, endEngineHolders } from './packaged-runtime'
 import { retirePackagedGateways } from './runtime-gateway-retirement'
 import { isRuntimeUpdateBusy, RuntimeUpdateBusy } from './runtime-update-busy'
+
+// hc-1255: under the fence the engines are already stopped, so a deferral there costs a restart
+// and another drain. Holders that are all this Desktop's own running work (an engine probe, a git
+// call on window focus) end by themselves: the strict scan looks again for a few seconds first.
+const OWN_WORK_RESCANS = 5
+const OWN_WORK_RESCAN_MS = 1_000
 
 interface OwnedChild {
   exitCode: null | number
@@ -27,6 +39,8 @@ export interface RuntimeSwitchGateDeps<Fence extends UpdateFence> {
   /** `false` only when the recorded worker is proven gone or foreign. */
   identityMatches: (entry: BackendOwnershipEntry) => Promise<boolean | undefined>
   log: (message: string) => void
+  /** Tests only: how the strict scan waits between looks. */
+  sleep?: (ms: number) => Promise<void>
 }
 
 /**
@@ -42,6 +56,33 @@ export interface RuntimeSwitchGateDeps<Fence extends UpdateFence> {
  * the caller releases it after activation or rollback.
  */
 export function createRuntimeSwitchGate<Fence extends UpdateFence>(deps: RuntimeSwitchGateDeps<Fence>) {
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)))
+
+  /** The strict scan, patient with holders that are all this APEX's own work (hc-1255). */
+  async function strictScan(verifiedRoot: string) {
+    for (let rescan = 0; ; rescan += 1) {
+      try {
+        await assertPackagedRuntimeIdle(deps.activeRoot, verifiedRoot)
+
+        if (rescan > 0) {
+          deps.log(`[engine-holders] APEX's own work ended after ${rescan} rescan(s); the switch goes ahead`)
+        }
+
+        return
+      } catch (error) {
+        if (rescan >= OWN_WORK_RESCANS || !heldOnlyByOwnWork(error)) {
+          throw error
+        }
+
+        if (rescan === 0) {
+          deps.log(`[engine-holders] the switch waits for APEX's own work: ${describeRuntimeUpdateBusy(error)}`)
+        }
+
+        await sleep(OWN_WORK_RESCAN_MS)
+      }
+    }
+  }
+
   async function preflight(verifiedRoot = deps.activeRoot) {
     const work = deps.activeWork()
 
@@ -98,7 +139,7 @@ export function createRuntimeSwitchGate<Fence extends UpdateFence>(deps: Runtime
         }
       }
 
-      await assertPackagedRuntimeIdle(deps.activeRoot, verifiedRoot)
+      await strictScan(verifiedRoot)
 
       return fence
     } catch (error) {

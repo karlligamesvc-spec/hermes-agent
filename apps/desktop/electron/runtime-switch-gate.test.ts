@@ -43,7 +43,8 @@ function harness(
     stopMessagingGateway: vi.fn(async () => void events.push('stop-messaging')),
     readOwnership: () => options.ownership ?? null,
     identityMatches: vi.fn(async () => options.owner),
-    log: vi.fn()
+    log: vi.fn(),
+    sleep: vi.fn(async (_ms: number) => {})
   }
 
   return { deps, events, fence, gate: createRuntimeSwitchGate(deps) }
@@ -223,5 +224,74 @@ describe('endLeftovers (hc-1094)', () => {
 
     await expect(gate.endLeftovers([{ pid: 1347, created: 7.5 }])).rejects.toThrow('Could not verify existing engine workers.')
     expect(endHolders).not.toHaveBeenCalled()
+  })
+})
+
+// hc-1255: under the fence the engines are already stopped, so the strict scan looks again for a
+// few seconds when every holder is this APEX's own running work (an engine probe from a reconnect,
+// a git call on window focus). Anything else, and the preflight, answer at once as before.
+describe('the strict scan and APEX’s own work (hc-1255)', () => {
+  const own = { name: 'python3.14', ppid: 4000, exe: '/engine/venv/bin/python', argv: [], created: 7.5, kind: 'apex_running', endable: false }
+  const other = { ...own, name: 'node', exe: '/engine/.runtime/node/bin/node', created: 3.5, kind: 'other' }
+  const leftover = { ...own, ppid: 1, created: 2.5, kind: 'leftover_child', endable: true }
+
+  const busyWith = (holders: Record<number, unknown>) =>
+    Object.assign(new RuntimeUpdateBusy('Waiting for engine workers', 'engine_holders'), { idleProof: { holders } })
+
+  it('looks again while only APEX’s own work holds the engine, then hands back the held fence', async () => {
+    const { deps, events, fence, gate } = harness()
+
+    assertIdle
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(busyWith({ 5150: own }))
+      .mockRejectedValueOnce(busyWith({ 5160: { ...own, created: 8.5 } }))
+      .mockResolvedValueOnce({})
+
+    await expect(gate.prepare('/verified')).resolves.toBe(fence)
+    expect(assertIdle).toHaveBeenCalledTimes(4)
+    expect(deps.sleep.mock.calls).toEqual([[1_000], [1_000]])
+    expect(events.filter(event => event === 'drain')).toHaveLength(1)
+    expect(fence.release).not.toHaveBeenCalled()
+    expect(deps.log.mock.calls.map(([line]) => line)).toEqual([
+      "[engine-holders] the switch waits for APEX's own work: engine_holders: Waiting for engine workers [5150 python3.14 (/engine/venv/bin/python) apex_running]",
+      "[engine-holders] APEX's own work ended after 2 rescan(s); the switch goes ahead"
+    ])
+  })
+
+  it('own work that outlasts five rescans is busy, and the fence is released', async () => {
+    const { deps, fence, gate } = harness()
+
+    assertIdle.mockResolvedValueOnce({}).mockRejectedValue(busyWith({ 5150: own }))
+
+    await expect(gate.prepare('/verified')).rejects.toMatchObject({ reason: 'engine_holders' })
+    expect(assertIdle).toHaveBeenCalledTimes(1 + 6)
+    expect(deps.sleep).toHaveBeenCalledTimes(5)
+    expect(fence.release).toHaveBeenCalledOnce()
+  })
+
+  it.each<[string, () => Error]>([
+    ['APEX’s own work beside another program', () => busyWith({ 5150: own, 6060: other })],
+    ['another program', () => busyWith({ 6060: other })],
+    ['a leftover APEX can end', () => busyWith({ 7070: leftover })],
+    ['a busy answer that names nobody', () => new RuntimeUpdateBusy('Waiting for engine workers: 77')]
+  ])('%s is busy at once', async (_name, busy) => {
+    const { deps, fence, gate } = harness()
+
+    assertIdle.mockResolvedValueOnce({}).mockRejectedValueOnce(busy())
+
+    await expect(gate.prepare('/verified')).rejects.toSatisfy(isRuntimeUpdateBusy)
+    expect(assertIdle).toHaveBeenCalledTimes(2)
+    expect(deps.sleep).not.toHaveBeenCalled()
+    expect(fence.release).toHaveBeenCalledOnce()
+  })
+
+  it('the preflight does not wait for it: nothing is stopped yet, and the caller retries', async () => {
+    const { deps, gate } = harness()
+
+    assertIdle.mockRejectedValueOnce(busyWith({ 5150: own }))
+
+    await expect(gate.preflight()).rejects.toSatisfy(isRuntimeUpdateBusy)
+    expect(assertIdle).toHaveBeenCalledOnce()
+    expect(deps.sleep).not.toHaveBeenCalled()
   })
 })
