@@ -30,20 +30,51 @@ function revokeDeviceBody(deviceInstanceId: string, rawKey: string) {
   }
 }
 
-function provisionKeyRevokeUrl(provisionKeyUrl: string) {
+function provisionKeyRevokeUrl(provisionKeyUrl: string, path: 'revoke' | 'revoke-held-key' = 'revoke') {
   const base = String(provisionKeyUrl || '').trim().replace(/\/+$/, '')
 
   if (!base) {
     throw new Error('Desktop provision-key URL is missing.')
   }
 
-  return `${base}/revoke`
+  return `${base}/${path}`
 }
 
 function requireRevokedDeviceKey(value: unknown) {
   if (!value || typeof value !== 'object' || (value as { revoked?: unknown }).revoked !== true) {
     throw Object.assign(new Error('Desktop relay key was not revoked.'), { code: 'DESKTOP_KEY_NOT_REVOKED' })
   }
+}
+
+/** main.ts apexAuthPostJson, with no body: the key travels only as the bearer. */
+type PostWithBearer = (url: string, options: { bearer: string }) => Promise<unknown>
+
+/**
+ * hc-1256: ask the server to retire the held relay key on the key's own proof
+ * (apex `POST …/provision-key/revoke-held-key`), for when the login token was
+ * refused or is gone. The raw key goes only in the Authorization header, to
+ * the provision-key server that issued it; the server retires that one key and
+ * nothing else. Resolves only on `revoked: true`.
+ */
+async function revokeHeldDesktopKey(provisionKeyUrl: string, rawKey: string, post: PostWithBearer) {
+  const key = String(rawKey || '').trim()
+
+  if (!key) {
+    throw new Error('Desktop relay key is missing.')
+  }
+
+  requireRevokedDeviceKey(await post(provisionKeyRevokeUrl(provisionKeyUrl, 'revoke-held-key'), { bearer: key }))
+}
+
+/**
+ * hc-1256: a refused held-key revoke (an older server's 404, a key the server
+ * does not know) leaves the login's own reason standing; only a failure that a
+ * retry can fix (no answer, or a 5xx) is reported in its place.
+ */
+function heldKeyFailureCanBeRetried(error: any): boolean {
+  const status = Number(error?.statusCode)
+
+  return !(status > 0) || status >= 500
 }
 
 /**
@@ -70,7 +101,7 @@ function signOutFailureLine(reason: string, timing = ''): string {
 }
 
 /** The parts of a sign-out the window waits for, in their order (hc-1142). */
-const SIGN_OUT_STAGES = ['fence', 'capabilities', 'revoke', 'clear', 'clean-up'] as const
+const SIGN_OUT_STAGES = ['fence', 'capabilities', 'revoke', 'held-key', 'clear', 'clean-up'] as const
 
 type SignOutStage = (typeof SIGN_OUT_STAGES)[number]
 
@@ -94,6 +125,12 @@ interface SignOutManagedDeviceInput {
   envKey: string
   managedKey: string | null
   revoke: (body: RevokeBody, stage: TimeStage) => Promise<void>
+  /**
+   * hc-1256: retire the held relay key on its own proof (revokeHeldDesktopKey)
+   * when the login token was refused (HTTP 401) or there is none. Resolves only
+   * once the server confirmed it; without it such a sign-out fails as before.
+   */
+  revokeHeldKey?: (key: string) => Promise<void>
   isCurrent?: () => boolean
   prepare?: () => Promise<void>
   /** hc-1114: one desktop.log line per sign-out, whatever the outcome; never the key or the login token. */
@@ -107,14 +144,18 @@ interface SignOutManagedDeviceInput {
 /**
  * Revoke, clear, then say what happened: the line hc-1083 found missing from
  * desktop.log. hc-1142: the same line says how long each stage took, and a
- * failure hands the renderer the HTTP status, so it can say why.
+ * failure hands the renderer the HTTP status, so it can say why. hc-1256: a
+ * sign-out the held key proved says so, and a failure names both reasons.
  */
 async function signOutManagedDevice(input: SignOutManagedDeviceInput) {
   const now = input.now ?? Date.now
   const started = now()
   const spent: Partial<Record<SignOutStage, number>> = {}
+  const secrets = [input.managedKey, input.accessToken]
   let revoked = false
   let revokeError: any = null
+  let heldKeyCause = ''
+  let heldKeyError: any = null
 
   const time = <T>(stage: SignOutStage, work: () => T): T => {
     const from = now()
@@ -149,14 +190,25 @@ async function signOutManagedDevice(input: SignOutManagedDeviceInput) {
         revokeError = error
         throw error
       }
-    }
+    },
+    revokeHeldKey: input.revokeHeldKey && (async (key, cause) => {
+      try {
+        await time('held-key', () => input.revokeHeldKey!(key))
+        revoked = true
+        heldKeyCause = cause
+      } catch (error) {
+        heldKeyError = error
+        throw error
+      }
+    })
   })
 
   if (!result.ok) {
-    const reason = revokeError ? signOutFailureReason(revokeError, [input.managedKey, input.accessToken]) : result.message
+    const login = revokeError ? signOutFailureReason(revokeError, secrets) : heldKeyError ? 'SIGN_OUT_REQUIRES_SIGN_IN' : result.message
+    const reason = heldKeyError ? `${login}; the relay key's own revoke: ${signOutFailureReason(heldKeyError, secrets)}` : login
     input.log?.(signOutFailureLine(reason, signOutTiming(spent, now() - started)))
 
-    return Number(revokeError?.statusCode) > 0 ? { ...result, statusCode: Number(revokeError.statusCode) } : result
+    return result
   }
 
   if (!revoked) {
@@ -172,15 +224,22 @@ async function signOutManagedDevice(input: SignOutManagedDeviceInput) {
   try {
     detail = time('clean-up', () => input.afterClear?.() || '')
   } catch (error) {
-    detail = `local clean-up failed (${signOutFailureReason(error, [input.managedKey, input.accessToken])})`
+    detail = `local clean-up failed (${signOutFailureReason(error, secrets)})`
   }
 
-  input.log?.(`[managed] signed out: the server revoked this computer's relay key and the stored credential is deleted${detail ? `; ${detail}` : ''}${signOutTiming(spent, now() - started)}`)
+  const proof = heldKeyCause ? `; ${heldKeyCause}, so the relay key proved itself` : ''
+  input.log?.(`[managed] signed out: the server revoked this computer's relay key and the stored credential is deleted${proof}${detail ? `; ${detail}` : ''}${signOutTiming(spent, now() - started)}`)
 
   return result
 }
 
-async function revokeThenClear(input: Omit<SignOutManagedDeviceInput, 'revoke'> & { revoke: (body: RevokeBody) => Promise<void> }) {
+type RevokeThenClearInput = Omit<SignOutManagedDeviceInput, 'revoke' | 'revokeHeldKey'> & {
+  revoke: (body: RevokeBody) => Promise<void>
+  /** `cause`: why the held key has to prove the sign-out, for the log line. */
+  revokeHeldKey?: (key: string, cause: string) => Promise<void>
+}
+
+async function revokeThenClear(input: RevokeThenClearInput) {
   const managedKey = String(input.managedKey || '').trim()
   const envKey = String(input.envKey || '').trim()
   const isCurrent = input.isCurrent || (() => true)
@@ -194,14 +253,14 @@ async function revokeThenClear(input: Omit<SignOutManagedDeviceInput, 'revoke'> 
   if (!isCurrent()) {return { ok: false, message: 'MODEL_MUTATION_SUPERSEDED' }}
 
   if ((managedKey || input.accessToken) && !envKey) {
-    if (!input.accessToken) {
-      return { ok: false, message: 'SIGN_OUT_REQUIRES_SIGN_IN' }
-    }
-
     try {
-      await input.revoke(managedKey ? revokeDeviceBody(input.deviceInstanceId, managedKey) : provisionDeviceBody(input.deviceInstanceId))
+      await revokeOnServer(input, managedKey, isCurrent)
     } catch (error: any) {
-      return { ok: false, message: error && error.message ? error.message : String(error) }
+      const statusCode = Number(error?.statusCode)
+      const message = error && error.message ? error.message : String(error)
+
+      // The status of the failure that stands, so the window can say why (hc-1142).
+      return statusCode > 0 ? { ok: false, message, statusCode } : { ok: false, message }
     }
   }
 
@@ -217,11 +276,43 @@ async function revokeThenClear(input: Omit<SignOutManagedDeviceInput, 'revoke'> 
   return { ok: true }
 }
 
+/**
+ * The server half of a sign-out: the login token's revoke or, when that token
+ * was refused (HTTP 401) or there is none, the held key's own (hc-1256). Throws
+ * unless one of them confirmed it; a refused held-key revoke rethrows the
+ * login's reason, so the window still says to sign in again.
+ */
+async function revokeOnServer(input: RevokeThenClearInput, managedKey: string, isCurrent: () => boolean) {
+  let refused: any = new Error('SIGN_OUT_REQUIRES_SIGN_IN')
+  let cause = 'there was no login token'
+
+  if (input.accessToken) {
+    try {
+      return await input.revoke(managedKey ? revokeDeviceBody(input.deviceInstanceId, managedKey) : provisionDeviceBody(input.deviceInstanceId))
+    } catch (error: any) {
+      if (Number(error?.statusCode) !== 401) {throw error}
+      refused = error
+      cause = 'the login token was refused (HTTP 401)'
+    }
+  }
+
+  if (!managedKey || !input.revokeHeldKey) {throw refused}
+
+  if (!isCurrent()) {throw new Error('MODEL_MUTATION_SUPERSEDED')}
+
+  try {
+    await input.revokeHeldKey(managedKey, cause)
+  } catch (error: any) {
+    throw heldKeyFailureCanBeRetried(error) ? error : refused
+  }
+}
+
 export {
   provisionDeviceBody,
   provisionKeyRevokeUrl,
   requireRevokedDeviceKey,
   revokeDeviceBody,
+  revokeHeldDesktopKey,
   signOutFailureLine,
   signOutFailureReason,
   signOutManagedDevice
