@@ -6,7 +6,7 @@ import path from 'node:path'
 import type { IpcMain } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { DesktopRuntimeUpdateCheck, DesktopShellUpdateState, DesktopUpdatePlan } from '@/global'
+import type { DesktopEngineHolder, DesktopRuntimeUpdateCheck, DesktopShellUpdateState, DesktopUpdatePlan } from '@/global'
 
 import { clearDesktopUpdatePlan, readDesktopUpdatePlan, readPreparedDesktopUpdatePlan, transitionDesktopUpdatePlan, writeDesktopUpdatePlan } from '../../electron/desktop-update-plan'
 import { createLocalBackendLifecycle } from '../../electron/local-backend-lifecycle'
@@ -1528,7 +1528,7 @@ describe('hc-1255: an update held up only by APEX’s own processes keeps its pr
     transitionPlan: vi.fn(async () => ({ ok: true }))
   }
 
-  const heldBy = (...holders: (typeof OWN | typeof OTHER)[]): DesktopShellUpdateState => ({
+  const heldBy = (...holders: DesktopEngineHolder[]): DesktopShellUpdateState => ({
     ...SHELL_UPDATE,
     deferred: true,
     deferredReason: 'engine_holders',
@@ -1543,11 +1543,16 @@ describe('hc-1255: an update held up only by APEX’s own processes keeps its pr
 
   /** Ask for the update the way every entry does; `answer` is what the confirm dialog gets back. */
   function apply(reload = vi.fn()) {
-    const result: { answer?: boolean; done: Promise<void> } = { done: Promise.resolve() }
+    const result: { answer?: boolean; done: Promise<void>; error?: unknown } = { done: Promise.resolve() }
 
-    result.done = applyDesktopUpdates({ reload }).then(answer => {
-      result.answer = answer
-    })
+    result.done = applyDesktopUpdates({ reload }).then(
+      answer => {
+        result.answer = answer
+      },
+      error => {
+        result.error = error
+      }
+    )
 
     return result
   }
@@ -1616,15 +1621,17 @@ describe('hc-1255: an update held up only by APEX’s own processes keeps its pr
     expect($desktopUpdateProgress.get()).toMatchObject({ active: false, currentStage: null })
   })
 
-  it('a hand-off that fails while it waits shows on the card', async () => {
+  it('a retry that fails while it waits fails the update like any failed install', async () => {
     installAnswers(heldBy(OWN))
     const asked = apply()
 
     await settle()
     $shellUpdate.set({ ...AHEAD, phase: 'error', error: 'install_failed' })
     await asked.done
-    expect(asked.answer).toBe(false)
-    expect($desktopUpdateProgress.get()).toMatchObject({ active: false, error: 'install_failed' })
+    expect(asked.answer).toBeUndefined()
+    expect((asked.error as Error).message).toBe('install_failed')
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: false, currentStage: null, error: 'install_failed' })
+    expect(updateCenter.transitionPlan).toHaveBeenLastCalledWith({ lastError: 'install_failed', phase: 'failed' })
   })
 
   it('an engine switch held up only by APEX’s own process is asked again with its progress up, then goes ahead', async () => {
