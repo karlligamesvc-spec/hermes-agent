@@ -1830,9 +1830,6 @@ const registryDispatchRevalidation = new RemoteRevalidationCoordinator()
 // lifecycles, so concurrent dials for one (connectionId, profile) scope
 // coalesce here — the second caller awaits the first spawn's result.
 const backendDialClaims = new BackendDialClaims()
-// True while connection-config:apply soft-rehomes the primary — suppresses the
-// backend-exit toast so an intentional kill doesn't look like a crash.
-let softRehomeInProgress = false
 // Additional per-profile backends, keyed by profile name. The PRIMARY backend
 // (the desktop's launch profile) stays managed by backendConnectionState +
 // startHermes(); this pool only holds EXTRA profile
@@ -7132,10 +7129,10 @@ function getWindowState(win = mainWindow) {
   }
 }
 
-function sendBackendExit(payload) {
-  // Intentional soft re-home (gateway mode apply) kills the child on purpose —
-  // don't surface the "backend stopped" error toast / boot-failure path.
-  if (softRehomeInProgress) {
+function sendBackendExit(payload, child = null) {
+  // hc-1255: an engine APEX stopped itself (update drain, re-home, restart, quit) did not stop on
+  // its own, so no "backend stopped" toast or boot failure. Every stop goes through the lifecycle.
+  if (localBackendLifecycle.stopRequested(child)) {
     return
   }
 
@@ -11674,18 +11671,8 @@ async function teardownPrimaryBackendAndWait({ soft = false } = {}) {
   const hermesProcess = backendConnectionState.getProcess()
   const dying = hermesProcess && !hermesProcess.killed ? hermesProcess : null
 
-  if (soft) {
-    softRehomeInProgress = true
-  }
-
-  try {
-    resetHermesConnection({ soft })
-    await waitForBackendExit(dying)
-  } finally {
-    if (soft) {
-      softRehomeInProgress = false
-    }
-  }
+  resetHermesConnection({ soft })
+  await waitForBackendExit(dying)
 }
 
 function sendConnectionApplied() {
@@ -12854,7 +12841,7 @@ function teardownFailedLocalBackend(poolKey: string, entry: any): Promise<void> 
 // is the backendPool key when it differs from the profile name (composite
 // registry scopes) so the exit/error cleanup evicts the right entry.
 function spawnPoolBackend(profile, entry, opts: { forceLocal?: boolean; poolKey?: string } = {}) {
-  return localBackendLifecycle.start(() => runPoolBackendStart(profile, entry, opts))
+  return localBackendLifecycle.startAfterUpdate(() => runPoolBackendStart(profile, entry, opts))
 }
 
 async function runPoolBackendStart(profile, entry, opts: { forceLocal?: boolean; poolKey?: string } = {}) {
@@ -13260,7 +13247,7 @@ async function prepareProfileRenameRequest(request) {
 }
 
 function startHermes() {
-  return localBackendLifecycle.start(runHermesStart)
+  return localBackendLifecycle.startAfterUpdate(runHermesStart)
 }
 
 async function runHermesStart() {
@@ -13585,7 +13572,7 @@ async function runHermesStart() {
       }
 
       rememberLog(`Hermes backend exited (${signal || code})`)
-      sendBackendExit({ code, signal })
+      sendBackendExit({ code, signal }, hermesProcess)
 
       if (!backendReady) {
         const message = `Hermes backend exited before it became ready (${signal || code}).${primaryOutputTail.describe()}`

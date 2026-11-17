@@ -115,3 +115,39 @@ describe('every local engine stop in main.ts ends what the engine started', () =
     assert.match(holders, /\{ restart: restartMessagingGateway \}/)
   })
 })
+
+// hc-1255: the sticky 「后端已停止」 toast is for an engine that stopped on its own. main.ts tells the
+// renderer from one function, which stays quiet for an engine APEX asked to stop (the lifecycle's
+// `stopRequested`, behaviour in local-backend-lifecycle.test.ts); the census above proves every stop
+// is asked through the lifecycle. The update drain (app install, bundled-engine install and its
+// deferred retries, engine bundle switch) was the one stop that left the primary current and so
+// reached the toast; re-homes, key restarts, sign-out, failed starts and the quit drop it first.
+describe('an engine APEX stops itself is not reported as stopped', () => {
+  test('only sendBackendExit tells the renderer, and it is quiet for an engine asked to stop', () => {
+    assert.deepEqual(functionsCalling("'hermes:backend-exit'"), ['sendBackendExit'])
+    assert.match(
+      body('function sendBackendExit('),
+      /^function sendBackendExit\(payload, child = null\) \{\s+if \(localBackendLifecycle\.stopRequested\(child\)\) \{\n\s+return\n\s+\}/
+    )
+  })
+
+  test('the primary hands its own process over on exit; a spawn error has none to ask about', () => {
+    const start = body('async function runHermesStart(')
+
+    assert.match(start, /rememberLog\(`Hermes backend exited \(\$\{signal \|\| code\}\)`\)\n\s+sendBackendExit\(\{ code, signal \}, hermesProcess\)\n/)
+    assert.match(start, /\n\s+sendBackendExit\(\{ code: null, signal: null, error: error\.message \}\)\n/)
+    assert.equal(code.match(/sendBackendExit\(/g)?.length, 3, 'its definition and the two primary handlers')
+  })
+
+  // The update drain makes the renderer reconnect at once. A start then would run its probes beside
+  // the switch's strict idle scan and then latch the spawn fence's error as a failed start.
+  test('both engine spawners wait out an update before they start', () => {
+    assert.match(body('function startHermes('), /\n\s+return localBackendLifecycle\.startAfterUpdate\(runHermesStart\)\n/)
+    assert.match(
+      body('function spawnPoolBackend('),
+      /\n\s+return localBackendLifecycle\.startAfterUpdate\(\(\) => runPoolBackendStart\(profile, entry, opts\)\)\n/
+    )
+    assert.deepEqual(functionsCalling('runHermesStart'), ['startHermes', 'runHermesStart'])
+    assert.deepEqual(functionsCalling('runPoolBackendStart'), ['spawnPoolBackend', 'runPoolBackendStart'])
+  })
+})
