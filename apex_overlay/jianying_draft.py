@@ -9,6 +9,10 @@ it, as in every cloud container, no tool is registered.
 draft folder, read each time the list is built (jianying_install.py). So the agent offers 「在剪映里接着剪」 only
 on a computer that can take it, and a 剪映 installed while APEX runs counts from the next turn.
 
+**The cut's sound effects come along (hc-1258).** When the finished cut was assembled with a sound-effect sheet,
+the draft gets them on 音效 tracks, read from the cut's report (jianying_build.py); the result then carries
+``draft.sfx``, how many, and has no such key otherwise. No new parameter: the tool reads what ``assemble`` wrote.
+
 **APEX writes, the user exports.** The draft is written into 剪映's own draft folder; nothing operates 剪映
 (hc-1219: the user exports). Desktop draws the result as a card with 「在剪映中打开」, which starts 剪映 and checks that
 it took the draft in (apps/desktop electron/jianying.ts). After writing, this side checks the same where it can: when
@@ -163,7 +167,9 @@ def write_draft(args: dict, *, platform: str = sys.platform, wait: float = REGIS
         "status": "written",
         "draft": {"name": written.folder.name, "folder": str(written.folder),
                   "seconds": round(written.duration_us / 1_000_000, 2), "shots": written.shots,
-                  "subtitles": written.subtitles},
+                  "subtitles": written.subtitles,
+                  # hc-1258: only when the draft carries the cut's sound effects, so the agent says so only then
+                  **({"sfx": written.effects} if written.effects else {})},
         "jianying": {"version": found.version, "platform": platform, "registered": registered},
         "problem": why,
         "changes": written.notes,
