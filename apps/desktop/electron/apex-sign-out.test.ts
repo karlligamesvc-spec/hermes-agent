@@ -404,4 +404,70 @@ describe('signing in as another account', () => {
     assert.equal(log[0].includes(KEY), false)
     assert.equal(log[0].includes(ALICE), false)
   })
+
+  // hc-1256: an expired login is the usual reason to be on the re-sign-in screen.
+  const expired = () => Object.assign(new Error('401: {"detail":"登录状态无效，请重新登录。"}'), { statusCode: 401 })
+
+  test("the previous account's login was refused: its key retires itself", async () => {
+    const heldKeys: string[] = []
+    const log: string[] = []
+
+    const outcome = await revokePreviousAccountKey({
+      previous: { key: KEY, accessToken: ALICE },
+      nextAccessToken: BOB,
+      deviceInstanceId: DEVICE,
+      post: async () => {throw expired()},
+      revokeHeldKey: async key => {heldKeys.push(key)},
+      log: line => log.push(line)
+    })
+
+    assert.equal(outcome, 'revoked')
+    assert.deepEqual(heldKeys, [KEY])
+    assert.deepEqual(log, [
+      "[managed] signed in as another account: the server revoked the previous account's relay key for this computer; " +
+        'its login was refused (HTTP 401), so the relay key proved itself'
+    ])
+  })
+
+  test('both refused: logged with both reasons, never the key, and left to the computer limit', async () => {
+    const log: string[] = []
+
+    const outcome = await revokePreviousAccountKey({
+      previous: { key: KEY, accessToken: ALICE },
+      nextAccessToken: BOB,
+      deviceInstanceId: DEVICE,
+      post: async () => {throw expired()},
+      revokeHeldKey: async () => {throw Object.assign(new Error(`404: ${KEY}`), { statusCode: 404 })},
+      log: line => log.push(line)
+    })
+
+    assert.equal(outcome, 'failed')
+    assert.deepEqual(log, [
+      "[managed] signed in as another account: the previous account's relay key for this computer was not revoked " +
+        "(HTTP 401; the relay key's own revoke: HTTP 404); the server retires it when that account reaches its computer limit"
+    ])
+  })
+
+  test.each([
+    ['a server error', Object.assign(new Error('500: down'), { statusCode: 500 })],
+    ['no answer', new Error('socket hang up')],
+    ['a server that did not revoke', null]
+  ])('the login request failing with %s never sends the held key', async (_name, error) => {
+    const outcome = await revokePreviousAccountKey({
+      previous: { key: KEY, accessToken: ALICE },
+      nextAccessToken: BOB,
+      deviceInstanceId: DEVICE,
+      post: async () => {
+        if (error) {
+          throw error
+        }
+
+        return { revoked: false }
+      },
+      revokeHeldKey: async () => assert.fail('the held key is only for a refused login'),
+      log: () => undefined
+    })
+
+    assert.equal(outcome, 'failed')
+  })
 })

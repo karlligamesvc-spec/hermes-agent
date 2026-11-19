@@ -322,6 +322,8 @@ export interface PreviousAccountKeyDeps {
   deviceInstanceId: string
   /** POST the revoke body to provision-key/revoke with `bearer`. */
   post: (bearer: string, body: Record<string, unknown>) => Promise<unknown>
+  /** hc-1256: retire the key on its own proof (revokeHeldDesktopKey) when that account's login was refused. */
+  revokeHeldKey?: (key: string) => Promise<void>
   log: Log
 }
 
@@ -330,9 +332,11 @@ export interface PreviousAccountKeyDeps {
  * replaces the stored key without signing out. Revoke the previous account's
  * key for this computer with that account's own login, by the hash of the exact
  * key it held: the server's held-key path, which needs no revision and touches
- * nothing else (desktop_provisioning.revoke_desktop_agent_key). Best effort: an
- * expired login cannot revoke it, and the server then retires it when that
- * account fills its eight computers (hc-1111). Never throws.
+ * nothing else (desktop_provisioning.revoke_desktop_agent_key). Best effort.
+ * hc-1256: when that account's login is refused (HTTP 401, an expired login is
+ * the usual reason to be on the re-sign-in screen), the key retires itself
+ * (revoke_held_desktop_key). Only when both fail does the server keep it, until
+ * that account fills its eight computers (hc-1111). Never throws.
  */
 export async function revokePreviousAccountKey(deps: PreviousAccountKeyDeps): Promise<'failed' | 'kept' | 'revoked'> {
   const key = String(deps.previous.key || '').trim()
@@ -343,19 +347,37 @@ export async function revokePreviousAccountKey(deps: PreviousAccountKeyDeps): Pr
     return 'kept'
   }
 
+  const revoked = "[managed] signed in as another account: the server revoked the previous account's relay key for this computer"
+  let reason: string
+
   try {
     requireRevokedDeviceKey(await deps.post(token, revokeDeviceBody(deps.deviceInstanceId, key)))
-    deps.log(
-      "[managed] signed in as another account: the server revoked the previous account's relay key for this computer"
-    )
+    deps.log(revoked)
 
     return 'revoked'
   } catch (error: any) {
-    deps.log(
-      `[managed] signed in as another account: the previous account's relay key for this computer was not revoked ` +
-        `(${signOutFailureReason(error, [key, token])}); the server retires it when that account reaches its computer limit`
-    )
+    reason = signOutFailureReason(error, [key, token])
 
-    return 'failed'
+    if (Number(error?.statusCode) !== 401 || !deps.revokeHeldKey) {
+      return previousKeyKept(deps, reason)
+    }
   }
+
+  try {
+    await deps.revokeHeldKey(key)
+    deps.log(`${revoked}; its login was refused (HTTP 401), so the relay key proved itself`)
+
+    return 'revoked'
+  } catch (error: any) {
+    return previousKeyKept(deps, `${reason}; the relay key's own revoke: ${signOutFailureReason(error, [key, token])}`)
+  }
+}
+
+function previousKeyKept(deps: PreviousAccountKeyDeps, reason: string): 'failed' {
+  deps.log(
+    `[managed] signed in as another account: the previous account's relay key for this computer was not revoked ` +
+      `(${reason}); the server retires it when that account reaches its computer limit`
+  )
+
+  return 'failed'
 }

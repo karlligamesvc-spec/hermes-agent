@@ -8,6 +8,7 @@ import {
   provisionKeyRevokeUrl,
   requireRevokedDeviceKey,
   revokeDeviceBody,
+  revokeHeldDesktopKey,
   signOutFailureLine,
   signOutManagedDevice
 } from './desktop-device-key'
@@ -327,5 +328,179 @@ describe('the sign-out line and the clean-up after it (hc-1114)', () => {
 
     assert.equal(lines.length, 3)
     assert.ok(secretFree(lines), lines.join('\n'))
+  })
+})
+
+// hc-1256: a login the server refuses no longer strands the sign-out. The held
+// relay key proves it instead (apex revoke-held-key), and the local credential
+// still goes only after the server confirmed that revoke. What the window says
+// is read from the status handed back (i18n/sign-out.ts, pinned by
+// desktop-auth-gate-sign-out.test.tsx): 401 or SIGN_OUT_REQUIRES_SIGN_IN reads
+// 「请先重新登录，再退出」, a 5xx or no status 「检查网络后重试」.
+describe('a refused or missing login: the held key proves the sign-out (hc-1256)', () => {
+  const KEY = 'sk-hc1256-held-relay-key-00000000'
+  const TOKEN = 'login.jwt.hc1256-expired'
+  const URL = 'https://apex-nodes.com/api/v1/desktop/provision-key'
+
+  const httpError = (statusCode: number, message = `${statusCode}: {"detail":"x"}`) =>
+    Object.assign(new Error(message), { statusCode })
+
+  // requestRevisionedManagedKeyMutation's error for a JWT the server refused.
+  const loginRefused = () => httpError(401, 'MANAGED_PROVISION_UNAVAILABLE')
+
+  function signOut(overrides: Record<string, unknown> = {}) {
+    const calls: string[] = []
+    const heldKeys: string[] = []
+    const bodies: unknown[] = []
+    const log: string[] = []
+
+    const run = signOutManagedDevice({
+      accessToken: TOKEN,
+      clearCredential: () => calls.push('clear'),
+      deviceInstanceId: DEVICE_ID,
+      envKey: '',
+      managedKey: KEY,
+      revoke: async body => {
+        calls.push('revoke')
+        bodies.push(body)
+        throw loginRefused()
+      },
+      revokeHeldKey: async key => {
+        calls.push('held-key')
+        heldKeys.push(key)
+      },
+      log: line => log.push(line),
+      afterClear: () => {
+        calls.push('afterClear')
+
+        return 'relay key removed from 2 local file(s); engines still on it restart once idle'
+      },
+      now: () => 0,
+      ...overrides
+    })
+
+    return { bodies, calls, heldKeys, log, run }
+  }
+
+  test('an expired login: the held key retires itself, and only then is the credential cleared', async () => {
+    const { bodies, calls, heldKeys, log, run } = signOut()
+
+    assert.deepEqual(await run, { ok: true })
+    assert.deepEqual(calls, ['revoke', 'held-key', 'clear', 'afterClear'])
+    assert.deepEqual(heldKeys, [KEY])
+    assert.equal(JSON.stringify(bodies).includes(KEY), false)
+    assert.deepEqual(log, [
+      "[managed] signed out: the server revoked this computer's relay key and the stored credential is deleted; " +
+        'the login token was refused (HTTP 401), so the relay key proved itself; ' +
+        'relay key removed from 2 local file(s); engines still on it restart once idle; ' +
+        'took 0 ms: revoke 0, held-key 0, clear 0, clean-up 0'
+    ])
+  })
+
+  test('no login token at all: the held key goes to the server without a login request', async () => {
+    const { calls, log, run } = signOut({ accessToken: null })
+
+    assert.deepEqual(await run, { ok: true })
+    assert.deepEqual(calls, ['held-key', 'clear', 'afterClear'])
+    assert.ok(log[0].includes('; there was no login token, so the relay key proved itself; '), log[0])
+    assert.ok(log[0].endsWith('; took 0 ms: held-key 0, clear 0, clean-up 0'), log[0])
+  })
+
+  test.each([
+    ['an older server without the endpoint', TOKEN, httpError(404), { message: 'MANAGED_PROVISION_UNAVAILABLE', statusCode: 401 }, 'HTTP 401; the relay key\'s own revoke: HTTP 404'],
+    ['a key the server does not know', TOKEN, httpError(401), { message: 'MANAGED_PROVISION_UNAVAILABLE', statusCode: 401 }, 'HTTP 401; the relay key\'s own revoke: HTTP 401'],
+    ['a server error', TOKEN, httpError(503, '503: down'), { message: '503: down', statusCode: 503 }, 'HTTP 401; the relay key\'s own revoke: HTTP 503'],
+    ['no answer', TOKEN, new Error('socket hang up'), { message: 'socket hang up' }, 'HTTP 401; the relay key\'s own revoke: socket hang up'],
+    ['no login token, an older server', null, httpError(404), { message: 'SIGN_OUT_REQUIRES_SIGN_IN' }, 'SIGN_OUT_REQUIRES_SIGN_IN; the relay key\'s own revoke: HTTP 404'],
+    ['no login token, no answer', null, new Error('socket hang up'), { message: 'socket hang up' }, 'SIGN_OUT_REQUIRES_SIGN_IN; the relay key\'s own revoke: socket hang up']
+  ])('%s: everything stays, and the window gets the reason that tells it what helps', async (_name, accessToken, heldError, outcome, reason) => {
+    const { calls, log, run } = signOut({
+      accessToken,
+      revokeHeldKey: async () => {
+        calls.push('held-key')
+        throw heldError
+      }
+    })
+
+    assert.deepEqual(await run, { ok: false, ...outcome })
+    assert.equal(calls.includes('clear') || calls.includes('afterClear'), false)
+    const stages = accessToken ? 'revoke 0, held-key 0' : 'held-key 0'
+    assert.deepEqual(log, [`[managed] sign-out failed (${reason}); the local credential stays so it can be retried; took 0 ms: ${stages}`])
+  })
+
+  test.each([
+    ['a server error', httpError(500)],
+    ['a refusal that is not about the login', httpError(403)],
+    ['no answer', new Error('offline')],
+    ['an answer that is not a revocation', Object.assign(new Error('Desktop relay key was not revoked.'), { code: 'DESKTOP_KEY_NOT_REVOKED' })]
+  ])('the login request failing with %s never sends the held key', async (_name, error) => {
+    const { calls, run } = signOut({
+      revoke: async () => {
+        calls.push('revoke')
+        throw error
+      }
+    })
+
+    assert.equal((await run).ok, false)
+    assert.deepEqual(calls, ['revoke'])
+  })
+
+  test('a refused login with no stored key has nothing to prove the sign-out with', async () => {
+    const { calls, run } = signOut({ managedKey: null })
+
+    assert.deepEqual(await run, { ok: false, message: 'MANAGED_PROVISION_UNAVAILABLE', statusCode: 401 })
+    assert.deepEqual(calls, ['revoke'])
+  })
+
+  test('an env key is never sent anywhere', async () => {
+    const { calls, run } = signOut({ envKey: 'operator-key' })
+
+    assert.deepEqual(await run, { ok: true })
+    assert.deepEqual(calls, ['clear'])
+  })
+
+  test('a newer sign-in between the refusal and the held key stops it', async () => {
+    const answers = [true, false]
+    const { calls, run } = signOut({ isCurrent: () => answers.shift() ?? false })
+
+    assert.deepEqual(await run, { ok: false, message: 'MODEL_MUTATION_SUPERSEDED' })
+    assert.deepEqual(calls, ['revoke'])
+  })
+
+  test('no line carries the key or the login token', async () => {
+    const lines: string[] = []
+
+    for (const overrides of [
+      {},
+      { revokeHeldKey: async () => {throw new Error(`echo ${KEY} ${TOKEN}`)} },
+      { accessToken: null, revokeHeldKey: async () => {throw httpError(404, `404: ${KEY}`)} }
+    ]) {
+      const { log, run } = signOut(overrides)
+      await run
+      lines.push(...log)
+    }
+
+    assert.equal(lines.length, 3)
+    assert.ok(lines.every(line => !line.includes(KEY) && !line.includes(TOKEN)), lines.join('\n'))
+  })
+
+  test('the held key travels only as the bearer, to the provision-key server that issued it', async () => {
+    const posts: unknown[] = []
+
+    await revokeHeldDesktopKey(`${URL}/`, `  ${KEY}  `, async (url, options) => {
+      posts.push({ url, options })
+
+      return { revoked: true }
+    })
+
+    assert.deepEqual(posts, [{ url: `${URL}/revoke-held-key`, options: { bearer: KEY } }])
+  })
+
+  test('only revoked: true confirms it, and an empty key is never sent', async () => {
+    await assert.rejects(
+      revokeHeldDesktopKey(URL, KEY, async () => ({ revoked: false })),
+      { code: 'DESKTOP_KEY_NOT_REVOKED' }
+    )
+    await assert.rejects(revokeHeldDesktopKey(URL, '  ', async () => assert.fail('no request without a key')))
   })
 })

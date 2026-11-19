@@ -55,6 +55,13 @@ describe('the sign-out', () => {
     )
   })
 
+  // hc-1256: a refused login proves the sign-out with the held key, sent by the one helper to the
+  // provision-key server, here and when signing in as another account; nowhere else.
+  test('falls back to the held key when the login is refused', () => {
+    assert.match(handler, /\n\s+revokeHeldKey: key => revokeHeldDesktopKey\(endpoints\.provisionKeyUrl, key, apexAuthPostJson\),\n/)
+    assert.deepEqual(owners(/\brevokeHeldDesktopKey\(/g), ['provisionManagedFromAccessToken', '(module scope)'])
+  })
+
   test('is the only caller of signOutManagedDevice', () => {
     assert.equal([...code.matchAll(/\bsignOutManagedDevice\(/g)].length, 1)
   })
@@ -98,7 +105,7 @@ describe('a sign-in as another account', () => {
     assert.ok(committed >= 0 && committed < revoke, 'and revoked only after the commit')
     assert.match(
       provision.slice(revoke),
-      /^void revokePreviousAccountKey\(\{[^\n]*\n\s+post: \(bearer, body\) => apexAuthPostJson\(provisionKeyRevokeUrl\(endpoints\.provisionKeyUrl\), \{ bearer, body \}\) \}\)\n/
+      /^void revokePreviousAccountKey\(\{[^\n]*\n\s+post: \(bearer, body\) => apexAuthPostJson\(provisionKeyRevokeUrl\(endpoints\.provisionKeyUrl\), \{ bearer, body \}\),\n\s+revokeHeldKey: key => revokeHeldDesktopKey\(endpoints\.provisionKeyUrl, key, apexAuthPostJson\) \}\)\n/
     )
     assert.match(provision, /managedProvisionCommitToken\(token, previous\.accessToken, purpose\)/)
   })
