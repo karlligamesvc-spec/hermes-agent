@@ -347,6 +347,7 @@ import {
   provisionDeviceBody,
   provisionKeyRevokeUrl,
   requireRevokedDeviceKey,
+  revokeHeldDesktopKey,
   signOutFailureLine,
   signOutManagedDevice
 } from './desktop-device-key'
@@ -21389,7 +21390,8 @@ async function provisionManagedFromAccessToken(accessToken, account = null, isCu
       unpersistedManagedRotation = false
       onCommitted?.(generation)
       void revokePreviousAccountKey({ previous, nextAccessToken: token, deviceInstanceId: deviceBody.device_instance_id, log: rememberLog,
-        post: (bearer, body) => apexAuthPostJson(provisionKeyRevokeUrl(endpoints.provisionKeyUrl), { bearer, body }) }) // hc-1114
+        post: (bearer, body) => apexAuthPostJson(provisionKeyRevokeUrl(endpoints.provisionKeyUrl), { bearer, body }),
+        revokeHeldKey: key => revokeHeldDesktopKey(endpoints.provisionKeyUrl, key, apexAuthPostJson) }) // hc-1114, hc-1256
 
       return generation
     }
@@ -23247,8 +23249,8 @@ ipcMain.handle('hermes:managed:deepLinkSignIn', async (_event, payload) => {
   }
 })
 
-// signOut: revoke this install first, then forget the relay key. A network/JWT failure leaves local state intact so the user can retry; silently clearing
-// while a server key stays active would be a security regression. Env-managed keys are out-of-band and have no stored server session to revoke. hc-1114: no copy of a revoked key stays behind.
+// signOut: revoke this install first, then forget the relay key. A failure leaves local state intact so the user can retry; silently clearing while a server
+// key stays active would be a security regression. hc-1256: a refused login lets the held key prove it. Env keys are out-of-band. hc-1114: no copy of a revoked key stays behind.
 ipcMain.handle('hermes:managed:signOut', async () => {
   const managed = resolveManagedConfig()
   const envKey = String(process.env.APEXNODES_RELAY_KEY || '').trim()
@@ -23265,14 +23267,12 @@ ipcMain.handle('hermes:managed:signOut', async () => {
   const endpoints = resolveApexEndpoints(process.env)
 
   return signOutManagedDevice({
-    accessToken: managed.accessToken,
+    accessToken: managed.accessToken, deviceInstanceId: desktopDeviceInstanceId(), managedKey: managed.key, isCurrent,
     clearCredential: clearManagedRelayCredential,
     afterClear: () => cleanUpAfterSignOut({ root: HERMES_HOME, managed, defaultRelayBaseUrl: endpoints.relayBaseUrl, restartHolders: restartEnginesOnStaleRelayKey }),
-    deviceInstanceId: desktopDeviceInstanceId(),
     envKey, log: rememberLog,
-    managedKey: managed.key,
-    isCurrent,
     prepare: () => desktopModelMutations.fence(isCurrent),
+    revokeHeldKey: key => revokeHeldDesktopKey(endpoints.provisionKeyUrl, key, apexAuthPostJson), // hc-1256
     revoke: async (body, stage) => {
       const result = await requestRevisionedManagedKeyMutation({
         capabilities: () => stage('capabilities', provisionKeyCapabilities(endpoints.provisionKeyUrl, managed.accessToken, apexAuthBodylessJson)),
