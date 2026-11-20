@@ -34,12 +34,19 @@ interface LocalBackendLifecycleDeps<Child> {
  * await and children before their asynchronous identity claim. The permanent
  * shutdown signal and synchronous spawn fence make bounded waiting safe: a late
  * resolver can finish, but can never create another owned backend.
+ *
+ * hc-1255: every stop APEX asks for goes through `stop` (apex-engine-stop-wiring.test.ts), so a
+ * child that exits without having been asked stopped on its own. And an engine start that arrives
+ * while an update holds the fence waits for it (`startAfterUpdate`) instead of failing at the spawn.
  */
-export function createLocalBackendLifecycle<Child>(deps: LocalBackendLifecycleDeps<Child>) {
+export function createLocalBackendLifecycle<Child extends object>(deps: LocalBackendLifecycleDeps<Child>) {
   const controller = new AbortController()
   const starts = new Set<Promise<unknown>>()
   const children = new Set<Child>()
   const stops = new Map<Child, Promise<void>>()
+  // Never cleared: an exit handler may run after the child is released.
+  const askedToStop = new WeakSet<Child>()
+  const unfenceWaiters = new Set<() => void>()
   let updateFences = 0
 
   function stop(child: Child | null | undefined): Promise<void> {
@@ -47,6 +54,7 @@ export function createLocalBackendLifecycle<Child>(deps: LocalBackendLifecycleDe
       return Promise.resolve()
     }
 
+    askedToStop.add(child)
     const existing = stops.get(child)
 
     if (existing) {
@@ -82,35 +90,82 @@ export function createLocalBackendLifecycle<Child>(deps: LocalBackendLifecycleDe
     return waitForTeardown([...starts, ...[...children].map(stop), ...stops.values()], deps.timeoutMs ?? 7_000)
   })
 
+  function start<T>(run: () => Promise<T>): Promise<T> {
+    if (controller.signal.aborted) {
+      return Promise.reject(controller.signal.reason)
+    }
+
+    // Defer invocation one microtask so the inventory precedes all work.
+    const promise = Promise.resolve().then(() => {
+      controller.signal.throwIfAborted()
+
+      return run()
+    })
+
+    starts.add(promise)
+    void promise.then(
+      () => starts.delete(promise),
+      () => starts.delete(promise)
+    )
+
+    return promise
+  }
+
+  /** Settles when the last update fence is released, or rejects when Desktop quits first. */
+  function nextUnfence(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const quit = () => {
+        unfenceWaiters.delete(resume)
+        reject(controller.signal.reason)
+      }
+
+      const resume = () => {
+        controller.signal.removeEventListener('abort', quit)
+        resolve()
+      }
+
+      unfenceWaiters.add(resume)
+      controller.signal.addEventListener('abort', quit, { once: true })
+    })
+  }
+
+  function releaseFence() {
+    updateFences -= 1
+
+    if (updateFences === 0) {
+      const waiting = [...unfenceWaiters]
+      unfenceWaiters.clear()
+      waiting.forEach(resume => resume())
+    }
+  }
+
   return {
     signal: controller.signal,
     assertCanSpawn,
     assertCanStart: () => controller.signal.throwIfAborted(),
     hasPending: () => starts.size > 0 || children.size > 0 || stops.size > 0 || shutdown.isPending(),
     ownedChildren: () => [...children],
+    /** True once APEX asked this child to stop: its exit is then no crash. */
+    stopRequested: (child: Child | null | undefined) => child != null && askedToStop.has(child),
     // A version read joins already-started preparation, never a live child or a new start.
     waitForPendingStarts: async () => {
       await Promise.allSettled([...starts])
     },
-    start<T>(run: () => Promise<T>): Promise<T> {
-      if (controller.signal.aborted) {
-        return Promise.reject(controller.signal.reason)
-      }
-
-      // Defer invocation one microtask so the inventory precedes all work.
-      const promise = Promise.resolve().then(() => {
-        controller.signal.throwIfAborted()
+    start,
+    /**
+     * A tracked start that first waits out any engine update. A renderer reconnects as soon as an
+     * update drains its engine; started at once, that start would run its probes beside the switch's
+     * idle scan and then fail at the spawn fence. It starts once the update is released instead, or
+     * never, when the update ends in a quit.
+     */
+    startAfterUpdate<T>(run: () => Promise<T>): Promise<T> {
+      return start(async () => {
+        while (updateFences > 0) {
+          await nextUnfence()
+        }
 
         return run()
       })
-
-      starts.add(promise)
-      void promise.then(
-        () => starts.delete(promise),
-        () => starts.delete(promise)
-      )
-
-      return promise
     },
     spawn(create: () => Child): Child {
       assertCanSpawn()
@@ -129,7 +184,7 @@ export function createLocalBackendLifecycle<Child>(deps: LocalBackendLifecycleDe
       return {
         drain: () => Promise.all([...children].map(stop)),
         release: () => {
-          if (!released) {released = true; updateFences -= 1}
+          if (!released) {released = true; releaseFence()}
         }
       }
     },

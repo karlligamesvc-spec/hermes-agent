@@ -342,3 +342,159 @@ test('a stop joined by the quit sweeps once', async () => {
   assert.equal(sweepOnStop.mock.calls.length, 1)
   assert.equal(ended.mock.calls.length, 1)
 })
+
+// hc-1255: an exit APEX asked for is no crash. main.ts's primary exit handler asks `stopRequested`
+// before it tells the renderer the engine stopped (the sticky 「后端已停止」 toast), and every way
+// APEX stops an engine goes through `stop` (apex-engine-stop-wiring.test.ts).
+test.each<[string, (lifecycle: Lifecycle, engine: Engine) => Promise<unknown>]>([
+  ['a direct stop (re-home, key restart, failed start)', (lifecycle, engine) => lifecycle.stop(engine)],
+  ['the update drain', lifecycle => lifecycle.fenceForUpdate().drain()],
+  ['the quit', lifecycle => lifecycle.shutdown()]
+])('%s marks the engine as asked to stop, and the mark outlives its release', async (_name, run) => {
+  const lifecycle = createLocalBackendLifecycle<Engine>({ stopChild: () => {}, waitForExit: async () => {}, cancelSetup: () => {} })
+  const engine = lifecycle.spawn(() => ({ kind: 'engine' }))
+
+  assert.equal(lifecycle.stopRequested(engine), false)
+  await run(lifecycle, engine)
+  lifecycle.release(engine)
+  assert.equal(lifecycle.stopRequested(engine), true)
+  assert.equal(lifecycle.stopRequested(null), false)
+  assert.equal(lifecycle.stopRequested(undefined), false)
+})
+
+test('an engine that exits by itself, or that only a stranger stops, was not asked to stop', async () => {
+  const lifecycle = createLocalBackendLifecycle<Engine>({ stopChild: () => {}, waitForExit: async () => {}, cancelSetup: () => {} })
+  const crashed = lifecycle.spawn(() => ({ kind: 'crashed' }))
+  const released = lifecycle.spawn(() => ({ kind: 'already exited' }))
+
+  lifecycle.release(released)
+  await lifecycle.fenceForUpdate().drain()
+  assert.equal(lifecycle.stopRequested(crashed), true, 'the drain stops every owned engine')
+  assert.equal(lifecycle.stopRequested(released), false, 'an engine gone before the drain was never asked')
+  assert.equal(lifecycle.stopRequested({ kind: 'a stranger' }), false)
+})
+
+// The real order: spawnOwnedBackend's release listener runs before the primary's own exit handler.
+test('a real engine the update drains reads as asked in its exit handler, one killed from outside does not', async () => {
+  const lifecycle = createLocalBackendLifecycle<ReturnType<typeof spawn>>({
+    stopChild: child => {
+      child.kill()
+    },
+    waitForExit: async child => {
+      if (child.exitCode === null && child.signalCode === null) {
+        await once(child, 'exit')
+      }
+    },
+    cancelSetup: () => {}
+  })
+
+  const asked: Record<string, boolean> = {}
+
+  const engine = (name: string) => {
+    const child = lifecycle.spawn(() => spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }))
+
+    child.once('exit', () => lifecycle.release(child))
+    child.once('exit', () => {
+      asked[name] = lifecycle.stopRequested(child)
+    })
+
+    return child
+  }
+
+  const crashed = engine('crashed')
+  const drained = engine('drained')
+
+  try {
+    await Promise.all([once(crashed, 'spawn'), once(drained, 'spawn')])
+    crashed.kill('SIGKILL')
+    await once(crashed, 'exit')
+    await lifecycle.fenceForUpdate().drain()
+    assert.deepEqual(asked, { crashed: false, drained: true })
+    assert.deepEqual(lifecycle.ownedChildren(), [])
+  } finally {
+    for (const child of [crashed, drained]) {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGKILL')
+      }
+    }
+  }
+})
+
+// hc-1255: the update drain stops the engine, and the renderer reconnects at once. Started then, the
+// reconnect's start would run its probes beside the switch's strict idle scan (and be named a holder
+// there) and then fail at the spawn fence. It waits for the update to be released instead.
+test('an engine start during an update waits for its release, then starts', async () => {
+  const lifecycle = createLocalBackendLifecycle<Engine>({ stopChild: () => {}, waitForExit: async () => {}, cancelSetup: () => {} })
+  const fence = lifecycle.fenceForUpdate()
+  const steps: string[] = []
+
+  const reconnect = lifecycle.startAfterUpdate(async () => {
+    steps.push('probes')
+
+    return lifecycle.spawn(() => ({ kind: 'engine' }))
+  })
+
+  for (let i = 0; i < 10; i++) {
+    await Promise.resolve()
+  }
+
+  assert.deepEqual(steps, [])
+  assert.equal(lifecycle.hasPending(), true)
+  fence.release()
+  assert.deepEqual(await reconnect, { kind: 'engine' })
+  assert.deepEqual(steps, ['probes'])
+})
+
+test('an engine start waits for every update fence, and for one taken again before it resumes', async () => {
+  const lifecycle = createLocalBackendLifecycle<Engine>({ stopChild: () => {}, waitForExit: async () => {}, cancelSetup: () => {} })
+  const shell = lifecycle.fenceForUpdate()
+  const engine = lifecycle.fenceForUpdate()
+  const run = vi.fn(async () => 'started')
+  const started = lifecycle.startAfterUpdate(run)
+
+  const settle = async () => {
+    for (let i = 0; i < 10; i++) {
+      await Promise.resolve()
+    }
+  }
+
+  await settle()
+  shell.release()
+  await settle()
+  assert.equal(run.mock.calls.length, 0, 'one fence is still held')
+  engine.release()
+  const again = lifecycle.fenceForUpdate()
+  await settle()
+  assert.equal(run.mock.calls.length, 0, 'a fence taken before the start resumed')
+  again.release()
+  assert.equal(await started, 'started')
+  assert.equal(run.mock.calls.length, 1)
+})
+
+test('without a fence an engine start runs at once, and a plain start ignores the fence (the installer runs inside one)', async () => {
+  const lifecycle = createLocalBackendLifecycle<Engine>({ stopChild: () => {}, waitForExit: async () => {}, cancelSetup: () => {} })
+
+  assert.equal(await lifecycle.startAfterUpdate(async () => 'now'), 'now')
+  const fence = lifecycle.fenceForUpdate()
+
+  try {
+    assert.equal(await lifecycle.start(async () => 'installer'), 'installer')
+  } finally {
+    fence.release()
+  }
+})
+
+test('an update that ends in a quit ends a waiting engine start without running it, and the quit does not wait for it', async () => {
+  const lifecycle = createLocalBackendLifecycle<Engine>({ stopChild: () => {}, waitForExit: async () => {}, cancelSetup: () => {}, timeoutMs: 60_000 })
+
+  lifecycle.fenceForUpdate()
+  const run = vi.fn(async () => {})
+  const reconnect = lifecycle.startAfterUpdate(run)
+
+  void reconnect.catch(() => {})
+  await Promise.resolve()
+  await lifecycle.shutdown()
+  await assert.rejects(reconnect, /quitting/)
+  assert.equal(run.mock.calls.length, 0)
+  assert.equal(lifecycle.hasPending(), false)
+})

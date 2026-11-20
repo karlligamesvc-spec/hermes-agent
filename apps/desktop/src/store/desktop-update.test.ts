@@ -6,7 +6,7 @@ import path from 'node:path'
 import type { IpcMain } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { DesktopRuntimeUpdateCheck, DesktopShellUpdateState, DesktopUpdatePlan } from '@/global'
+import type { DesktopEngineHolder, DesktopRuntimeUpdateCheck, DesktopShellUpdateState, DesktopUpdatePlan } from '@/global'
 
 import { clearDesktopUpdatePlan, readDesktopUpdatePlan, readPreparedDesktopUpdatePlan, transitionDesktopUpdatePlan, writeDesktopUpdatePlan } from '../../electron/desktop-update-plan'
 import { createLocalBackendLifecycle } from '../../electron/local-backend-lifecycle'
@@ -1511,5 +1511,180 @@ describe('a plan waiting for the engine retries out of the way (hc-1118)', () =>
     } finally {
       fs.rmSync(home, { recursive: true, force: true })
     }
+  })
+})
+
+// hc-1255: 「现在还不能安装 — APEX 自己的后台进程在用 APEX 引擎」 stopped an install the user had
+// asked for, though what held it was this APEX's own short-lived work. Such a wait keeps the
+// install's progress while the main process retries (every 15 s), for up to a minute.
+describe('hc-1255: an update held up only by APEX’s own processes keeps its progress', () => {
+  const OWN = { pid: 5150, kind: 'apex_running', name: 'python3.14', created: 9.5, endable: false } as const
+  const OTHER = { pid: 6060, kind: 'other', name: 'python3.14', created: 3.5, endable: false } as const
+  const AHEAD: DesktopShellUpdateState = { ...SHELL_UPDATE, deferred: false, deferredReason: null, deferredHolders: null }
+
+  const updateCenter = {
+    setShellOnly: vi.fn(async () => ({ ok: true })),
+    setRuntimeAfterShell: vi.fn(async () => ({ ok: true })),
+    transitionPlan: vi.fn(async () => ({ ok: true }))
+  }
+
+  const heldBy = (...holders: DesktopEngineHolder[]): DesktopShellUpdateState => ({
+    ...SHELL_UPDATE,
+    deferred: true,
+    deferredReason: 'engine_holders',
+    deferredHolders: [...holders]
+  })
+
+  const settle = async () => {
+    for (let i = 0; i < 20; i++) {
+      await Promise.resolve()
+    }
+  }
+
+  /** Ask for the update the way every entry does; `answer` is what the confirm dialog gets back. */
+  function apply(reload = vi.fn()) {
+    const result: { answer?: boolean; done: Promise<void>; error?: unknown } = { done: Promise.resolve() }
+
+    result.done = applyDesktopUpdates({ reload }).then(
+      answer => {
+        result.answer = answer
+      },
+      error => {
+        result.error = error
+      }
+    )
+
+    return result
+  }
+
+  function installAnswers(state: DesktopShellUpdateState) {
+    $shellUpdate.set(SHELL_UPDATE)
+    window.hermesDesktop = {
+      shellUpdate: { install: vi.fn(async () => ({ ok: true, deferred: true, state })) },
+      updateCenter
+    } as unknown as typeof window.hermesDesktop
+  }
+
+  beforeEach(() => $runtimeUpdateWait.set(null))
+
+  it('the app install stays on its progress through the retries, then goes ahead with no wait to show', async () => {
+    installAnswers(heldBy(OWN))
+    const asked = apply()
+
+    await settle()
+    expect(asked.answer).toBeUndefined()
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: true, currentStage: 'restart', error: null })
+
+    // The main process's next retry is still held by the same kind of process.
+    $shellUpdate.set(heldBy({ ...OWN, pid: 5151 }))
+    await settle()
+    expect(asked.answer).toBeUndefined()
+
+    // Verified idle: quitAndInstall.
+    $shellUpdate.set(AHEAD)
+    await asked.done
+    expect(asked.answer).toBe(false)
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: true, currentStage: 'restart', error: null })
+  })
+
+  it('says it waits once a retry names anything besides APEX’s own work', async () => {
+    installAnswers(heldBy(OWN))
+    const asked = apply()
+
+    await settle()
+    $shellUpdate.set(heldBy(OWN, OTHER))
+    await asked.done
+    expect(asked.answer).toBe(true)
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: false, currentStage: null, error: null })
+  })
+
+  it('says it waits when APEX’s own process outlasts the quiet minute', async () => {
+    vi.useFakeTimers()
+    installAnswers(heldBy(OWN))
+    const asked = apply()
+
+    await vi.advanceTimersByTimeAsync(59_999)
+    expect(asked.answer).toBeUndefined()
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: true, currentStage: 'restart' })
+    await vi.advanceTimersByTimeAsync(1)
+    await asked.done
+    expect(asked.answer).toBe(true)
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: false, currentStage: null, error: null })
+  })
+
+  it('a wait that names anything else is said at once', async () => {
+    installAnswers(heldBy(OWN, OTHER))
+    const asked = apply()
+
+    await asked.done
+    expect(asked.answer).toBe(true)
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: false, currentStage: null })
+  })
+
+  it('a retry that fails while it waits fails the update like any failed install', async () => {
+    installAnswers(heldBy(OWN))
+    const asked = apply()
+
+    await settle()
+    $shellUpdate.set({ ...AHEAD, phase: 'error', error: 'install_failed' })
+    await asked.done
+    expect(asked.answer).toBeUndefined()
+    expect((asked.error as Error).message).toBe('install_failed')
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: false, currentStage: null, error: 'install_failed' })
+    expect(updateCenter.transitionPlan).toHaveBeenLastCalledWith({ lastError: 'install_failed', phase: 'failed' })
+  })
+
+  it('an engine switch held up only by APEX’s own process is asked again with its progress up, then goes ahead', async () => {
+    vi.useFakeTimers()
+    $runtimeUpdateCheck.set(RUNTIME_UPDATE)
+    const reload = vi.fn()
+
+    const applyUpdate = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, applied: false, deferred: true, reason: 'engine_holders', holders: [OWN] })
+      .mockResolvedValueOnce({ ok: true, applied: true, reloadRequired: true, latest: RUNTIME_UPDATE.latest })
+
+    window.hermesDesktop = { runtime: { applyUpdate }, updateCenter } as unknown as typeof window.hermesDesktop
+    const asked = apply(reload)
+
+    await vi.advanceTimersByTimeAsync(4_999)
+    expect(applyUpdate).toHaveBeenCalledTimes(1)
+    expect(asked.answer).toBeUndefined()
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: true, currentStage: 'runtime' })
+    await vi.advanceTimersByTimeAsync(1)
+    await asked.done
+    expect(applyUpdate).toHaveBeenCalledTimes(2)
+    expect(asked.answer).toBe(false)
+    expect(reload).toHaveBeenCalledTimes(1)
+    expect($runtimeUpdateWait.get()).toBeNull()
+  })
+
+  it('an engine switch still held by APEX’s own process after the quiet minute says it waits', async () => {
+    vi.useFakeTimers()
+    $runtimeUpdateCheck.set(RUNTIME_UPDATE)
+    const applyUpdate = vi.fn(async () => ({ ok: true, applied: false, deferred: true, reason: 'engine_holders', holders: [OWN] }))
+
+    window.hermesDesktop = { runtime: { applyUpdate }, updateCenter } as unknown as typeof window.hermesDesktop
+    const asked = apply()
+
+    await vi.advanceTimersByTimeAsync(55_000)
+    expect(asked.answer).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(5_000)
+    await asked.done
+    expect(asked.answer).toBe(true)
+    expect(applyUpdate).toHaveBeenCalledTimes(13)
+    expect($runtimeUpdateWait.get()).toEqual({ reason: 'engine_holders', holders: [OWN] })
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: false })
+  })
+
+  it('an engine switch held by anything else says it waits at once, asked once', async () => {
+    vi.useFakeTimers()
+    $runtimeUpdateCheck.set(RUNTIME_UPDATE)
+    const applyUpdate = vi.fn(async () => ({ ok: true, applied: false, deferred: true, reason: 'engine_holders', holders: [OWN, OTHER] }))
+
+    window.hermesDesktop = { runtime: { applyUpdate }, updateCenter } as unknown as typeof window.hermesDesktop
+
+    await expect(applyDesktopUpdates({ reload: vi.fn() })).resolves.toBe(true)
+    expect(applyUpdate).toHaveBeenCalledTimes(1)
   })
 })

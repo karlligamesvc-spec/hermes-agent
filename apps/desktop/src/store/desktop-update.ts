@@ -1,6 +1,7 @@
 import { atom } from 'nanostores'
 
 import type {
+  DesktopRuntimeUpdateApply,
   DesktopRuntimeUpdateCheck,
   DesktopRuntimeUpdateProgress,
   DesktopRuntimeVersion,
@@ -10,7 +11,7 @@ import type {
 
 import { $runtimeUpdateCheck, applyRuntimeUpdate, checkRuntimeUpdate, loadRuntimeVersion } from './runtime-update'
 import { $shellUpdate, checkShellUpdate, initShellUpdateSubscription, installShellUpdate } from './shell-update'
-import { $runtimeUpdateWait } from './update-wait'
+import { $runtimeUpdateWait, desktopUpdateWait, waitsOnlyForOwnWork } from './update-wait'
 
 export type DesktopUpdateStage = 'check' | 'restart' | 'runtime' | 'shell'
 
@@ -57,12 +58,70 @@ async function deferRuntimeUpdate(reload: () => void): Promise<void> {
   }, 30_000)
 }
 
+/**
+ * hc-1255: how long an update held up only by APEX's own processes keeps its progress before it says
+ * it waits. They end by themselves; the app install is retried by the main process every 15 s.
+ */
+const OWN_WORK_QUIET_MS = 60_000
+/** How often an engine switch held up only by APEX's own processes is asked again. */
+const OWN_WORK_RETRY_MS = 5_000
+
+/**
+ * The app install's answer once it waits for more than APEX's own work (true) or goes ahead (false),
+ * or the quiet time ran out (true). A retry that failed throws, the way any failed install does.
+ */
+async function shellWaitsBeyondOwnWork(): Promise<boolean> {
+  let stop = (): void => {}
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  const settled = new Promise<boolean>((resolve, reject) => {
+    timer = setTimeout(() => resolve(true), OWN_WORK_QUIET_MS)
+    stop = $shellUpdate.subscribe(state => {
+      const wait = desktopUpdateWait(state, null)
+
+      if (waitsOnlyForOwnWork(wait)) {
+        return
+      }
+
+      if (state?.phase === 'error') {
+        reject(new Error(state.error || 'shell_update_apply_failed'))
+      } else {
+        resolve(wait !== null)
+      }
+    })
+  })
+
+  try {
+    return await settled
+  } finally {
+    stop()
+    clearTimeout(timer)
+  }
+}
+
 /** True when the install waits for idle instead of starting. */
 async function installShellWhenIdle(): Promise<boolean> {
   const result = await installShellUpdate()
-  if (result.deferred) {setProgress({ active: false, currentStage: null, error: null })}
+  // hc-1255: a wait only on APEX's own processes keeps the install's progress while main retries it.
+  const ownWork = waitsOnlyForOwnWork(desktopUpdateWait($shellUpdate.get(), null))
+  const waits = Boolean(result.deferred) && (!ownWork || (await shellWaitsBeyondOwnWork()))
 
-  return Boolean(result.deferred)
+  if (waits) {setProgress({ active: false, currentStage: null, error: null })}
+
+  return waits
+}
+
+/** hc-1255: an engine switch held up only by APEX's own processes is asked again, its progress kept up. */
+async function applyRuntimeUpdateBeyondOwnWork(): Promise<DesktopRuntimeUpdateApply> {
+  const quietUntil = Date.now() + OWN_WORK_QUIET_MS
+  let result = await applyRuntimeUpdate()
+
+  while (result.deferred && waitsOnlyForOwnWork($runtimeUpdateWait.get()) && Date.now() < quietUntil) {
+    await new Promise(resolve => setTimeout(resolve, OWN_WORK_RETRY_MS))
+    result = await applyRuntimeUpdate()
+  }
+
+  return result
 }
 
 export async function queueDeferredRuntimeUpdate(runtime: DesktopRuntimeUpdateCheck | null, options: {
@@ -364,7 +423,7 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
     let appliedRuntimeTarget = runtime?.latest ?? null
 
     if (runtime?.updateAvailable) {
-      const result = await applyRuntimeUpdate()
+      const result = await applyRuntimeUpdateBeyondOwnWork()
       if (result.deferred) {
         await queueDeferredRuntimeUpdate(runtime, { reload, targetShellVersion: needsShell ? shell?.version : null })
 

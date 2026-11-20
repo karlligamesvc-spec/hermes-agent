@@ -31,3 +31,13 @@ export function desktopUpdateWait(
 ): DesktopUpdateWait | null {
   return shell?.deferred ? { reason: shell.deferredReason ?? 'active_work', holders: shell.deferredHolders ?? null } : runtime
 }
+
+/**
+ * hc-1255: everything the gate named is APEX's own running work (`apex_running`), which ends by
+ * itself. Such a wait is no reason to stop an install the user asked for: it keeps its progress.
+ */
+export function waitsOnlyForOwnWork(wait: DesktopUpdateWait | null): boolean {
+  const holders = wait?.reason === 'engine_holders' ? wait.holders : null
+
+  return Boolean(holders?.length) && holders!.every(holder => holder.kind === 'apex_running')
+}
