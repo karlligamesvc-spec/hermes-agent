@@ -544,8 +544,32 @@ def _font() -> str | None:
     return None
 
 
-def _filter_path(value: str) -> str:
-    return value.replace("\\", "/").replace("'", "\\'").replace(":", "\\:")
+def _escape(value: str, special: str) -> str:
+    """One level of ffmpeg backslash escaping: backslash, quote and this level's separators, plus edge whitespace."""
+    last = len(value) - 1
+    return "".join("\\" + ch if ch in "\\'" + special or (ch in " \t\r\n" and i in (0, last)) else ch
+                   for i, ch in enumerate(value))
+
+
+def _filter_value(value: str) -> str:
+    """A value inside -filter_complex is unescaped twice: by the filter's option parser (splits at ``:``) and,
+    before that, by the graph parser (splits at ``, ; [ ]``). Escape for both, like short-video-studio's
+    ``footage_render.filter_value`` (hc-1263; the two copies are compared in tests). One level was not enough:
+    a quote in the font path closed the quoting and the sheet silently lost its labels."""
+    return _escape(_escape(value, ":"), "[],;")
+
+
+def _filter_path(path: str, sep: str = os.sep) -> str:
+    """Paths go in with forward slashes on Windows (ffmpeg accepts both), then escaped like any value."""
+    return _filter_value(path.replace(sep, "/") if sep != "/" else path)
+
+
+def _drawtext_font(font: str) -> tuple[str, str]:
+    """(value for ``fontfile=``, folder to run ffmpeg in), like ``footage_render.drawtext_font``. On Windows drawtext
+    (FreeType) opens the font path in the system code page and fails on a Chinese user or folder name, so ffmpeg runs
+    in the font's folder and drawtext gets the bare file name; every other path on the command line is absolute."""
+    folder, name = os.path.split(os.path.abspath(font))
+    return _filter_path(name), folder
 
 
 def contact_sheet(ffmpeg: str, root: Path, shots: list[dict], out: Path, portrait: bool) -> bool:
@@ -560,12 +584,13 @@ def contact_sheet(ffmpeg: str, root: Path, shots: list[dict], out: Path, portrai
         cmd = [ffmpeg, "-v", "error", "-nostdin", "-y"]
         parts = []
         for k, shot in enumerate(shots):
-            cmd += ["-i", str(root / shot["keyframes"][1])]
+            cmd += ["-i", os.path.abspath(root / shot["keyframes"][1])]
             chain = (f"[{k}:v]scale={cell_w}:{cell_h}:force_original_aspect_ratio=decrease,"
                      f"pad={cell_w}:{cell_h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1")
             if labelled:
                 text = f"{shot['n']}  {shot['start']:.1f}-{shot['end']:.1f}s"
-                chain += (f",drawtext=fontfile='{_filter_path(font)}':text='{text}':x=6:y=6:fontsize={max(12, cell_w // 12)}:"
+                chain += (f",drawtext=fontfile={_drawtext_font(font)[0]}:text={_filter_value(text)}:x=6:y=6:"
+                          f"fontsize={max(12, cell_w // 12)}:"
                           "fontcolor=yellow:box=1:boxcolor=black@0.6:boxborderw=4")
             parts.append(chain + f"[c{k}]")
         if count == 1:
@@ -573,8 +598,9 @@ def contact_sheet(ffmpeg: str, root: Path, shots: list[dict], out: Path, portrai
         else:
             layout = "|".join(f"{(k % cols) * cell_w}_{(k // cols) * cell_h}" for k in range(count))
             parts.append("".join(f"[c{k}]" for k in range(count)) + f"xstack=inputs={count}:layout={layout}:fill=black[out]")
-        cmd += ["-filter_complex", ";".join(parts), "-map", "[out]", "-frames:v", "1", "-update", "1", "-q:v", "4", str(out)]
-        if _run_media_tool(cmd).returncode == 0 and out.is_file():
+        cmd += ["-filter_complex", ";".join(parts), "-map", "[out]", "-frames:v", "1", "-update", "1", "-q:v", "4",
+                os.path.abspath(out)]
+        if _run_media_tool(cmd, cwd=_drawtext_font(font)[1] if labelled else None).returncode == 0 and out.is_file():
             return labelled
     raise BreakdownError("宫格图没能拼出来。")
 
