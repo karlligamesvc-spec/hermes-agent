@@ -12,16 +12,22 @@ import { isRemoteGateway } from '@/lib/media'
 export const JIANYING_TOOL = 'jianying_draft'
 
 /**
- * 剪映 versions a draft was opened and exported on, per platform. Another
- * version still gets its card and button (hc-1219: prompt, don't block);
- * the card only says APEX has not checked it there. Add a version only after
- * that real test: the draft format is 剪映's own and changes without notice.
- * Windows 11.7.0.14652 took drafts in and listed them with the right length
- * (2026-11-12), but a draft has not been opened there yet, so win32 stays empty.
+ * 剪映 versions APEX has opened a draft on, per platform, keyed the way the
+ * engine reports them: `sys.platform`, and 剪映's own version string (macOS
+ * Info.plist's short version; Windows the build folder under Apps, so a
+ * Windows entry carries the build number and matches only that build).
+ * Another version still gets its card and button (hc-1219: prompt, don't
+ * block); the card only says APEX has not checked it there. Add a version only
+ * after a real test, a draft opened in that 剪映's editor: the draft format is
+ * 剪映's own and changes without notice.
+ * - darwin 11.7.0 (2026-11-05): opened and exported.
+ * - win32 11.7.0.14652 (2026-11-22): opened in the editor, timeline and
+ *   captions as written, 「导出」 at the top right where the card's Windows
+ *   steps point; export itself was not clicked.
  */
 export const VERIFIED_JIANYING_VERSIONS: Readonly<Record<string, readonly string[]>> = {
   darwin: ['11.7.0'],
-  win32: []
+  win32: ['11.7.0.14652']
 }
 
 export interface JianyingDraftCard {
