@@ -175,8 +175,8 @@ const MODEL_DISABLED_PROVIDERS = ['copilot']
 // product-only capability reduction; explicit user values remain the user's
 // answer under the add-only reconciliation contract below.
 // The seed's other blocks are
-// either already reconciled elsewhere in guardConfigYamlProductBlocks
-// (custom_providers, skills.disabled, plugins.enabled, model.disabled_providers)
+// either already reconciled elsewhere in guardConfigYamlProductBlocks (custom_providers,
+// skills.disabled, agent.disabled_toolsets, plugins.enabled, model.disabled_providers)
 // or must NOT be: back-filling `model:` would overwrite a BYOK user's chosen
 // provider, and back-filling the MoA preset onto an install that dropped it
 // would hand back an expensive default nobody asked for.
@@ -247,6 +247,9 @@ const SEED_PRODUCT_DEFAULTS_BLOCK =
   '  image_input_mode: auto\n' +
   '  response_language: display\n' +
   '  max_turns: 500\n' +
+  '  # No manage_catalog: APEX Desktop does not draw its install card (hc-1275).\n' +
+  '  disabled_toolsets:\n' +
+  '    - catalog\n' +
   'delegation:\n' +
   '  max_iterations: 250\n' +
   'tool_output:\n' +
@@ -388,7 +391,10 @@ const SEED_DISABLED_SKILLS = [
   'songwriting-and-ai-music', 'songsee', 'manim-video', 'p5js',
   'touchdesigner-mcp', 'openhue',
   // Internal / QA:
-  'dogfood'
+  'dogfood',
+  // ── BRAND (hc-1275) — 54 design systems named after real brands (Stripe, Coinbase…): "a page
+  // like <brand>" came back as a look-alike of that brand. Off for product reasons, not reachability.
+  'popular-web-designs'
 ]
 
 // hc-645 pins only the search leg of the platform web gateway. Extraction (hc-1214) is
@@ -1916,6 +1922,7 @@ export {
   DEFAULT_MANAGED_MODEL,
   DEFAULT_RELAY_BASE_URL,
   defaultModelPath,
+  ensureListBlockYaml,
   ensurePluginsEnabledYaml,
   ensureProductDefaultsYaml,
   ensureSkillsDisabledYaml,

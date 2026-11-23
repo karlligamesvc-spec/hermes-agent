@@ -1420,6 +1420,9 @@ skills:
     - openhue
     # internal / QA
     - dogfood
+    # ── BRAND (hc-1275) — design systems named after real brands; "a page like
+    # <brand>" came back as a look-alike of that brand. Off for product reasons.
+    - popular-web-designs
 
   # Gate the background self-improvement review's skill writes.
   # The review forks the agent in a daemon thread with no user present; by
@@ -1447,6 +1450,12 @@ agent:
   # Higher = more room for complex tasks, but costs more tokens
   # Recommended: 20-30 for focused tasks, 50-100 for open exploration
   max_turns: 500
+
+  # ApexNodes (hc-1275): toolsets no session gets. `catalog` (manage_catalog) asks for
+  # consent through a connection card APEX Desktop does not draw. MUST stay in sync with
+  # SEED_DISABLED_TOOLSETS in apps/desktop/electron/apex-disabled-toolsets.ts.
+  disabled_toolsets:
+    - catalog
 
   # Inactivity timeout for gateway agent runs (seconds, 0 = unlimited).
   # The agent can run indefinitely when actively calling tools or receiving

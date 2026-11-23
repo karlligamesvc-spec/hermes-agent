@@ -16,6 +16,7 @@
 
 import fs from 'node:fs'
 
+import { ensureToolsetsDisabledYaml } from './apex-disabled-toolsets'
 import {
   ensurePluginsEnabledYaml,
   ensureProductDefaultsYaml,
@@ -149,6 +150,14 @@ function healProductBlocks(raw: string, fixed: string[]): string {
   if (skillsHeal.changed) {
     raw = skillsHeal.next
     fixed.push(`skills.disabled(+${skillsHeal.added.length})`)
+  }
+
+  // hc-1275: no manage_catalog (its install card is not drawn here); add-only, like the skills list.
+  const toolsetsHeal = ensureToolsetsDisabledYaml(raw)
+
+  if (toolsetsHeal.changed) {
+    raw = toolsetsHeal.next
+    fixed.push(`agent.disabled_toolsets(+${toolsetsHeal.added.length})`)
   }
 
   // hc-837: APEX previously pinned lower 90/50 budgets than Hermes. Migrate

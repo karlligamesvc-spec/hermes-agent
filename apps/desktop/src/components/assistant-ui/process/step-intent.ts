@@ -724,9 +724,11 @@ export function stageProgress(steps: readonly { intent?: string; toolName: strin
 
 // ── Approvals: what a command waiting on the user is for ──────────────────────
 
-export type ApprovalRisk = 'delete' | 'git' | 'kill' | 'network' | 'permissions'
+export type ApprovalRisk = 'delete' | 'git' | 'install' | 'kill' | 'network' | 'permissions'
 
 const RISKS: readonly [ApprovalRisk, RegExp][] = [
+  // hc-1275: every apex_overlay/install_approval.py description says "third-party".
+  ['install', /third-party/i],
   ['delete', /delet|\brm\b|remov|wipe|truncate|\bdrop\b|clean|format/i],
   ['kill', /\bkill|stop|restart/i],
   ['permissions', /permission|writable|chmod|chown|acl/i],

@@ -6,6 +6,7 @@ import path from 'node:path'
 
 import { afterEach, describe, test, vi } from 'vitest'
 
+import { ensureToolsetsDisabledYaml } from './apex-disabled-toolsets'
 import {
   ensurePluginsEnabledYaml,
   ensureProductDefaultsYaml,
@@ -103,6 +104,7 @@ describe('healProductBlocksYaml', () => {
       fixed.map(item => item.replace(/\(.*$/, '')),
       [
         'skills.disabled',
+        'agent.disabled_toolsets',
         'budget-defaults',
         'product-defaults',
         'web.search_backend',
@@ -111,6 +113,7 @@ describe('healProductBlocksYaml', () => {
       ]
     )
     assert.equal(ensureSkillsDisabledYaml(next).changed, false)
+    assert.equal(ensureToolsetsDisabledYaml(next).changed, false)
     assert.equal(ensureProductDefaultsYaml(next).changed, false)
     assert.equal(ensurePluginsEnabledYaml(next).changed, false)
     assert.deepEqual(healProductBlocksYaml(next, context()), { fixed: [], next })
