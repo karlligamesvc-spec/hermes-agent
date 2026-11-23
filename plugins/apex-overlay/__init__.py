@@ -153,6 +153,12 @@ _TOOL_SEAMS = (
         "The assistant can install, update or enable third-party plugins, skills and MCP "
         "servers, or switch approvals off, from the terminal without asking the user.",
     ),
+    (
+        "essential_skill_opt_out",
+        "apex-overlay: hc-1275 essential skill opt-out seam did not fully apply (see prior "
+        "error). The skill index keeps listing hermes-agent although skills.disabled names it "
+        "and skill_view refuses to load it.",
+    ),
 )
 
 

@@ -97,6 +97,8 @@ _SEAM_MODULES = (
     "jianying_draft",
     # hc-1275 the assistant's own plugin / skill / MCP installs need the user's approval.
     "install_approval",
+    # hc-1275 an essential skill listed in skills.disabled (hermes-agent on Desktop) is not listed either.
+    "essential_skill_opt_out",
 )
 
 
