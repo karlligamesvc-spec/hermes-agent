@@ -1,7 +1,9 @@
 /**
- * hc-1275: APEX Desktop turns two upstream defaults off, the popular-web-designs skill and the
- * catalog toolset (manage_catalog), for a first install (the seed) and for every install after it
- * (the boot/watch heal pass). cli-config.yaml.example, the CLI path's seed, carries the same lists.
+ * hc-1275: APEX Desktop turns upstream defaults off: the popular-web-designs skill, the catalog
+ * toolset (manage_catalog), the consolidated `github` skill and the two red-team skills a terminal
+ * command can reinstall (godmode, obliteratus), for a first install (the seed) and for every install
+ * after it (the boot/watch heal pass). cli-config.yaml.example, the CLI path's seed, carries the same
+ * lists. tests/apex_overlay/test_desktop_disabled_skills.py runs the engine with that list.
  *
  * Run with: npx vitest run electron/apex-disabled-toolsets.test.ts
  */
@@ -26,9 +28,33 @@ const parse = (raw: string) => (yaml.load(raw) ?? {}) as Config
 
 const BYOK: ProductBlocksContext = { managed: {}, endpoints: resolveApexEndpoints({}), env: {}, entitled: null }
 
+// Added after 0.18.2 shipped with the other 51 names.
+const ADDED_AFTER_0182 = ['github', 'godmode', 'obliteratus']
+
 test('popular-web-designs is in the default-off skills, as the seed renders them', () => {
   assert.ok(SEED_DISABLED_SKILLS.includes('popular-web-designs'))
   assert.deepEqual(parse(seedSkillsBlockYaml()).skills?.disabled, [...SEED_DISABLED_SKILLS])
+})
+
+test.each(ADDED_AFTER_0182)('%s is in the default-off skills too', name => {
+  assert.ok(SEED_DISABLED_SKILLS.includes(name))
+})
+
+test('the five github-* names stay next to github, for homes that still hold their copies', () => {
+  for (const name of ['github-auth', 'github-code-review', 'github-issues', 'github-pr-workflow', 'github-repo-management']) {
+    assert.ok(SEED_DISABLED_SKILLS.includes(name), name)
+  }
+})
+
+test('an install seeded with the 0.18.2 list gets exactly the three new names from the heal pass, once', () => {
+  const shipped = SEED_DISABLED_SKILLS.filter(name => !ADDED_AFTER_0182.includes(name))
+  const raw = 'model:\n  default: deepseek-v4-flash\n  provider: deepseek\n' + seedSkillsBlockYaml(shipped)
+  const { fixed, next } = healProductBlocksYaml(raw, BYOK)
+
+  assert.equal(shipped.length, 51)
+  assert.ok(fixed.includes('skills.disabled(+3)'), fixed.join(', '))
+  assert.deepEqual(parse(next).skills?.disabled, [...shipped, ...ADDED_AFTER_0182])
+  assert.deepEqual(healProductBlocksYaml(next, BYOK).fixed, [])
 })
 
 test('cli-config.yaml.example carries the same skills.disabled and agent.disabled_toolsets lists', () => {

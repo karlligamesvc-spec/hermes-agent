@@ -346,7 +346,7 @@ const MANAGED_PLUGIN_NAMES = [
 // The runtime's bundled `skills/` (72 skills @ v0.18) auto-copy to
 // ~/.hermes/skills/ and are ACTIVE unless listed here; the ~101 opt-in
 // `optional-skills/` are NOT copied at setup (installed on demand via
-// `hermes skills install`), so they are already-off and never need seeding.
+// `hermes skills install`, then ACTIVE too): only those that must stay off once installed are seeded.
 // Grading matrix + full 72-skill table: hermes-cloud
 // docs/DESKTOP-CHINA-SKILL-MATRIX.md. Judge = "does the skill depend ONLY on
 // (a) local exec or (b) a CN-reachable, stable service?" — yes → active; no →
@@ -366,9 +366,10 @@ const SEED_DISABLED_SKILLS = [
   // ── C — CN-slow / needs mirror or 国产源 before it's stable ────────────────
   // Cross-border SaaS (reachable-but-slow / needs foreign account):
   'notion', 'airtable',
-  // github.com reachable-but-slow, raw.githubusercontent.com blocked:
+  // github.com reachable-but-slow, raw.githubusercontent.com blocked. Upstream folded the five github-*
+  // into `github` (engine 0.17.31+); the old names stay for homes that still hold their copies (hc-1275):
   'github-auth', 'github-code-review', 'github-issues',
-  'github-pr-workflow', 'github-repo-management',
+  'github-pr-workflow', 'github-repo-management', 'github',
   // HuggingFace / heavy-MLOps model discovery (HF blocked/slow; ModelScope
   // route is the V0.2 localization roadmap — HF_ENDPOINT mirror is seeded but
   // these stay off as non-essential for a CN desktop assistant):
@@ -394,7 +395,10 @@ const SEED_DISABLED_SKILLS = [
   'dogfood',
   // ── BRAND (hc-1275) — 54 design systems named after real brands (Stripe, Coinbase…): "a page
   // like <brand>" came back as a look-alike of that brand. Off for product reasons, not reachability.
-  'popular-web-designs'
+  'popular-web-designs',
+  // ── SAFETY (hc-1275) — jailbreak / refusal-removal skills. Not bundled (optional-skills/), but
+  // `hermes skills install official/…` brings them back, and an installed skill is on unless named here.
+  'godmode', 'obliteratus'
 ]
 
 // hc-645 pins only the search leg of the platform web gateway. Extraction (hc-1214) is
