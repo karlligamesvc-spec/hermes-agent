@@ -13,6 +13,11 @@ on a computer that can take it, and a 剪映 installed while APEX runs counts fr
 the draft gets them on 音效 tracks, read from the cut's report (jianying_build.py); the result then carries
 ``draft.sfx``, how many, and has no such key otherwise. No new parameter: the tool reads what ``assemble`` wrote.
 
+**The music is laid as in the cut (hc-1285).** From the cut's start, joined again where it is shorter than the cut,
+at the cut's level, ducked under the narration with volume keyframes (jianying_build.py). The result carries
+``draft.music`` (``plays``, ``start``, ``ducked``) when the draft has music, so the agent says what the draft has;
+older engines have no such key. ``music`` defaults to the timeline's, like ``subtitles`` and ``narration``.
+
 **APEX writes, the user exports.** The draft is written into 剪映's own draft folder; nothing operates 剪映
 (hc-1219: the user exports). Desktop draws the result as a card with 「在剪映中打开」, which starts 剪映 and checks that
 it took the draft in (apps/desktop electron/jianying.ts). After writing, this side checks the same where it can: when
@@ -70,8 +75,10 @@ SCHEMA = {
             "narration": {"type": "string",
                           "description": "Narration audio. Defaults to the timeline's narration."},
             "music": {"type": "string",
-                      "description": "Music from APEX's music tools or the user's own; omit when there is none."},
-            "music_volume": {"type": "number", "description": "0.05 to 1. Default 0.3."},
+                      "description": "The music file the cut was made with. Defaults to the timeline's music."},
+            "music_volume": {"type": "number",
+                             "description": "Leave it out: the draft takes the cut's music level. 0.05 to 1 only "
+                                            "when the user asks for another level in the draft."},
             "dissolve_after": {"type": "array", "items": {"type": "integer"},
                                "description": "Shot numbers (1 = first) followed by a 叠化. Default none: hard cuts."},
         },
@@ -147,11 +154,13 @@ def write_draft(args: dict, *, platform: str = sys.platform, wait: float = REGIS
     found = jianying_install.find(platform=platform)
     if found is None or found.draft_root is None:
         return {"error": NOT_HERE}
-    plan = build.load_plan(str(args.get("timeline") or ""), args.get("subtitles"), args.get("narration"))
+    plan = build.load_plan(str(args.get("timeline") or ""), args.get("subtitles"), args.get("narration"),
+                           args.get("music") or None)
     fallback = f"APEX 成片 {datetime.now().strftime('%m%d-%H%M')}"
+    volume = args.get("music_volume")
     written = build.write(
         plan, found.draft_root, build.draft_name(str(args.get("name") or ""), fallback),
-        music=args.get("music") or None, music_volume=float(args.get("music_volume") or 0.3),
+        music_volume=None if volume is None else float(volume),
         dissolve_after=[int(n) for n in args.get("dissolve_after") or []],
         subtitle_position=str(args.get("subtitle_position") or "bottom"))
     problem = build.check_written(written.folder)
@@ -169,7 +178,9 @@ def write_draft(args: dict, *, platform: str = sys.platform, wait: float = REGIS
                   "seconds": round(written.duration_us / 1_000_000, 2), "shots": written.shots,
                   "subtitles": written.subtitles,
                   # hc-1258: only when the draft carries the cut's sound effects, so the agent says so only then
-                  **({"sfx": written.effects} if written.effects else {})},
+                  **({"sfx": written.effects} if written.effects else {}),
+                  # hc-1285: how the music went in, only when there is music
+                  **({"music": written.music} if written.music else {})},
         "jianying": {"version": found.version, "platform": platform, "registered": registered},
         "problem": why,
         "changes": written.notes,
