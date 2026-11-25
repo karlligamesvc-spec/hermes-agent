@@ -21,12 +21,15 @@ export const JIANYING_TOOL = 'jianying_draft'
  * after a real test, a draft opened in that 剪映's editor: the draft format is
  * 剪映's own and changes without notice.
  * - darwin 11.7.0 (2026-11-05): opened and exported.
+ * - darwin 11.8.0 (2026-11-18 UTC, hc-1258's two test drafts): opened in the
+ *   editor, every track, volume and start as written (within one frame),
+ *   captions in the player; export was not clicked.
  * - win32 11.7.0.14652 (2026-11-22): opened in the editor, timeline and
  *   captions as written, 「导出」 at the top right where the card's Windows
  *   steps point; export itself was not clicked.
  */
 export const VERIFIED_JIANYING_VERSIONS: Readonly<Record<string, readonly string[]>> = {
-  darwin: ['11.7.0'],
+  darwin: ['11.7.0', '11.8.0'],
   win32: ['11.7.0.14652']
 }
 
