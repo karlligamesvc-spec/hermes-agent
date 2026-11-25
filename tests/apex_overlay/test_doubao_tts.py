@@ -18,6 +18,7 @@ def tts_entry(monkeypatch):
     entry = registry.get_entry('text_to_speech')
     monkeypatch.setattr(entry, 'dynamic_schema_overrides', entry.dynamic_schema_overrides)
     monkeypatch.setattr(tts_tool, '_select_builtin_engine', tts_tool._select_builtin_engine)
+    monkeypatch.setattr(tts_tool, '_text_to_speech_single', tts_tool._text_to_speech_single)
     return entry
 
 
@@ -151,9 +152,9 @@ assert '豆包' not in schema['description'] and 'seed-tts' not in schema['descr
 assert 'edge-tts' in schema['description'] and 'say' in schema['description']
 assert '0.5–2.0' in schema['parameters']['properties']['speed']['description']
 assert str(home) in schema['parameters']['properties']['output_path']['description']
-# the tone may be offered only if the model's instructions reach Scheduler
-offered='不使用' not in schema['parameters']['properties']['instructions']['description']
-assert offered==('instructions' in bodies[0]),(offered,bodies)
+# hc-1283: the tone line is offered, and the model's instructions reach Scheduler
+assert schema['parameters']['properties']['instructions']['description']==adapter.TONE_DESCRIPTION,schema
+assert bodies[0]=={'text':'你好。','speed':1.0,'instructions':'语气热情一点'},bodies
 (home/'config.yaml').write_text('plugins:\n  enabled:\n    - apex-overlay\ntts:\n  provider: openai\n',encoding='utf-8')
 assert tts_tool._load_tts_config()['provider']=='openai'
 upstream=tts_tool._tts_schema_overrides()

@@ -198,15 +198,29 @@ upstream symbol and its call site.
 hc-1163: Scheduler decides which vendor speaks (`TTS_PROVIDER`: Doubao
 seed-tts-2.0 or Bailian Qwen-Audio-3.1-TTS-Plus). The provider key stays
 `doubao` so existing profile configs keep working, and the model-facing text
-says 「平台配音」 without naming a vendor or model. `instructions` is not
-offered: the runtime hands plugin providers none (`_dispatch_to_plugin_provider`
-takes text, path, provider and config) and this provider sends none, so its
-description says the parameter is unused. The end-to-end test in
-`test_real_plugin_discovery_cached_defaults_and_file_delivery` passes
-`instructions` from the tool call and checks that the description and the
-request body agree.
+says 「平台配音」 without naming a vendor or model.
+
+hc-1283: the tone line reaches Scheduler. Upstream's plugin dispatch
+(`tools/tts_tool_plugins.py::_dispatch_to_plugin_provider`) hands a provider
+voice, model, speed and format only, so the model's `instructions` (语气、情绪、
+快慢、方言) used to stop at the runtime. `install_instructions_bridge` wraps
+`tools.tts_tool._text_to_speech_single`, which the chunk loop calls with a
+keyword-only `instructions` and which reaches the provider on the same thread:
+the wrapper holds that call's line in a `ContextVar` and `DoubaoTTS` sends it
+(`spoken_instructions`; a value the runtime passes itself in `**extra` wins).
+Each chunk of a long text carries the same line; concurrent calls keep their
+own; nothing outlives the call. The narration text offers `instructions`
+(`TONE_DESCRIPTION`) only while the registered `doubao` provider says
+`carries_instructions`; a runtime whose `_text_to_speech_single` takes no
+keyword-only `instructions` gets no bridge and the old 「平台配音不使用这个参数」.
+The hosted plugin `apexnodes-doubao-tts` in apex-nodes carries the same bridge
+for the cloud image, whose overlay has no Doubao provider. When upstream passes
+`instructions` to plugin providers itself,
+`test_the_bridge_sits_where_upstream_still_drops_the_tone_line` fails: delete
+the bridge then. Which wording a vendor follows (dialects included) is not
+tested here.
 
 Requires the companion Scheduler route before rollout. This change alone does
 not publish a Desktop installer or change the production runtime pin.
 
-Validation: `scripts/run_tests.sh tests/apex_overlay/test_doubao_tts.py tests/tools/test_tts_plugin_dispatch.py tests/tools/test_tts_long_form_chunking.py -q`.
+Validation: `scripts/run_tests.sh tests/apex_overlay/test_doubao_tts.py tests/apex_overlay/test_doubao_tts_instructions.py tests/tools/test_tts_plugin_dispatch.py tests/tools/test_tts_long_form_chunking.py -q`.

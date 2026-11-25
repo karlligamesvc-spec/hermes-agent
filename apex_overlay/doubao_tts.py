@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import contextvars
 import copy
+import functools
+import inspect
 import json
 import logging
 import os
@@ -35,8 +38,16 @@ NARRATION_DESCRIPTION = (
     "长文按原顺序自动分段合成，不用自己拆。声音由用户的设置决定，不由你选择。"
 )
 
+# hc-1283: `instructions` is offered only while the provider that speaks sends it to Scheduler
+# (`carries_instructions`); otherwise the model reads that the parameter is unused.
+TONE_DESCRIPTION = (
+    "可选：一句话说明怎么读，比如语气、情绪、快慢或方言（「热情一点，像直播带货」「用粤语读」），30 字以内。"
+    "平台尽量照做，个别要求可能读不出来；没有特别要求就不填。"
+)
+UNUSED_TONE_DESCRIPTION = "平台配音不使用这个参数，不用填。"
 
-def narration_parameters(parameters: dict, home: str) -> dict:
+
+def narration_parameters(parameters: dict, home: str, *, tone: bool = False) -> dict:
     params = copy.deepcopy(parameters)
     props = params["properties"]
     props["text"]["description"] = "要读出来的文字。"
@@ -44,8 +55,18 @@ def narration_parameters(parameters: dict, home: str) -> dict:
         f"可选：音频保存路径，比如剪辑工程里的 narration.mp3；平台配音总是存成 .mp3。不填就存到 {home}/audio_cache/。"
     )
     props["speed"]["description"] = "可选：语速倍数，1.0 为正常，范围 0.5–2.0，超出按边界处理。"
-    props["instructions"]["description"] = "平台配音不使用这个参数，不用填。"
+    props["instructions"]["description"] = TONE_DESCRIPTION if tone else UNUSED_TONE_DESCRIPTION
     return params
+
+
+def tone_reaches_platform() -> bool:
+    """Whether the `doubao` provider that would speak now sends the call's `instructions` on."""
+    try:
+        from agent.tts_registry import get_provider
+        return bool(getattr(get_provider('doubao'), 'carries_instructions', False))
+    except Exception:
+        logger.debug("apex-overlay: could not ask the doubao provider about instructions", exc_info=True)
+        return False
 
 
 def install_narration_schema(tts_tool) -> bool:
@@ -67,7 +88,7 @@ def install_narration_schema(tts_tool) -> bool:
             return result
         parameters = result.get("parameters") or tts_tool.TTS_SCHEMA["parameters"]
         return {**result, "description": NARRATION_DESCRIPTION,
-                "parameters": narration_parameters(parameters, display_hermes_home())}
+                "parameters": narration_parameters(parameters, display_hermes_home(), tone=tone_reaches_platform())}
 
     overrides._apex_doubao_schema = True
     entry.dynamic_schema_overrides = overrides
@@ -111,6 +132,56 @@ def install_missing_engine_message(tts_tool) -> None:
     tts_tool._select_builtin_engine = select_builtin_engine
 
 
+# hc-1283: upstream hands a plugin provider voice, model, speed and format only
+# (tools/tts_tool_plugins.py::_dispatch_to_plugin_provider), so the tone line the model gave
+# text_to_speech never reached Scheduler. The chunk loop passes it to _text_to_speech_single as the
+# keyword-only `instructions`, and that call reaches the provider on the same thread; the wrapper
+# holds it there for that one call. A runtime that passes `instructions` itself wins (synthesize's
+# **extra).
+_CALL_INSTRUCTIONS: contextvars.ContextVar = contextvars.ContextVar('apex_overlay_tts_instructions', default=None)
+
+
+def _bridged(function, var) -> bool:
+    """Whether a wrapper in *function*'s chain sets *var* (wrappers from other code may sit on top)."""
+    while function is not None:
+        if getattr(function, '_apex_tts_instructions', None) is var:
+            return True
+        function = getattr(function, '__wrapped__', None)
+    return False
+
+
+def install_instructions_bridge(tts_tool) -> bool:
+    """Hold each call's `instructions` while _text_to_speech_single runs; False if it has none to hold."""
+    original = getattr(tts_tool, '_text_to_speech_single', None)
+    if original is None:
+        return False
+    if _bridged(original, _CALL_INSTRUCTIONS):
+        return True
+    parameter = inspect.signature(original).parameters.get('instructions')
+    if parameter is None or parameter.kind is not inspect.Parameter.KEYWORD_ONLY:
+        return False  # only a keyword-only parameter always arrives in **kwargs
+
+    @functools.wraps(original)
+    def text_to_speech_single(*args, **kwargs):
+        token = _CALL_INSTRUCTIONS.set(kwargs.get('instructions'))
+        try:
+            return original(*args, **kwargs)
+        finally:
+            _CALL_INSTRUCTIONS.reset(token)
+
+    text_to_speech_single._apex_tts_instructions = _CALL_INSTRUCTIONS
+    tts_tool._text_to_speech_single = text_to_speech_single
+    return True
+
+
+def spoken_instructions(extra: dict) -> str | None:
+    """The tone line for this synthesis: what the runtime passed, else what the model gave the tool."""
+    value = extra.get('instructions')
+    if value is None:
+        value = _CALL_INSTRUCTIONS.get()
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def connection() -> tuple[str, str]:
     from hermes_cli.config import load_config
     from hermes_cli.env_loader import hydrate_profile_secret_sources
@@ -144,6 +215,12 @@ class DoubaoTTS(TTSProvider):
     def is_available(self) -> bool:
         return bool(connection()[0])
 
+    @property
+    def carries_instructions(self) -> bool:
+        """hc-1283: whether this call's `instructions` reach Scheduler (the narration text reads it)."""
+        from tools import tts_tool
+        return _bridged(getattr(tts_tool, '_text_to_speech_single', None), _CALL_INSTRUCTIONS)
+
     def synthesize(self, text, output_path, *, voice=None, model=None, speed=None, format='mp3', **extra):
         if model not in (None, 'seed-tts-2.0'):
             raise ValueError(f'平台配音不能指定模型（{model}），去掉 model 再试。')
@@ -153,6 +230,9 @@ class DoubaoTTS(TTSProvider):
         payload = {'text': text, 'speed': 1.0 if speed is None else min(MAX_SPEED, max(MIN_SPEED, float(speed)))}
         if voice:
             payload['voice'] = voice
+        instructions = spoken_instructions(extra)
+        if instructions:
+            payload['instructions'] = instructions
         request = urllib.request.Request(
             base + '/tools/v1/tts/synthesize',
             data=json.dumps(payload, ensure_ascii=False).encode('utf-8'),
@@ -202,6 +282,12 @@ def apply(ctx) -> None:
     except Exception:
         logger.warning("apex-overlay: Doubao narration description did not apply", exc_info=True)
     install_missing_engine_message(tts_tool)
+    try:
+        if not install_instructions_bridge(tts_tool):
+            logger.warning("apex-overlay: _text_to_speech_single takes no keyword-only instructions; "
+                           "the narration text says the tone line is unused")
+    except Exception:
+        logger.warning("apex-overlay: the narration tone bridge did not apply", exc_info=True)
     if getattr(tts_tool._dispatch_to_plugin_provider, '_apex_doubao_guard', False):
         ctx.register_tts_provider(DoubaoTTS())
         return

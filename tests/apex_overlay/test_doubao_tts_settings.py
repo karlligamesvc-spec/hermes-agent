@@ -37,7 +37,8 @@ def overlay(monkeypatch):
     from tools.registry import registry
     entry = registry.get_entry("text_to_speech")
     monkeypatch.setattr(entry, "dynamic_schema_overrides", entry.dynamic_schema_overrides)
-    for name in ("_load_tts_config", "_select_builtin_engine", "_dispatch_to_plugin_provider", "DEFAULT_PROVIDER"):
+    for name in ("_load_tts_config", "_select_builtin_engine", "_dispatch_to_plugin_provider", "_text_to_speech_single",
+                 "DEFAULT_PROVIDER"):
         monkeypatch.setattr(tts_tool, name, getattr(tts_tool, name))
     monkeypatch.setattr(tts_tool_delivery, "PROVIDER_MAX_TEXT_LENGTH", dict(tts_tool_delivery.PROVIDER_MAX_TEXT_LENGTH))
     adapter.apply(SimpleNamespace(register_tts_provider=lambda provider: None))
