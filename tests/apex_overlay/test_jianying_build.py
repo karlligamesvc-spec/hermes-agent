@@ -1,8 +1,8 @@
 """hc-1219 A 剪映 draft from the short-video pipeline's cut list (apex_overlay/jianying_build.py).
 
 Media are probed through the vendored library's ffprobe stand-in; here it answers from a table, so the tests need no
-ffprobe and no real video. The narration the music ducks under (hc-1285) is read as samples made from a table too;
-one test reads a real file through ffmpeg when there is one.
+ffprobe and no real video. The narration the music (hc-1285) and the footage's sound (hc-1290) duck under is read as
+samples made from a table too; one test reads a real file through ffmpeg when there is one.
 """
 
 from __future__ import annotations
@@ -22,10 +22,11 @@ from apex_overlay import jianying_install
 from apex_overlay.vendor.pyJianYingDraft import TransitionType, _apex_probe
 
 SEC = 1_000_000
-#: name -> (kind, seconds, width, height)
+#: name -> (kind, seconds, width, height); a "video" has a sound track, a "mute" one has none
 MEDIA = {
     "tall.mp4": ("video", 5.0, 1080, 1920),
     "wide.mp4": ("video", 6.0, 1920, 1080),
+    "mute.mp4": ("mute", 5.0, 1080, 1920),
     "card.png": ("image", 0.0, 1080, 1920),
     "voice.m4a": ("audio", 14.0, 0, 0),
     "music.m4a": ("audio", 30.0, 0, 0),
@@ -44,6 +45,8 @@ SPEAKING = round(0.1 * 32768)
 #: assemble's default music level, -10 dB, as a draft volume; and 19 dB under it while the narration speaks.
 MUSIC_LEVEL = 0.3162
 MUSIC_DUCKED = 0.0355
+#: The footage's own sound as recorded, 18 dB down while the narration speaks (hc-1290).
+LIVE_DUCKED = 0.1259
 
 
 def _pcm(spans, seconds: float, level: int = SPEAKING, rate: int = build.SPEECH_RATE) -> array.array:
@@ -66,8 +69,8 @@ def media(tmp_path, monkeypatch):
         kind, seconds, width, height = MEDIA[os.path.basename(path)]
         track = SimpleNamespace(duration=seconds * 1000, width=width, height=height)
         general = [SimpleNamespace(duration=seconds * 1000)]
-        return _apex_probe.MediaInfo(general, [track] if kind == "video" else [],
-                                     [track] if kind == "audio" else [], [track] if kind == "image" else [])
+        return _apex_probe.MediaInfo(general, [track] if kind in ("video", "mute") else [],
+                                     [track] if kind in ("video", "audio") else [], [track] if kind == "image" else [])
 
     monkeypatch.setattr(_apex_probe.MediaInfo, "parse", classmethod(lambda cls, path, mediainfo_options=None:
                                                                      parse(path)))
@@ -215,8 +218,8 @@ def test_the_cuts_sound_and_subtitles_follow_the_plan(media, tmp_path):
     assert [(s["target_timerange"]["start"], s["target_timerange"]["duration"]) for s in video] == [
         (0, 3 * SEC), (3 * SEC, 4_500_000), (7_500_000, 3 * SEC)]
     assert [s["source_timerange"]["start"] for s in video] == [500_000, 1 * SEC, 0]
-    # The footage's own sound sits under the narration, as assemble does.
-    assert {s["volume"] for s in video} == {build.CLIP_VOLUME["under_narration"]}
+    # No cut yet: the footage's own sound is as recorded where nobody speaks (its ducking is tested below, hc-1290).
+    assert [s["volume"] for s in video] == [1.0, 1.0, 1.0]
     # A 16:9 clip fills the 9:16 canvas like assemble's crop (剪映 would fit it), times its zoom.
     assert video[0]["clip"]["scale"]["x"] == 1.0
     assert video[1]["clip"]["scale"]["x"] == pytest.approx((1920 / 1080) / (1080 / 1920) * 1.1)
@@ -424,7 +427,7 @@ def test_the_narration_is_as_loud_as_in_the_cut(media, tmp_path, reports, volume
     tracks = {t["name"]: t for t in timeline["tracks"]}
     assert [s["volume"] for s in tracks["旁白"]["segments"]] == [pytest.approx(volume, abs=1e-4)]
     # The footage's own sound and the music are not the narration: they stay where they were.
-    assert {s["volume"] for s in tracks["画面"]["segments"]} == {build.CLIP_VOLUME["under_narration"]}
+    assert {s["volume"] for s in tracks["画面"]["segments"]} == {1.0}
     assert [s["volume"] for s in tracks["配乐"]["segments"]] == [MUSIC_LEVEL]
     assert written.notes == []
 
@@ -582,7 +585,7 @@ def test_with_nobody_speaking_the_effects_come_down_with_the_rest_and_the_result
         [10 ** ((5.0 + build.UNNORMALISED_EFFECT_DB) / 20), 10 ** ((4.95 + build.UNNORMALISED_EFFECT_DB) / 20)], abs=1e-4)
     assert build.UNNORMALISED_EFFECT_DB == -10.0
     assert written.notes == ["这条片没有人说话：草稿不做整条的响度归一，音效按和现场声、配乐的比例放轻了，觉得轻就在剪映里把音效轨拉高"]
-    assert {s["volume"] for s in _tracks(timeline)["画面"]} == {build.CLIP_VOLUME["plain"]}
+    assert [(s["volume"], s["common_keyframes"]) for s in _tracks(timeline)["画面"]] == [(1.0, [])] * 3
 
 
 @pytest.mark.parametrize(
@@ -783,13 +786,17 @@ def test_a_ramp_that_would_start_before_the_cut_starts_part_way_down():
     assert build._volume_at(points, 0) == pytest.approx(1.0 - (1.0 - 0.1122) * 30 / 50, abs=1e-4)
 
 
-def test_without_a_reading_of_the_narration_the_music_stays_down_under_all_of_it_and_says_so(media, tmp_path,
-                                                                                                monkeypatch):
+def test_without_a_reading_of_the_narration_the_music_and_the_footage_stay_down_under_all_of_it_and_say_so(
+        media, tmp_path, monkeypatch):
     monkeypatch.setattr(build, "narration_samples", lambda path, total: None)
     _, written, timeline, _ = _write(media, tmp_path)
-    [music] = _tracks(timeline)["配乐"]
+    tracks = _tracks(timeline)
+    [music] = tracks["配乐"]
     assert (music["volume"], _volume_keyframes(music)) == (MUSIC_LEVEL, [(0, MUSIC_DUCKED), (10_500_000, MUSIC_DUCKED)])
-    assert written.notes == ["量不出旁白在哪几段说话，草稿里配乐在整段旁白下都压低了"]
+    # The shots with sound, 18 dB down from end to end in their files' own time (tall.mp4 from 0.5 s, wide.mp4 from 1 s).
+    assert [_volume_keyframes(s) for s in tracks["画面"]] == [
+        [(500_000, LIVE_DUCKED), (3_500_000, LIVE_DUCKED)], [(1_000_000, LIVE_DUCKED), (5_500_000, LIVE_DUCKED)], []]
+    assert written.notes == ["量不出旁白在哪几段说话，草稿里现场声和配乐在整段旁白下都压低了"]
     assert written.music == {"plays": 1, "start": 0.0, "ducked": True}
 
 
@@ -802,6 +809,7 @@ def test_without_narration_the_music_keeps_its_level_and_nothing_is_measured(med
     [music] = _tracks(timeline)["配乐"]
     assert (music["volume"], music["common_keyframes"]) == (MUSIC_LEVEL, [])
     assert written.music == {"plays": 1, "start": 0.0, "ducked": False}
+    assert [(s["volume"], s["common_keyframes"]) for s in _tracks(timeline)["画面"]] == [(1.0, [])] * 3
 
 
 @pytest.mark.parametrize(
@@ -924,3 +932,149 @@ def test_a_real_narration_is_read_through_ffmpeg(tmp_path):
     samples = build.narration_samples(str(path), 2_500_000)
     assert len(samples) == pytest.approx(2.5 * build.SPEECH_RATE, abs=build.SPEECH_RATE // 100)
     assert build.speech_windows(samples, 1.0) == [(500_000, 1_500_000), (2_200_000, 2_500_000)]
+
+
+# hc-1290: the footage's own sound is as in the cut. ``assemble`` brings each shot's sound part of the way toward one
+# RMS level (``shots[].gain_db`` in the report, apex-nodes short-video-studio footage_assemble.py plan_assembly) and
+# ducks it under the narration with ``sidechaincompress=threshold=0.02:ratio=6:attack=20:release=400``.
+
+
+def _shot_gains(folder: Path, gains: list, *, name: str = "成片", age: float = 0.0, **overrides) -> None:
+    """A report of a cut of ``_timeline`` whose shots carry these gains; None leaves an entry without one."""
+    shots = [{**shot, "start": 0.0, "has_audio": True, "zoom": 1.0, **({} if gain is None else {"gain_db": gain})}
+             for shot, gain in zip(ASSEMBLED_SHOTS, gains)]
+    _report(folder, name, 7.43, age=age, shots=shots, **overrides)
+
+
+@pytest.mark.parametrize(
+    ("reports", "volumes"),
+    [
+        pytest.param([], [1.0, 1.0, 1.0], id="no cut yet: as recorded"),
+        pytest.param([lambda f: _shot_gains(f, [-6.0, 3.0, 0.0])], [0.5012, 1.4125, 1.0], id="the cut's levels"),
+        pytest.param([lambda f: _shot_gains(f, [0.0, 0.0, 0.0])], [1.0, 1.0, 1.0], id="match_levels false"),
+        pytest.param([lambda f: _shot_gains(f, [None, 3.0, None])], [1.0, 1.4125, 1.0], id="an entry without a number"),
+        pytest.param([lambda f: _shot_gains(f, [-6.0, 3.0, 0.0], name="旧", age=60),
+                      lambda f: _shot_gains(f, [-9.0, 9.0, 0.0])], [0.3548, 2.8184, 1.0], id="the newest cut"),
+        pytest.param([lambda f: _shot_gains(f, [-6.0, 3.0, 0.0], narration=str(f / "music.m4a"))], [1.0, 1.0, 1.0],
+                     id="a cut with another narration"),
+        pytest.param([lambda f: _other_shots(f, "成片")], [1.0, 1.0, 1.0], id="a cut of other shots"),
+    ],
+)
+def test_each_shots_sound_is_as_loud_as_in_the_cut(media, tmp_path, reports, volumes):
+    for add in reports:
+        add(media)
+    _, _, timeline, _ = _write(media, tmp_path)
+    assert [s["volume"] for s in _tracks(timeline)["画面"]] == volumes
+
+
+@pytest.mark.parametrize(("gain_db", "volume"), [(0.0, 1.0), (-6.0, 0.5012), (9.0, 2.8184), (25.0, 10.0)])
+def test_a_shots_volume_is_the_cuts_gain_up_to_jianyings_ceiling(gain_db, volume):
+    assert build.clip_volume(gain_db) == volume
+
+
+def test_the_footage_ducks_under_the_narration_with_keyframes_in_its_files_own_time(media, tmp_path):
+    """The narration speaks over 0.5–4 s and 6–9 s. tall.mp4 plays 0–3 s of the cut from 0.5 s into its file at the
+    cut's -6 dB, wide.mp4 3–7.5 s from 1 s in at +3 dB: each goes 18 dB down over 50 ms before each stretch and comes
+    back over 550 ms after, every keyframe at its time in the file. card.png has no sound."""
+    _shot_gains(media, [-6.0, 3.0, 0.0])
+    _, written, timeline, _ = _write(media, tmp_path)
+    tall, wide, card = _tracks(timeline)["画面"]
+    assert (tall["volume"], _volume_keyframes(tall)) == (0.5012, [
+        (500_000, 0.5012), (950_000, 0.5012), (1_000_000, 0.0631), (3_500_000, 0.0631)])
+    assert (wide["volume"], _volume_keyframes(wide)) == (1.4125, [
+        (1_000_000, 0.1778), (2_000_000, 0.1778), (2_550_000, 1.4125), (3_950_000, 1.4125), (4_000_000, 0.1778),
+        (5_500_000, 0.1778)])
+    assert (card["volume"], card["common_keyframes"]) == (1.0, [])
+    # The music goes down over the same stretches, 19 dB.
+    [music] = _tracks(timeline)["配乐"]
+    assert [time for time, _ in _volume_keyframes(music)] == [
+        0, 450_000, 500_000, 4_000_000, 4_550_000, 5_950_000, 6_000_000, 9_000_000, 9_550_000, 10_500_000]
+    assert written.notes == []
+
+
+def _narrated(media: Path, shots: list[dict]) -> str:
+    path = media / "旁白时间轴.json"
+    path.write_text(json.dumps({"narration": "voice.m4a", "shots": shots}), encoding="utf-8")
+    return str(path)
+
+
+@pytest.mark.parametrize(
+    ("shots", "music", "reads", "keyframed"),
+    [
+        pytest.param([{"file": "tall.mp4", "in": 0.5, "dur": 3.0}], "music.m4a", 1, [True], id="music and footage"),
+        pytest.param([{"file": "tall.mp4", "in": 0.5, "dur": 3.0}], None, 1, [True], id="footage without music"),
+        pytest.param([{"file": "mute.mp4", "in": 0.5, "dur": 3.0}, {"file": "card.png", "in": 0, "dur": 2.0}],
+                     "music.m4a", 1, [False, False], id="music over footage without sound"),
+        pytest.param([{"file": "mute.mp4", "in": 0.5, "dur": 3.0}, {"file": "card.png", "in": 0, "dur": 2.0}],
+                     None, 0, [False, False], id="nothing to duck"),
+        pytest.param([{"file": "tall.mp4", "in": 0.5, "dur": 3.0}, {"file": "mute.mp4", "in": 0.5, "dur": 3.0}],
+                     None, 1, [True, False], id="each file's own sound"),
+    ],
+)
+def test_the_narration_is_read_once_and_only_when_something_ducks_under_it(media, tmp_path, monkeypatch, shots,
+                                                                           music, reads, keyframed):
+    read = []
+    table = build.narration_samples  # the fixture's
+    monkeypatch.setattr(build, "narration_samples", lambda path, total: read.append(path) or table(path, total))
+    root = tmp_path / "drafts"
+    root.mkdir()
+    plan = build.load_plan(_narrated(media, shots), music=str(media / music) if music else None)
+    written = build.write(plan, root, "旁白")
+    timeline = json.loads((written.folder / "draft_info.json").read_text(encoding="utf-8"))
+    assert len(read) == reads
+    assert [bool(_volume_keyframes(s)) for s in _tracks(timeline)["画面"]] == keyframed
+    assert written.notes == []
+
+
+@pytest.mark.parametrize(
+    ("shots", "music", "ducked"),
+    [
+        pytest.param([{"file": "tall.mp4", "in": 0.5, "dur": 3.0}], "music.m4a", "现场声和配乐", id="both"),
+        pytest.param([{"file": "mute.mp4", "in": 0.5, "dur": 3.0}], "music.m4a", "配乐", id="footage without sound"),
+        pytest.param([{"file": "tall.mp4", "in": 0.5, "dur": 3.0}], None, "现场声", id="no music"),
+    ],
+)
+def test_the_note_on_an_unread_narration_names_what_stays_down(media, tmp_path, monkeypatch, shots, music, ducked):
+    monkeypatch.setattr(build, "narration_samples", lambda path, total: None)
+    root = tmp_path / "drafts"
+    root.mkdir()
+    written = build.write(build.load_plan(_narrated(media, shots), music=str(media / music) if music else None),
+                          root, "读不出")
+    assert written.notes == [f"量不出旁白在哪几段说话，草稿里{ducked}在整段旁白下都压低了"]
+
+
+#: 1.0 with a window over 2–4 s, 18 dB down: down from 1.95 s, back up by 4.55 s.
+LIVE_POINTS = build.duck_points([(2 * SEC, 4 * SEC)], 1.0, build.LIVE_DUCK_DB)
+
+
+@pytest.mark.parametrize(
+    ("points", "at", "length", "source_start", "keyframes"),
+    [
+        pytest.param([], 0, 3 * SEC, 0, [], id="nothing ducks"),
+        pytest.param(LIVE_POINTS, 5 * SEC, 2 * SEC, 0, [], id="after the ramp: flat, none"),
+        pytest.param(LIVE_POINTS, 0, 1_900_000, 0, [], id="before the ramp: flat, none"),
+        pytest.param(LIVE_POINTS, 2_500_000, SEC, 7 * SEC, [(7 * SEC, LIVE_DUCKED), (8 * SEC, LIVE_DUCKED)],
+                     id="inside the window: its two ends"),
+        pytest.param(LIVE_POINTS, 3 * SEC, 2 * SEC, 500_000,
+                     [(500_000, LIVE_DUCKED), (1_500_000, LIVE_DUCKED), (2_050_000, 1.0), (2_500_000, 1.0)],
+                     id="across the ramp back up, in the file's own time"),
+    ],
+)
+def test_a_segment_carries_the_keyframes_of_its_own_stretch_of_the_cut(points, at, length, source_start, keyframes):
+    assert build.segment_keyframes(points, 1.0, at, length, source_start) == keyframes
+
+
+@pytest.mark.parametrize(("reports", "ducked"), [pytest.param([], False, id="as recorded: under the threshold"),
+                                                pytest.param([lambda f: _report(f, "成片", 7.43)], True,
+                                                             id="with the cut's gain: over it")])
+def test_the_narration_is_heard_with_its_gain_in_the_cut(media, tmp_path, monkeypatch, reports, ducked):
+    """A narration recorded at an RMS of 0.015 of full scale, under the compressors' 0.02, raised 7.43 dB in the cut:
+    the cut ducks under it, so the draft does, the music and the footage alike."""
+    monkeypatch.setattr(build, "narration_samples", lambda path, total: _pcm([(0.5, 4.0)], 10.5, round(0.015 * 32768)))
+    for add in reports:
+        add(media)
+    _, written, timeline, _ = _write(media, tmp_path)
+    tracks = _tracks(timeline)
+    assert [bool(_volume_keyframes(s)) for s in tracks["画面"]] == [ducked, ducked, False]
+    assert bool(_volume_keyframes(tracks["配乐"][0])) is ducked
+    assert written.music["ducked"] is ducked
