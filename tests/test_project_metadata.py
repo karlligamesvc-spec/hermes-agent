@@ -99,8 +99,7 @@ def test_apexnodes_file_export_dependencies_are_in_all():
         "python-docx==1.2.0",
         "XlsxWriter==3.2.0",
         "python-pptx==1.0.2",
-        "weasyprint==62.3",
-        "pydyf==0.10.0",
+        "weasyprint==70.0",
     }
     assert "hermes-agent[file-export]" in optional_dependencies["all"]
 
