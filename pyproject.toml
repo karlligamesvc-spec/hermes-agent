@@ -535,9 +535,11 @@ file-export = [
   "python-docx==1.2.0",
   "XlsxWriter==3.2.0",
   "python-pptx==1.0.2",
-  "weasyprint==62.3",
-  # WeasyPrint 62.3's write_pdf API is incompatible with pydyf 0.12+.
-  "pydyf==0.10.0",
+  # 70.0 fixes the EPS -> Ghostscript and URL-fetcher SSRF advisories (hc-1280).
+  # pydyf is no longer pinned here: 62.3 needed pydyf==0.10.0, 70.0 needs >=0.11
+  # and uv.lock records the version tests/apex_overlay/test_file_export_weasyprint.py
+  # renders with.
+  "weasyprint==70.0",
 ]
 # ApexNodes managed cloud search. The production Dockerfile opts into this
 # extra so the CN-safe DuckDuckGo backend is available without a cold-start
