@@ -1437,6 +1437,9 @@ skills:
     # back, and an installed skill is on unless it is named here.
     - godmode
     - obliteratus
+    # ── INVENTS (hc-1293) — upstream humanizer 2.5.1: its examples add sources,
+    # years, quotes and feelings the draft never had. APEX polishes with text-polish.
+    - humanizer
     # ── PRODUCT (hc-1294) — reachable, off for product reasons.
     # email-inbox-triage reads mail only through himalaya or google-workspace,
     # both off above. The two action-item skills do what the platform's

@@ -126,11 +126,13 @@ MUSIC_DUCK_DB = 19.0
 DUCK_DOWN = SEC // 20
 DUCK_UP = 11 * SEC // 20
 #: The cut ducks the footage's own sound under the narration too, with
-#: ``sidechaincompress=threshold=0.02:ratio=6:attack=20:release=400`` keyed on the same narration (hc-1290). Measured
-#: the same way (ffmpeg 9.0.2, the same three voices and the noisy take, 2026-11-25): 18.0 dB lower while the narration
-#: speaks, within 1 dB of its level again 0.40 to 0.46 s after the last word. The music's windows and ramps fit that
-#: best, within 1.9 dB of the cut on average, so the footage's sound goes down over the same windows by this much.
-LIVE_DUCK_DB = 18.0
+#: ``sidechaincompress=threshold=0.02:ratio=2:attack=20:release=400`` keyed on the same narration (hc-1290; ratio 6,
+#: 18 dB down, until hc-1291 brought it back to about 10 dB). Measured the same way (ffmpeg 9.0.2 and 7.1 alike,
+#: 2026-11-25): while the narration speaks, 10.0 dB lower under a real project's 52 s narration and 10.7 dB under three
+#: macOS voices and a noisy take; within 1 dB of its level again 0.34 to 0.39 s after the last word. Over the music's
+#: windows and ramps 10 dB fits the real narration best (within 1.2 dB of the cut on average; the macOS voices fit
+#: 10.5 best, 1.2 dB, and 10 within 1.3), so the footage's sound goes down over the same windows by this much.
+LIVE_DUCK_DB = 10.0
 #: The narration is read as 16-bit mono at this rate in blocks of this many µs.
 SPEECH_RATE = 8000
 SPEECH_BLOCK = SEC // 100

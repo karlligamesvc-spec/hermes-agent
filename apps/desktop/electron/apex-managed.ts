@@ -405,6 +405,9 @@ const SEED_DISABLED_SKILLS = [
   // ── SAFETY (hc-1275) — jailbreak / refusal-removal skills. Not bundled (optional-skills/), but
   // `hermes skills install official/…` brings them back, and an installed skill is on unless named here.
   'godmode', 'obliteratus',
+  // ── INVENTS (hc-1293) — upstream humanizer 2.5.1: its Before/After examples add sources, years, quotes
+  // and first-person feelings the draft never had. Polishing goes through the platform's text-polish skill.
+  'humanizer',
   // ── PRODUCT (hc-1294) — reachable, off for product reasons. email-inbox-triage reads mail only through
   // himalaya or google-workspace, both off above. The two action-item skills do what the platform's
   // meeting-summary / document-summary do, minus APEX's honesty labels; two index lines split the routing.
