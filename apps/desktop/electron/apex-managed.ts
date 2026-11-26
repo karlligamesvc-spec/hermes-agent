@@ -398,7 +398,10 @@ const SEED_DISABLED_SKILLS = [
   'popular-web-designs',
   // ── SAFETY (hc-1275) — jailbreak / refusal-removal skills. Not bundled (optional-skills/), but
   // `hermes skills install official/…` brings them back, and an installed skill is on unless named here.
-  'godmode', 'obliteratus'
+  'godmode', 'obliteratus',
+  // ── INVENTS (hc-1293) — upstream humanizer 2.5.1: its Before/After examples add sources, years, quotes
+  // and first-person feelings the draft never had. Polishing goes through the platform's text-polish skill.
+  'humanizer'
 ]
 
 // hc-645 pins only the search leg of the platform web gateway. Extraction (hc-1214) is
