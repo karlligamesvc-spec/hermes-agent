@@ -308,10 +308,13 @@ _MARK_CHECK = """
         import gateway.platform_registry as platform_registry
         import gateway.platforms.base as base
         import gateway.run as run
-        from apex_overlay import (cn_im_banners, cn_im_messages, feishu_supervisor, first_turn_ack,
-                                  gateway_bootstrap, im_passthrough)
+        import agent.prompt_builder as prompt_builder
+        from apex_overlay import (cn_im_banners, cn_im_messages, essential_skill_opt_out, feishu_supervisor,
+                                  first_turn_ack, gateway_bootstrap, im_passthrough)
         runner = run.GatewayRunner
         return {
+            "essential_skill_opt_out": wrapped_by(prompt_builder.get_disabled_skill_names,
+                                                  essential_skill_opt_out._ORIGINAL),
             "gateway_bootstrap": wrapped_by(runner._create_adapter, gateway_bootstrap._MARK),
             "first_turn_ack.turn": wrapped_by(runner._handle_message_with_agent, first_turn_ack._MARK_TURN),
             "first_turn_ack.resolve": wrapped_by(display_config.resolve_display_setting,
@@ -362,6 +365,8 @@ def test_register_imports_no_gateway_module_and_seams_land_before_the_startup_lo
         "agent.context_references", "tui_gateway.server",
         # hc-1218 segment_summary: armed for the compressor's import, likewise.
         "agent.context_compressor",
+        # hc-1275 essential_skill_opt_out: the skill-list helpers and the two modules that copy one at import.
+        "agent.skill_utils", "agent.prompt_builder", "agent.curator", "hermes_cli.skills_config",
     }, post_import.pending_modules()
 
     from gateway.run import GatewayRunner          # what run_gateway() does
@@ -371,7 +376,8 @@ def test_register_imports_no_gateway_module_and_seams_land_before_the_startup_lo
     # generator; those patches wait for the tool registry's, the cron ticker's and the first turn's imports.
     assert set(post_import.pending_modules()) <= {
         "tools.vision_tools", "cron.scheduler", "tools.cronjob_tools", "tools.cronjob_job_args",
-        "agent.title_generator", "agent.context_references", "tui_gateway.server", "agent.context_compressor"}
+        "agent.title_generator", "agent.context_references", "tui_gateway.server", "agent.context_compressor",
+        "agent.skill_utils", "agent.prompt_builder", "agent.curator", "hermes_cli.skills_config"}
 
     # The real start-up loop (GatewayRunner._start_prefilter_platforms) on a bare runner: Feishu must
     # be scheduled in the background instead of being created on the start-up stack.

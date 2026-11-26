@@ -202,6 +202,7 @@ const currentStage = (words: StageWords, progress: StageProgress) => {
 const ZH_RISKS: Record<NonNullable<ApprovalPurpose['risk']>, string> = {
   delete: '其中会删除文件。',
   git: '其中会改动代码仓库。',
+  install: '其中会安装第三方扩展，之后每次都会加载它。',
   kill: '其中会结束或重启正在运行的程序。',
   network: '其中会把数据发到网上。',
   permissions: '其中会改文件的权限。'
@@ -210,6 +211,7 @@ const ZH_RISKS: Record<NonNullable<ApprovalPurpose['risk']>, string> = {
 const ZH_HANT_RISKS: Record<NonNullable<ApprovalPurpose['risk']>, string> = {
   delete: '其中會刪除檔案。',
   git: '其中會改動程式碼倉庫。',
+  install: '其中會安裝第三方擴充功能，之後每次都會載入它。',
   kill: '其中會結束或重啟正在執行的程式。',
   network: '其中會把資料傳到網路上。',
   permissions: '其中會改檔案的權限。'
@@ -218,6 +220,7 @@ const ZH_HANT_RISKS: Record<NonNullable<ApprovalPurpose['risk']>, string> = {
 const EN_RISKS: Record<NonNullable<ApprovalPurpose['risk']>, string> = {
   delete: 'It deletes files.',
   git: 'It changes a code repository.',
+  install: 'It installs a third-party extension, which then loads every time.',
   kill: 'It stops or restarts running programs.',
   network: 'It sends data over the internet.',
   permissions: 'It changes file permissions.'

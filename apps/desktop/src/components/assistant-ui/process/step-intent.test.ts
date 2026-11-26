@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { setRuntimeI18nLocale } from '@/i18n'
@@ -231,5 +234,29 @@ describe('the sentence above an approval', () => {
   it('reads the risk only from the engine’s description of a command, never from code', () => {
     expect(approvalPurpose('rm -rf x', 'recursive delete').risk).toBe('delete')
     expect(approvalPurpose('os.remove(x)', 'execute_code script execution').risk).toBeNull()
+  })
+})
+
+// hc-1275: the engine asks before the assistant installs a plugin, a skill or an MCP server
+// (apex_overlay/install_approval.py); the descriptions are read from that file, not copied here.
+const INSTALL_DESCRIPTIONS = [
+  ...readFileSync(resolve(__dirname, '../../../../../../apex_overlay/install_approval.py'), 'utf8').matchAll(
+    /^(?:PLUGIN|SKILL|MCP)_DESCRIPTION = "(.+)"$/gm
+  )
+].map(match => match[1])
+
+describe('an install the engine asks about (hc-1275)', () => {
+  it('finds the three rule descriptions in the engine seam', () => {
+    expect(INSTALL_DESCRIPTIONS).toHaveLength(3)
+  })
+
+  it.each(INSTALL_DESCRIPTIONS)('%s → the install warning', description => {
+    expect(approvalPurpose('hermes plugins install kinocut', description).risk).toBe('install')
+  })
+
+  it('tells the user a third-party extension is being installed', () => {
+    expect(plainApprovalSentence('hermes plugins install kinocut --enable --yes-deps', INSTALL_DESCRIPTIONS[0])).toBe(
+      'APEX 想在你的电脑上运行一条命令。其中会安装第三方扩展，之后每次都会加载它。你同意了才会执行，点「命令」可以看具体内容。'
+    )
   })
 })

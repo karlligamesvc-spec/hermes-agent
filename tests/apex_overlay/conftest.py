@@ -95,6 +95,10 @@ _SEAM_MODULES = (
     "folder_grants",
     # hc-1219 the jianying_draft tool: the finished cut as a 剪映 draft (switch on, 剪映 installed).
     "jianying_draft",
+    # hc-1275 the assistant's own plugin / skill / MCP installs need the user's approval.
+    "install_approval",
+    # hc-1275 an essential skill listed in skills.disabled (hermes-agent on Desktop) is not listed either.
+    "essential_skill_opt_out",
 )
 
 

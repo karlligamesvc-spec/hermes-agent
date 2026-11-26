@@ -147,6 +147,18 @@ _TOOL_SEAMS = (
         "In Desktop's one thread, the summary carried into a new day or after 「从头来」 "
         "keeps the earlier task's approach, and a new task of the same kind may copy it.",
     ),
+    (
+        "install_approval",
+        "apex-overlay: hc-1275 install approval seam did not apply (see prior error). "
+        "The assistant can install, update or enable third-party plugins, skills and MCP "
+        "servers, or switch approvals off, from the terminal without asking the user.",
+    ),
+    (
+        "essential_skill_opt_out",
+        "apex-overlay: hc-1275 essential skill opt-out seam did not fully apply (see prior "
+        "error). The skill index keeps listing hermes-agent although skills.disabled names it "
+        "and skill_view refuses to load it.",
+    ),
 )
 
 

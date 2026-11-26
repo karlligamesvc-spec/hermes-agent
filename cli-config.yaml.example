@@ -1351,7 +1351,7 @@ skills:
   # hermes-cloud docs/DESKTOP-CHINA-SKILL-MATRIX.md. (hc-406 v0.18 全集重分级.)
   #
   # MUST stay byte-for-list in sync with SEED_DISABLED_SKILLS in
-  # apps/desktop/electron/apex-managed.cjs (the desktop seed path). Names are the
+  # apps/desktop/electron/apex-managed.ts (the desktop seed path). Names are the
   # SKILL.md frontmatter `name:` (case-sensitive) — four differ from their
   # folder (serving-llms-vllm, evaluating-llms-harness, segment-anything-model,
   # audiocraft-audio-generation).
@@ -1369,12 +1369,15 @@ skills:
     # Cross-border SaaS (reachable-but-slow / needs foreign account)
     - notion
     - airtable
-    # github.com reachable-but-slow, raw.githubusercontent.com blocked
+    # github.com reachable-but-slow, raw.githubusercontent.com blocked. Upstream
+    # folded the five github-* into `github`; the old names stay for homes that
+    # still hold their copies (hc-1275).
     - github-auth
     - github-code-review
     - github-issues
     - github-pr-workflow
     - github-repo-management
+    - github
     # HuggingFace / heavy-MLOps model discovery (HF blocked/slow; ModelScope
     # route is the V0.2 localization roadmap. HF_ENDPOINT mirror is seeded by
     # the desktop but these stay off as non-essential for a CN desktop assistant)
@@ -1420,6 +1423,14 @@ skills:
     - openhue
     # internal / QA
     - dogfood
+    # ── BRAND (hc-1275) — design systems named after real brands; "a page like
+    # <brand>" came back as a look-alike of that brand. Off for product reasons.
+    - popular-web-designs
+    # ── SAFETY (hc-1275) — jailbreak / refusal-removal skills. Not bundled
+    # (optional-skills/), but `hermes skills install official/…` brings them
+    # back, and an installed skill is on unless it is named here.
+    - godmode
+    - obliteratus
 
   # Gate the background self-improvement review's skill writes.
   # The review forks the agent in a daemon thread with no user present; by
@@ -1447,6 +1458,12 @@ agent:
   # Higher = more room for complex tasks, but costs more tokens
   # Recommended: 20-30 for focused tasks, 50-100 for open exploration
   max_turns: 500
+
+  # ApexNodes (hc-1275): toolsets no session gets. `catalog` (manage_catalog) asks for
+  # consent through a connection card APEX Desktop does not draw. MUST stay in sync with
+  # SEED_DISABLED_TOOLSETS in apps/desktop/electron/apex-disabled-toolsets.ts.
+  disabled_toolsets:
+    - catalog
 
   # Inactivity timeout for gateway agent runs (seconds, 0 = unlimited).
   # The agent can run indefinitely when actively calling tools or receiving
