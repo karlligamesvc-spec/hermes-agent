@@ -5,6 +5,7 @@
  * sources and years the draft never had, for a first install (the seed) and for every install
  * after it (the boot/watch heal pass). cli-config.yaml.example, the CLI path's seed, carries the same
  * lists. tests/apex_overlay/test_desktop_disabled_skills.py runs the engine with that list.
+ * hc-1294 graded the 11 bundled skills no grade covered: five more names, and six that stay on.
  *
  * Run with: npx vitest run electron/apex-disabled-toolsets.test.ts
  */
@@ -29,8 +30,18 @@ const parse = (raw: string) => (yaml.load(raw) ?? {}) as Config
 
 const BYOK: ProductBlocksContext = { managed: {}, endpoints: resolveApexEndpoints({}), env: {}, entitled: null }
 
-// Added after 0.18.2 shipped with the other 51 names: three by hc-1275, humanizer by hc-1293.
-const ADDED_AFTER_0182 = ['github', 'godmode', 'obliteratus', 'humanizer']
+// Added after 0.18.2 shipped with the other 51 names, in list order: hc-1275's three, hc-1293's humanizer
+// and hc-1294's five.
+const ADDED_AFTER_0182 = [
+  'blocked-page-recovery', 'github', 'weekly-review-planning', 'godmode', 'obliteratus', 'humanizer',
+  'email-inbox-triage', 'meeting-action-items', 'document-to-action-items'
+]
+
+// hc-1294 graded these on. sdlc-review must never be listed: the kanban review lane force-loads it, and a
+// listed skill counts as missing there (test_desktop_disabled_skills.py runs that lane's check).
+const GRADED_ON_AFTER_0182 = [
+  'competitor-news-monitor', 'product-price-monitor', 'grounded-citations', 'microsoft-office', 'pdf', 'sdlc-review'
+]
 
 test('popular-web-designs is in the default-off skills, as the seed renders them', () => {
   assert.ok(SEED_DISABLED_SKILLS.includes('popular-web-designs'))
@@ -41,19 +52,23 @@ test.each(ADDED_AFTER_0182)('%s is in the default-off skills too', name => {
   assert.ok(SEED_DISABLED_SKILLS.includes(name))
 })
 
+test.each(GRADED_ON_AFTER_0182)('%s stays out of the default-off skills', name => {
+  assert.ok(!SEED_DISABLED_SKILLS.includes(name))
+})
+
 test('the five github-* names stay next to github, for homes that still hold their copies', () => {
   for (const name of ['github-auth', 'github-code-review', 'github-issues', 'github-pr-workflow', 'github-repo-management']) {
     assert.ok(SEED_DISABLED_SKILLS.includes(name), name)
   }
 })
 
-test('an install seeded with the 0.18.2 list gets exactly the four new names from the heal pass, once', () => {
+test('an install seeded with the 0.18.2 list gets exactly the nine new names from the heal pass, once', () => {
   const shipped = SEED_DISABLED_SKILLS.filter(name => !ADDED_AFTER_0182.includes(name))
   const raw = 'model:\n  default: deepseek-v4-flash\n  provider: deepseek\n' + seedSkillsBlockYaml(shipped)
   const { fixed, next } = healProductBlocksYaml(raw, BYOK)
 
   assert.equal(shipped.length, 51)
-  assert.ok(fixed.includes('skills.disabled(+4)'), fixed.join(', '))
+  assert.ok(fixed.includes('skills.disabled(+9)'), fixed.join(', '))
   assert.deepEqual(parse(next).skills?.disabled, [...shipped, ...ADDED_AFTER_0182])
   assert.deepEqual(healProductBlocksYaml(next, BYOK).fixed, [])
 })

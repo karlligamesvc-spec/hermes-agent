@@ -358,11 +358,15 @@ const MANAGED_PLUGIN_NAMES = [
 // optional-skills/creative/kanban-video-orchestrator). The 22 newly-bundled
 // A/B skills we deliberately KEEP ACTIVE (computer-use, apple/*, powerpoint,
 // obsidian, ocr-and-documents, baoyu-infographic, yuanbao, …) are simply
-// absent from this list.
+// absent from this list. hc-1294 graded the 11 bundled skills no grade covered: five are listed below;
+// competitor-news-monitor, product-price-monitor, grounded-citations, microsoft-office and pdf stay on, and
+// sdlc-review is never listed (the kanban review lane force-loads it; a listed skill counts as missing there).
 const SEED_DISABLED_SKILLS = [
   // ── D — walled / geo-blocked / competitor (无 VPN 必超时挂起) ──────────────
   'google-workspace', 'xurl', 'youtube-content', 'polymarket',
   'teams-meeting-pipeline', 'claude-code', 'codex', 'gif-search',
+  // A 403/429 sends it to archive.org and archive.today, both blocked in mainland China (hc-1294):
+  'blocked-page-recovery',
   // ── C — CN-slow / needs mirror or 国产源 before it's stable ────────────────
   // Cross-border SaaS (reachable-but-slow / needs foreign account):
   'notion', 'airtable',
@@ -380,6 +384,8 @@ const SEED_DISABLED_SKILLS = [
   'maps',
   // arXiv: export.arxiv.org reachable-but-slow/unstable:
   'arxiv',
+  // Its calendar, mail and notes are Google Calendar, Gmail and Notion, all off here (hc-1294):
+  'weekly-review-planning',
   // ── DEV-B — capable but dev-niche; product-focus off (toggle on per-need) ──
   // Coding-agent / self-config:
   'opencode', 'hermes-agent', 'hermes-agent-skill-authoring',
@@ -401,7 +407,11 @@ const SEED_DISABLED_SKILLS = [
   'godmode', 'obliteratus',
   // ── INVENTS (hc-1293) — upstream humanizer 2.5.1: its Before/After examples add sources, years, quotes
   // and first-person feelings the draft never had. Polishing goes through the platform's text-polish skill.
-  'humanizer'
+  'humanizer',
+  // ── PRODUCT (hc-1294) — reachable, off for product reasons. email-inbox-triage reads mail only through
+  // himalaya or google-workspace, both off above. The two action-item skills do what the platform's
+  // meeting-summary / document-summary do, minus APEX's honesty labels; two index lines split the routing.
+  'email-inbox-triage', 'meeting-action-items', 'document-to-action-items'
 ]
 
 // hc-645 pins only the search leg of the platform web gateway. Extraction (hc-1214) is

@@ -469,14 +469,15 @@ test('modelDisabledProvidersYaml defaults to [copilot], indented under model:', 
   assert.equal(modelDisabledProvidersYaml(['  ']), '')
 })
 
-test('seedSkillsBlockYaml emits a top-level skills.disabled block with all 55 names', () => {
+test('seedSkillsBlockYaml emits a top-level skills.disabled block with all 60 names', () => {
   const yaml = seedSkillsBlockYaml()
   assert.match(yaml, /^skills:\n {2}creation_nudge_interval: 0\n {2}disabled:\n/m)
   // hc-406 v0.18 全集重分级: 50 disabled bundled skills (was 49 @ v0.17;
   // +huggingface-hub/maps/plan, −dead kanban-orchestrator/kanban-worker); hc-1275 +popular-web-designs,
-  // +github, +godmode, +obliteratus; hc-1293 +humanizer.
-  assert.equal(SEED_DISABLED_SKILLS.length, 55)
-  assert.equal(new Set(SEED_DISABLED_SKILLS).size, 55) // no dupes
+  // +github, +godmode, +obliteratus; hc-1293 +humanizer; hc-1294 +blocked-page-recovery,
+  // +weekly-review-planning, +email-inbox-triage, +meeting-action-items, +document-to-action-items.
+  assert.equal(SEED_DISABLED_SKILLS.length, 60)
+  assert.equal(new Set(SEED_DISABLED_SKILLS).size, 60) // no dupes
 
   // Every name is rendered as a 4-space-indented list item.
   for (const name of SEED_DISABLED_SKILLS) {
