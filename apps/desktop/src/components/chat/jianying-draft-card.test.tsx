@@ -69,7 +69,9 @@ describe('reading the tool part', () => {
 
   it.each([
     ['darwin', '11.7.0', true],
-    ['darwin', '11.8.0', false],
+    ['darwin', '11.8.0', true],
+    // The next Mac version is not tried until a draft is opened in it.
+    ['darwin', '11.9.0', false],
     ['win32', '11.7.0.14652', true],
     // Windows reports the build folder: only that exact build counts, not its prefix or another build.
     ['win32', '11.7.0', false],
@@ -149,6 +151,13 @@ describe('the card', () => {
     renderCard(draft({ platform: 'win32' }))
 
     expect(screen.getByText(/剪好后点右上角「导出」，再点「导出」/)).toBeTruthy()
+  })
+
+  it('Mac 剪映 11.8.0 is a version APEX tried: no 「还没试过」 line', () => {
+    const { container } = renderCard(draft({ version: '11.8.0' }))
+
+    expect(screen.getByText(/剪好后点菜单「文件 › 导出」/)).toBeTruthy()
+    expect(container.querySelector('[data-slot="aui_jianying-draft-unverified"]')).toBeNull()
   })
 
   it('Windows 剪映 11.7.0.14652 is a version APEX tried: no 「还没试过」 line', () => {
