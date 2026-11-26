@@ -24,6 +24,15 @@ track. With somebody speaking the level is the cut's, because the narration is a
 With nobody speaking the cut's loudness step raised everything else to the target and the effects were set against
 that; a draft keeps the rest where it was recorded, so the effects come down by ``UNNORMALISED_EFFECT_DB``.
 
+The music is laid as in the cut (hc-1285). ``assemble`` plays it from ``music_start`` at ``music_gain`` dB, joins it
+again where it is shorter than the cut (each seam a crossfade), fades it in and out at the ends of the cut and ducks it
+under the narration with a sidechain compressor. The draft takes the file's start and level from the newest report of
+a cut made from this timeline when that cut's music is the same file, else from the timeline; lays each play as a
+segment of its own, on 配乐 and 配乐 2 by turns so that the seams can overlap; and writes the ducking as volume
+keyframes, ``MUSIC_DUCK_DB`` down while the narration speaks. Where the narration speaks is measured on the narration
+file the way the cut's compressor hears it (see ``speech_windows``), the one thing here measured rather than read
+from the report: assemble does not write it down.
+
 剪映 takes in any new folder under its draft folder within about two seconds while it runs (a hidden one too) and
 keeps the duration it read then, so the draft is put together in a hidden folder beside the draft folder, on the same
 disk, and renamed into place whole, its draft_meta_info.json already filled in. The library is the pinned copy in
@@ -33,11 +42,15 @@ media into the draft's ``materials/``.
 
 from __future__ import annotations
 
+import array
+import itertools
 import json
 import math
 import os
 import re
 import shutil
+import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -47,7 +60,7 @@ from typing import Iterable, Optional
 
 from apex_overlay import jianying_install
 from apex_overlay.vendor import pyJianYingDraft as draft
-from apex_overlay.vendor.pyJianYingDraft import assets
+from apex_overlay.vendor.pyJianYingDraft import _apex_probe, assets
 from apex_overlay.vendor.pyJianYingDraft.draft_folder import DRAFT_FILE_NAME
 from apex_overlay.vendor.pyJianYingDraft.script_file import MATERIALS_DIR_NAME
 
@@ -77,6 +90,31 @@ EFFECT_TRACK = "音效"
 UNNORMALISED_EFFECT_DB = -10.0
 #: Shorter than this, what is left of an effect at the end of the cut is not worth a segment.
 EFFECT_MIN = SEC // 50
+MUSIC_TRACK = "配乐"
+#: How ``assemble`` lays the music (short-video-studio footage_assemble.py, hc-1220 and hc-1232): -10 dB unless the
+#: timeline sets ``music_gain`` (-30 to 0); faded in over 0.5 s and out over 1.5 s, each at most a quarter of the cut;
+#: a 2 s crossfade at each seam where it is joined again, a quarter of the piece when that is shorter; at most 100
+#: plays.
+MUSIC_GAIN_DEFAULT_DB = -10.0
+MUSIC_GAIN_LIMITS = (-30.0, 0.0)
+MUSIC_FADE_IN = SEC // 2
+MUSIC_FADE_OUT = 3 * SEC // 2
+MUSIC_LOOP_CROSSFADE = 2 * SEC
+MUSIC_MAX_PLAYS = 100
+#: The cut ducks the music with ``sidechaincompress=threshold=0.02:ratio=8:attack=20:release=500`` keyed on the
+#: narration after its gain. Measured on ffmpeg 9.0.2 with three TTS voices and a noisy take at -16 LUFS
+#: (2026-11-25): while the narration speaks the music sits 19.2 to 19.4 dB lower on average; it is down a few
+#: hundredths of a second into the first word and back about half a second after the last. The draft writes that as
+#: keyframes: ``MUSIC_DUCK_DB`` down over each stretch where the narration speaks, going down over ``DUCK_DOWN``
+#: before it and back up over ``DUCK_UP`` after it. On those takes it is within 2.1 dB of the cut on average.
+DUCK_THRESHOLD = 0.02
+MUSIC_DUCK_DB = 19.0
+DUCK_DOWN = SEC // 20
+DUCK_UP = 11 * SEC // 20
+#: The narration is read as 16-bit mono at this rate in blocks of this many µs.
+SPEECH_RATE = 8000
+SPEECH_BLOCK = SEC // 100
+PCM_TIMEOUT_SECONDS = 60
 DEFAULT_CANVAS = (1080, 1920)
 _UNSAFE_NAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')
 _SRT_TIME = re.compile(r"(\d+):(\d{2}):(\d{2})[,.](\d{1,3})")
@@ -106,6 +144,14 @@ class Effect:
 
 
 @dataclass
+class Music:
+    """The draft's music and how ``assemble`` lays it (hc-1285)."""
+    path: str
+    start: float = 0.0  # where in the file it starts, seconds
+    gain_db: float = MUSIC_GAIN_DEFAULT_DB
+
+
+@dataclass
 class Plan:
     width: int
     height: int
@@ -118,6 +164,7 @@ class Plan:
     #: The sound effects of the finished cut (hc-1258), and whether somebody speaks in it (the effects' level).
     effects: list[Effect] = field(default_factory=list)
     effects_under_voice: bool = True
+    music: Optional[Music] = None
     notes: list[str] = field(default_factory=list)
 
 
@@ -158,7 +205,8 @@ def _beside(base: str, value) -> Optional[str]:
     return path
 
 
-def load_plan(timeline: str, subtitles: Optional[str] = None, narration: Optional[str] = None) -> Plan:
+def load_plan(timeline: str, subtitles: Optional[str] = None, narration: Optional[str] = None,
+              music: Optional[str] = None) -> Plan:
     """Read the timeline as ``assemble`` does: relative paths are under ``source_dir`` or the timeline's folder."""
     try:
         with open(timeline, encoding="utf-8") as handle:
@@ -179,7 +227,8 @@ def load_plan(timeline: str, subtitles: Optional[str] = None, narration: Optiona
     return Plan(width=width - width % 2, height=height - height % 2, fps=int(settings.get("fps") or 30), shots=shots,
                 subtitles=_beside(folder, subtitles or settings.get("subtitles")), narration=voice,
                 narration_gain_db=assembled_narration_gain(folder, voice, shots) if voice else None,
-                effects=effects, effects_under_voice=under_voice, notes=notes)
+                effects=effects, effects_under_voice=under_voice,
+                music=cut_music(folder, settings, music, voice, shots), notes=notes)
 
 
 def _same_file(listed, path: str) -> bool:
@@ -271,6 +320,40 @@ def assembled_effects(folder: str, narration: Optional[str], shots: list[Shot]) 
         effects.append(Effect(path=path, start=start, skip=skip, gain_db=gain))
     notes = [f"成片里有 {missing} 个音效的文件找不到了，草稿里没放这几个"] if missing else []
     return effects, listed.get("voice") is not False, notes
+
+
+def _timeline_number(settings: dict, key: str, default: float) -> float:
+    """A number the timeline sets, read as ``assemble`` reads it: ``float(value or default)``."""
+    try:
+        value = float(settings.get(key) or default)
+    except (TypeError, ValueError):
+        value = math.nan
+    if not math.isfinite(value):
+        raise PlanError(f"时间轴里的 {key} 不是数")
+    return value
+
+
+def cut_music(folder: str, settings: dict, chosen: Optional[str], narration: Optional[str],
+              shots: list[Shot]) -> Optional[Music]:
+    """The draft's music, the file the tool names or else the timeline's ``music``, with the start and level of the
+    cut (hc-1285). They come from the same report as the narration's level when that cut's music is the same file;
+    else from the timeline's ``music_start`` and ``music_gain`` when the timeline names the same file or none
+    (``assemble --music`` takes them for the file it is given), checked as ``assemble`` checks them. A file that
+    neither describes starts at 0 at assemble's default level."""
+    path = _beside(folder, chosen or settings.get("music"))
+    if path is None:
+        return None
+    listed = _newest_report(folder, narration, shots)[1].get("music")
+    if isinstance(listed, dict) and _same_file(listed.get("file"), path):
+        start, gain = _number(listed.get("start")), _number(listed.get("gain_db"))
+        return Music(path, start=start or 0.0, gain_db=MUSIC_GAIN_DEFAULT_DB if gain is None else gain)
+    named = settings.get("music")
+    if isinstance(named, str) and named and not _same_file(os.path.join(folder, named), path):
+        return Music(path)
+    gain = _timeline_number(settings, "music_gain", MUSIC_GAIN_DEFAULT_DB)
+    if not MUSIC_GAIN_LIMITS[0] <= gain <= MUSIC_GAIN_LIMITS[1]:
+        raise PlanError(f"配乐音量要在 {MUSIC_GAIN_LIMITS[0]:g} 到 {MUSIC_GAIN_LIMITS[1]:g} dB 之间,收到 {gain:g}")
+    return Music(path, start=_timeline_number(settings, "music_start", 0.0), gain_db=gain)
 
 
 def effect_volume(gain_db: float, under_voice: bool) -> float:
@@ -447,14 +530,167 @@ def _video_track(script, plan: Plan, dissolve_after: set[int]) -> tuple[int, lis
     return at, notes
 
 
-def _audio(script, path: str, track: str, total: int, volume: float, fade: bool) -> None:
+def _narration(script, path: str, total: int, volume: float) -> int:
+    """The narration from 0, as in the cut; returns how long it plays in the draft."""
     material = draft.AudioMaterial(path)
     length = min(material.duration, total)
-    segment = draft.AudioSegment(material, draft.Timerange(0, length), volume=volume)
-    if fade and length > 4 * SEC:
-        segment.add_fade("1s", "1s")
-    script.append_track(draft.TrackSpec(draft.TrackType.audio, track))
-    script.add_segment(segment, track)
+    script.append_track(draft.TrackSpec(draft.TrackType.audio, "旁白"))
+    script.add_segment(draft.AudioSegment(material, draft.Timerange(0, length), volume=volume), "旁白")
+    return length
+
+
+def music_track(lane: int) -> str:
+    return MUSIC_TRACK if lane == 0 else f"{MUSIC_TRACK} {lane + 1}"
+
+
+def music_loop(usable: int, total: int) -> tuple[int, int]:
+    """``assemble``'s music_loop in µs: how many plays of the music from its start fill the cut, and how long the
+    crossfade at each seam is."""
+    if usable >= total:
+        return 1, 0
+    crossfade = min(MUSIC_LOOP_CROSSFADE, usable // 4)
+    return max(2, math.ceil((total - crossfade) / (usable - crossfade))), crossfade
+
+
+def music_plays(usable: int, total: int) -> list[tuple[int, int, int, int]]:
+    """Each play of the music as ``assemble`` joins them (µs): where it starts in the cut, how long it lasts, its fade
+    in and its fade out. Each next play starts a crossfade before the last ends and fades in over it while the last
+    fades out; the first fades in and the last fades out as the cut's ends do. Where a short last play cannot hold
+    both, the seam keeps its crossfade and the end's fade is shortened."""
+    count, crossfade = music_loop(usable, total)
+    first_in, last_out = min(MUSIC_FADE_IN, total // 4), min(MUSIC_FADE_OUT, total // 4)
+    plays = []
+    for number in range(count):
+        at = number * (usable - crossfade)
+        length = min(usable, total - at)
+        fade_in = first_in if number == 0 else crossfade
+        fade_out = last_out if number == count - 1 else crossfade
+        if number == 0 and count > 1:
+            fade_in = min(fade_in, length - fade_out)
+        elif number == count - 1:
+            fade_out = min(fade_out, length - fade_in)
+        plays.append((at, length, fade_in, fade_out))
+    return plays
+
+
+def speech_windows(samples, gain: float, rate: int = SPEECH_RATE) -> list[tuple[int, int]]:
+    """Where the narration speaks (µs), the way the cut's compressor hears it: blocks of ``SPEECH_BLOCK`` whose RMS
+    times ``gain`` (the narration's gain in the cut) is above ``DUCK_THRESHOLD``, of 16-bit ``samples`` at ``rate``.
+    A pause shorter than the two ramps is bridged: the music would not get back up in it."""
+    block = rate * SPEECH_BLOCK // SEC
+    limit = (DUCK_THRESHOLD * 32768 / gain) ** 2 * block  # a block's sum of squares at the threshold
+    windows: list[list[int]] = []
+    for first in range(0, len(samples) - block + 1, block):
+        chunk = samples[first:first + block]
+        if math.sumprod(chunk, chunk) <= limit:
+            continue
+        begin, end = first * SEC // rate, (first + block) * SEC // rate
+        if windows and begin - windows[-1][1] < DUCK_DOWN + DUCK_UP:
+            windows[-1][1] = end
+        else:
+            windows.append([begin, end])
+    return [(begin, end) for begin, end in windows]
+
+
+def _ffmpeg() -> Optional[str]:
+    """The ffmpeg beside the ffprobe the library reads media with (the named one, the engine's own, the platform's),
+    else the platform resolver's."""
+    probe = _apex_probe._ffprobe()
+    if probe:
+        beside = Path(probe).with_name("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
+        if beside.is_file():
+            return str(beside)
+    from hermes_platform.resolver import locate_command
+
+    found = locate_command("ffmpeg").command
+    return found[0] if found else None
+
+
+def narration_samples(path: str, total: int):
+    """The first ``total`` µs of the narration as 16-bit mono at ``SPEECH_RATE``; None when ffmpeg cannot read it."""
+    binary = _ffmpeg()
+    if binary is None:
+        return None
+    flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW, as the library's ffprobe
+    try:
+        done = subprocess.run(
+            [binary, "-v", "error", "-nostdin", "-t", f"{total / SEC:.3f}", "-i", path, "-vn", "-ac", "1",
+             "-ar", str(SPEECH_RATE), "-f", "s16le", "-"],
+            stdin=subprocess.DEVNULL, capture_output=True, timeout=PCM_TIMEOUT_SECONDS, creationflags=flags,
+            check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if done.returncode != 0 or not done.stdout:
+        return None
+    samples = array.array("h")
+    samples.frombytes(done.stdout[: len(done.stdout) // 2 * 2])
+    if sys.byteorder == "big":
+        samples.byteswap()
+    return samples
+
+
+def duck_points(windows: list[tuple[int, int]], level: float) -> list[tuple[int, float]]:
+    """The music's volume over the cut (µs, volume): ``level``, and ``MUSIC_DUCK_DB`` lower over each window, going
+    down over ``DUCK_DOWN`` before it and back up over ``DUCK_UP`` after. A ramp may start before 0 or end after the
+    cut; a segment's keyframes take the value where it begins and ends."""
+    low = round(level * 10 ** (-MUSIC_DUCK_DB / 20), 4)
+    points: list[tuple[int, float]] = []
+    for begin, end in windows:
+        for at, volume in ((begin - DUCK_DOWN, level), (begin, low), (end, low), (end + DUCK_UP, level)):
+            if points and points[-1][0] == at:
+                points[-1] = (at, volume)
+            else:
+                points.append((at, volume))
+    return points
+
+
+def _volume_at(points: list[tuple[int, float]], at: int) -> float:
+    for (start, before), (end, after) in itertools.pairwise(points):
+        if start <= at <= end:
+            return before if end == start else round(before + (after - before) * (at - start) / (end - start), 4)
+    return points[0][1] if at < points[0][0] else points[-1][1]
+
+
+def _music(script, plan: Plan, total: int, narration_length: int,
+           volume: Optional[float]) -> tuple[dict, list[str]]:
+    """The music as the cut lays it (hc-1285): from its start, joined again where it is shorter than the cut, faded,
+    at the cut's level unless the tool asks for another, ducked under the narration. Returns what the result says
+    about it, and notes."""
+    music = plan.music
+    material = draft.AudioMaterial(music.path)
+    start = round(music.start * SEC)
+    if not 0 <= start < material.duration:
+        raise PlanError(f"配乐起点 {music.start:g} 秒不在曲子里")
+    usable = material.duration - start
+    count = music_loop(usable, total)[0]
+    if count > MUSIC_MAX_PLAYS:
+        raise PlanError(f"配乐从第 {music.start:g} 秒起只有 {usable / SEC:.1f} 秒，要接 {count} 遍才够，换一首长一点的")
+    level = round(max(0.05, min(1.0, volume)) if volume is not None else 10 ** (music.gain_db / 20), 4)
+    windows, notes = [], []
+    if plan.narration and narration_length > 0:
+        samples = narration_samples(plan.narration, total)
+        if samples is None:  # duck under the whole narration: never louder than the cut where somebody speaks
+            windows, notes = [(0, narration_length)], ["量不出旁白在哪几段说话，草稿里配乐在整段旁白下都压低了"]
+        else:
+            windows = speech_windows(samples, 10 ** ((plan.narration_gain_db or 0.0) / 20))
+    points = duck_points(windows, level)
+    plays = music_plays(usable, total)
+    for lane in range(min(2, len(plays))):
+        script.append_track(draft.TrackSpec(draft.TrackType.audio, music_track(lane)))
+    for number, (at, length, fade_in, fade_out) in enumerate(plays):
+        segment = draft.AudioSegment(material, draft.Timerange(at, length),
+                                     source_timerange=draft.Timerange(start, length), volume=level)
+        if fade_in or fade_out:
+            segment.add_fade(fade_in, fade_out)
+        inner = [point for point in points if at < point[0] < at + length]
+        edges = [(at, _volume_at(points, at)), (at + length, _volume_at(points, at + length))] if points else []
+        if inner or any(value != level for _, value in edges):
+            # 剪映 keeps a keyframe's time in the file's own time: its runtime (11.8.0, Resources/canvas_agent/runtime/
+            # app-server.mjs) reads (time_offset - source_timerange.start) / speed as the time into the segment.
+            for when, value in [edges[0], *inner, edges[1]]:
+                segment.add_keyframe(start + when - at, value)
+        script.add_segment(segment, music_track(number % 2))
+    return {"plays": len(plays), "start": round(start / SEC, 2), "ducked": bool(windows)}, notes
 
 
 def effect_track(lane: int) -> str:
@@ -519,11 +755,13 @@ class Written:
     subtitles: int
     notes: list[str]
     effects: int = 0  # sound effects of the cut placed in the draft (hc-1258)
+    music: Optional[dict] = None  # how the music went in (hc-1285): plays, start, ducked
 
 
-def write(plan: Plan, root: Path, name: str, *, music: Optional[str] = None, music_volume: float = 0.3,
+def write(plan: Plan, root: Path, name: str, *, music_volume: Optional[float] = None,
           dissolve_after: Iterable[int] = (), subtitle_position: str = "bottom") -> Written:
-    """Write the draft into ``root`` under a free name and return where it went."""
+    """Write the draft into ``root`` under a free name and return where it went. The music is ``plan.music``; its
+    level is the cut's unless ``music_volume`` (0.05 to 1) asks for another."""
     final = free_folder(root, name)
     # 剪映 takes in any new folder under its draft folder within seconds, a hidden one too, and keeps what it saw
     # first. So the draft is put together beside that folder (same disk, never looked at) and renamed in whole.
@@ -534,12 +772,15 @@ def write(plan: Plan, root: Path, name: str, *, music: Optional[str] = None, mus
         script = draft.ScriptFile(plan.width, plan.height, plan.fps, True)
         script.append_track(draft.TrackSpec(draft.TrackType.video, "画面"))
         total, notes = _video_track(script, plan, set(dissolve_after))
+        narration_length = 0
         if plan.narration:
             volume, quieter = narration_volume(plan.narration_gain_db)
-            _audio(script, plan.narration, "旁白", total, volume, fade=False)
+            narration_length = _narration(script, plan.narration, total, volume)
             notes += [quieter] if quieter else []
-        if music:
-            _audio(script, music, "配乐", total, max(0.05, min(1.0, music_volume)), fade=True)
+        music = None
+        if plan.music:
+            music, said = _music(script, plan, total, narration_length, music_volume)
+            notes += said
         effects = _effects(script, plan, total)
         if effects and not plan.effects_under_voice:
             notes.append("这条片没有人说话：草稿不做整条的响度归一，音效按和现场声、配乐的比例放轻了，觉得轻就在剪映里把音效轨拉高")
@@ -555,7 +796,7 @@ def write(plan: Plan, root: Path, name: str, *, music: Optional[str] = None, mus
     finally:
         shutil.rmtree(holder, ignore_errors=True)
     return Written(folder=final, duration_us=total, shots=len(plan.shots), subtitles=placed, notes=plan.notes + notes,
-                   effects=effects)
+                   effects=effects, music=music)
 
 
 def check_written(folder: Path) -> Optional[str]:

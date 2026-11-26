@@ -1,13 +1,17 @@
 """hc-1219 A 剪映 draft from the short-video pipeline's cut list (apex_overlay/jianying_build.py).
 
 Media are probed through the vendored library's ffprobe stand-in; here it answers from a table, so the tests need no
-ffprobe and no real video.
+ffprobe and no real video. The narration the music ducks under (hc-1285) is read as samples made from a table too;
+one test reads a real file through ffmpeg when there is one.
 """
 
 from __future__ import annotations
 
+import array
 import json
+import math
 import os
+import wave
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -25,12 +29,30 @@ MEDIA = {
     "card.png": ("image", 0.0, 1080, 1920),
     "voice.m4a": ("audio", 14.0, 0, 0),
     "music.m4a": ("audio", 30.0, 0, 0),
+    # hc-1285: a piece shorter than the 10.5 s cut, joined again to fill it
+    "short.m4a": ("audio", 4.0, 0, 0),
     # hc-1258: the sound effects assemble synthesizes beside a cut
     "pop-lo.wav": ("audio", 0.14, 0, 0),
     "ding.wav": ("audio", 1.1, 0, 0),
     "riser.wav": ("audio", 1.3, 0, 0),
     "outro-chime.wav": ("audio", 1.47, 0, 0),
 }
+#: name -> where the narration speaks (seconds)
+SPEECH = {"voice.m4a": [(0.5, 4.0), (6.0, 9.0)]}
+#: An RMS well above the cut's ducking threshold (0.02 of full scale) at any gain the tests use.
+SPEAKING = round(0.1 * 32768)
+#: assemble's default music level, -10 dB, as a draft volume; and 19 dB under it while the narration speaks.
+MUSIC_LEVEL = 0.3162
+MUSIC_DUCKED = 0.0355
+
+
+def _pcm(spans, seconds: float, level: int = SPEAKING, rate: int = build.SPEECH_RATE) -> array.array:
+    """16-bit mono samples, silent but for a square wave of RMS ``level`` over ``spans``."""
+    samples = array.array("h", bytes(2 * round(seconds * rate)))
+    for begin, end in spans:
+        for at in range(round(begin * rate), min(len(samples), round(end * rate))):
+            samples[at] = level if at % 2 else -level
+    return samples
 
 
 @pytest.fixture
@@ -50,6 +72,12 @@ def media(tmp_path, monkeypatch):
     monkeypatch.setattr(_apex_probe.MediaInfo, "parse", classmethod(lambda cls, path, mediainfo_options=None:
                                                                      parse(path)))
     monkeypatch.setattr(_apex_probe.MediaInfo, "can_parse", staticmethod(lambda: True))
+
+    def samples(path, total):
+        name = os.path.basename(path)
+        return _pcm(SPEECH.get(name, []), min(MEDIA[name][1], total / SEC))
+
+    monkeypatch.setattr(build, "narration_samples", samples)
     return folder
 
 
@@ -142,12 +170,12 @@ def test_a_name_in_use_or_still_listed_by_jianying_is_not_reused(tmp_path):
     assert build.free_folder(root, "新的") == root / "新的"
 
 
-def _write(media, tmp_path, **kwargs):
+def _write(media, tmp_path, music: str = "music.m4a", **kwargs):
     root = tmp_path / "Projects" / "com.lveditor.draft"
     root.mkdir(parents=True)
-    plan = build.load_plan(_timeline(media, subtitles="字幕.srt", narration="voice.m4a"))
     (media / "字幕.srt").write_text(SRT, encoding="utf-8")
-    written = build.write(plan, root, "测试成片", music=str(media / "music.m4a"), **kwargs)
+    plan = build.load_plan(_timeline(media, subtitles="字幕.srt", narration="voice.m4a"), music=str(media / music))
+    written = build.write(plan, root, "测试成片", **kwargs)
     timeline = json.loads((written.folder / "draft_info.json").read_text(encoding="utf-8"))
     meta = json.loads((written.folder / "draft_meta_info.json").read_text(encoding="utf-8"))
     return root, written, timeline, meta
@@ -201,6 +229,8 @@ def test_the_cuts_sound_and_subtitles_follow_the_plan(media, tmp_path):
     assert [s["volume"] for s in tracks["旁白"]["segments"]] == [1.0]
     music = tracks["配乐"]["segments"]
     assert music[0]["target_timerange"]["duration"] == written.duration_us  # cut to the video's length
+    # Neither the timeline nor a cut sets its level: assemble's default, -10 dB (hc-1285).
+    assert [s["volume"] for s in music] == [MUSIC_LEVEL]
 
     texts = tracks[build.SUBTITLE_TRACK]["segments"]
     assert [(s["target_timerange"]["start"], s["target_timerange"]["duration"]) for s in texts] == [
@@ -395,7 +425,7 @@ def test_the_narration_is_as_loud_as_in_the_cut(media, tmp_path, reports, volume
     assert [s["volume"] for s in tracks["旁白"]["segments"]] == [pytest.approx(volume, abs=1e-4)]
     # The footage's own sound and the music are not the narration: they stay where they were.
     assert {s["volume"] for s in tracks["画面"]["segments"]} == {build.CLIP_VOLUME["under_narration"]}
-    assert [s["volume"] for s in tracks["配乐"]["segments"]] == [0.3]
+    assert [s["volume"] for s in tracks["配乐"]["segments"]] == [MUSIC_LEVEL]
     assert written.notes == []
 
 
@@ -504,7 +534,7 @@ def test_the_cuts_sound_effects_get_tracks_of_their_own_at_the_cuts_times_and_le
     assert (written.effects, written.notes) == (5, [])
     # The narration and the music are where they were without effects.
     assert [s["volume"] for s in tracks["旁白"]] == [pytest.approx(10 ** (7.43 / 20), abs=1e-4)]
-    assert [s["volume"] for s in tracks["配乐"]] == [0.3]
+    assert [s["volume"] for s in tracks["配乐"]] == [MUSIC_LEVEL]
 
 
 def test_an_effect_whose_head_was_cut_off_starts_inside_its_file(media, tmp_path):
@@ -630,3 +660,267 @@ def test_the_tool_result_names_the_effects_only_when_the_draft_has_them(media, t
     result = jianying_draft.write_draft({"timeline": timeline, "name": "有音效"})
     assert result["draft"]["sfx"] == 2 and result["changes"] == []
     assert json.loads(jianying_draft.handle({"timeline": timeline, "name": "再来"}))["draft"]["sfx"] == 2
+
+
+# hc-1285: the music is laid as in the cut. ``assemble`` (apex-nodes short-video-studio footage_assemble.py) plays it
+# from ``music_start`` at ``music_gain`` dB, joins it again with a crossfade where it is shorter than the cut, fades
+# the ends and ducks it under the narration; the cut's report lists ``music.file``, ``gain_db`` and ``start``.
+
+
+def _music_report(folder: Path, *, file: str = "music.m4a", gain_db: float = -14.0, start: float = 12.0,
+                  **overrides) -> None:
+    _report(folder, "成片", music={"file": str(folder / file), "gain_db": gain_db, "start": start,
+                                   "ducked_under_narration": True, "plays": 1, "loop_crossfade": 0.0}, **overrides)
+
+
+def _volume_keyframes(segment: dict) -> list[tuple[int, float]]:
+    return [(point["time_offset"], point["values"][0]) for points in segment["common_keyframes"]
+            if points["property_type"] == "KFTypeVolume" for point in points["keyframe_list"]]
+
+
+def _fades(timeline: dict, segments: list[dict]) -> list[tuple[int, int]]:
+    fades = {f["id"]: (f["fade_in_duration"], f["fade_out_duration"]) for f in timeline["materials"]["audio_fades"]}
+    return [next(fades[ref] for ref in s["extra_material_refs"] if ref in fades) for s in segments]
+
+
+def _music_segments(timeline: dict) -> list[dict]:
+    tracks = _tracks(timeline)
+    return sorted(tracks.get("配乐", []) + tracks.get("配乐 2", []), key=lambda s: s["target_timerange"]["start"])
+
+
+@pytest.mark.parametrize(
+    ("usable", "total", "plays"),
+    [
+        pytest.param(30.0, 10.5, [(0.0, 10.5, 0.5, 1.5)], id="longer than the cut: one play"),
+        pytest.param(10.5, 10.5, [(0.0, 10.5, 0.5, 1.5)], id="as long as the cut"),
+        pytest.param(4.0, 2.0, [(0.0, 2.0, 0.5, 0.5)], id="a short cut fades a quarter of itself"),
+        pytest.param(30.0, 70.0, [(0.0, 30.0, 0.5, 2.0), (28.0, 30.0, 2.0, 2.0), (56.0, 14.0, 2.0, 1.5)],
+                     id="2 s crossfades"),
+        pytest.param(4.0, 10.5, [(0.0, 4.0, 0.5, 1.0), (3.0, 4.0, 1.0, 1.0), (6.0, 4.0, 1.0, 1.0),
+                                 (9.0, 1.5, 1.0, 0.5)], id="a piece under 8 s crossfades a quarter of itself"),
+    ],
+)
+def test_the_music_is_joined_where_assemble_joins_it(usable, total, plays):
+    """(start in the cut, length, fade in, fade out). assemble's music_loop gives 3 plays for 30 s in 70 s and 4 for
+    4 s in 10.5 s; a short last play keeps its seam's crossfade and fades out over what is left."""
+    assert build.music_plays(round(usable * SEC), round(total * SEC)) == [
+        tuple(round(value * SEC) for value in play) for play in plays]
+
+
+def test_music_shorter_than_the_cut_is_joined_on_two_tracks_crossfading_at_the_seams(media, tmp_path):
+    _, written, timeline, _ = _write(media, tmp_path, music="short.m4a")
+    tracks = _tracks(timeline)
+    assert list(tracks) == ["画面", "旁白", "配乐", "配乐 2", build.SUBTITLE_TRACK]
+    # Plays overlap at the seams, and segments may not overlap on one track: they take turns.
+    assert _spans(tracks["配乐"]) == [(0, 4 * SEC), (6 * SEC, 4 * SEC)]
+    assert _spans(tracks["配乐 2"]) == [(3 * SEC, 4 * SEC), (9 * SEC, 1_500_000)]
+    plays = _music_segments(timeline)
+    assert {s["source_timerange"]["start"] for s in plays} == {0}
+    assert _fades(timeline, plays) == [(500_000, SEC), (SEC, SEC), (SEC, SEC), (SEC, 500_000)]
+    assert written.music == {"plays": 4, "start": 0.0, "ducked": True}
+    assert [p.name for p in (written.folder / "materials").iterdir()].count("short.m4a") == 1
+    assert build.check_written(written.folder) is None
+
+
+def test_the_music_ducks_under_the_narration_with_keyframes_in_the_files_own_time(media, tmp_path):
+    """The narration speaks over 0.5–4 s and 6–9 s. The music, from 12 s into its file at the cut's -14 dB, goes 19 dB
+    down over 50 ms before each and comes back over 550 ms after. 剪映 reads a keyframe's time as time in the file:
+    12 s here is the segment's first moment."""
+    _music_report(media)
+    _, written, timeline, _ = _write(media, tmp_path)
+    [music] = _tracks(timeline)["配乐"]
+    level, low = 0.1995, 0.0224  # -14 dB, and 19 dB under it
+    assert (music["source_timerange"], music["volume"]) == ({"start": 12 * SEC, "duration": 10_500_000}, level)
+    assert _volume_keyframes(music) == [
+        (12_000_000, level), (12_450_000, level), (12_500_000, low), (16_000_000, low), (16_550_000, level),
+        (17_950_000, level), (18_000_000, low), (21_000_000, low), (21_550_000, level), (22_500_000, level)]
+    assert written.music == {"plays": 1, "start": 12.0, "ducked": True}
+    assert written.notes == []
+
+
+def test_each_play_carries_the_ducking_of_its_own_stretch_of_the_cut(media, tmp_path):
+    """4 s of music from 1 s into it fill the 10.5 s cut in five plays, each from 1 s into the file. The last play
+    (9–10.5 s) starts while the music is down for the narration and comes back up 0.55 s later."""
+    root = tmp_path / "drafts"
+    root.mkdir()
+    plan = build.load_plan(_timeline(media, narration="voice.m4a", music_start=1.0), music=str(media / "short.m4a"))
+    written = build.write(plan, root, "接起来")
+    timeline = json.loads((written.folder / "draft_info.json").read_text(encoding="utf-8"))
+    plays = _music_segments(timeline)
+    assert _spans(plays) == [(0, 3 * SEC), (2_250_000, 3 * SEC), (4_500_000, 3 * SEC), (6_750_000, 3 * SEC),
+                             (9 * SEC, 1_500_000)]
+    assert {s["source_timerange"]["start"] for s in plays} == {SEC}
+    assert _volume_keyframes(plays[-1]) == [(1_000_000, MUSIC_DUCKED), (1_550_000, MUSIC_LEVEL),
+                                            (2_500_000, MUSIC_LEVEL)]
+    # The second play (2.25–5.25 s) leaves the first stretch of narration and is back up before the second.
+    assert _volume_keyframes(plays[1]) == [(1_000_000, MUSIC_DUCKED), (2_750_000, MUSIC_DUCKED),
+                                           (3_300_000, MUSIC_LEVEL), (4_000_000, MUSIC_LEVEL)]
+    assert written.music == {"plays": 5, "start": 1.0, "ducked": True}
+
+
+@pytest.mark.parametrize(
+    ("spans", "level", "gain_db", "windows"),
+    [
+        pytest.param([(0.5, 4.0), (6.0, 9.0)], SPEAKING, 0.0, [(0.5, 4.0), (6.0, 9.0)], id="two stretches"),
+        pytest.param([(0.5, 2.0), (2.55, 4.0)], SPEAKING, 0.0, [(0.5, 4.0)],
+                     id="a pause shorter than the two ramps is bridged"),
+        pytest.param([(0.5, 2.0), (2.6, 4.0)], SPEAKING, 0.0, [(0.5, 2.0), (2.6, 4.0)], id="one as long is not"),
+        pytest.param([(1.0, 3.0)], round(0.015 * 32768), 0.0, [], id="under the threshold"),
+        pytest.param([(1.0, 3.0)], round(0.015 * 32768), 7.43, [(1.0, 3.0)],
+                     id="over it with the narration's gain in the cut"),
+        pytest.param([], SPEAKING, 0.0, [], id="silence"),
+    ],
+)
+def test_where_the_narration_speaks_is_where_the_cuts_compressor_hears_it(spans, level, gain_db, windows):
+    """The cut keys its compressor on the narration after its gain, threshold 0.02 of full scale."""
+    assert build.speech_windows(_pcm(spans, 10.5, level), 10 ** (gain_db / 20)) == [
+        (round(begin * SEC), round(end * SEC)) for begin, end in windows]
+
+
+def test_a_ramp_that_would_start_before_the_cut_starts_part_way_down():
+    points = build.duck_points([(20_000, 2 * SEC)], 1.0)
+    assert points == [(-30_000, 1.0), (20_000, 0.1122), (2 * SEC, 0.1122), (2_550_000, 1.0)]
+    assert build._volume_at(points, 0) == pytest.approx(1.0 - (1.0 - 0.1122) * 30 / 50, abs=1e-4)
+
+
+def test_without_a_reading_of_the_narration_the_music_stays_down_under_all_of_it_and_says_so(media, tmp_path,
+                                                                                                monkeypatch):
+    monkeypatch.setattr(build, "narration_samples", lambda path, total: None)
+    _, written, timeline, _ = _write(media, tmp_path)
+    [music] = _tracks(timeline)["配乐"]
+    assert (music["volume"], _volume_keyframes(music)) == (MUSIC_LEVEL, [(0, MUSIC_DUCKED), (10_500_000, MUSIC_DUCKED)])
+    assert written.notes == ["量不出旁白在哪几段说话，草稿里配乐在整段旁白下都压低了"]
+    assert written.music == {"plays": 1, "start": 0.0, "ducked": True}
+
+
+def test_without_narration_the_music_keeps_its_level_and_nothing_is_measured(media, tmp_path, monkeypatch):
+    monkeypatch.setattr(build, "narration_samples", lambda path, total: pytest.fail("measured without narration"))
+    root = tmp_path / "drafts"
+    root.mkdir()
+    written = build.write(build.load_plan(_timeline(media), music=str(media / "music.m4a")), root, "没旁白")
+    timeline = json.loads((written.folder / "draft_info.json").read_text(encoding="utf-8"))
+    [music] = _tracks(timeline)["配乐"]
+    assert (music["volume"], music["common_keyframes"]) == (MUSIC_LEVEL, [])
+    assert written.music == {"plays": 1, "start": 0.0, "ducked": False}
+
+
+@pytest.mark.parametrize(
+    ("settings", "report", "chosen", "start", "volume"),
+    [
+        pytest.param({}, None, "music.m4a", 0.0, MUSIC_LEVEL, id="nothing says: from 0 at -10 dB"),
+        pytest.param({}, {}, "music.m4a", 12.0, 0.1995, id="the cut's report"),
+        pytest.param({"music": "music.m4a", "music_start": 5.0, "music_gain": -6.0}, {}, "music.m4a", 12.0, 0.1995,
+                     id="the report over the timeline: assemble --music-start overrode it"),
+        pytest.param({}, {"file": "short.m4a", "start": 1.0}, "music.m4a", 0.0, MUSIC_LEVEL,
+                     id="the cut's music is another file"),
+        pytest.param({}, {"shots": [dict(ASSEMBLED_SHOTS[0])]}, "music.m4a", 0.0, MUSIC_LEVEL,
+                     id="the report of another cut"),
+        pytest.param({"music_start": 5.0, "music_gain": -6.0}, None, "music.m4a", 5.0, 0.5012,
+                     id="the timeline names no file: assemble --music takes its start and level"),
+        pytest.param({"music": "music.m4a", "music_start": 5.0, "music_gain": -6.0}, None, None, 5.0, 0.5012,
+                     id="the timeline's music when the tool names none"),
+        pytest.param({"music": "short.m4a", "music_start": 1.0, "music_gain": -6.0}, None, "music.m4a", 0.0,
+                     MUSIC_LEVEL, id="the timeline's start and level are another file's"),
+    ],
+)
+def test_the_musics_start_and_level_are_the_cuts(media, tmp_path, settings, report, chosen, start, volume):
+    if report is not None:
+        _music_report(media, **report)
+    root = tmp_path / "drafts"
+    root.mkdir()
+    plan = build.load_plan(_timeline(media, narration="voice.m4a", **settings),
+                           music=str(media / chosen) if chosen else None)
+    written = build.write(plan, root, "配乐")
+    timeline = json.loads((written.folder / "draft_info.json").read_text(encoding="utf-8"))
+    [music] = _tracks(timeline)["配乐"]
+    assert (music["source_timerange"]["start"], music["volume"]) == (round(start * SEC), volume)
+    assert written.music["start"] == start
+
+
+@pytest.mark.parametrize(
+    ("settings", "chosen", "message"),
+    [
+        pytest.param({"music_start": 30.0}, "music.m4a", "配乐起点 30 秒不在曲子里", id="start at the end"),
+        pytest.param({"music_start": -1}, "music.m4a", "配乐起点 -1 秒不在曲子里", id="start before it"),
+        pytest.param({"music_start": 29.9}, "music.m4a", "配乐从第 29.9 秒起只有 0.1 秒，要接 140 遍才够，换一首长一点的",
+                     id="more than 100 plays"),
+        pytest.param({"music_gain": -40}, "music.m4a", "配乐音量要在 -30 到 0 dB 之间,收到 -40", id="gain too low"),
+        pytest.param({"music_gain": 3}, "music.m4a", "配乐音量要在 -30 到 0 dB 之间,收到 3", id="gain above 0"),
+        pytest.param({"music_start": "开头"}, "music.m4a", "时间轴里的 music_start 不是数", id="start not a number"),
+        pytest.param({}, "nope.m4a", "找不到文件：nope.m4a", id="no such file"),
+    ],
+)
+def test_music_assemble_would_refuse_is_refused_the_same_way(media, tmp_path, settings, chosen, message):
+    root = tmp_path / "drafts"
+    root.mkdir()
+    with pytest.raises(build.PlanError, match=message):
+        plan = build.load_plan(_timeline(media, **settings), music=str(media / chosen))
+        build.write(plan, root, "不行")
+    assert list(root.iterdir()) == []
+    assert not list(root.parent.glob(".apex-jianying-*")), "nothing is left beside the draft folder"
+
+
+def test_the_tool_result_says_how_the_music_went_in_only_when_there_is_music(media, tmp_path, monkeypatch):
+    from apex_overlay import jianying_draft
+
+    monkeypatch.setenv(jianying_draft.SWITCH_ENV, "1")
+    root = tmp_path / "Projects" / "com.lveditor.draft"
+    root.mkdir(parents=True)
+    found = jianying_install.Installation(app=tmp_path / "app", version="11.8.0", user_data=tmp_path, draft_root=root)
+    monkeypatch.setattr(jianying_install, "find", lambda *a, **k: found)
+    monkeypatch.setattr(jianying_install, "running", lambda *a, **k: False)
+
+    timeline = _timeline(media, narration="voice.m4a")
+    assert "music" not in jianying_draft.write_draft({"timeline": timeline, "name": "没配乐"})["draft"]
+    result = jianying_draft.write_draft({"timeline": timeline, "name": "有配乐", "music": str(media / "short.m4a")})
+    assert result["draft"]["music"] == {"plays": 4, "start": 0.0, "ducked": True}
+    # The timeline's music when the tool names none, as with its subtitles and narration.
+    timeline = _timeline(media, narration="voice.m4a", music="music.m4a", music_start=2.0)
+    result = jianying_draft.write_draft({"timeline": timeline, "name": "时间轴的配乐"})
+    assert (result["draft"]["music"], result["changes"]) == ({"plays": 1, "start": 2.0, "ducked": True}, [])
+    # A level the user asks for wins over the cut's.
+    jianying_draft.write_draft({"timeline": timeline, "name": "轻一点", "music_volume": 0.1})
+    draft = json.loads((root / "轻一点" / "draft_info.json").read_text(encoding="utf-8"))
+    assert [s["volume"] for s in _tracks(draft)["配乐"]] == [0.1]
+
+
+def test_ffmpeg_is_the_one_beside_the_librarys_ffprobe_then_the_platform_resolvers(tmp_path, monkeypatch):
+    probe = tmp_path / "bin" / "ffprobe"
+    probe.parent.mkdir()
+    probe.write_bytes(b"")
+    beside = probe.with_name("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+    beside.write_bytes(b"")
+    asked = []
+    monkeypatch.setattr(_apex_probe, "_ffprobe", lambda: str(probe))
+    monkeypatch.setattr("hermes_platform.resolver.locate_command",
+                        lambda name: asked.append(name) or SimpleNamespace(command=("/somewhere/ffmpeg",)))
+    assert build._ffmpeg() == str(beside)
+    beside.unlink()
+    assert build._ffmpeg() == "/somewhere/ffmpeg"
+    monkeypatch.setattr(_apex_probe, "_ffprobe", lambda: None)
+    assert build._ffmpeg() == "/somewhere/ffmpeg"
+    monkeypatch.setattr("hermes_platform.resolver.locate_command", lambda name: SimpleNamespace(command=()))
+    assert build._ffmpeg() is None
+    assert build.narration_samples(str(tmp_path / "旁白.wav"), SEC) is None
+    assert asked == ["ffmpeg", "ffmpeg"]
+
+
+def test_a_real_narration_is_read_through_ffmpeg(tmp_path):
+    """Stereo 16 kHz, a tone over 0.5–1.5 s and 2.2–2.8 s; read for the first 2.5 s of the cut."""
+    if build._ffmpeg() is None:
+        pytest.skip("no ffmpeg on this machine")
+    path = tmp_path / "旁白.wav"
+    rate = 16_000
+    frames = array.array("h")
+    for n in range(3 * rate):
+        speaking = 0.5 <= n / rate < 1.5 or 2.2 <= n / rate < 2.8
+        value = round(0.3 * 32767 * math.sin(2 * math.pi * 220 * n / rate)) if speaking else 0
+        frames.extend((value, value))
+    with wave.open(str(path), "wb") as out:
+        out.setnchannels(2)
+        out.setsampwidth(2)
+        out.setframerate(rate)
+        out.writeframes(frames.tobytes())
+    samples = build.narration_samples(str(path), 2_500_000)
+    assert len(samples) == pytest.approx(2.5 * build.SPEECH_RATE, abs=build.SPEECH_RATE // 100)
+    assert build.speech_windows(samples, 1.0) == [(500_000, 1_500_000), (2_200_000, 2_500_000)]
