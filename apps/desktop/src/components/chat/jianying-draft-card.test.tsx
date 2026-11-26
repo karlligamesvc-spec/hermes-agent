@@ -67,11 +67,18 @@ describe('reading the tool part', () => {
     expect([processKind(live), processKind(reloaded), processKind(other)]).toEqual(['card', 'card', 'activity'])
   })
 
-  it('knows the versions APEX tried, per platform', () => {
-    expect(jianyingVersionVerified('darwin', '11.7.0')).toBe(true)
-    expect(jianyingVersionVerified('darwin', '11.8.0')).toBe(false)
-    expect(jianyingVersionVerified('win32', '11.7.0')).toBe(false)
-    expect(jianyingVersionVerified('darwin', '')).toBe(false)
+  it.each([
+    ['darwin', '11.7.0', true],
+    ['darwin', '11.8.0', false],
+    ['win32', '11.7.0.14652', true],
+    // Windows reports the build folder: only that exact build counts, not its prefix or another build.
+    ['win32', '11.7.0', false],
+    ['win32', '11.7.0.14700', false],
+    // Each platform keeps its own list.
+    ['darwin', '11.7.0.14652', false],
+    ['darwin', '', false]
+  ])('knows the versions APEX tried, per platform: %s %j', (platform, version, expected) => {
+    expect(jianyingVersionVerified(platform, version)).toBe(expected)
   })
 })
 
@@ -142,6 +149,13 @@ describe('the card', () => {
     renderCard(draft({ platform: 'win32' }))
 
     expect(screen.getByText(/剪好后点右上角「导出」，再点「导出」/)).toBeTruthy()
+  })
+
+  it('Windows 剪映 11.7.0.14652 is a version APEX tried: no 「还没试过」 line', () => {
+    const { container } = renderCard(draft({ platform: 'win32', version: '11.7.0.14652' }))
+
+    expect(screen.getByText(/剪好后点右上角「导出」/)).toBeTruthy()
+    expect(container.querySelector('[data-slot="aui_jianying-draft-unverified"]')).toBeNull()
   })
 
   it('a draft 剪映 did not take in says so and offers no button', () => {
