@@ -1431,6 +1431,9 @@ skills:
     # back, and an installed skill is on unless it is named here.
     - godmode
     - obliteratus
+    # ── INVENTS (hc-1293) — upstream humanizer 2.5.1: its examples add sources,
+    # years, quotes and feelings the draft never had. APEX polishes with text-polish.
+    - humanizer
 
   # Gate the background self-improvement review's skill writes.
   # The review forks the agent in a daemon thread with no user present; by
