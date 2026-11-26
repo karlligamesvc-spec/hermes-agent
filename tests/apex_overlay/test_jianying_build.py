@@ -45,8 +45,8 @@ SPEAKING = round(0.1 * 32768)
 #: assemble's default music level, -10 dB, as a draft volume; and 19 dB under it while the narration speaks.
 MUSIC_LEVEL = 0.3162
 MUSIC_DUCKED = 0.0355
-#: The footage's own sound as recorded, 18 dB down while the narration speaks (hc-1290).
-LIVE_DUCKED = 0.1259
+#: The footage's own sound as recorded, 10 dB down while the narration speaks (hc-1290; 18 dB before hc-1291).
+LIVE_DUCKED = 0.3162
 
 
 def _pcm(spans, seconds: float, level: int = SPEAKING, rate: int = build.SPEECH_RATE) -> array.array:
@@ -793,7 +793,7 @@ def test_without_a_reading_of_the_narration_the_music_and_the_footage_stay_down_
     tracks = _tracks(timeline)
     [music] = tracks["配乐"]
     assert (music["volume"], _volume_keyframes(music)) == (MUSIC_LEVEL, [(0, MUSIC_DUCKED), (10_500_000, MUSIC_DUCKED)])
-    # The shots with sound, 18 dB down from end to end in their files' own time (tall.mp4 from 0.5 s, wide.mp4 from 1 s).
+    # The shots with sound, 10 dB down from end to end in their files' own time (tall.mp4 from 0.5 s, wide.mp4 from 1 s).
     assert [_volume_keyframes(s) for s in tracks["画面"]] == [
         [(500_000, LIVE_DUCKED), (3_500_000, LIVE_DUCKED)], [(1_000_000, LIVE_DUCKED), (5_500_000, LIVE_DUCKED)], []]
     assert written.notes == ["量不出旁白在哪几段说话，草稿里现场声和配乐在整段旁白下都压低了"]
@@ -936,7 +936,8 @@ def test_a_real_narration_is_read_through_ffmpeg(tmp_path):
 
 # hc-1290: the footage's own sound is as in the cut. ``assemble`` brings each shot's sound part of the way toward one
 # RMS level (``shots[].gain_db`` in the report, apex-nodes short-video-studio footage_assemble.py plan_assembly) and
-# ducks it under the narration with ``sidechaincompress=threshold=0.02:ratio=6:attack=20:release=400``.
+# ducks it under the narration with ``sidechaincompress=threshold=0.02:ratio=2:attack=20:release=400`` (ratio 6 before
+# hc-1291).
 
 
 def _shot_gains(folder: Path, gains: list, *, name: str = "成片", age: float = 0.0, **overrides) -> None:
@@ -974,16 +975,16 @@ def test_a_shots_volume_is_the_cuts_gain_up_to_jianyings_ceiling(gain_db, volume
 
 def test_the_footage_ducks_under_the_narration_with_keyframes_in_its_files_own_time(media, tmp_path):
     """The narration speaks over 0.5–4 s and 6–9 s. tall.mp4 plays 0–3 s of the cut from 0.5 s into its file at the
-    cut's -6 dB, wide.mp4 3–7.5 s from 1 s in at +3 dB: each goes 18 dB down over 50 ms before each stretch and comes
+    cut's -6 dB, wide.mp4 3–7.5 s from 1 s in at +3 dB: each goes 10 dB down over 50 ms before each stretch and comes
     back over 550 ms after, every keyframe at its time in the file. card.png has no sound."""
     _shot_gains(media, [-6.0, 3.0, 0.0])
     _, written, timeline, _ = _write(media, tmp_path)
     tall, wide, card = _tracks(timeline)["画面"]
     assert (tall["volume"], _volume_keyframes(tall)) == (0.5012, [
-        (500_000, 0.5012), (950_000, 0.5012), (1_000_000, 0.0631), (3_500_000, 0.0631)])
+        (500_000, 0.5012), (950_000, 0.5012), (1_000_000, 0.1585), (3_500_000, 0.1585)])
     assert (wide["volume"], _volume_keyframes(wide)) == (1.4125, [
-        (1_000_000, 0.1778), (2_000_000, 0.1778), (2_550_000, 1.4125), (3_950_000, 1.4125), (4_000_000, 0.1778),
-        (5_500_000, 0.1778)])
+        (1_000_000, 0.4467), (2_000_000, 0.4467), (2_550_000, 1.4125), (3_950_000, 1.4125), (4_000_000, 0.4467),
+        (5_500_000, 0.4467)])
     assert (card["volume"], card["common_keyframes"]) == (1.0, [])
     # The music goes down over the same stretches, 19 dB.
     [music] = _tracks(timeline)["配乐"]
@@ -1043,7 +1044,7 @@ def test_the_note_on_an_unread_narration_names_what_stays_down(media, tmp_path, 
     assert written.notes == [f"量不出旁白在哪几段说话，草稿里{ducked}在整段旁白下都压低了"]
 
 
-#: 1.0 with a window over 2–4 s, 18 dB down: down from 1.95 s, back up by 4.55 s.
+#: 1.0 with a window over 2–4 s, 10 dB down: down from 1.95 s, back up by 4.55 s.
 LIVE_POINTS = build.duck_points([(2 * SEC, 4 * SEC)], 1.0, build.LIVE_DUCK_DB)
 
 
