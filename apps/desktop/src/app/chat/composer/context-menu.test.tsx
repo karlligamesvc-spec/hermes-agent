@@ -4,11 +4,12 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { saveHermesConfig } from '@/api/config'
 import { $authState } from '@/store/auth'
+import { notifyError } from '@/store/notifications'
 import type { SkillInfo } from '@/types/hermes'
 
 import { ContextMenu, GenerationModelIcon } from './context-menu'
 import { requestComposerInsert } from './focus'
-import { generationModels } from './generation-models'
+import { generationModels, STARTUP_SAVE_RETRY_MS } from './generation-models'
 import type { ChatBarState } from './types'
 
 const getSkills = vi.fn()
@@ -245,9 +246,13 @@ describe('ContextMenu — generation rows in tier mode', () => {
     renderMenu({ folded: true })
 
     await waitFor(() =>
-      expect(saveHermesConfig).toHaveBeenCalledWith({ apex: { generation_image_model: 'gpt-image-2.5-flare' } })
+      expect(saveHermesConfig).toHaveBeenCalledWith({
+        apex: { generation_image_model: 'gpt-image-2.5-flare', generation_model_choice: 'assistant' }
+      })
     )
-    expect(saveHermesConfig).not.toHaveBeenCalledWith({ apex: { generation_image_model: 'qwen-image-3.0-pro' } })
+    expect(saveHermesConfig).not.toHaveBeenCalledWith({
+      apex: expect.objectContaining({ generation_image_model: 'qwen-image-3.0-pro' })
+    })
   })
 
   // hc-1046: with the pickers hidden the saved default is not a choice, so the
@@ -259,7 +264,7 @@ describe('ContextMenu — generation rows in tier mode', () => {
     await waitFor(() =>
       expect(saveHermesConfig).toHaveBeenCalledWith({ apex: { generation_model_choice: 'assistant' } })
     )
-    expect(saveHermesConfig).not.toHaveBeenCalledWith({ apex: { generation_model_choice: 'user' } })
+    expect(saveHermesConfig).not.toHaveBeenCalledWith({ apex: expect.objectContaining({ generation_model_choice: 'user' }) })
   })
 
   // The twin: outside tier mode (switch off, or the user's own key) the pickers,
@@ -269,7 +274,9 @@ describe('ContextMenu — generation rows in tier mode', () => {
     renderMenu({ folded: true })
 
     await waitFor(() =>
-      expect(saveHermesConfig).toHaveBeenCalledWith({ apex: { generation_image_model: 'qwen-image-3.0-pro' } })
+      expect(saveHermesConfig).toHaveBeenCalledWith({
+        apex: { generation_image_model: 'qwen-image-3.0-pro', generation_model_choice: 'user' }
+      })
     )
     openMenu()
 
@@ -277,8 +284,38 @@ describe('ContextMenu — generation rows in tier mode', () => {
 
     expect(image.getAttribute('aria-haspopup')).toBe('menu')
     expect(image.textContent).toContain('Qwen Image 3.0 Pro')
-    expect(saveHermesConfig).toHaveBeenCalledWith({ apex: { generation_model_choice: 'user' } })
-    expect(saveHermesConfig).not.toHaveBeenCalledWith({ apex: { generation_model_choice: 'assistant' } })
+    expect(saveHermesConfig).not.toHaveBeenCalledWith({
+      apex: expect.objectContaining({ generation_model_choice: 'assistant' })
+    })
+  })
+})
+
+// hc-1299: when a signed-in APEX account starts, Desktop's relay-key check fences
+// every config write in flight, the composer's start-up write among them. The
+// engine answers that write 409 model_mutation_superseded; the user changed
+// nothing, so no 「自动保存失败」 may show, and the write lands on its retry.
+describe('ContextMenu — start-up write superseded by the relay-key check (hc-1299)', () => {
+  it('retries the same write once and shows no error', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+
+    try {
+      vi.mocked(saveHermesConfig).mockRejectedValueOnce(
+        new Error(`Error invoking remote method 'hermes:api': Error: 409: {"detail":{"code":"model_mutation_superseded"}}`)
+      )
+      setTierMode()
+      renderMenu({ folded: true })
+
+      await waitFor(() => expect(saveHermesConfig).toHaveBeenCalled())
+      await vi.advanceTimersByTimeAsync(STARTUP_SAVE_RETRY_MS)
+      expect(notifyError).not.toHaveBeenCalled()
+      await waitFor(() => expect(vi.mocked(saveHermesConfig).mock.calls.length).toBeGreaterThanOrEqual(2))
+
+      const [first, retry] = vi.mocked(saveHermesConfig).mock.calls
+      expect(retry).toEqual(first)
+      expect(notifyError).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

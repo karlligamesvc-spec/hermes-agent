@@ -6,11 +6,12 @@ import {
   generationStarter,
   IMAGE_GENERATION_MODELS,
   previouslySelectedImageModel,
-  saveGenerationModelChoice,
   saveImageGenerationModel,
+  saveStartupGenerationPreferences,
   saveVideoGenerationModel,
   selectedGenerationModel,
   selectGenerationModel,
+  STARTUP_SAVE_RETRY_MS,
   startupGenerationModel,
   VIDEO_GENERATION_MODELS
 } from './generation-models'
@@ -155,23 +156,35 @@ describe('video model runtime binding', () => {
   })
 })
 
-// hc-1046: the media tools read who picks: the assistant while the pickers are
-// hidden, the user's saved pick while they are shown.
-describe('saveGenerationModelChoice', () => {
-  beforeEach(() => vi.clearAllMocks())
-
-  it.each([
-    [true, 'assistant'],
-    [false, 'user']
-  ])('pickers hidden=%s → %s', async (hidden, choice) => {
-    vi.mocked(saveHermesConfig).mockResolvedValueOnce({ ok: true })
-    await saveGenerationModelChoice(hidden)
-    expect(saveHermesConfig).toHaveBeenCalledWith({ apex: { generation_model_choice: choice } })
+// hc-1299: the composer's start-up write. A signed-in start's relay-key check can
+// supersede it twice in a row; that is still nothing the user caused, while any
+// other failure is a real one and still reaches the 「自动保存失败」 toast.
+describe('saveStartupGenerationPreferences', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    vi.useFakeTimers()
   })
 
-  it('reports a failed save', async () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.mocked(saveHermesConfig).mockReset()
+    vi.restoreAllMocks()
+  })
+
+  it('stays quiet when superseded twice, and reports any other failure at once', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(saveHermesConfig).mockRejectedValue(new Error('409: {"detail":{"code":"model_mutation_superseded"}}'))
+
+    const quiet = saveStartupGenerationPreferences(true)
+    await vi.advanceTimersByTimeAsync(STARTUP_SAVE_RETRY_MS)
+    await expect(quiet).resolves.toBeUndefined()
+    expect(saveHermesConfig).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenCalledTimes(1)
+
+    vi.mocked(saveHermesConfig).mockReset()
     vi.mocked(saveHermesConfig).mockResolvedValueOnce({ ok: false })
-    await expect(saveGenerationModelChoice(true)).rejects.toThrow()
+    await expect(saveStartupGenerationPreferences(true)).rejects.toThrow()
+    expect(saveHermesConfig).toHaveBeenCalledTimes(1)
   })
 })
 
