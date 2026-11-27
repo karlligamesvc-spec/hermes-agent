@@ -47,11 +47,10 @@ import {
   type GenerationModelIconKey,
   generationModels,
   generationStarter,
-  saveGenerationModelChoice,
   saveImageGenerationModel,
+  saveStartupGenerationPreferences,
   saveVideoGenerationModel,
-  selectedGenerationModel,
-  startupGenerationModel
+  selectedGenerationModel
 } from './generation-models'
 import { SkillBrowseDialog } from './skill-browse-dialog'
 import { type SkillScope, useSkillCatalog } from './skill-catalog'
@@ -108,14 +107,7 @@ export function ContextMenu({ advanced, pickers, state }: ContextMenuProps) {
       return
     }
 
-    const image = startupGenerationModel('image', modelChoiceHidden)
-    const video = startupGenerationModel('video', modelChoiceHidden)
-
-    if (image) {void saveImageGenerationModel(image.id).catch(error => notifyError(error, t.settings.config.autosaveFailed))}
-
-    if (video) {void saveVideoGenerationModel(video.id).catch(error => notifyError(error, t.settings.config.autosaveFailed))}
-
-    void saveGenerationModelChoice(modelChoiceHidden).catch(error => notifyError(error, t.settings.config.autosaveFailed))
+    void saveStartupGenerationPreferences(modelChoiceHidden).catch(error => notifyError(error, t.settings.config.autosaveFailed))
   }, [modelChoiceHidden, state.tools.enabled, t.settings.config.autosaveFailed])
 
   // Seed the composer with a generation opener and focus it, then close the

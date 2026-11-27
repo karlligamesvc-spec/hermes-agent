@@ -1,4 +1,5 @@
 import { saveHermesConfig } from '@/api/config'
+import { isSupersededModelWrite } from '@/lib/model-write-superseded'
 import { persistString, storedString } from '@/lib/storage'
 
 export type GenerationKind = 'image' | 'video'
@@ -136,18 +137,56 @@ export function saveVideoGenerationModel(id: string): Promise<GenerationModel> {
   return saveGenerationModel('video', id)
 }
 
-/**
- * hc-1046: tells the media tools who picks the generation model. With the
- * pickers hidden (tier mode, single-thread product mode) the saved model is the
- * hidden default, not a choice, so the assistant's pick for the task stands;
- * with them shown, the user's saved pick wins as before.
- */
-export async function saveGenerationModelChoice(pickersHidden: boolean): Promise<void> {
-  const result = await saveHermesConfig({ apex: { generation_model_choice: pickersHidden ? 'assistant' : 'user' } })
+// Long enough for the relay-key check that fenced the first try to finish.
+export const STARTUP_SAVE_RETRY_MS = 1500
 
-  if (!result.ok) {
-    throw new Error('Could not save who picks the generation model')
+/**
+ * The composer's start-up write of the media preferences, as one config write.
+ * `generation_model_choice` tells the media tools who picks (hc-1046): with the
+ * pickers hidden (tier mode, single-thread product mode) the saved model is the
+ * hidden default, not a choice, so the assistant's pick for the task stands.
+ *
+ * A signed-in APEX account's relay-key check supersedes every config write still
+ * in flight when Desktop starts (hc-903's fence), and this one runs at that very
+ * moment, so a superseded try is retried once. A second one stays quiet: the
+ * previous start's values are still in place and the next start writes again,
+ * while a red 「自动保存失败」 would report a failure the user never caused
+ * (hc-1299). Any other failure still throws.
+ */
+export async function saveStartupGenerationPreferences(pickersHidden: boolean): Promise<void> {
+  const image = startupGenerationModel('image', pickersHidden)
+  const video = startupGenerationModel('video', pickersHidden)
+  const apex: Record<string, string> = { generation_model_choice: pickersHidden ? 'assistant' : 'user' }
+
+  if (image) {apex.generation_image_model = image.id}
+
+  if (video) {apex.generation_video_model = video.id}
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const result = await saveHermesConfig({ apex })
+
+      if (!result.ok) {
+        throw new Error('Could not save the generation model preferences')
+      }
+
+      if (image) {selectGenerationModel('image', image.id)}
+
+      if (video) {selectGenerationModel('video', video.id)}
+
+      return
+    } catch (error) {
+      if (!isSupersededModelWrite(error)) {
+        throw error
+      }
+    }
+
+    if (attempt === 1) {
+      await new Promise(resolve => setTimeout(resolve, STARTUP_SAVE_RETRY_MS))
+    }
   }
+
+  console.warn('[generation-models] start-up preferences superseded twice; the next start writes them again')
 }
 
 export function generationStarter(starter: string, model: GenerationModel): string {

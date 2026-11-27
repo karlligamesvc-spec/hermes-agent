@@ -35,10 +35,10 @@ vi.mock('@/hermes', async importActual => ({
   getSkills: vi.fn(async () => [])
 }))
 
-// The "+" menu saves the generation model choice through the desktop bridge when it mounts; not what this is about.
+// The "+" menu saves the generation preferences through the desktop bridge when it mounts; not what this is about.
 vi.mock('@/app/chat/composer/generation-models', async importActual => ({
   ...(await importActual<Record<string, unknown>>()),
-  saveGenerationModelChoice: vi.fn(async () => undefined),
+  saveStartupGenerationPreferences: vi.fn(async () => undefined),
   saveImageGenerationModel: vi.fn(async () => undefined),
   saveVideoGenerationModel: vi.fn(async () => undefined)
 }))
