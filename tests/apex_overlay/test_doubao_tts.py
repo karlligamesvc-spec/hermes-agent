@@ -17,6 +17,7 @@ def tts_entry(monkeypatch):
     from tools.registry import registry
     entry = registry.get_entry('text_to_speech')
     monkeypatch.setattr(entry, 'dynamic_schema_overrides', entry.dynamic_schema_overrides)
+    monkeypatch.setattr(entry, 'handler', entry.handler)  # hc-1296: the voice bridge wraps it
     monkeypatch.setattr(tts_tool, '_select_builtin_engine', tts_tool._select_builtin_engine)
     monkeypatch.setattr(tts_tool, '_text_to_speech_single', tts_tool._text_to_speech_single)
     return entry
@@ -219,11 +220,12 @@ def test_model_reads_chinese_narration_text_only_while_doubao_is_active(monkeypa
     config = {}
     monkeypatch.setattr(tts_tool, '_load_tts_config', lambda: dict(config))
     shown = tts_entry.dynamic_schema_overrides()
-    assert shown['description'] == adapter.NARRATION_DESCRIPTION
+    # hc-1296: with the voice bridge in place the last sentence offers a voice instead of fixing it
+    assert shown['description'] == adapter.NARRATION_DESCRIPTION.replace(adapter.FIXED_VOICE_SENTENCE, adapter.VOICE_SENTENCE)
     for phrase in ('APEX 平台配音', '视频配音、旁白、口播、朗读一律调用本工具', 'edge-tts', 'pyttsx3', 'macOS say', '不要换别的声音顶上'):
         assert phrase in shown['description']
     props = shown['parameters']['properties']
-    assert set(props) == set(tts_tool.TTS_SCHEMA['parameters']['properties'])
+    assert set(props) == set(tts_tool.TTS_SCHEMA['parameters']['properties']) | {'voice'}
     assert shown['parameters']['required'] == ['text']
     assert '0.5–2.0' in props['speed']['description']
     assert 'Edge' not in json.dumps(shown, ensure_ascii=False)
