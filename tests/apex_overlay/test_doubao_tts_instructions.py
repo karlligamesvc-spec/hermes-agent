@@ -52,6 +52,7 @@ def tts_tool(monkeypatch):
     from tools.registry import registry
     entry = registry.get_entry('text_to_speech')
     monkeypatch.setattr(entry, 'dynamic_schema_overrides', entry.dynamic_schema_overrides)
+    monkeypatch.setattr(entry, 'handler', entry.handler)  # hc-1296: the voice bridge wraps it
     for name in ('_load_tts_config', '_select_builtin_engine', '_dispatch_to_plugin_provider',
                  '_text_to_speech_single', 'DEFAULT_PROVIDER'):
         monkeypatch.setattr(tts_tool, name, getattr(tts_tool, name))

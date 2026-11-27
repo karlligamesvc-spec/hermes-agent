@@ -29,13 +29,15 @@ MIN_SPEED, MAX_SPEED = 0.5, 2.0
 # hc-1007: what the model reads while Doubao is the active provider. Upstream's text names
 # Edge and OpenAI, and on 0.17.58 a model cutting a video wrote its own edge-tts code and then
 # used macOS `say` instead of calling this tool (2026-10-21; Scheduler saw no TTS call).
+# hc-1296: the last sentence of the narration text while the model cannot pick a voice.
+FIXED_VOICE_SENTENCE = "声音由用户的设置决定，不由你选择。"
 NARRATION_DESCRIPTION = (
     "把文字合成语音，用 APEX 平台配音（默认中文女声，也能读英文等语言）。"
     "视频配音、旁白、口播、朗读一律调用本工具：它返回音频文件（MEDIA: 路径），"
     "在 Hypit、ffmpeg 或脚本里直接引用这个文件。"
     "不要在终端或代码里自己用 edge-tts、gTTS、pyttsx3、macOS say 或其他系统声音代替。"
     "本工具失败时把错误告诉用户，不要换别的声音顶上。"
-    "长文按原顺序自动分段合成，不用自己拆。声音由用户的设置决定，不由你选择。"
+    "长文按原顺序自动分段合成，不用自己拆。" + FIXED_VOICE_SENTENCE
 )
 
 # hc-1283: `instructions` is offered only while the provider that speaks sends it to Scheduler
@@ -46,8 +48,24 @@ TONE_DESCRIPTION = (
 )
 UNUSED_TONE_DESCRIPTION = "平台配音不使用这个参数，不用填。"
 
+# hc-1296: what the user is offered -> the platform's system voice (the same table as the hosted
+# plugin apexnodes-doubao-tts in apex-nodes; Scheduler takes exactly these ids). The first one is
+# what an omitted `voice` gets.
+VOICES = (
+    ("默认女声", "longanhuan_v3.1"),
+    ("女声二", "longanlingxin_v3.1"),
+    ("女声三", "longanfengyue_v3.1"),
+    ("男声", "xunanchuan_v3.1"),
+)
+VOICE_DESCRIPTION = (
+    "可选：用哪个声音读，只在用户选了声音时填：" + "、".join(name for name, _ in VOICES)
+    + "。不填就是" + VOICES[0][0] + "。不要自己替用户换声音，也不要填这几个以外的名字。"
+)
+VOICE_SENTENCE = "默认是" + VOICES[0][0] + "；用户选了别的声音时用 voice 指定，不要自己替用户换。"
+VOICE_HEADER = "X-TTS-Voice"
 
-def narration_parameters(parameters: dict, home: str, *, tone: bool = False) -> dict:
+
+def narration_parameters(parameters: dict, home: str, *, tone: bool = False, voice: bool = False) -> dict:
     params = copy.deepcopy(parameters)
     props = params["properties"]
     props["text"]["description"] = "要读出来的文字。"
@@ -56,6 +74,8 @@ def narration_parameters(parameters: dict, home: str, *, tone: bool = False) -> 
     )
     props["speed"]["description"] = "可选：语速倍数，1.0 为正常，范围 0.5–2.0，超出按边界处理。"
     props["instructions"]["description"] = TONE_DESCRIPTION if tone else UNUSED_TONE_DESCRIPTION
+    if voice:
+        props["voice"] = {"type": "string", "description": VOICE_DESCRIPTION}
     return params
 
 
@@ -66,6 +86,16 @@ def tone_reaches_platform() -> bool:
         return bool(getattr(get_provider('doubao'), 'carries_instructions', False))
     except Exception:
         logger.debug("apex-overlay: could not ask the doubao provider about instructions", exc_info=True)
+        return False
+
+
+def voice_reaches_platform() -> bool:
+    """hc-1296: whether the registered text_to_speech handler carries the call's `voice`."""
+    try:
+        from tools.registry import registry
+        return _bridged(getattr(registry.get_entry("text_to_speech"), "handler", None), _CALL_VOICE, "_apex_tts_voice")
+    except Exception:
+        logger.debug("apex-overlay: could not ask the registry about the voice bridge", exc_info=True)
         return False
 
 
@@ -87,8 +117,11 @@ def install_narration_schema(tts_tool) -> bool:
         if tts_tool._get_provider(tts_tool._load_tts_config()) != "doubao":
             return result
         parameters = result.get("parameters") or tts_tool.TTS_SCHEMA["parameters"]
-        return {**result, "description": NARRATION_DESCRIPTION,
-                "parameters": narration_parameters(parameters, display_hermes_home(), tone=tone_reaches_platform())}
+        voice = voice_reaches_platform()
+        description = NARRATION_DESCRIPTION.replace(FIXED_VOICE_SENTENCE, VOICE_SENTENCE) if voice else NARRATION_DESCRIPTION
+        return {**result, "description": description,
+                "parameters": narration_parameters(parameters, display_hermes_home(), tone=tone_reaches_platform(),
+                                                   voice=voice)}
 
     overrides._apex_doubao_schema = True
     entry.dynamic_schema_overrides = overrides
@@ -141,10 +174,10 @@ def install_missing_engine_message(tts_tool) -> None:
 _CALL_INSTRUCTIONS: contextvars.ContextVar = contextvars.ContextVar('apex_overlay_tts_instructions', default=None)
 
 
-def _bridged(function, var) -> bool:
+def _bridged(function, var, mark: str = '_apex_tts_instructions') -> bool:
     """Whether a wrapper in *function*'s chain sets *var* (wrappers from other code may sit on top)."""
     while function is not None:
-        if getattr(function, '_apex_tts_instructions', None) is var:
+        if getattr(function, mark, None) is var:
             return True
         function = getattr(function, '__wrapped__', None)
     return False
@@ -180,6 +213,69 @@ def spoken_instructions(extra: dict) -> str | None:
     if value is None:
         value = _CALL_INSTRUCTIONS.get()
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+# hc-1296: the runtime takes a plugin provider's voice from `tts.voice` in the config
+# (tools/tts_tool_plugins.py::_plugin_voice_kwargs) and the registered text_to_speech handler drops
+# every argument it does not know, so the model could not name one of the platform's system voices
+# for a call. The handler wrapper holds the call's `voice`; text_to_speech_tool loads the config once,
+# on the handler's thread, and the `_load_tts_config` wrapper puts the voice into a copy of it, which
+# the call then carries to every chunk. Only names in VOICES are sent on.
+_CALL_VOICE: contextvars.ContextVar = contextvars.ContextVar('apex_overlay_tts_voice', default=None)
+
+
+def voice_id(value) -> str | None:
+    """The platform id for what the model put in `voice` (a name in VOICES, or its id); None when it gave none."""
+    chosen = value.strip() if isinstance(value, str) else ''
+    if not chosen:
+        return None
+    for name, platform_id in VOICES:
+        if chosen in (name, platform_id):
+            return platform_id
+    raise ValueError('没有「' + chosen[:20] + '」这个声音，可以选的是：' + '、'.join(name for name, _ in VOICES)
+                     + '。这次没有配音，也没有换成别的声音。')
+
+
+def voice_name(platform_id: str) -> str:
+    return next((name for name, known in VOICES if known == platform_id), platform_id)
+
+
+def install_voice_bridge(tts_tool) -> bool:
+    """Carry each call's `voice` from the registered handler into the config that call loads; False if it cannot."""
+    from tools.registry import registry
+
+    entry = registry.get_entry('text_to_speech')
+    handler = getattr(entry, 'handler', None)
+    load = getattr(tts_tool, '_load_tts_config', None)
+    if not callable(handler) or not callable(load):
+        return False
+    if _bridged(handler, _CALL_VOICE, '_apex_tts_voice'):
+        return True
+
+    @functools.wraps(load)
+    def load_tts_config(*args, **kwargs):
+        config = load(*args, **kwargs)
+        chosen = _CALL_VOICE.get()
+        if chosen and isinstance(config, dict) and tts_tool._get_provider(config) == 'doubao':
+            return {**config, 'voice': chosen}  # a copy: the config the runtime loaded stays as it was
+        return config
+
+    @functools.wraps(handler)
+    def text_to_speech(args, **kwargs):
+        try:
+            chosen = voice_id(args.get('voice') if isinstance(args, dict) else None)
+        except ValueError as exc:
+            return json.dumps({'success': False, 'error': str(exc)}, ensure_ascii=False)
+        token = _CALL_VOICE.set(chosen)
+        try:
+            return handler(args, **kwargs)
+        finally:
+            _CALL_VOICE.reset(token)
+
+    text_to_speech._apex_tts_voice = _CALL_VOICE
+    tts_tool._load_tts_config = load_tts_config
+    entry.handler = text_to_speech
+    return True
 
 
 def connection() -> tuple[str, str]:
@@ -248,6 +344,10 @@ class DoubaoTTS(TTSProvider):
             with opener.open(request, timeout=110) as response:
                 if response.headers.get_content_type() != 'audio/mpeg':
                     raise ValueError('配音未返回音频文件。')
+                used = (response.headers.get(VOICE_HEADER) or '').strip()
+                if voice and used and used != voice:  # hc-1296: never deliver another voice as the chosen one
+                    raise ValueError(f'平台这次没有用选的那个声音（{voice_name(voice)}），这段配音没有交付；'
+                                     '告诉用户这个声音现在用不了，要不要先用' + VOICES[0][0] + '。')
                 audio = response.read(MAX_AUDIO_BYTES + 1)
         except urllib.error.HTTPError as exc:
             raise ValueError(f'配音请求失败（HTTP {exc.code}），请重试或联系平台管理员；未切换其他声音。') from None
@@ -271,6 +371,15 @@ class DoubaoTTS(TTSProvider):
         return str(target)
 
 
+def _apply_voice_bridge(tts_tool) -> None:
+    try:
+        if not install_voice_bridge(tts_tool):
+            logger.warning('apex-overlay: no text_to_speech handler or config loader to carry a voice; '
+                           'the narration text says the voice is fixed')
+    except Exception:
+        logger.warning('apex-overlay: the narration voice bridge did not apply', exc_info=True)
+
+
 def apply(ctx) -> None:
     from tools import tts_tool, tts_tool_delivery
 
@@ -289,6 +398,7 @@ def apply(ctx) -> None:
     except Exception:
         logger.warning("apex-overlay: the narration tone bridge did not apply", exc_info=True)
     if getattr(tts_tool._dispatch_to_plugin_provider, '_apex_doubao_guard', False):
+        _apply_voice_bridge(tts_tool)
         ctx.register_tts_provider(DoubaoTTS())
         return
     original_config = tts_tool._load_tts_config
@@ -314,6 +424,7 @@ def apply(ctx) -> None:
 
     dispatch._apex_doubao_guard = True
     tts_tool._dispatch_to_plugin_provider = dispatch
+    _apply_voice_bridge(tts_tool)  # after load_tts_config above: the voice goes to whoever speaks by default
 
     # Install fail-closed routing before registration, so a discovery failure
     # cannot silently select Edge while unrelated overlay seams still boot.
