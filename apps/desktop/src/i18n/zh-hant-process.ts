@@ -180,6 +180,7 @@ export const zhHantProcess: ProcessCopy = {
     xai_video_edit: step('正在剪輯影片', '剪輯影片', said('剪好了')),
     xai_video_extend: step('正在延長影片', '延長影片', said('延長好了')),
     text_to_speech: step('正在生成配音', '生成配音', said('配音做好了')),
+    own_voice: step('正在處理你的聲音', '處理你的聲音', said('處理好了')),
     browser_navigate: step('正在打開網頁', '打開網頁', each('打開了', '個網頁', '打開了')),
     browser_snapshot: step('正在讀頁面', '讀頁面', said('讀完了')),
     browser_click: step('正在點頁面', '點頁面', said('點好了')),

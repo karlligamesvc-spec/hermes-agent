@@ -5,13 +5,17 @@ from __future__ import annotations
 import contextvars
 import copy
 import functools
+import hashlib
+import http.client
 import inspect
 import json
 import logging
 import os
 import tempfile
+import time
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 
 from dotenv import dotenv_values
@@ -64,8 +68,51 @@ VOICE_DESCRIPTION = (
 VOICE_SENTENCE = "默认是" + VOICES[0][0] + "；用户选了别的声音时用 voice 指定，不要自己替用户换。"
 VOICE_HEADER = "X-TTS-Voice"
 
+# hc-1297: the user's own voice. The tool `own_voice` asks Scheduler whether this account may record
+# one, hands in the recording of the user reading the passage Scheduler names, and deletes the voice
+# again (/tools/v1/tts/own-voice). It is listed only for an account the platform opened it for, or one
+# that still has a voice to delete. Speaking in it is `voice: 我的声音`, sent as `my-voice`: Scheduler
+# finds the caller's own voice by the account key, so no id of anybody's voice passes through the
+# model or this file. The hosted twin is apex-nodes' app/runtime_plugins/apexnodes-doubao-tts; the
+# name, the route and the tool's text are the same on both sides.
+OWN_VOICE = ("我的声音", "my-voice")
+OWN_VOICE_DESCRIPTION = "用户用 own_voice 录过自己的声音时，还可以填「" + OWN_VOICE[0] + "」。"
+OWN_VOICE_TOOL = "own_voice"
+OWN_VOICE_TOOLSET = "tts"  # on wherever text_to_speech is
+OWN_VOICE_PATH = "/tools/v1/tts/own-voice"
+MAX_RECORDING_BYTES = 10 * 1024 * 1024
+# Desktop reads the user's own disk: only a file that names itself a recording is read and sent.
+RECORDING_SUFFIXES = (".wav", ".mp3", ".m4a")
+# Scheduler transcribes the recording and waits for the vendor to finish the voice before it answers.
+OWN_VOICE_TIMEOUT_SECONDS = 170
+_CHECK_TIMEOUT_SECONDS = 5
+_LISTED_FOR_SECONDS = 60
+OWN_VOICE_SCHEMA = {
+    "name": OWN_VOICE_TOOL,
+    "description": (
+        "管理用户的「我的声音」：用户录一段自己照着指定文字读的录音，平台用它做出只有这个账号能用的配音声音。"
+        "只用于用户本人的声音：录音必须是用户自己读的那段话。别人的录音、从视频里取出来的声音、合成出来的声音都不能交，"
+        "用户这样要求时直接说明不行。"
+        "用法：先 action=status 看有没有录过、要读哪段话；把那段话原样发给用户，请他在安静的地方用手机自带的录音机"
+        "从头到尾读一遍，把录音文件发过来；收到后 action=record 交上去。"
+        "做好以后，配音时把 text_to_speech 的 voice 填「我的声音」。用户要删掉自己的声音时 action=delete。"
+        "失败时把原因原样告诉用户，不要换别的办法做声音。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": ["status", "record", "delete"],
+                       "description": "status 查看；record 交录音；delete 删除。"},
+            "audio_path": {"type": "string",
+                           "description": "action=record 时必填：用户发来的录音文件的路径（WAV、MP3 或 M4A，10 MB 以内）。"},
+        },
+        "required": ["action"],
+    },
+}
 
-def narration_parameters(parameters: dict, home: str, *, tone: bool = False, voice: bool = False) -> dict:
+
+def narration_parameters(parameters: dict, home: str, *, tone: bool = False, voice: bool = False,
+                         own: bool = False) -> dict:
     params = copy.deepcopy(parameters)
     props = params["properties"]
     props["text"]["description"] = "要读出来的文字。"
@@ -75,7 +122,7 @@ def narration_parameters(parameters: dict, home: str, *, tone: bool = False, voi
     props["speed"]["description"] = "可选：语速倍数，1.0 为正常，范围 0.5–2.0，超出按边界处理。"
     props["instructions"]["description"] = TONE_DESCRIPTION if tone else UNUSED_TONE_DESCRIPTION
     if voice:
-        props["voice"] = {"type": "string", "description": VOICE_DESCRIPTION}
+        props["voice"] = {"type": "string", "description": VOICE_DESCRIPTION + (OWN_VOICE_DESCRIPTION if own else "")}
     return params
 
 
@@ -121,7 +168,7 @@ def install_narration_schema(tts_tool) -> bool:
         description = NARRATION_DESCRIPTION.replace(FIXED_VOICE_SENTENCE, VOICE_SENTENCE) if voice else NARRATION_DESCRIPTION
         return {**result, "description": description,
                 "parameters": narration_parameters(parameters, display_hermes_home(), tone=tone_reaches_platform(),
-                                                   voice=voice)}
+                                                   voice=voice, own=voice and own_voice_listed())}
 
     overrides._apex_doubao_schema = True
     entry.dynamic_schema_overrides = overrides
@@ -229,7 +276,7 @@ def voice_id(value) -> str | None:
     chosen = value.strip() if isinstance(value, str) else ''
     if not chosen:
         return None
-    for name, platform_id in VOICES:
+    for name, platform_id in (*VOICES, OWN_VOICE):
         if chosen in (name, platform_id):
             return platform_id
     raise ValueError('没有「' + chosen[:20] + '」这个声音，可以选的是：' + '、'.join(name for name, _ in VOICES)
@@ -237,7 +284,7 @@ def voice_id(value) -> str | None:
 
 
 def voice_name(platform_id: str) -> str:
-    return next((name for name, known in VOICES if known == platform_id), platform_id)
+    return next((name for name, known in (*VOICES, OWN_VOICE) if known == platform_id), platform_id)
 
 
 def install_voice_bridge(tts_tool) -> bool:
@@ -305,6 +352,122 @@ def connection() -> tuple[str, str]:
     return key, base.rstrip('/')
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow a redirect with the platform key (or a recording) to a different host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _schedulers_words(exc: urllib.error.HTTPError) -> str | None:
+    """Scheduler's own Chinese sentence for a refusal, when it gave one."""
+    try:
+        detail = json.loads(exc.read(64 * 1024) or b'{}').get('detail')
+    except (ValueError, OSError, AttributeError):
+        return None
+    message = detail.get('message') if isinstance(detail, dict) else None
+    return message.strip() if isinstance(message, str) and message.strip() else None
+
+
+def own_voice_request(method: str, *, recording: Path | None = None, timeout: int = _CHECK_TIMEOUT_SECONDS) -> dict:
+    """One call to Scheduler's own-voice route; its ``data``. A refusal is a ValueError in Scheduler's own words."""
+    key, base = connection()
+    if not key:
+        raise ValueError('请先登录 APEX，再用「我的声音」。')
+    headers = {'Authorization': 'Bearer ' + key, 'User-Agent': 'APEX-Desktop/1'}
+    body = None
+    if recording is not None:
+        boundary = uuid.uuid4().hex
+        body = (
+            f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="recording{recording.suffix.lower()}"\r\n'
+            'Content-Type: application/octet-stream\r\n\r\n'
+        ).encode('ascii') + recording.read_bytes() + f'\r\n--{boundary}--\r\n'.encode('ascii')
+        headers['Content-Type'] = f'multipart/form-data; boundary={boundary}'
+    request = urllib.request.Request(base + OWN_VOICE_PATH, data=body, headers=headers, method=method)
+    try:
+        with urllib.request.build_opener(_NoRedirect).open(request, timeout=timeout) as response:
+            answer = json.loads(response.read(1024 * 1024) or b'{}')
+    except urllib.error.HTTPError as exc:
+        raise ValueError(_schedulers_words(exc) or f'平台没有处理这次请求（HTTP {exc.code}），过一会儿再试。') from None
+    except (OSError, ValueError, http.client.HTTPException):  # no answer, or one that is not HTTP or not JSON
+        raise ValueError('连不上平台，过一会儿再试。') from None
+    data = answer.get('data') if isinstance(answer, dict) else None
+    return data if isinstance(data, dict) else {}
+
+
+# account fingerprint -> (kept until, the answer). A different account signed in is asked afresh.
+_listed: dict[str, tuple[float, bool]] = {}
+
+
+def own_voice_listed() -> bool:
+    """Is own_voice shown to this assistant: its account may record a voice, or still has one to delete.
+    Scheduler's answer is kept for a minute; signed out, or an answer that cannot be read, hides it.
+    This runs while the tool list and the text_to_speech schema are built: it never raises."""
+    try:
+        key, base = connection()
+        if not key:
+            return False
+        slot = hashlib.sha256(f'{base}\0{key}'.encode()).hexdigest()
+        kept = _listed.get(slot)
+        if kept is not None and kept[0] > time.monotonic():
+            return kept[1]
+        try:
+            state = own_voice_request('GET')
+            shown = bool(state.get('enabled') or state.get('voice'))
+        except ValueError:  # could not ask, or Scheduler refused: hidden until it can be asked again
+            shown = False
+        if len(_listed) >= 8:
+            _listed.clear()
+        _listed[slot] = (time.monotonic() + _LISTED_FOR_SECONDS, shown)
+        return shown
+    except Exception:
+        logger.warning("apex-overlay: could not tell whether own_voice is open to this account; not shown", exc_info=True)
+        return False
+
+
+def own_voice(args, **kwargs) -> str:
+    def answer(**fields) -> str:
+        return json.dumps(fields, ensure_ascii=False)
+
+    action = str(args.get('action') or '').strip() if isinstance(args, dict) else ''
+    try:
+        if action == 'status':
+            state = own_voice_request('GET')
+            return answer(
+                success=True, enabled=bool(state.get('enabled')), has_voice=bool(state.get('voice')), voice=state.get('voice'),
+                passage=state.get('passage'), min_seconds=state.get('min_seconds'), max_seconds=state.get('max_seconds'),
+            )
+        if action == 'record':
+            given = str(args.get('audio_path') or '').strip()
+            recording = Path(given).expanduser() if given else None
+            if recording is None or not recording.is_file():
+                raise ValueError('找不到这个录音文件。请用户把录音作为文件发过来，再把它的路径填进 audio_path。')
+            if recording.suffix.lower() not in RECORDING_SUFFIXES:
+                raise ValueError('只收 WAV、MP3 或 M4A 的录音文件。请用户用手机自带的录音机重录一段发过来。')
+            if recording.stat().st_size > MAX_RECORDING_BYTES:
+                raise ValueError('录音文件要在 10 MB 以内。只读那一段话就行，大约 15 秒。')
+            made = own_voice_request('POST', recording=recording, timeout=OWN_VOICE_TIMEOUT_SECONDS)
+            _listed.clear()
+            return answer(success=True, voice=made.get('voice'),
+                          message='「我的声音」做好了。以后配音时把 voice 填「我的声音」就是用它；先配一句短的给用户听听像不像。')
+        if action == 'delete':
+            own_voice_request('DELETE', timeout=60)
+            _listed.clear()
+            return answer(success=True, message='「我的声音」已经删掉，配音服务那边的也删了。')
+        raise ValueError('action 只能是 status、record 或 delete。')
+    except ValueError as exc:
+        return answer(success=False, error=str(exc))
+
+
+def register_own_voice(ctx) -> bool:
+    """Offer `own_voice` next to text_to_speech; False when this plugin host cannot register a tool."""
+    if getattr(ctx, 'register_tool', None) is None:
+        return False
+    ctx.register_tool(name=OWN_VOICE_TOOL, toolset=OWN_VOICE_TOOLSET, schema=OWN_VOICE_SCHEMA, handler=own_voice,
+                      check_fn=own_voice_listed, description=OWN_VOICE_SCHEMA['description'], emoji='🎙️')
+    return True
+
+
 class DoubaoTTS(TTSProvider):
     name = 'doubao'
 
@@ -335,12 +498,8 @@ class DoubaoTTS(TTSProvider):
             headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json',
                      'User-Agent': 'APEX-Desktop/1'}, method='POST',
         )
-        # Never follow a redirect with the platform key to a different host.
-        class NoRedirect(urllib.request.HTTPRedirectHandler):
-            def redirect_request(self, req, fp, code, msg, headers, newurl):
-                return None
         try:
-            opener = urllib.request.build_opener(NoRedirect)
+            opener = urllib.request.build_opener(_NoRedirect)
             with opener.open(request, timeout=110) as response:
                 if response.headers.get_content_type() != 'audio/mpeg':
                     raise ValueError('配音未返回音频文件。')
@@ -350,6 +509,11 @@ class DoubaoTTS(TTSProvider):
                                      '告诉用户这个声音现在用不了，要不要先用' + VOICES[0][0] + '。')
                 audio = response.read(MAX_AUDIO_BYTES + 1)
         except urllib.error.HTTPError as exc:
+            # hc-1297: Scheduler says why it refused the user's own voice (not opened, none recorded);
+            # the model needs that sentence, not a status code.
+            words = _schedulers_words(exc) if voice == OWN_VOICE[1] else None
+            if words:
+                raise ValueError(f'配音失败：{words}（未切换其他声音）') from None
             raise ValueError(f'配音请求失败（HTTP {exc.code}），请重试或联系平台管理员；未切换其他声音。') from None
         except OSError:
             raise ValueError('配音连接中断，请重试；未切换其他声音。') from None
@@ -397,6 +561,11 @@ def apply(ctx) -> None:
                            "the narration text says the tone line is unused")
     except Exception:
         logger.warning("apex-overlay: the narration tone bridge did not apply", exc_info=True)
+    try:
+        if not register_own_voice(ctx):
+            logger.warning("apex-overlay: this plugin host cannot register own_voice")
+    except Exception:
+        logger.warning("apex-overlay: own_voice was not registered", exc_info=True)
     if getattr(tts_tool._dispatch_to_plugin_provider, '_apex_doubao_guard', False):
         _apply_voice_bridge(tts_tool)
         ctx.register_tts_provider(DoubaoTTS())

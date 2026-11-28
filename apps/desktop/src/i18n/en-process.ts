@@ -200,6 +200,7 @@ export const enProcess: ProcessCopy = {
     xai_video_edit: step('Editing the video', 'Edit video', said('Edited')),
     xai_video_extend: step('Extending the video', 'Extend video', said('Extended')),
     text_to_speech: step('Making the voice-over', 'Make voice-over', said('Voice-over ready')),
+    own_voice: step('Working on your own voice', 'Your own voice', said('Done')),
     browser_navigate: step('Opening the page', 'Open page', each('Opened', 'page', 'Opened the page')),
     browser_snapshot: step('Reading the page', 'Read page', said('Done')),
     browser_click: step('Clicking on the page', 'Click', said('Done')),
