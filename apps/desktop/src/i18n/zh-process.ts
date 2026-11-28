@@ -187,6 +187,7 @@ export const zhProcess: ProcessCopy = {
     xai_video_edit: step('正在剪辑视频', '剪辑视频', said('剪好了')),
     xai_video_extend: step('正在延长视频', '延长视频', said('延长好了')),
     text_to_speech: step('正在生成配音', '生成配音', said('配音做好了')),
+    own_voice: step('正在处理你的声音', '处理你的声音', said('处理好了')),
     browser_navigate: step('正在打开网页', '打开网页', each('打开了', '个网页', '打开了')),
     browser_snapshot: step('正在读页面', '读页面', said('读完了')),
     browser_click: step('正在点页面', '点页面', said('点好了')),
