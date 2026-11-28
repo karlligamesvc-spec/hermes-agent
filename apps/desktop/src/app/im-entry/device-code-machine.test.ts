@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { IM_ENTRY_CHANNELS, imEntryChannel, isImEntryChannelAvailable } from '@/lib/im-entry-catalog'
+import { isDomesticPlatform } from '@/lib/messaging-allowlist'
 
 import {
   deviceCodeReduce,
@@ -159,11 +160,19 @@ describe('IM 入口 channel catalog', () => {
     expect(available).toEqual(['feishu', 'weixin'])
   })
 
-  it('queues dingtalk as the first coming-soon candidate, right after the available channels', () => {
-    expect(IM_ENTRY_CHANNELS[2].id).toBe('dingtalk')
-    expect(isImEntryChannelAvailable('dingtalk')).toBe(false)
+  it('queues QQ as the only coming-soon channel, right after the available ones', () => {
+    expect(IM_ENTRY_CHANNELS.map(c => c.id)).toEqual(['feishu', 'weixin', 'qqbot'])
+    expect(isImEntryChannelAvailable('qqbot')).toBe(false)
     // Every channel after the available block is still coming-soon (即将支持).
     expect(IM_ENTRY_CHANNELS.slice(2).every(c => !c.available)).toBe(true)
+  })
+
+  // hc-1300: 钉钉 and 企业微信 (群机器人 + 应用) are no longer APEX channels: no
+  // coming-soon card, and off the messaging allowlist too.
+  it.each(['dingtalk', 'wecom', 'wecom_callback'])('%s is retired: not in the catalog, not on the allowlist', id => {
+    expect(imEntryChannel(id)).toBeUndefined()
+    expect(isImEntryChannelAvailable(id)).toBe(false)
+    expect(isDomesticPlatform(id)).toBe(false)
   })
 
   it('feishu uses the device-code template; every id is unique', () => {

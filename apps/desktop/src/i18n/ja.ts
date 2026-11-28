@@ -3741,10 +3741,8 @@ export const ja = defineLocale({
     },
     channels: {
       feishu: { name: 'Feishu / Lark', tagline: 'Feishu のチャットやグループで返信します。' },
-      dingtalk: { name: 'DingTalk', tagline: 'DingTalk のチャットやグループで返信します。' },
       weixin: { name: 'WeChat', tagline: '個人の WeChat で返信します。' },
-      qqbot: { name: 'QQ', tagline: 'QQ のチャットやグループで返信します。' },
-      wecom: { name: 'WeCom', tagline: 'WeCom（企業微信）で返信します。' }
+      qqbot: { name: 'QQ', tagline: 'QQ のチャットやグループで返信します。' }
     },
     dialog: {
       connectTitle: name => `${name} を連携`,

@@ -2200,10 +2200,7 @@ export const zh = defineLocale({
       homeassistant: '在 Home Assistant 中打开你的个人资料并创建长期访问令牌。把它连同你的 HA URL 一起粘贴到这里。',
       email: '使用专用邮箱。对于 Gmail/Workspace,创建应用专用密码并使用 imap.gmail.com / smtp.gmail.com。',
       sms: '从 Twilio 控制台获取你的 Account SID 和 Auth Token，以及一个可发送短信的电话号码。',
-      dingtalk: '在开发者控制台创建钉钉应用，然后在此复制 Client ID(App key) 和 Client Secret。',
       feishu: '创建飞书 / Lark 应用，配置机器人能力，复制 App ID、App secret 和事件加密密钥。',
-      wecom: '在企业微信中添加群机器人，复制其 webhook key 作为 WECOM_BOT_ID。仅可发送——双向请用企业微信 (应用) 选项。',
-      wecom_callback: '设置一个企业微信自建应用，暴露其回调 URL，并提供 corp ID、secret、agent ID 和 AES key。',
       weixin:
         '运行 `hermes gateway setup`，选择 Weixin，然后使用个人微信账号扫描并确认二维码。APEX 会通过腾讯 iLink Bot API 连接并保存凭据。',
       qqbot: '在 QQ 开放平台 (q.qq.com) 注册一个应用，复制 App ID 和 Client Secret。',
@@ -4314,10 +4311,8 @@ export const zh = defineLocale({
     },
     channels: {
       feishu: { name: '飞书', tagline: '在飞书的私聊和群里回消息。' },
-      dingtalk: { name: '钉钉', tagline: '在钉钉的私聊和群里回消息。' },
       weixin: { name: '微信', tagline: '用你的个人微信回消息。' },
-      qqbot: { name: 'QQ', tagline: '在 QQ 的私聊和群里回消息。' },
-      wecom: { name: '企业微信', tagline: '在企业微信里回消息。' }
+      qqbot: { name: 'QQ', tagline: '在 QQ 的私聊和群里回消息。' }
     },
     dialog: {
       connectTitle: name => `连接${name}`,

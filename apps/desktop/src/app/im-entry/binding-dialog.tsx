@@ -313,7 +313,7 @@ function DeviceCodeTemplate({
   // NEW iLink bot contact, not their own WeChat being taken over.
   const channelNote = channelId === 'weixin' ? copy.weixinBotNote : ''
   // The scan hint names the app the user must scan WITH — it is per-channel
-  // (scan WeChat's code with WeChat, DingTalk's with DingTalk), not always Feishu.
+  // (scan WeChat's code with WeChat, QQ's with QQ), not always Feishu.
   const channelDisplayName = t.imEntry.channels[channelId as keyof typeof t.imEntry.channels]?.name ?? channelId
 
   // On success the main process is restarting + reloading the window; surface a
@@ -432,9 +432,10 @@ function ErrorBody({
 // ── Template B: paste-code (credential-input slot) ──────────────────────────
 // The second binding template — paste one code, with the raw developer fields
 // tucked behind an "advanced" disclosure so the default stays a single action.
-// No channel uses this template yet (钉钉/企微 are coming-soon); it is the ready
-// seam the next channel wires its submit into. Kept presentational + wired to a
-// caller-supplied submit so it never ships a call to a not-yet-built endpoint.
+// No channel uses this template: 钉钉/企微, the two it was built for, are no
+// longer APEX channels (hc-1300), and QQ is device-code. It stays the ready seam
+// a future paste-code channel wires its submit into. Kept presentational + wired
+// to a caller-supplied submit so it never ships a call to a not-yet-built endpoint.
 function PasteCodeTemplate({ onDone }: { onDone: () => void }) {
   const { t } = useI18n()
   const copy = t.imEntry.dialog

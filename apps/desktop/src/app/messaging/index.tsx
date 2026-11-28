@@ -26,6 +26,7 @@ import {
 import { type Translations, useI18n } from '@/i18n'
 import { openExternalLink } from '@/lib/external-link'
 import { AlertTriangle, ExternalLink, RefreshCw, Save, Trash2 } from '@/lib/icons'
+import { withoutRetiredPlatforms } from '@/lib/messaging-allowlist'
 import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
 import { $changeEventsAvailable, $pairingChangeTick, $platformsChangeTick } from '@/store/live-sync'
@@ -186,7 +187,7 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
 
       try {
         const result = await getMessagingPlatforms(scopeProfile)
-        setPlatforms(result.platforms)
+        setPlatforms(withoutRetiredPlatforms(result.platforms))
       } catch (err) {
         if (!silent) {
           notifyError(err, m.loadFailed)
@@ -935,13 +936,8 @@ const PLATFORM_INTRO: Record<string, string> = {
   email:
     'Use a dedicated mailbox. For Gmail/Workspace, create an app password and use imap.gmail.com / smtp.gmail.com.',
   sms: 'Get your Twilio Account SID and Auth Token from the Twilio console, plus a phone number that can send SMS.',
-  dingtalk: 'Create a DingTalk app in the developer console, then copy the Client ID (App key) and Client Secret here.',
   feishu:
     'Create a Feishu / Lark app, configure the bot capability, and copy the App ID, App secret, and event encryption keys.',
-  wecom:
-    'Add a group robot in WeCom and copy its webhook key as WECOM_BOT_ID. Send-only — use the WeCom (app) option for two-way.',
-  wecom_callback:
-    'Set up a WeCom self-built app, expose its callback URL, and provide the corp ID, secret, agent ID, and AES key.',
   weixin:
     "Run `hermes gateway setup`, select Weixin, then scan and confirm the QR code with a personal WeChat account. Hermes connects through Tencent's iLink Bot API and saves the credentials.",
   qqbot: 'Register an app on the QQ Open Platform (q.qq.com) and copy the App ID and Client Secret.',

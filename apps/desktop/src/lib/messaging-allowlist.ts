@@ -1,3 +1,4 @@
+import { normalize } from '@/lib/text'
 import type { MessagingPlatformInfo } from '@/types/hermes'
 
 // ApexNodes is a China-first managed product, so the 消息平台 (messaging) picker
@@ -9,8 +10,9 @@ import type { MessagingPlatformInfo } from '@/types/hermes'
 // foreign/plugin platform silently leaks in — so we list the keepers instead:
 // anything not enumerated here (including future foreign platforms) is hidden.
 //
-// Kept: domestic IMs (钉钉 / 飞书·Lark / 企业微信 ×2 / 个人微信 / QQ / 元宝) plus
-// the region-neutral endpoints (Email / API server / Webhook) that work anywhere.
+// Kept: domestic IMs (飞书·Lark / 个人微信 / QQ / 元宝) plus the region-neutral
+// endpoints (Email / API server / Webhook) that work anywhere. 钉钉 and 企业微信
+// (群机器人 and 应用) are no longer APEX channels (hc-1300), so they are off it.
 //
 // Display-only: the runtime platform adapters (gateway/platforms/*.py) are
 // untouched — a hidden platform is simply not offered in the desktop UI.
@@ -19,10 +21,7 @@ import type { MessagingPlatformInfo } from '@/types/hermes'
 // case-insensitively against the id the desktop receives. To surface a new
 // domestic platform, add its runtime id here.
 export const DOMESTIC_PLATFORM_IDS: ReadonlySet<string> = new Set([
-  'dingtalk', // 钉钉
   'feishu', // 飞书 / Lark
-  'wecom', // 企业微信 (群机器人)
-  'wecom_callback', // 企业微信 (应用)
   'weixin', // 个人微信 WeChat (Personal)
   'qqbot', // QQ Bot
   'yuanbao', // 元宝 (腾讯)
@@ -44,4 +43,17 @@ export function filterDomesticPlatforms(
   platforms: MessagingPlatformInfo[]
 ): MessagingPlatformInfo[] {
   return platforms.filter(platform => isDomesticPlatform(platform.id))
+}
+
+// hc-1300: 钉钉 and 企业微信 (群机器人 + 应用) are no longer APEX channels. The
+// engine still ships their adapters, so its catalog (/api/messaging/platforms)
+// keeps listing them; the Messaging page drops them with the filter below.
+// Nothing applies the allowlist above to that page, so this short, closed list
+// is what keeps them off it.
+const RETIRED_PLATFORM_IDS: ReadonlySet<string> = new Set(['dingtalk', 'wecom', 'wecom_callback'])
+
+/** The engine's messaging platforms minus the channels APEX retired (hc-1300).
+ *  Order is preserved; the runtime adapters themselves stay intact. */
+export function withoutRetiredPlatforms(platforms: MessagingPlatformInfo[]): MessagingPlatformInfo[] {
+  return platforms.filter(platform => !RETIRED_PLATFORM_IDS.has(normalize(platform.id)))
 }

@@ -45,6 +45,9 @@ test('isKnownChannel accepts feishu + weixin and rejects unknown / non-string id
   assert.equal(isKnownChannel('feishu'), true)
   assert.equal(isKnownChannel('weixin'), true) // hc-538: now injectable
   assert.equal(isKnownChannel('qqbot'), false) // coming-soon, not injectable yet
+  // hc-1300: 钉钉 / 企业微信 are no longer APEX channels; nothing binds or injects them.
+  const knownRetired = ['dingtalk', 'wecom', 'wecom_callback'].filter(id => isKnownChannel(id))
+  assert.deepEqual(knownRetired, [])
   assert.equal(isKnownChannel('__proto__'), false)
   assert.equal(isKnownChannel(null), false)
   assert.equal(isKnownChannel(42), false)
