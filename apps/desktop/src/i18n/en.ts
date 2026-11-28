@@ -4817,10 +4817,8 @@ export const en: Translations = {
     },
     channels: {
       feishu: { name: 'Feishu / Lark', tagline: 'Reply in your Feishu chats and groups.' },
-      dingtalk: { name: 'DingTalk', tagline: 'Reply in your DingTalk chats and groups.' },
       weixin: { name: 'WeChat', tagline: 'Reply from your personal WeChat.' },
-      qqbot: { name: 'QQ', tagline: 'Reply in your QQ chats and groups.' },
-      wecom: { name: 'WeCom', tagline: 'Reply in WeCom (Enterprise WeChat).' }
+      qqbot: { name: 'QQ', tagline: 'Reply in your QQ chats and groups.' }
     },
     dialog: {
       connectTitle: name => `Connect ${name}`,

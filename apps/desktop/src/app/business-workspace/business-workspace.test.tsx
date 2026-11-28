@@ -1210,7 +1210,7 @@ describe('hc-685 business workspace identity', () => {
     await waitFor(() => expect(screen.getByText('App connections')).toBeTruthy())
     expect(screen.getByText('Feishu / Lark')).toBeTruthy()
     expect(screen.getByText('Connected')).toBeTruthy()
-    expect(screen.queryByText('DingTalk')).toBeNull()
+    expect(screen.queryByText('QQ')).toBeNull()
   })
 
   it('uses the live six-path catalog and reads saved workflows without starting a Run', async () => {

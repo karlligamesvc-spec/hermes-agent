@@ -3741,10 +3741,8 @@ export const zhHant = defineLocale({
     },
     channels: {
       feishu: { name: '飛書 / Lark', tagline: '在飛書的私訊和群組裡回訊息。' },
-      dingtalk: { name: '釘釘', tagline: '在釘釘的私訊和群組裡回訊息。' },
       weixin: { name: '微信', tagline: '用你的個人微信回訊息。' },
-      qqbot: { name: 'QQ', tagline: '在 QQ 的私訊和群組裡回訊息。' },
-      wecom: { name: '企業微信', tagline: '在企業微信裡回訊息。' }
+      qqbot: { name: 'QQ', tagline: '在 QQ 的私訊和群組裡回訊息。' }
     },
     dialog: {
       connectTitle: name => `連接${name}`,

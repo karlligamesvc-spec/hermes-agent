@@ -18,8 +18,8 @@ import { SettingsCategoryHeading } from './env-credentials'
 // navigates to the full page. It owns no binding logic of its own — connect /
 // unbind still only happen on /im-entry.
 //
-// Channel-neutral by design: copy never names a specific platform (飞书 is
-// merely the first channel wired end-to-end; 钉钉 / 微信 / QQ / 企微 follow).
+// Channel-neutral by design: copy never names a specific platform (飞书 was
+// merely the first channel wired end-to-end; 微信 followed and QQ is next).
 
 // True only in the Electron shell where the bridge exists. The web dashboard
 // build has no window.hermesDesktop.imEntry, so the card renders nothing there

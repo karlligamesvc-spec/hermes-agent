@@ -10,14 +10,16 @@
 // ── Rollout (per the hc-417 spike / PM) ─────────────────────────────────────
 // 飞书 (hc-417) and 个人微信 (hc-538) are available: the cloud issues an
 // INDEPENDENT bot per channel via a device-code / QR flow, whose delivery fits a
-// local agent with no public IP. 钉钉 / QQ / 企业微信 follow. Until a channel is
-// wired end-to-end it stays `available:false` ("即将支持", disabled) so the page
-// never offers a flow that can't complete.
+// local agent with no public IP. QQ follows. Until a channel is wired end-to-end
+// it stays `available:false` ("即将支持", disabled) so the page never offers a
+// flow that can't complete. 钉钉 and 企业微信 are no longer APEX channels
+// (hc-1300), so they are not listed at all, not even as coming soon.
 
 // Two binding templates, chosen per channel:
 //   • 'device-code' — scan a QR (or open a link) and confirm; zero fields typed.
 //   • 'paste-code'  — paste one code the platform gives you (advanced fields are
 //                     tucked behind a disclosure so the default stays one action).
+//                     No listed channel uses it since 钉钉/企微 went (hc-1300).
 export type ImEntryBindingKind = 'device-code' | 'paste-code'
 
 export interface ImEntryChannel {
@@ -32,13 +34,11 @@ export interface ImEntryChannel {
 }
 
 // Order = the rollout priority the cards render in (available first: 飞书 → 个微,
-// then the coming-soon queue in PM's stated order: 钉钉 → QQ → 企微).
+// then the coming-soon queue: QQ).
 export const IM_ENTRY_CHANNELS: readonly ImEntryChannel[] = [
   { id: 'feishu', brand: 'feishu', bindingKind: 'device-code', available: true },
   { id: 'weixin', brand: 'weixin', bindingKind: 'device-code', available: true },
-  { id: 'dingtalk', brand: 'dingtalk', bindingKind: 'paste-code', available: false },
-  { id: 'qqbot', brand: 'qqbot', bindingKind: 'device-code', available: false },
-  { id: 'wecom', brand: 'wecom', bindingKind: 'paste-code', available: false }
+  { id: 'qqbot', brand: 'qqbot', bindingKind: 'device-code', available: false }
 ] as const
 
 const CHANNEL_BY_ID: ReadonlyMap<string, ImEntryChannel> = new Map(

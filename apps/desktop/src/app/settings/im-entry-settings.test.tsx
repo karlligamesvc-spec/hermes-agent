@@ -62,7 +62,7 @@ describe('imEntrySummaryCopy (pure mapping)', () => {
     [null, 'Loading channels…'],
     [[], 'No channels connected yet.'],
     [[binding('feishu')], '1 channel connected'],
-    [[binding('feishu'), binding('dingtalk')], '2 channels connected']
+    [[binding('feishu'), binding('weixin')], '2 channels connected']
   ] as const)('bound=%o -> %s', (bound, expected) => {
     expect(imEntrySummaryCopy(bound as DesktopImEntryBinding[] | null, copy)).toBe(expected)
   })
